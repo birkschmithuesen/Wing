@@ -264,6 +264,19 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
               ? 'Read aloud with an installed offline Android voice.'
               : 'Send reply text to the selected Hermes profile for speech generation.',
         ),
+        SwitchListTile(
+          key: const ValueKey('voice-auto-speak'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Spoken replies'),
+          subtitle: const Text(
+            'Read each finished reply aloud automatically while the chat is open.',
+          ),
+          value: _preferences.autoSpeak,
+          onChanged: _saving
+              ? null
+              : (value) =>
+                    _save(VoicePreferences.autoSpeakKey, value ? 'on' : 'off'),
+        ),
         if (_preferences.output == VoiceProcessing.local && !_loading) ...[
           const SizedBox(height: 12),
           StudioSelect<String>(

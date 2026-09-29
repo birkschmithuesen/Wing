@@ -369,6 +369,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
   final _composerChanges = ChangeNotifier();
   Listenable get composerChanges => _composerChanges;
 
+  /// Successful turn completions with their final reply text, for hands-free
+  /// read-aloud. Emitted once per settled turn; failures and stops are skipped.
+  final _completedReplies =
+      StreamController<({ProfileChat chat, String text})>.broadcast();
+  Stream<({ProfileChat chat, String text})> get completedReplies =>
+      _completedReplies.stream;
+
   // Runtime events invalidate one browser row. A null chat means saved lists,
   // discovery, navigation or other workspace state may have changed.
   final _browserChanges =
@@ -6113,6 +6120,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
     chat._commandPreflightSensitivePrompt = null;
     chat._commandPreflightReturnStatus = null;
     final finalText = completion['text']?.toString() ?? chat.streaming;
+    if (!failed && !cancelled && finalText.trim().isNotEmpty && !_closed) {
+      _completedReplies.add((chat: chat, text: finalText));
+    }
     final notification = _notification(
       chat,
       failed
@@ -7065,6 +7075,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   @override
   void dispose() {
     _closed = true;
+    unawaited(_completedReplies.close());
     _composerChanges.dispose();
     _browserChanges.dispose();
     _healthSession?.dispose();

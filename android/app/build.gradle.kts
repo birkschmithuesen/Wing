@@ -53,6 +53,9 @@ val hasReleaseSigning = keystoreProperties.containsKey("storeFile")
 // their separate Dev identity and debug signing key.
 val notificationQa = providers.gradleProperty("notificationQa").orNull == "true"
 val wingDevelopment = providers.gradleProperty("wingDevelopment").orNull == "true"
+// Local side-by-side variant ("Wing Voice"): own package id and label, so it
+// installs next to the official Wing release and signs with a local key.
+val voiceVariant = providers.gradleProperty("voiceVariant").orNull == "true"
 check(!(notificationQa && wingDevelopment)) { "Notification QA must use its isolated package" }
 check(!wingDevelopment || signingEnvironment.keys.all {
     !keystoreProperties.getProperty(it).isNullOrBlank()
@@ -119,7 +122,7 @@ android {
            // the private distribution keystore. Never fall back to the debug
            // key: leave the APK explicitly unsigned until the real
            // key.properties file is supplied.
-           manifestPlaceholders["appLabel"] = "Wing"
+           manifestPlaceholders["appLabel"] = if (voiceVariant) "Wing Voice" else "Wing"
            if (hasReleaseSigning) {
                signingConfig = signingConfigs.getByName("release")
            }
@@ -135,7 +138,7 @@ androidComponents {
         }
     }
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.applicationId.set("com.tarkilhk.wing")
+        variant.applicationId.set(if (voiceVariant) "com.tarkilhk.wing.voice" else "com.tarkilhk.wing")
     }
     onVariants { variant ->
         // Android parses shortcut intents with system resources, so the target

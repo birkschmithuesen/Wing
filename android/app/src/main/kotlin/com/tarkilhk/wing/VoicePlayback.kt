@@ -110,8 +110,9 @@ class VoicePlayback(private val activity: Activity, private val emit: (Map<Strin
                 val installed = voices()
                 val voice = if (voiceName.isNotEmpty()) installed.find { it.name == voiceName }
                     else installed.find { it.locale == Locale.getDefault() } ?: installed.find { it.locale.language == Locale.getDefault().language }
-                check(voice != null) { "The selected offline voice is unavailable. Choose an installed Android voice in App settings." }
-                check(tts!!.setVoice(voice) == TextToSpeech.SUCCESS) { "Could not select the offline voice." }
+                // Engines like SherpaTTS may list no Voice objects; use the engine default then.
+                check(voice != null || voiceName.isEmpty()) { "The selected offline voice is unavailable. Choose an installed Android voice in App settings." }
+                if (voice != null) check(tts!!.setVoice(voice) == TextToSpeech.SUCCESS) { "Could not select the offline voice." }
                 check(tts!!.setSpeechRate(rate.coerceIn(0.5f, 2f)) == TextToSpeech.SUCCESS) { "Could not set speaking speed." }
                 check(text.isNotBlank()) { "There is no text to read." }
                 val chunks = text.chunked(TextToSpeech.getMaxSpeechInputLength() - 1)

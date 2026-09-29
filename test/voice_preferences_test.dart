@@ -91,8 +91,24 @@ void main() {
       expect(saved.voice, 'french');
       expect(saved.language, 'fr-FR');
       expect(saved.rate, 0.8);
+      expect(saved.autoSpeak, isFalse);
     },
   );
+
+  test('spoken replies toggle persists and rejects unknown values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).autoSpeak, isFalse);
+    expect(VoicePreferences.keys, contains(VoicePreferences.autoSpeakKey));
+    expect(VoicePreferences.accepts(VoicePreferences.autoSpeakKey, 'on'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.autoSpeakKey, 'off'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.autoSpeakKey, 'yes'), isFalse);
+    await saveDevicePreference(prefs, VoicePreferences.autoSpeakKey, 'on');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).autoSpeak, isTrue);
+    await saveDevicePreference(prefs, VoicePreferences.autoSpeakKey, 'off');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).autoSpeak, isFalse);
+  });
 
   Future<void> show(
     WidgetTester tester,

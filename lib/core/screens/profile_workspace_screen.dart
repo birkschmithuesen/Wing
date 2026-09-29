@@ -185,6 +185,33 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
   }
 
+  StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
+
+  /// Hands-free voice chat: read a finished reply aloud when the user enabled
+  /// "Spoken replies", the chat is on screen and nobody is dictating.
+  void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
+    if (!mounted || !_hasWorkspaceFocus || _destination != AppDestination.chats) {
+      return;
+    }
+    final settings = VoicePreferences.read(controller.preferences);
+    if (!settings.autoSpeak || _voiceInput.active) return;
+    final chat = reply.chat;
+    if ((controller.notificationChat ?? controller.current?.chat) != chat) {
+      return;
+    }
+    _voiceOwner = chat.key;
+    final connection = controller.connection;
+    final profile = chat.key.workspace.profileName;
+    unawaited(
+      _voiceOutput.speak(
+        (chat.key, 'auto-reply'),
+        reply.text,
+        settings,
+        () => HermesVoice.forConnection(connection, profile),
+      ),
+    );
+  }
+
   void _cancelVoice() {
     _voiceOwner = null;
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
@@ -370,6 +397,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     controller.addListener(_voiceWorkspaceChanged);
+    _autoSpeak = controller.completedReplies.listen(_speakCompletedReply);
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
     // Shortcut navigation can reuse an owner still observed by the outgoing
@@ -439,6 +467,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void dispose() {
     controller.removeListener(_voiceWorkspaceChanged);
+    unawaited(_autoSpeak?.cancel());
     _voiceInput.dispose();
     _voiceOutput.dispose();
     controller.setRouteVisibility(this, false);
