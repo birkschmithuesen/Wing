@@ -3,13 +3,15 @@ name: Wing Voice APK (unsigned)
 # Local side-by-side variant: package com.tarkilhk.wing.voice, label "Wing Voice".
 # Produces an UNSIGNED arm64 release APK; signing happens locally with the
 # owner's sideload key (never stored in the repo or in Actions secrets).
+# Output goes to branch `voice-apk-bin` (git transport works behind egress
+# firewalls that block the artifact blob storage).
 on:
   workflow_dispatch:
   push:
     branches: [voice-offline]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -35,8 +37,16 @@ jobs:
         run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart
       - name: Build unsigned arm64 APK
         run: flutter build apk --release --split-per-abi --target-platform android-arm64 -PvoiceVariant=true
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: wing-voice-arm64-unsigned
-          path: build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          retention-days: 7
+      - name: Publish to voice-apk-bin branch
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/out
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk /tmp/out/wing-voice-unsigned.apk
+          echo "${GITHUB_SHA}" > /tmp/out/SOURCE_COMMIT
+          (cd /tmp/out && sha256sum wing-voice-unsigned.apk > SHA256SUMS)
+          cd /tmp/out
+          git init -q -b voice-apk-bin
+          git config user.name "ci"; git config user.email "ci@localhost"
+          git add -A && git commit -q -m "wing-voice ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" voice-apk-bin
