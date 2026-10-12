@@ -277,6 +277,22 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
               : (value) =>
                     _save(VoicePreferences.autoSpeakKey, value ? 'on' : 'off'),
         ),
+        SwitchListTile(
+          key: const ValueKey('voice-conversation'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Conversation mode'),
+          subtitle: const Text(
+            'Send dictation when you stop speaking, read the reply aloud and '
+            'listen again. Stop, Cancel or silence ends the conversation.',
+          ),
+          value: _preferences.conversation,
+          onChanged: _saving
+              ? null
+              : (value) => _save(
+                  VoicePreferences.conversationKey,
+                  value ? 'on' : 'off',
+                ),
+        ),
         if (_preferences.output == VoiceProcessing.local && !_loading) ...[
           const SizedBox(height: 12),
           StudioSelect<String>(

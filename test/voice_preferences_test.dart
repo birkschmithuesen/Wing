@@ -110,6 +110,27 @@ void main() {
     expect(VoicePreferences.read(prefs).autoSpeak, isFalse);
   });
 
+  test('conversation mode toggle persists and rejects unknown values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).conversation, isFalse);
+    expect(VoicePreferences.keys, contains(VoicePreferences.conversationKey));
+    expect(
+      VoicePreferences.accepts(VoicePreferences.conversationKey, 'on'),
+      isTrue,
+    );
+    expect(
+      VoicePreferences.accepts(VoicePreferences.conversationKey, 'yes'),
+      isFalse,
+    );
+    await saveDevicePreference(prefs, VoicePreferences.conversationKey, 'on');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).conversation, isTrue);
+    expect(VoicePreferences.read(prefs).autoSpeak, isFalse);
+    await saveDevicePreference(prefs, VoicePreferences.conversationKey, 'off');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).conversation, isFalse);
+  });
+
   Future<void> show(
     WidgetTester tester,
     SharedPreferences prefs,

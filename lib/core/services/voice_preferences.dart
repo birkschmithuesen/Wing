@@ -10,6 +10,7 @@ class VoicePreferences {
   static const voiceKey = 'voice.android_voice';
   static const rateKey = 'voice.android_rate';
   static const autoSpeakKey = 'voice.auto_speak';
+  static const conversationKey = 'voice.conversation';
   static const keys = {
     inputKey,
     outputKey,
@@ -17,13 +18,14 @@ class VoicePreferences {
     voiceKey,
     rateKey,
     autoSpeakKey,
+    conversationKey,
   };
 
   static bool accepts(String key, Object value) => switch (key) {
     inputKey || outputKey => value == 'local' || value == 'hermes',
     languageKey || voiceKey => value is String,
     rateKey => {'0.8', '1.0', '1.2'}.contains(value),
-    autoSpeakKey => value == 'on' || value == 'off',
+    autoSpeakKey || conversationKey => value == 'on' || value == 'off',
     _ => false,
   };
 
@@ -36,6 +38,10 @@ class VoicePreferences {
   /// Read each completed reply aloud automatically (hands-free voice chat).
   final bool autoSpeak;
 
+  /// Hands-free loop: a dictation that ends on its own is sent, the reply is
+  /// read aloud (even with [autoSpeak] off) and the microphone reopens.
+  final bool conversation;
+
   const VoicePreferences({
     this.input = VoiceProcessing.local,
     this.output = VoiceProcessing.local,
@@ -43,6 +49,7 @@ class VoicePreferences {
     this.voice = '',
     this.rate = 1,
     this.autoSpeak = false,
+    this.conversation = false,
   });
 
   factory VoicePreferences.read(SharedPreferences preferences) =>
@@ -57,6 +64,7 @@ class VoicePreferences {
           _ => 1,
         },
         autoSpeak: preferences.getString(autoSpeakKey) == 'on',
+        conversation: preferences.getString(conversationKey) == 'on',
       );
 
   static VoiceProcessing _engine(String? value) => switch (value) {
