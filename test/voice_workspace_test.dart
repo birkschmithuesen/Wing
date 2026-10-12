@@ -251,8 +251,11 @@ void main() {
   );
 
   // A running turn shows a spinner, so pumpAndSettle would never settle.
+  // The controller was created outside the test zone; runAsync lets its
+  // pending writes finish so a send can reach the gateway.
   Future<void> settle(WidgetTester tester) async {
-    for (var i = 0; i < 10; i++) {
+    for (var i = 0; i < 8; i++) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump(const Duration(milliseconds: 50));
     }
   }
@@ -411,7 +414,7 @@ void main() {
     await settle(tester);
     expect(device.calls, contains('stopPlayback'));
     expect(starts(), 1);
-    expect(device.recording, isNull);
+    expect(find.textContaining('Recording ·'), findsNothing);
   });
 
   for (final request in ['approval', 'clarify']) {
@@ -439,7 +442,7 @@ void main() {
       await completeReply(tester, 'Waiting for you.');
       expect(device.spoken, 'Waiting for you.');
       expect(starts(), 1);
-      expect(device.recording, isNull);
+      expect(find.textContaining('Recording ·'), findsNothing);
     });
   }
 }
