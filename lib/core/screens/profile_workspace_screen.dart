@@ -183,36 +183,134 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             current?.editingQueuedPrompt != null)) {
       _cancelVoice();
     }
+    final loop = _conversation;
+    if (loop != null &&
+        (current == null ||
+            current.key != loop ||
+            _needsUserInput(current) ||
+            (_conversationAwaitingReply &&
+                {
+                  ProfileTurnStatus.failed,
+                  ProfileTurnStatus.cancelled,
+                }.contains(current.status)))) {
+      _conversation = null;
+    }
+  }
+
+  /// Approvals, clarify questions and secure prompts need the user's hands or
+  /// eyes, so they end a hands-free conversation.
+  bool _needsUserInput(ProfileChat chat) =>
+      chat.approval != null ||
+      chat.clarification != null ||
+      chat.sensitivePrompt != null;
+
+  /// Chat of the running hands-free conversation (Conversation mode). Set when
+  /// the user starts dictating with the mode on; cleared by anything that ends
+  /// the loop. The microphone only reopens while this still names the chat.
+  ProfileSessionKey? _conversation;
+
+  /// True from the conversation's auto-send until its reply arrived. Only
+  /// that reply may reopen the microphone, never a later or queued turn.
+  bool _conversationAwaitingReply = false;
+
+  void _voiceInputChanged() {
+    // Silence, no speech or a recognizer error ends the conversation.
+    if (!_voiceInput.active && _voiceInput.error != null) _conversation = null;
   }
 
   StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
 
   /// Hands-free voice chat: read a finished reply aloud when the user enabled
-  /// "Spoken replies", the chat is on screen and nobody is dictating.
+  /// "Spoken replies" or "Conversation mode", the chat is on screen and nobody
+  /// is dictating. In a conversation the microphone reopens afterwards.
   void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
     if (!mounted || !_hasWorkspaceFocus || _destination != AppDestination.chats) {
+      _conversation = null;
       return;
     }
     final settings = VoicePreferences.read(controller.preferences);
-    if (!settings.autoSpeak || _voiceInput.active) return;
+    if (!settings.conversation) _conversation = null;
+    if (!(settings.autoSpeak || settings.conversation) || _voiceInput.active) {
+      return;
+    }
     final chat = reply.chat;
     if ((controller.notificationChat ?? controller.current?.chat) != chat) {
       return;
     }
+    if (!_conversationAwaitingReply) _conversation = null;
+    _conversationAwaitingReply = false;
     _voiceOwner = chat.key;
     final connection = controller.connection;
     final profile = chat.key.workspace.profileName;
-    unawaited(
-      _voiceOutput.speak(
+    unawaited(() async {
+      final finished = await _voiceOutput.speak(
         (chat.key, 'auto-reply'),
         reply.text,
         settings,
         () => HermesVoice.forConnection(connection, profile),
-      ),
+      );
+      if (!finished) {
+        // Stop speech, a newer playback or a failure ends the conversation,
+        // unless the user already tapped the microphone again.
+        if (!_voiceInput.active) _conversation = null;
+        return;
+      }
+      if (_canContinueConversation(chat)) {
+        await _run(() => _dictate(chat, resume: true));
+      }
+    }());
+  }
+
+  /// The microphone never reopens unasked: only for the conversation's own
+  /// chat, on screen, idle, with nothing waiting for the user's input.
+  bool _canContinueConversation(ProfileChat chat) {
+    final ok =
+        mounted &&
+        _conversation == chat.key &&
+        _hasChatFocus &&
+        (controller.notificationChat ?? controller.current?.chat) == chat &&
+        !controller.switching &&
+        !chat.busy &&
+        !chat.opening &&
+        !chat.commandRunning &&
+        !chat.changingAnswer &&
+        chat.editingQueuedPrompt == null &&
+        !_needsUserInput(chat) &&
+        !_voiceInput.active &&
+        _voiceOutput.owner == null &&
+        VoicePreferences.read(controller.preferences).conversation;
+    if (!ok) _conversation = null;
+    return ok;
+  }
+
+  /// Conversation mode: send a dictation the recognizer ended on its own.
+  /// Anything that blocks a normal send ends the conversation instead.
+  Future<void> _sendConversationTurn(ProfileChat chat) async {
+    final text = chat.draft.trim();
+    if (!mounted ||
+        _conversation != chat.key ||
+        controller.current?.chat != chat ||
+        _destination != AppDestination.chats ||
+        chat.busy ||
+        text.isEmpty ||
+        text.startsWith('/') ||
+        _composerActions(chat)[ComposerAction.send] != null) {
+      _conversation = null;
+      return;
+    }
+    _conversationAwaitingReply = true;
+    await _performComposerAction(
+      chat,
+      ComposerAction.send,
+      conversation: true,
     );
+    if (!chat.busy && !_voiceInput.active && _voiceOutput.owner == null) {
+      _conversation = null;
+    }
   }
 
   void _cancelVoice() {
+    _conversation = null;
     _voiceOwner = null;
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
@@ -237,44 +335,59 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     );
   }
 
-  Future<void> _dictate(ProfileChat chat) async {
+  /// [resume] reopens the microphone for a running conversation and gives up
+  /// if anything ended the loop in the meantime.
+  Future<void> _dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
     if (!mounted ||
         (controller.notificationChat ?? controller.current?.chat) != chat ||
-        controller.switching) {
+        controller.switching ||
+        (resume && !_canContinueConversation(chat))) {
+      if (resume) _conversation = null;
       return;
     }
+    final settings = VoicePreferences.read(controller.preferences);
+    _conversation = settings.conversation ? chat.key : null;
+    _conversationAwaitingReply = false;
     _voiceOwner = chat.key;
     final original = _composer.value;
     _composerFocus.unfocus();
-    await _voiceInput.start(
-      VoicePreferences.read(controller.preferences),
-      original,
-      (result) {
-        final current = controller.notificationChat ?? controller.current?.chat;
-        if (!mounted ||
-            _voiceOwner != chat.key ||
-            current != chat ||
-            _destination != AppDestination.chats) {
-          return;
-        }
-        if (_composer.text != original.text) {
-          showStudioError(
-            context,
-            'The draft changed while recording. Please dictate again.',
-          );
-          return;
-        }
-        _composer.value = result;
-        unawaited(_run(() => controller.updateDraft(chat, result.text)));
-      },
-    );
+    await _voiceInput.start(settings, original, (result) {
+      final current = controller.notificationChat ?? controller.current?.chat;
+      // Only a dictation the recognizer ended itself continues the loop;
+      // Stop, the recording limit or a server transcription do not.
+      final send = _conversation == chat.key && _voiceInput.finishedOnItsOwn;
+      if (!send) _conversation = null;
+      if (!mounted ||
+          _voiceOwner != chat.key ||
+          current != chat ||
+          _destination != AppDestination.chats) {
+        _conversation = null;
+        return;
+      }
+      if (_composer.text != original.text) {
+        _conversation = null;
+        showStudioError(
+          context,
+          'The draft changed while recording. Please dictate again.',
+        );
+        return;
+      }
+      _composer.value = result;
+      unawaited(
+        _run(() async {
+          await controller.updateDraft(chat, result.text);
+          if (send) await _sendConversationTurn(chat);
+        }),
+      );
+    });
   }
 
   Future<void> _readAloud(
     ProfileChat chat,
     Map<String, dynamic> message,
   ) async {
+    _conversation = null;
     final owner = (chat.key, answerMessageId(message) ?? message);
     if (_voiceOutput.owner == owner) {
       await _voiceOutput.stop();
@@ -330,7 +443,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                       child: const Text('Stop recording'),
                     ),
                   TextButton(
-                    onPressed: _voiceInput.cancel,
+                    onPressed: () {
+                      _conversation = null;
+                      unawaited(_voiceInput.cancel());
+                    },
                     child: const Text('Cancel recording'),
                   ),
                 ],
@@ -349,7 +465,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 _voiceOutput.preparing ? 'Preparing speech…' : 'Reading aloud',
               ),
               TextButton(
-                onPressed: _voiceOutput.stop,
+                onPressed: () {
+                  _conversation = null;
+                  unawaited(_voiceOutput.stop());
+                },
                 child: const Text('Stop speech'),
               ),
             ],
@@ -398,6 +517,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
     controller.addListener(_voiceWorkspaceChanged);
     _autoSpeak = controller.completedReplies.listen(_speakCompletedReply);
+    _voiceInput.addListener(_voiceInputChanged);
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
     // Shortcut navigation can reuse an owner still observed by the outgoing
@@ -468,6 +588,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   void dispose() {
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
+    _voiceInput.removeListener(_voiceInputChanged);
     _voiceInput.dispose();
     _voiceOutput.dispose();
     controller.setRouteVisibility(this, false);
@@ -2089,8 +2210,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   Future<void> _performComposerAction(
     ProfileChat chat,
-    ComposerAction action,
-  ) async {
+    ComposerAction action, {
+    bool conversation = false,
+  }) async {
+    // Any manual composer action, including Stop response, ends the loop.
+    if (!conversation) _conversation = null;
     if (controller.current?.chat != chat ||
         _composerActions(chat)[action] != null) {
       return;

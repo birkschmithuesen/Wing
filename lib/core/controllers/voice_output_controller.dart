@@ -69,13 +69,15 @@ class VoiceOutputController extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> speak(
+  /// Completes when playback ends. True only when this utterance played to
+  /// its end; a stop, a newer request or a failure yields false.
+  Future<bool> speak(
     Object message,
     String content,
     VoicePreferences settings,
     RemoteVoice Function() createRemote,
   ) async {
-    if (_disposed) return;
+    if (_disposed) return false;
     unawaited(stop().catchError((Object _) {}));
     final id = const Uuid().v4();
     _id = id;
@@ -83,6 +85,7 @@ class VoiceOutputController extends ChangeNotifier {
     preparing = true;
     error = null;
     _notify();
+    var finished = false;
     try {
       final text = spokenReplyText(content);
       if (text.isEmpty) {
@@ -92,7 +95,7 @@ class VoiceOutputController extends ChangeNotifier {
         final remote = createRemote();
         _remote = remote;
         final audio = await remote.synthesize(text);
-        if (_id != id || _disposed) return;
+        if (_id != id || _disposed) return false;
         await device.play(id, audio);
       } else {
         await device.speak(
@@ -102,6 +105,7 @@ class VoiceOutputController extends ChangeNotifier {
           rate: settings.rate,
         );
       }
+      finished = _id == id && !_disposed;
     } catch (failure) {
       if (_id == id && !_disposed) error = voiceFailureMessage(failure);
     } finally {
@@ -114,6 +118,7 @@ class VoiceOutputController extends ChangeNotifier {
         _notify();
       }
     }
+    return finished;
   }
 
   Future<void> stop() async {

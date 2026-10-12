@@ -18,6 +18,12 @@ class VoiceInputController extends ChangeNotifier {
   String partial = '';
   String? error;
   int seconds = 0;
+
+  /// Whether the last transcript arrived because the recognizer ended the
+  /// utterance itself (end of speech), not because the user pressed Stop or
+  /// the recording limit was reached. Set before the result callback runs.
+  bool finishedOnItsOwn = false;
+  bool _stopRequested = false;
   String? _id;
   bool _disposed = false;
   RemoteVoice? _remote;
@@ -46,6 +52,8 @@ class VoiceInputController extends ChangeNotifier {
     error = null;
     partial = '';
     seconds = 0;
+    finishedOnItsOwn = false;
+    _stopRequested = false;
     phase = VoiceInputPhase.starting;
     _notify();
     try {
@@ -94,6 +102,7 @@ class VoiceInputController extends ChangeNotifier {
   Future<void> stop() async {
     final id = _id;
     if (id == null || phase != VoiceInputPhase.recording) return;
+    _stopRequested = true;
     _timer?.cancel();
     phase = VoiceInputPhase.transcribing;
     _notify();
@@ -121,6 +130,7 @@ class VoiceInputController extends ChangeNotifier {
     }
     final draft = _draft!;
     final callback = _onResult;
+    finishedOnItsOwn = !_stopRequested && _remote == null;
     final result = insertVoiceTranscript(draft, transcript.trim());
     _clear();
     callback?.call(result);
