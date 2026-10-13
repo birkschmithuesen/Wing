@@ -28,3 +28,36 @@ Design: `docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md`.
 `probabilities between the thresholds keep speech going`, `probabilities between the thresholds do not reset a starting run`,
 `a shorter pause setting ends earlier`, `media key stop keeps speech minus pre-roll`); the Python parity test failed locally
 with the same 8 subTests (`FAILED (failures=8)`).
+
+## Offline endpoint check (Task 5, vServer)
+
+Tools: `tools/voice/vad_offline_check.py`, `tools/voice/make_selftest_audio.py` (venv in `build/vad-venv`, numpy + onnxruntime).
+Model `build/vad-check/silero_vad.onnx`, SHA256 `9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`.
+Numbers only; the private car WAV was read in place and not copied.
+
+ANNAHME outcome (model layout): NOT confirmed. `--inspect` printed inputs `x [1,512]`, `h [2,1,64]`, `c [2,1,64]`, outputs
+`prob, new_h, new_c` (older Silero layout: no 64-sample context, no `state`, no `sr`). The checker now picks the layout by
+input name (legacy `h`/`c` feed, v5 fallback kept). Concern: the Dart/Kotlin side runs this model through sherpa-onnx, which
+handles the layout itself; it must not assume the v5 `state`/context layout.
+
+Controls (synthetic, known ground truth):
+- `mix_s1_snr0.wav` (speech 1.000-4.634 s): `share_above_start` 0.483, one `endOfFile` round, `start_s` 0.896. As expected.
+- `noise_only_15s.wav`: `share_above_start` 0.0, p99 0.276; one `noSpeech` round decided at 8.0 s, then `endOfFile`. No false alarm.
+- `selftest.wav` (speech 4.0-7.435 s and 8.435-11.367 s, 1.0 s thinking pause, 6 s tail, SNR 10 dB): at every pause from 1000 to
+  3000 ms exactly one speech round (the 1.0 s pause does not split), `false_rounds` 0, `end_error_ms` 633 for all pauses.
+  Deviation: the brief expects -300..+600; 633 ms is slightly above (the endpointer keeps a trailing tail after the last speech window).
+
+Car recording (68.52 s, 44.1 kHz stereo, built-in phone mic in driving noise):
+- Probability percentiles p10/p50/p90/p99: 0.028 / 0.291 / 0.934 / 0.991; `share_above_start` 0.414. Silero does hear the voice at
+  phone-mic distance (share well above zero, p90 high); no sign of noise counted as speech.
+- Rounds with speech (reason `pause`): 5 for every pause value 1000-3000 ms. No `maxDuration` round, none lasting the whole file.
+  Speech spans (start-end, s): 2.75-7.01, 9.98-12.26, 15.26-27.26, 35.71-39.97 (1000 ms: 36.03), 43.62-55.49. Two spans are 12.0 s
+  and 11.9 s long, i.e. continuous speech without a gap of the pause length inside.
+- `decided_s - end_s` per pause: 1000 ms 0.768; 1400 ms 1.152; 1800 ms 1.568; 2400 ms 2.144; 3000 ms 2.752 (same for all five rounds).
+- `noSpeech` rounds with default 8 s timeout: pause 1000 ms: 2 (decided at 36.03 s and 64.26 s), 1400 ms: 1 (64.64 s),
+  1800 ms: 1 (65.06 s), 2400 and 3000 ms: 0. Each hit a stretch after a speech round, i.e. silence in the file, not a missed utterance
+  (speech start in every other stretch was detected).
+- With `--no-speech-ms 12000`: 0 `noSpeech` rounds for all pauses; the 5 speech rounds and their times are unchanged, the file ends with
+  an `endOfFile` round from 64.9 s. A longer wait therefore only removes the trailing/idle `noSpeech` rounds, nothing else changes.
+- Whether the `noSpeech` stretches correspond to silent passages or to unheard speech cannot be decided without labels;
+  the high share above start suggests the former.
