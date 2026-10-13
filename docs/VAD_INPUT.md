@@ -37,6 +37,15 @@ carry the chunk planner (it only mirrors the end-of-utterance decision for tunin
 | Assumption | Check | Outcome |
 |---|---|---|
 | AAR has classes + JNI libs | Task 1 | Confirmed: all 9 classes and member names present, arm64 JNI libs present; no fallback needed |
+| Silero model uses v5 layout (`x`, `state`, `sr`) | Task 5 | Failed: legacy layout `x[1,512]`, `h`, `c`; checker and `Vad.compute` use 512-sample windows (see below) |
+| Model download resumes after the GitHub redirect | Task 15 Step 5 | Open: on-device run blocked (screen lock, 2026-10-13) |
+| Active session in `STATE_PAUSED` receives media buttons | Task 15 Step 8 | Open: on-device run blocked (screen lock, 2026-10-13) |
+
+## Verification status (2026-10-14)
+
+- Suite `bash tools/factory/ci-suite.sh` on bd5df3df: `ci-suite: run 38474706147 conclusion=success`.
+- On-device (Task 15): APK from bd5df3df built, signed (`cae14a2c…`) and installed as an update. Steps 3–11
+  (model download, self-test, audio-source A/B, media key) are still open because the phone stayed locked.
 
 ## Vad.compute window size (Task 13, sherpa-onnx tag v1.13.8)
 
