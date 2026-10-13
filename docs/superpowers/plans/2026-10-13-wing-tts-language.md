@@ -889,8 +889,10 @@ Wing reads replies sentence by sentence in German or English. Detection runs on 
 
 ## Phone setup (SherpaTTS)
 - SherpaTTS keeps one model per language. Install English via SherpaTTS → Manage languages.
-- Installing a language makes it SherpaTTS's current language. Set German back as current language so other
-  apps stay German. Wing sets the language per sentence and does not depend on it.
+- Installing a language makes it SherpaTTS's current language. Set German back as current language so the
+  engine preloads German after a restart. Wing sets the language per sentence. Doing so also rewrites
+  SherpaTTS's current language, which only affects which model the engine preloads after a restart. Apps that
+  set no language get the system TTS locale (German).
 - Default English voice: Piper `en_GB-alba-medium`. To change it, delete English in SherpaTTS and install
   another English model. Wing needs no change.
 
@@ -943,11 +945,13 @@ private use (the model is not redistributed), but note it.
 - [ ] **Step 3: Set German back as SherpaTTS's current language**
 
 Installing sets `current_language` to English (`Downloader.java:118`). In SherpaTTS's main screen, select
-German again.
+German again. This keeps the model that the engine preloads after a restart German.
 
 Check:
 Run: `hadb shell su -c 'grep -h current_language /data/data/org.woheller69.ttsengine/shared_prefs/*.xml'`
-Expected: a line containing `deu`.
+Expected: a line containing `deu`. This holds only right after setup, before anything has spoken English
+through the engine. Every language switch rewrites `current_language` (`TtsEngine.kt` `loadLanguageSettings`,
+spec 2.3), so once Wing reads an English segment last, `eng` is expected.
 ANNAHME: root via `su` works as on 13.10. when the prefs were read; if not, use the same method as then.
 
 Run: `hadb shell su -c 'ls /data/data/org.woheller69.ttsengine/files /storage/emulated/0/Android/data/org.woheller69.ttsengine/files'`
@@ -1044,7 +1048,12 @@ Play the same reply a second time and record whether the first-switch gap disapp
    SherpaTTS (delete English, install `en_US-amy-medium` or `en_GB-cori-medium`, set German back as current,
    Task 6 Step 3) and repeats Steps 4-5 with the same text. Wing needs no new build.
 2. Run: `hadb shell settings get secure tts_default_locale`
-   Expected: `org.woheller69.ttsengine:de`.
+   Expected: `org.woheller69.ttsengine:de`. This must hold.
+   `current_language` in SherpaTTS's prefs (Task 6 Step 3 command) may now read `eng`. That is expected, not a
+   failure: `TtsEngine.kt` `loadLanguageSettings` ends with `setCurrentLanguage(language)` on every switch
+   (spec 2.3), and it only decides which model is preloaded after an engine restart.
+   Optional check that other apps stay German: after Wing has read English, open Android Settings →
+   Text-to-speech → "Listen to an example". Expected: it plays in German.
 3. Optional: `hadb shell dumpsys meminfo org.woheller69.ttsengine | grep -m1 TOTAL` after an English reply;
    record the value (spec 4.8 ANNAHME, two cached models).
 

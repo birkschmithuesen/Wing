@@ -54,9 +54,17 @@ Paths under `app/src/main/java/com/k2fsa/sherpa/onnx/tts/engine/`.
 | `createTts` keeps one `OfflineTts` per language in `ttsCache`; switching to a cached language is a pointer swap. The first use of a language loads the model from disk. | `TtsEngine.kt:52-65`, `initTts` L84-124; commit `638c0b2` "Caching of TtsEngines" (2025-09-09) |
 | Several languages can be installed side by side (`<lang><country>/` dirs, e.g. `deuDE`, `engUS`), but **one model per language**. | `TtsEngine.kt:91`, `Downloader.java:61`; `ManageLanguagesActivity.kt:45-49`; issue #1 |
 | Installing a language **sets `current_language` to it**. | `Downloader.java:118`, `ManageLanguagesActivity.kt:205` |
+| **Every language switch also rewrites `current_language`.** `createTts(context, language)` calls `loadLanguageSettings(context, language)` on a cache hit, or `initTts` (which calls it too) on a miss. `loadLanguageSettings` ends with `PreferenceHelper(context).setCurrentLanguage(language)`. Since `onSynthesizeText` calls `createTts` for every request, `current_language` persistently equals the language of the last request. After Wing reads an English segment last, it is `eng`. | `TtsEngine.kt` `createTts`, `initTts`, `loadLanguageSettings`; `TtsService.kt` `onSynthesizeText` |
+| `current_language` only decides which model `TtsService.onCreate` preloads after an engine restart (`onLoadLanguage(getCurrentLanguage())`). | `TtsService.kt` `onCreate` (L18-25) |
 | The engine overrides no voice methods (`onGetVoices`, `onLoadVoice`, …); `setVoice` cannot switch its language. | `TtsService.kt` (grep) |
 | No language detection in the engine. The maintainer: "the reader app has to detect the language and request from tts engine." | issue #52; open feature request #140 |
 | If a request's language is not installed, the engine calls `callback.error()`. | `TtsService.kt:68-124` |
+
+**Why the rewrite is harmless for other apps:** a client that never calls `setLanguage` sends the system TTS
+settings locale as the request language. In the framework's `TextToSpeechService.java`, `SynthesisSpeechItem`
+sets `mDefaultLocale = getSettingsLocale()`, and `getLanguage()` falls back to `mDefaultLocale[0]`. SherpaTTS
+switches by request language, so such apps get German (`tts_default_locale` = `…:de`) whatever
+`current_language` says. The engine never touches `tts_default_locale`, which is a system setting.
 
 **Verdict:** SherpaTTS 3.4 can serve DE and EN per utterance when the calling app sets the language per
 utterance, provided an English model is installed next to the German one. `setVoice` does not work for this;
@@ -92,7 +100,9 @@ Piper model is installed into SherpaTTS on the phone (no Wing download code).
 - **Pro:** smallest change; no new dependency; works with any system engine that honours the request
   language (SherpaTTS, RHVoice, Google TTS on other phones). The engine's own queue plays the segments back to
   back. Logic sits in Dart, so CI tests it.
-- **Con:** depends on SherpaTTS state on the phone (English installed, `current_language` back to `deu`).
+- **Con:** depends on SherpaTTS state on the phone: English must be installed. Setting `current_language` back
+  to `deu` after the install keeps the preload German. Wing's switching rewrites it afterwards (2.3), which
+  only changes the model preloaded after an engine restart.
   First switch to English after an engine restart pays one model load (ANNAHME 1-3 s, measured in Task 6).
   Only one English voice installed at a time (engine limit).
 
@@ -215,8 +225,11 @@ for each segment i:
 ### 4.7 Phone setup (Hermes worker, not code)
 
 1. In SherpaTTS → Manage languages, install the default English voice (4.8).
-2. Because install sets `current_language` to English, set the engine language back to German in SherpaTTS so
-   other apps keep German. Check `tts_default_locale` is still `org.woheller69.ttsengine:de`.
+2. Because install sets `current_language` to English, set the engine language back to German in SherpaTTS.
+   This keeps the model preloaded after an engine restart German. Check `tts_default_locale` is still
+   `org.woheller69.ttsengine:de`. Once Wing has spoken, its per-segment switching rewrites `current_language`
+   (to `eng` if the last segment was English, 2.3). That is expected and does not matter. Other apps get the
+   system settings locale as the request language and stay German, and `tts_default_locale` is unaffected.
 
 ### 4.8 Default English voice
 
