@@ -20,6 +20,9 @@ done
 [ -n "$id" ] || { echo "ci-suite: no pr-quality run appeared for $br" >&2; exit 2; }
 echo "ci-suite: run $id for $sha"
 gh run watch "$id" -R "$repo" --exit-status --interval 20 >/dev/null && rc=0 || rc=$?
-gh run view "$id" -R "$repo" --log 2>/dev/null | grep -E "PASSED|FAILED|All tests passed|Some tests failed|[0-9]+ issues? found|No issues found" | sed 's/^.*Z //' | tail -8
+# Best-effort summary grep: the log endpoint (results-receiver.actions.githubusercontent.com)
+# is behind the vServer egress allowlist and can time out. That must not corrupt $rc,
+# which already carries the real result from `gh run watch` above.
+gh run view "$id" -R "$repo" --log 2>/dev/null | grep -E "PASSED|FAILED|All tests passed|Some tests failed|[0-9]+ issues? found|No issues found" | sed 's/^.*Z //' | tail -8 || true
 echo "ci-suite: run $id result rc=$rc"
 exit $rc
