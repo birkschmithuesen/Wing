@@ -96,7 +96,13 @@ class VadCapture(
         error("Microphone is unavailable.")
     }
 
+    /** The reader thread owns the native resources: it releases them when it leaves the loop,
+     *  so nothing is freed while record.read or vad.compute may still be running. */
     private fun read(r: Round) {
+        try { readLoop(r) } finally { release(r) }
+    }
+
+    private fun readLoop(r: Round) {
         val frame = ShortArray(512)
         // 512 samples exactly: the pinned model is the legacy Silero layout (x[1,512], h, c),
         // which sherpa-onnx v1.13.8 runs as "v4" with window_overlap 0 (docs/VAD_INPUT.md).
@@ -169,8 +175,8 @@ class VadCapture(
     private fun stopReading(r: Round) {
         r.stopped = true
         try { r.record?.stop() } catch (_: Exception) {}
-        r.reader?.join(500)
-        release(r)
+        // Never release here: the reader releases its own resources when it exits (see read).
+        try { r.reader?.join(500) } catch (_: InterruptedException) {}
     }
 
     private fun release(r: Round) {

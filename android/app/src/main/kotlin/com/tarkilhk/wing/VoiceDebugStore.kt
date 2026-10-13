@@ -1,6 +1,7 @@
 package com.tarkilhk.wing
 
 import android.content.Context
+import android.util.Log
 import org.json.JSONObject
 import java.io.File
 import java.io.RandomAccessFile
@@ -18,12 +19,14 @@ class VoiceDebugStore(context: Context) {
 
     fun write(roundId: String, startedAt: Long, pcm: ShortArray, length: Int, meta: JSONObject) {
         executor.execute {
+            try {
             dir.mkdirs()
             val stamp = SimpleDateFormat("yyyyMMdd-HHmmss", Locale.US).format(Date(startedAt))
             val base = "$stamp-${roundId.take(8)}"
             writeWav(File(dir, "$base.wav"), pcm, length)
             File(dir, "$base.json").writeText(meta.toString())
             prune()
+            } catch (t: Throwable) { Log.w("VoiceDebugStore", "debug recording failed", t) }
         }
     }
 
