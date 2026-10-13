@@ -52,9 +52,15 @@ class VoiceDebugStore(context: Context) {
             out.writeBytes("RIFF"); le32(36 + dataBytes); out.writeBytes("WAVE")
             out.writeBytes("fmt "); le32(16); le16(1); le16(1); le32(16000); le32(32000); le16(2); le16(16)
             out.writeBytes("data"); le32(dataBytes)
-            val bytes = ByteArray(dataBytes)
-            for (i in 0 until length) { bytes[2 * i] = (pcm[i].toInt() and 0xff).toByte(); bytes[2 * i + 1] = (pcm[i].toInt() shr 8).toByte() }
-            out.write(bytes)
+            // Stream in blocks: a 30 minute round must not get a second 57 MB copy.
+            val block = ByteArray(2 * 16384)
+            var at = 0
+            while (at < length) {
+                val n = minOf(16384, length - at)
+                for (i in 0 until n) { block[2 * i] = (pcm[at + i].toInt() and 0xff).toByte(); block[2 * i + 1] = (pcm[at + i].toInt() shr 8).toByte() }
+                out.write(block, 0, 2 * n)
+                at += n
+            }
         }
     }
 

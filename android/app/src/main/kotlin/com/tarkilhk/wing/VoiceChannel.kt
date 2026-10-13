@@ -97,7 +97,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                 cues = call.argument<Boolean>("cues") != false,
                 debug = call.argument<Boolean>("debug") == true,
                 source = call.argument<String>("source") ?: "communication",
-                maxMs = call.argument<Int>("maxMs") ?: 120_000,
+                maxMs = call.argument<Int>("maxMs") ?: 600_000,
             ))
         } else {
             vad.cancel(id)

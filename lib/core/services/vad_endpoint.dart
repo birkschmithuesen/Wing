@@ -20,7 +20,7 @@ class VadEndpointConfig {
     this.pause = const Duration(milliseconds: 1800),
     this.minSpeech = const Duration(milliseconds: 250),
     this.preRoll = const Duration(milliseconds: 300),
-    this.maxDuration = const Duration(seconds: 120),
+    this.maxDuration = const Duration(seconds: 600),
     this.noSpeechTimeout = const Duration(seconds: 8),
   });
 

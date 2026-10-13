@@ -638,23 +638,23 @@ void main() {
     tester,
   ) async {
     await vadRoute();
-    await controller.preferences.setString(VoicePreferences.vadMaxKey, '60');
+    await controller.preferences.setString(VoicePreferences.vadMaxKey, '900');
     await show(tester);
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
-    expect(find.text('Recording · 0s / 60s'), findsOneWidget);
+    expect(find.text('Recording · 0s / 900s'), findsOneWidget);
     await tester.tap(find.text('Cancel recording'));
     await settle(tester);
   });
 
-  testWidgets('recording status shows the default vad limit of 120 s', (
+  testWidgets('recording status shows the default vad limit of 10 minutes', (
     tester,
   ) async {
     await vadRoute();
     await show(tester);
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
-    expect(find.text('Recording · 0s / 120s'), findsOneWidget);
+    expect(find.text('Recording · 0s / 600s'), findsOneWidget);
     await screenshot(tester, 'vad-recording-light-100');
     await tester.tap(find.text('Cancel recording'));
     await settle(tester);

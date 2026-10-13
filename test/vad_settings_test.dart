@@ -161,7 +161,7 @@ void main() {
     await tester.pumpAndSettle();
     select(tester, 'Lead-in kept').onChanged!('500');
     await tester.pumpAndSettle();
-    select(tester, 'Longest recording').onChanged!('60');
+    select(tester, 'Longest recording').onChanged!('900');
     await tester.pumpAndSettle();
     final saved = VoicePreferences.read(prefs);
     expect(saved.cues, isFalse);
@@ -169,7 +169,7 @@ void main() {
     expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
     expect(saved.vad.minSpeech, const Duration(milliseconds: 400));
     expect(saved.vad.preRoll, const Duration(milliseconds: 500));
-    expect(saved.vad.maxDuration, const Duration(seconds: 60));
+    expect(saved.vad.maxDuration, const Duration(minutes: 15));
   });
 
   testWidgets('debug recordings reveal the audio source and delete action', (tester) async {

@@ -11,7 +11,8 @@ phone's built-in microphone), detects the end of each message with Silero VAD an
 with Parakeet TDT 0.6B v3 (sherpa-onnx). No audio leaves the phone. The speech model (487 MB download, about 670 MB
 installed) is downloaded once in App settings → Voice and checked against its published SHA256. "Pause detection"
 sets how long a pause ends a message (default 1.8 s), how long Wing waits for you to start speaking (default 8 s),
-the minimum speech, the lead-in kept before speech and the longest recording. On this route the steering-wheel or
+the minimum speech, the lead-in kept before speech and the longest recording (10, 15, 20 or 30 minutes, default 10;
+long dictations are recognized in pieces). On this route the steering-wheel or
 headset play/pause key ends the current message or starts a new one, and short cue tones mark "listening" and
 "got it". During Conversation mode the screen stays on.
 

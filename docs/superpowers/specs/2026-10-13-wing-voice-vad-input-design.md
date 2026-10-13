@@ -435,3 +435,6 @@ Each is the smaller, reversible option.
 None block the implementation. Revisable later: cue sounds (13.11), debug retention of 30 rounds (13.13),
 keep-screen-on for all routes (13.12), the no-speech timeout default of 8 s (13.8), and the audio source default
 after the test drive (1.2).
+
+
+> Note 13.10. 17:33 (Birk, steering): the vad maximum is at least 10 minutes (choices 10 / 15 / 20 / 30 min, default 10 min), replacing every "120 s" maximum above; brainstorming dictations take 3-6 min.

@@ -27,7 +27,7 @@ class VadEndpointParityTest(unittest.TestCase):
                     pause_ms=raw.get("pauseMs", 1800),
                     min_speech_ms=raw.get("minSpeechMs", 250),
                     pre_roll_ms=raw.get("preRollMs", 300),
-                    max_ms=raw.get("maxMs", 120000),
+                    max_ms=raw.get("maxMs", 600000),
                     no_speech_ms=raw.get("noSpeechMs", 8000),
                 )
                 endpointer = vad_endpoint.Endpointer(config)

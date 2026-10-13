@@ -29,6 +29,7 @@ algorithm), 5 (channel contract) and 13 (decisions) before starting any task.
 - Silero VAD: `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx`, `643854` bytes, SHA256 `9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`. Fetched at build time into generated APK assets, never committed.
 - sherpa-onnx AAR: `https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar`. Its SHA256 is confirmed in Task 1 (expected `633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96`). Fetched at build time, never committed.
 - Endpoint constants: window 512 samples = 32 ms at 16 kHz; start threshold 0.5; end threshold 0.35; tail 250 ms. Defaults: pause 1800 ms, min speech 250 ms, pre-roll 300 ms, max 120 s, no-speech timeout 8 s.
+- Birk 13.10. 17:33: max >= 10 min (default 600 s; choices 600/900/1200/1800 s); every "120 s" maximum in this plan is superseded.
 - **Microphone: gestrichen (Birk 13.10.).** Record from whatever input Android routes. No `startBluetoothSco`, no `setCommunicationDevice`, no microphone preference, UI or test. The debug JSON records the routed device read-only (`inputDevice`).
 - Audio source: default `VOICE_COMMUNICATION`, fallback `VOICE_RECOGNITION`, selectable only via the debug setting "Audio source". The default is decided by measurement (Task 15 A/B, then Birk's drive), never silently.
 - No fixed 7 s emergency stop on route vad: "no speech" is the explicit, configurable no-speech timeout.

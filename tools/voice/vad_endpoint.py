@@ -23,7 +23,7 @@ class Config:
     pause_ms: int = 1800
     min_speech_ms: int = 250
     pre_roll_ms: int = 300
-    max_ms: int = 120000
+    max_ms: int = 600000
     no_speech_ms: int = 8000
 
 

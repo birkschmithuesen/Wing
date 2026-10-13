@@ -245,7 +245,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
               s.vad.maxDuration.inSeconds.toString(),
               [
                 for (final value in VoicePreferences.vadMaxChoices)
-                  (value: value, label: '$value s'),
+                  (value: value, label: '${int.parse(value) ~/ 60} min'),
               ],
             ),
             CompactSwitchListTile(

@@ -48,7 +48,7 @@ class VoicePreferences {
   static const vadPauseChoices = ['1000', '1400', '1800', '2400', '3000'];
   static const vadMinSpeechChoices = ['150', '250', '400'];
   static const vadPreRollChoices = ['200', '300', '500'];
-  static const vadMaxChoices = ['30', '60', '120'];
+  static const vadMaxChoices = ['600', '900', '1200', '1800'];
   static const vadNoSpeechChoices = ['5', '8', '12', '20'];
 
   static bool accepts(String key, Object value) => switch (key) {
@@ -141,7 +141,7 @@ class VoicePreferences {
         preRoll: Duration(
           milliseconds: choice(vadPreRollKey, vadPreRollChoices, 300),
         ),
-        maxDuration: Duration(seconds: choice(vadMaxKey, vadMaxChoices, 120)),
+        maxDuration: Duration(seconds: choice(vadMaxKey, vadMaxChoices, 600)),
         noSpeechTimeout: Duration(
           seconds: choice(vadNoSpeechKey, vadNoSpeechChoices, 8),
         ),

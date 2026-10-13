@@ -14,6 +14,12 @@ Design: `docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md`.
 - Consumer ProGuard rules in the AAR: present.
 - Downloads: the egress firewall blocks `release-assets.githubusercontent.com`, so release assets are fetched through `tools/factory/ci-fetch.sh` instead of direct `curl`/`gh release download`.
 
+## Maximum duration (steering 13.10. 17:33)
+
+Birk 13.10. 17:33: the longest recording on route vad must be at least 10 minutes (brainstorming dictations take 3-6 min),
+not 120 s. Choices are 10 / 15 / 20 / 30 min, default 10 min. Older stored values below 10 min load as the 10 min default.
+Kotlin keeps a round as 16-bit PCM sized from the configured maximum (30 min = 57.6 MB); the debug WAV is streamed to disk in blocks.
+
 ## ANNAHME outcomes
 
 | Assumption | Check | Outcome |

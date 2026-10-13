@@ -145,7 +145,7 @@ start-callback timing, not measured speaker latency. Verify `cache/voice` is emp
 afterward using `adb -s <serial> shell run-as com.tarkilhk.wing.dev ls cache/voice`.
 Restore the normal debug APK after using the integration target.
 
-The vad route's end-of-utterance logic is pure Dart (`test/vad_endpoint_test.dart`) and mirrored in Python
+The vad route's maximum duration is 10-30 min (default 10 min). Its end-of-utterance logic is pure Dart (`test/vad_endpoint_test.dart`) and mirrored in Python
 (`scripts/tests/test_vad_endpoint_parity.py`, same golden cases). Offline tuning against recordings runs with
 `tools/voice/vad_offline_check.py` (see `docs/VAD_INPUT.md`); recordings stay outside the repository. Renders:
 `bash tools/factory/dispatch-check.sh voice-review.yml`, then clone branch `voice-review-bin` into `build/`.

@@ -138,7 +138,7 @@ void main() {
     expect(initial.vad.pause, const Duration(milliseconds: 1800));
     expect(initial.vad.minSpeech, const Duration(milliseconds: 250));
     expect(initial.vad.preRoll, const Duration(milliseconds: 300));
-    expect(initial.vad.maxDuration, const Duration(seconds: 120));
+    expect(initial.vad.maxDuration, const Duration(minutes: 10));
     expect(initial.vad.noSpeechTimeout, const Duration(seconds: 8));
     expect(initial.cues, isTrue);
     expect(initial.debugRecordings, isFalse);
@@ -147,7 +147,7 @@ void main() {
     await saveDevicePreference(prefs, VoicePreferences.vadPauseKey, '2400');
     await saveDevicePreference(prefs, VoicePreferences.vadMinSpeechKey, '400');
     await saveDevicePreference(prefs, VoicePreferences.vadPreRollKey, '500');
-    await saveDevicePreference(prefs, VoicePreferences.vadMaxKey, '60');
+    await saveDevicePreference(prefs, VoicePreferences.vadMaxKey, '900');
     await saveDevicePreference(prefs, VoicePreferences.vadNoSpeechKey, '12');
     await saveDevicePreference(prefs, VoicePreferences.vadCuesKey, 'off');
     await saveDevicePreference(prefs, VoicePreferences.vadDebugKey, 'on');
@@ -163,7 +163,7 @@ void main() {
     expect(saved.vad.pause, const Duration(milliseconds: 2400));
     expect(saved.vad.minSpeech, const Duration(milliseconds: 400));
     expect(saved.vad.preRoll, const Duration(milliseconds: 500));
-    expect(saved.vad.maxDuration, const Duration(seconds: 60));
+    expect(saved.vad.maxDuration, const Duration(minutes: 15));
     expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
     expect(saved.cues, isFalse);
     expect(saved.debugRecordings, isTrue);
@@ -188,7 +188,7 @@ void main() {
     }
     expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '1800'), isTrue);
     expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '0'), isFalse);
-    expect(VoicePreferences.accepts(VoicePreferences.vadMaxKey, '120'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadMaxKey, '1800'), isTrue);
     expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '8'), isTrue);
     expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '7'), isFalse);
     expect(
@@ -208,6 +208,18 @@ void main() {
     final read = VoicePreferences.read(prefs);
     expect(read.vad.pause, const Duration(milliseconds: 1800));
     expect(read.vad.noSpeechTimeout, const Duration(seconds: 8));
+  });
+
+  test('stored vad maximum below 10 minutes loads as the 10 minute default', () async {
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.vadMaxKey: '120',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).vad.maxDuration, const Duration(minutes: 10));
+    expect(VoicePreferences.accepts(VoicePreferences.vadMaxKey, '120'), isFalse);
+    for (final value in VoicePreferences.vadMaxChoices) {
+      expect(int.parse(value), greaterThanOrEqualTo(600));
+    }
   });
 
   Future<void> show(

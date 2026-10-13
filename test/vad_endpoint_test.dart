@@ -7,7 +7,7 @@ VadEndpointConfig _config(Map<String, dynamic> raw) => VadEndpointConfig(
   pause: Duration(milliseconds: raw['pauseMs'] as int? ?? 1800),
   minSpeech: Duration(milliseconds: raw['minSpeechMs'] as int? ?? 250),
   preRoll: Duration(milliseconds: raw['preRollMs'] as int? ?? 300),
-  maxDuration: Duration(milliseconds: raw['maxMs'] as int? ?? 120000),
+  maxDuration: Duration(milliseconds: raw['maxMs'] as int? ?? 600000),
   noSpeechTimeout: Duration(milliseconds: raw['noSpeechMs'] as int? ?? 8000),
 );
 
@@ -87,11 +87,11 @@ void main() {
     expect(config.pause, const Duration(milliseconds: 1800));
     expect(config.minSpeech, const Duration(milliseconds: 250));
     expect(config.preRoll, const Duration(milliseconds: 300));
-    expect(config.maxDuration, const Duration(seconds: 120));
+    expect(config.maxDuration, const Duration(seconds: 600));
     expect(config.noSpeechTimeout, const Duration(seconds: 8));
     expect(vadWindowsFor(config.pause), 57);
     expect(config.toJson(), {
-      'pauseMs': 1800, 'minSpeechMs': 250, 'preRollMs': 300, 'maxMs': 120000,
+      'pauseMs': 1800, 'minSpeechMs': 250, 'preRollMs': 300, 'maxMs': 600000,
       'noSpeechMs': 8000,
       'startThreshold': 0.5, 'endThreshold': 0.35, 'tailMs': 250, 'windowMs': 32,
     });
@@ -108,7 +108,8 @@ void main() {
 
   test('recognition budget scales with the segment instead of a fixed deadline', () {
     expect(vadRecognitionBudget(const Duration(seconds: 2)), const Duration(seconds: 11));
-    expect(vadRecognitionBudget(const Duration(seconds: 120)), const Duration(seconds: 70));
+    expect(vadRecognitionBudget(const Duration(minutes: 10)), const Duration(seconds: 310));
+    expect(vadRecognitionBudget(const Duration(minutes: 30)), const Duration(seconds: 910));
     expect(vadRecognitionBudget(Duration.zero), const Duration(seconds: 10));
   });
 }
