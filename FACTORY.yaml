@@ -1,0 +1,5 @@
+# Fabrik-Steuerdatei (scripts/kanban-code-card.py, cc-run.py)
+# Kein Flutter auf dem vServer: die Suite laeuft per Dispatch auf GitHub Actions.
+test: bash tools/factory/ci-suite.sh
+# Birks Fork: gebaut und installiert wird aus voice-offline (voice-apk.yml).
+merge_target: voice-offline
