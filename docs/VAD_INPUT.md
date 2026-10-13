@@ -44,6 +44,7 @@ carry the chunk planner (it only mirrors the end-of-utterance decision for tunin
 ## Verification status (2026-10-14)
 
 - Suite `bash tools/factory/ci-suite.sh` on 4a1a86c6f3e9: `ci-suite: run 38480782174 conclusion=success`.
+- Final suite on 7e6e6ddd (last code change 4a1a86c6, then docs only): `ci-suite: run 38483716946 conclusion=success`.
 - On-device (Task 15): see "On-device verification 2026-10-14". Open: audio-source A/B and the self-test rounds (a wired
   headset stayed connected), media key (fails, see above and "Known open gap").
 
