@@ -12,6 +12,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val channel = MethodChannel(messenger, "com.tarkilhk.wing/voice")
     private val capture = VoiceCapture(activity, ::emit)
     private val playback = VoicePlayback(activity, ::emit)
+    private val models = SpeechModelStore(activity, ::emit)
+    private val speech = OfflineSpeech(models)
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     init {
         // A previous process may have died before its normal cleanup.
@@ -54,6 +56,12 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                     call.argument<String>("voice").orEmpty(), call.argument<Number>("rate")?.toFloat() ?: 1f, result)
                 "play" -> playback.play(id, call.argument<ByteArray>("bytes") ?: error("Missing audio."), result)
                 "stopPlayback" -> { playback.stop(id); result.success(null) }
+                "vadModelStatus" -> result.success(models.status())
+                "installVadModel" -> { models.install(); result.success(null) }
+                "cancelVadModelInstall" -> { models.cancel(); result.success(null) }
+                "removeVadModel" -> { speech.release(); models.remove(); result.success(null) }
+                "prepareVad" -> { if (models.verifyManifest() == null) speech.prepare(); result.success(null) }
+                "releaseVad" -> { speech.release(); result.success(null) }
                 else -> result.notImplemented()
             }
         } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
@@ -82,6 +90,6 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     fun pause() { capture.pause(); playback.stop() }
     fun close() {
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
-        capture.close(); playback.close(); channel.setMethodCallHandler(null)
+        capture.close(); playback.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
     }
 }
