@@ -445,4 +445,122 @@ void main() {
       expect(find.textContaining('Recording ·'), findsNothing);
     });
   }
+
+  int vadStarts() => device.vadStarts;
+  Future<void> vadRoute() => controller.preferences.setString(
+    VoicePreferences.inputKey,
+    'vad',
+  );
+  Future<void> windows(WidgetTester tester, double p, int count) async {
+    device.emitWindows(List.filled(count, p));
+    await settle(tester);
+  }
+
+  testWidgets('vad conversation sends after the pause', (tester) async {
+    await vadRoute();
+    await conversationMode(true);
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    expect(vadStarts(), 1);
+    await windows(tester, 0.9, 30);
+    await windows(tester, 0.1, 60);
+    expect(device.finishes.single.reason.name, 'pause');
+    expect(prompts(), 1);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      'Hello from the phone',
+    );
+    gatewayEvent('message.complete', {'text': 'Done.'});
+    await settle(tester);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('vad thinking pause keeps the microphone open', (tester) async {
+    await vadRoute();
+    await conversationMode(true);
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    await windows(tester, 0.9, 30);
+    await windows(tester, 0.1, 31);
+    expect(device.finishes, isEmpty);
+    expect(find.textContaining('Recording ·'), findsOneWidget);
+    expect(prompts(), 0);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('media key ends a vad round and sends it in conversation mode', (
+    tester,
+  ) async {
+    await vadRoute();
+    await conversationMode(true);
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    await windows(tester, 0.9, 30);
+    device.emitMediaKey();
+    await settle(tester);
+    expect(device.finishes.single.reason.name, 'mediaKey');
+    expect(prompts(), 1);
+    gatewayEvent('message.complete', {'text': 'Done.'});
+    await settle(tester);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('media key starts a vad round when idle', (tester) async {
+    await vadRoute();
+    await show(tester);
+    device.emitMediaKey();
+    await settle(tester);
+    expect(vadStarts(), 1);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('media key is ignored on the local route', (tester) async {
+    await show(tester);
+    device.emitMediaKey();
+    await settle(tester);
+    expect(starts(), 0);
+    expect(vadStarts(), 0);
+  });
+
+  testWidgets('route vad preloads the model and enables media keys', (
+    tester,
+  ) async {
+    await vadRoute();
+    await show(tester);
+    expect(device.prepares, 1);
+    expect(device.mediaKeysCalls, [true]);
+  });
+
+  testWidgets('a running conversation keeps the screen on until it ends', (
+    tester,
+  ) async {
+    await conversationMode(true);
+    await show(tester);
+    expect(device.keepScreenOnCalls, isEmpty);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    expect(device.keepScreenOnCalls, [true]);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+    expect(device.keepScreenOnCalls, [true, false]);
+  });
+
+  testWidgets('recording status shows the vad limit', (tester) async {
+    await vadRoute();
+    await controller.preferences.setString(VoicePreferences.vadMaxKey, '60');
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    expect(find.text('Recording · 0s / 60s'), findsOneWidget);
+    await screenshot(tester, 'vad-recording-light-100');
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
 }
