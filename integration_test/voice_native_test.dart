@@ -29,13 +29,19 @@ void main() {
     );
     await device.start('native-recording', local: false, language: '');
     await Future<void>.delayed(const Duration(milliseconds: 700));
-    final recording = await device.stop('native-recording');
+    final recording = await device.stop(
+      'native-recording',
+      timeout: const Duration(seconds: 5),
+    );
     expect(recording, isNotNull);
     expect(recording!.length, greaterThan(100));
     await device.start('native-cancel', local: false, language: '');
     await Future<void>.delayed(const Duration(milliseconds: 300));
     await device.cancel('native-cancel');
-    expect(await device.stop('native-cancel'), isNull);
+    expect(
+      await device.stop('native-cancel', timeout: const Duration(seconds: 5)),
+      isNull,
+    );
     await device
         .play('native-decode', _tone())
         .timeout(const Duration(seconds: 10));
