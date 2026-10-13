@@ -17,6 +17,7 @@ class VoiceDeviceFixture implements VoiceDevice {
   Completer<void>? startDelay;
   Completer<void>? playbackDelay;
   Object? startError;
+  Duration? lastStopTimeout;
   AndroidVoiceCapabilities capabilitiesValue = const AndroidVoiceCapabilities(
     recognitionAvailable: true,
     installedLanguages: ['en-US', 'fr-FR'],
@@ -44,8 +45,9 @@ class VoiceDeviceFixture implements VoiceDevice {
   }
 
   @override
-  Future<Uint8List?> stop(String id) async {
+  Future<Uint8List?> stop(String id, {required Duration timeout}) async {
     calls.add('stop');
+    lastStopTimeout = timeout;
     return local == true ? null : Uint8List.fromList([1, 2, 3]);
   }
 

@@ -8,6 +8,15 @@ import '../services/voice_preferences.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
 
+/// How long to let the native recognizer finish after stop(), scaled with
+/// how long the user spoke: a fixed short window cuts off longer on-device
+/// transcriptions before the model is done (card t_49d11117 - ~50s of audio
+/// needs well over 5s to finalize on this hardware).
+Duration transcriptionDeadlineFor(int recordedSeconds) {
+  final ms = 5000 + recordedSeconds * 500;
+  return Duration(milliseconds: ms < 90000 ? ms : 90000);
+}
+
 /// A single capture, tied to a draft snapshot and an immutable remote owner.
 /// Only a completed transcript edits the draft; cancellation preserves it exactly.
 class VoiceInputController extends ChangeNotifier {
@@ -107,7 +116,10 @@ class VoiceInputController extends ChangeNotifier {
     phase = VoiceInputPhase.transcribing;
     _notify();
     try {
-      final bytes = await device.stop(id);
+      final bytes = await device.stop(
+        id,
+        timeout: transcriptionDeadlineFor(seconds),
+      );
       if (_id != id || _disposed) return;
       final remote = _remote;
       if (remote != null) {

@@ -41,7 +41,13 @@ void main() {
       debugPrint('VOICE_BACKGROUND_READY');
       final event = await cancelled.timeout(const Duration(seconds: 40));
       expect(event['error'], contains('left the foreground'));
-      expect(await device.stop('background-capture'), isNull);
+      expect(
+        await device.stop(
+          'background-capture',
+          timeout: const Duration(seconds: 5),
+        ),
+        isNull,
+      );
       debugPrint('VOICE_BACKGROUND_CANCELLED');
     },
   );

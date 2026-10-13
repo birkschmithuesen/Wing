@@ -117,13 +117,13 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
         } catch (error: Exception) { clear(); throw error }
     }
 
-    fun stop(owner: String): ByteArray? {
+    fun stop(owner: String, timeoutMs: Long = 5000L): ByteArray? {
         if (id != owner) return null
         if (recognizer != null) {
             recognizer?.stopListening()
             deadline?.let { handler.removeCallbacks(it) }
             deadline = Runnable { if (id == owner) fail("Recognition did not finish. Please retry.") }
-            handler.postDelayed(deadline!!, 5000)
+            handler.postDelayed(deadline!!, timeoutMs)
             return null
         }
         try {

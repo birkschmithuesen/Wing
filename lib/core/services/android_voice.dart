@@ -30,7 +30,7 @@ abstract interface class VoiceDevice {
     required bool local,
     required String language,
   });
-  Future<Uint8List?> stop(String id);
+  Future<Uint8List?> stop(String id, {required Duration timeout});
   Future<void> cancel(String id);
   Future<void> speak(
     String id,
@@ -73,8 +73,11 @@ class AndroidVoice implements VoiceDevice {
     'language': language,
   });
   @override
-  Future<Uint8List?> stop(String id) =>
-      channel.invokeMethod<Uint8List>('stop', {'id': id});
+  Future<Uint8List?> stop(String id, {required Duration timeout}) =>
+      channel.invokeMethod<Uint8List>('stop', {
+        'id': id,
+        'timeoutMs': timeout.inMilliseconds,
+      });
   @override
   Future<void> cancel(String id) => channel.invokeMethod('cancel', {'id': id});
   @override

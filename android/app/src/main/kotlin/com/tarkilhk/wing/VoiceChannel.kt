@@ -43,7 +43,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                         activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST)
                     } else start(call, result)
                 }
-                "stop" -> result.success(capture.stop(id))
+                "stop" -> result.success(capture.stop(id, call.argument<Number>("timeoutMs")?.toLong() ?: 5000L))
                 "cancel" -> {
                     if (pending?.first?.argument<String>("id") == id) {
                         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
