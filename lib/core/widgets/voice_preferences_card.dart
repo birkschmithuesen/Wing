@@ -152,10 +152,9 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     final isVad = _preferences.input == VoiceInputRoute.vad;
     if (isVad == wasVad) return;
     try {
-      await device.setMediaKeys(isVad);
       await (isVad ? device.prepareVad() : device.releaseVad());
     } catch (_) {
-      // The workspace retries on resume; settings stay saved.
+      // The workspace owns media keys and retries on resume; settings stay saved.
     }
   }
 

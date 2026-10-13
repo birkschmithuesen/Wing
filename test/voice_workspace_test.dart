@@ -8,12 +8,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
+import 'package:wing/core/services/android_voice.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/app_drawer.dart';
 import 'support/profile_browser_fixture.dart';
 import 'support/voice_fixture.dart';
 
@@ -94,6 +96,7 @@ void main() {
     WidgetTester tester, {
     Brightness brightness = Brightness.light,
     double scale = 1,
+    AppDestination destination = AppDestination.chats,
   }) async {
     tester.view.devicePixelRatio = 1;
     tester.view.physicalSize = const Size(320, 900);
@@ -111,6 +114,7 @@ void main() {
             child: ProfileWorkspaceScreen(
               controller: controller,
               voiceDevice: device,
+              initialDestination: destination,
             ),
           ),
         ),
@@ -536,6 +540,56 @@ void main() {
     await show(tester);
     expect(device.prepares, 1);
     expect(device.mediaKeysCalls, [true]);
+  });
+
+  testWidgets('stacked workspaces leave media keys and screen on enabled', (
+    tester,
+  ) async {
+    await vadRoute();
+    await show(tester);
+    expect(device.mediaKeysCalls, [true]);
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    unawaited(
+      navigator.push(
+        MaterialPageRoute<void>(
+          builder: (_) => ProfileWorkspaceScreen(
+            controller: controller,
+            voiceDevice: device,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(device.mediaKeysCalls, [true]);
+    navigator.pop();
+    await tester.pumpAndSettle();
+    expect(device.mediaKeysCalls, [true]);
+    expect(device.mediaKeysCalls.last, isTrue);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(device.mediaKeysCalls, [true, false]);
+  });
+
+  testWidgets('settings destination never holds media keys', (tester) async {
+    await vadRoute();
+    await show(tester, destination: AppDestination.settings);
+    expect(device.mediaKeysCalls, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(device.mediaKeysCalls, isEmpty);
+  });
+
+  test('holders talk to the device only on the first and last holder', () {
+    final fake = VoiceDeviceFixture();
+    final holders = VoiceSwitchHolders.screenOn(fake);
+    final a = Object(), b = Object();
+    holders.set(a, true);
+    holders.set(b, true);
+    holders.set(a, false);
+    expect(fake.keepScreenOnCalls, [true]);
+    holders.set(b, false);
+    holders.set(b, false);
+    expect(fake.keepScreenOnCalls, [true, false]);
   });
 
   testWidgets('leaving the workspace releases media keys and the model', (

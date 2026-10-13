@@ -200,11 +200,11 @@ void main() {
     select(tester, 'Voice input').onChanged!('vad');
     await tester.pumpAndSettle();
     expect(device.prepares, 1);
-    expect(device.mediaKeysCalls, [true]);
+    expect(device.mediaKeysCalls, isEmpty);
     select(tester, 'Voice input').onChanged!('local');
     await tester.pumpAndSettle();
     expect(device.releases, 1);
-    expect(device.mediaKeysCalls, [true, false]);
+    expect(device.mediaKeysCalls, isEmpty);
   });
 
   for (final brightness in Brightness.values) {

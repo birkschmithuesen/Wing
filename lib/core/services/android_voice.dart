@@ -200,3 +200,42 @@ class VadModelStatus {
   final int total;
   final String? error;
 }
+
+/// Media keys and keep-screen-on are single native switches. Several Dart
+/// owners (stacked workspaces) may want them at once, so the native state
+/// follows the set of holders: on while any holds, off when the last releases.
+class VoiceSwitchHolders {
+  VoiceSwitchHolders(this._apply);
+
+  static final _byDevice = Expando<Map<String, VoiceSwitchHolders>>('holders');
+
+  /// Shared holder set for one native switch of [device].
+  static VoiceSwitchHolders mediaKeys(VoiceDevice device) =>
+      _of(device, 'mediaKeys', device.setMediaKeys);
+
+  static VoiceSwitchHolders screenOn(VoiceDevice device) =>
+      _of(device, 'screenOn', device.keepScreenOn);
+
+  static VoiceSwitchHolders _of(
+    VoiceDevice device,
+    String name,
+    Future<void> Function(bool) apply,
+  ) => (_byDevice[device] ??= {}).putIfAbsent(
+    name,
+    () => VoiceSwitchHolders(apply),
+  );
+
+  final Future<void> Function(bool) _apply;
+  final _holders = <Object>{};
+
+  /// Registers or drops [owner]; talks to the device only when the first
+  /// holder arrives or the last one leaves.
+  void set(Object owner, bool on) {
+    final wasOn = _holders.isNotEmpty;
+    on ? _holders.add(owner) : _holders.remove(owner);
+    final isOn = _holders.isNotEmpty;
+    if (isOn != wasOn) {
+      unawaited(_apply(isOn).catchError((Object _) {}));
+    }
+  }
+}

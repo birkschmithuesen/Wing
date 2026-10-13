@@ -216,9 +216,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// timeout would pause the activity and end any capture.
   set _conversation(ProfileSessionKey? value) {
     if ((_conversationKey == null) != (value == null)) {
-      unawaited(
-        _voiceDevice.keepScreenOn(value != null).catchError((Object _) {}),
-      );
+      VoiceSwitchHolders.screenOn(_voiceDevice).set(this, value != null);
     }
     _conversationKey = value;
   }
@@ -352,13 +350,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final want = (_vadRoute() ?? false) && _hasChatFocus;
     if (want == _mediaKeysOn) return;
     _mediaKeysOn = want;
-    unawaited(_voiceDevice.setMediaKeys(want).catchError((Object _) {}));
+    VoiceSwitchHolders.mediaKeys(_voiceDevice).set(this, want);
   }
 
   void _voiceDeviceEvent(Map<String, dynamic> event) {
     if (event['mediaKey'] != 'playPause' || !mounted || !_hasChatFocus) return;
-    if (VoicePreferences.read(controller.preferences).input !=
-        VoiceInputRoute.vad) {
+    if (_vadRoute() != true) {
       return;
     }
     if (_voiceInput.phase == VoiceInputPhase.recording) {
@@ -656,7 +653,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     unawaited(_autoSpeak?.cancel());
     unawaited(_voiceDeviceEvents?.cancel());
     if (_conversationKey != null) {
-      unawaited(_voiceDevice.keepScreenOn(false).catchError((Object _) {}));
+      VoiceSwitchHolders.screenOn(_voiceDevice).set(this, false);
     }
     _voiceInput.removeListener(_voiceInputChanged);
     _voiceInput.dispose();
@@ -664,7 +661,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     controller.setRouteVisibility(this, false);
     if (_mediaKeysOn) {
       _mediaKeysOn = false;
-      unawaited(_voiceDevice.setMediaKeys(false).catchError((Object _) {}));
+      VoiceSwitchHolders.mediaKeys(_voiceDevice).set(this, false);
     }
     // A replacement workspace may already hold the model; release it only
     // when the last workspace goes away.
