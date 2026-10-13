@@ -19,3 +19,12 @@ Design: `docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md`.
 | Assumption | Check | Outcome |
 |---|---|---|
 | AAR has classes + JNI libs | Task 1 | Confirmed: all 9 classes and member names present, arm64 JNI libs present; no fallback needed |
+
+## Mutation check (pause threshold 0)
+
+`_pauseWindows = 0` (Dart) / `self._pause_windows = 0` (Python): CI run 38428132411 failed in
+`a thinking pause shorter than the pause keeps the round open` (+ 7 more: `ends after the pause and keeps the tail`,
+`56 silent windows do not end it and pre-roll is clamped at zero`, `a speech start in progress at the no-speech timeout is not cut`,
+`probabilities between the thresholds keep speech going`, `probabilities between the thresholds do not reset a starting run`,
+`a shorter pause setting ends earlier`, `media key stop keeps speech minus pre-roll`); the Python parity test failed locally
+with the same 8 subTests (`FAILED (failures=8)`).
