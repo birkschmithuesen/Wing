@@ -32,7 +32,7 @@ fi
 id=""
 for _ in $(seq 1 30); do
   id=$(gh run list -R "$repo" --branch "$br" \
-        --json databaseId,headSha,workflowName,path --jq ".[] | select(.headSha==\"$sha\" and (.path|endswith(\"/$workflow\"))) | .databaseId" | head -1)
+        --json databaseId,headSha --jq ".[] | select(.headSha==\"$sha\") | .databaseId" | head -1)
   [ -n "$id" ] && break
   sleep 5
 done
