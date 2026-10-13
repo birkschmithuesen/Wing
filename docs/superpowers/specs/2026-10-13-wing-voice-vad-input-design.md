@@ -332,7 +332,7 @@ installed, failed, disclosure open). On-device screenshots in the last task supp
 - Mutation: see section 4 (exact mutation, expected red tests).
 - Offline car check (vServer, not in CI): `tools/voice/vad_offline_check.py --wav <path>` prints numbers only: the
   probability distribution, the endpoints per parameter grid and, if `--labels` is given, the end errors in ms.
-- Kotlin: compiled by `voice-apk.yml` through `tools/factory/voice-apk-check.sh` (no Kotlin unit tests; the logic is in Dart).
+- Kotlin: compiled by `voice-apk.yml` through `tools/factory/dispatch-check.sh` (no Kotlin unit tests; the logic is in Dart).
 - On device (last task): signed build, install as update, in-app model download, preload/RAM, self-test with a
   synthetic sentence + noise through the phone speaker, proven by debug WAV + JSON; media key via
   `cmd media_session dispatch play-pause`; keep-screen-on flag via `dumpsys window`.
@@ -368,13 +368,13 @@ Each is the smaller, reversible option.
 18. **Tuning values as discrete choices** (same pattern as speaking speed).
 19. **Manual stop transcribes from first speech − pre-roll**, or the whole round if no speech was confirmed.
 20. **Device self-test without conversation mode** (no prompt to Hermes).
-21. **`voice-apk.yml` gets a `publish` input** and a helper `tools/factory/voice-apk-check.sh` (like `ci-suite.sh`), so Kotlin compile checks do not overwrite `voice-apk-bin`.
+21. **`voice-apk.yml` gets a `publish` input** and a generic helper `tools/factory/dispatch-check.sh <workflow> [input=value]` (like `ci-suite.sh`), so Kotlin compile checks do not overwrite `voice-apk-bin`.
 22. **Rendered screens from CI** via a new `voice-review.yml` → branch `voice-review-bin`.
 
 ## 14. ANNAHMEN (unverified, each with the check that settles it)
 
 - `ANNAHME:` the AAR contains the Kotlin classes incl. `Vad.compute` and arm64 JNI libs. Check: plan task 1 script.
-- `ANNAHME:` `implementation(files("libs/sherpa-onnx-1.13.8.aar"))` in the app module works with the Gradle fetch task hooked before `preBuild`. Check: `voice-apk-check.sh` run succeeds.
+- `ANNAHME:` `implementation(files("libs/sherpa-onnx-1.13.8.aar"))` in the app module works with the Gradle fetch task hooked before `preBuild`. Check: `dispatch-check.sh` run succeeds.
 - `ANNAHME:` `compute` on 576-sample windows gives probabilities comparable to the detector's own path. Check: offline script `--compare-detector` on synthetic speech + noise (max abs diff of detected segment boundaries ≤ 1 window), and on-device debug JSON shows p > 0.5 during speech.
 - `ANNAHME:` the onnxruntime input names of `silero_vad.onnx` are `x`/`state`/`sr` (v5). Check: `vad_offline_check.py --inspect` prints the inputs.
 - `ANNAHME:` Parakeet decodes a 120 s segment within RAM limits on the Xperia 5 IV. Check: on-device with a 100 s+ synthetic round (debug JSON `decodeMs`, `dumpsys meminfo`).
