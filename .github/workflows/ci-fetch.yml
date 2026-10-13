@@ -1,0 +1,29 @@
+name: ci-fetch
+# Fetches one public URL on a runner (the vServer egress blocks release-assets hosts).
+# Triggered by pushing a commit with .ci-fetch/request (line 1 url, line 2 sha256) to ci-fetch/**.
+# Result: the branch is replaced by an orphan commit holding the file as "payload".
+on:
+  push:
+    branches: ["ci-fetch/**"]
+permissions:
+  contents: write
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download, verify, publish
+        run: |
+          url=$(sed -n 1p .ci-fetch/request)
+          sha=$(sed -n 2p .ci-fetch/request)
+          curl -fsSL --retry 3 -o /tmp/payload "$url"
+          echo "$sha  /tmp/payload" | sha256sum -c -
+          git config user.name ci-fetch
+          git config user.email ci-fetch@users.noreply.github.com
+          git checkout -q --orphan result
+          git rm -rq --cached .
+          git clean -fdxq
+          cp /tmp/payload payload
+          git add payload
+          git commit -qm "ci-fetch: $url"
+          git push -f origin "HEAD:${GITHUB_REF}"
