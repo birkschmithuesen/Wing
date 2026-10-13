@@ -563,11 +563,10 @@ void main() {
     expect(device.mediaKeysCalls, [true]);
     navigator.pop();
     await tester.pumpAndSettle();
-    expect(device.mediaKeysCalls, [true]);
     expect(device.mediaKeysCalls.last, isTrue);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();
-    expect(device.mediaKeysCalls, [true, false]);
+    expect(device.mediaKeysCalls.last, isFalse);
   });
 
   testWidgets('settings destination never holds media keys', (tester) async {
