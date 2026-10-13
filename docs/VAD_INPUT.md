@@ -38,14 +38,43 @@ carry the chunk planner (it only mirrors the end-of-utterance decision for tunin
 |---|---|---|
 | AAR has classes + JNI libs | Task 1 | Confirmed: all 9 classes and member names present, arm64 JNI libs present; no fallback needed |
 | Silero model uses v5 layout (`x`, `state`, `sr`) | Task 5 | Failed: legacy layout `x[1,512]`, `h`, `c`; checker and `Vad.compute` use 512-sample windows (see below) |
-| Model download resumes after the GitHub redirect | Task 15 Step 5 | Open: on-device run blocked (screen lock, 2026-10-13) |
-| Active session in `STATE_PAUSED` receives media buttons | Task 15 Step 8 | Open: on-device run blocked (screen lock, 2026-10-13) |
+| Model download resumes after the GitHub redirect | Task 15 Step 5 | Confirmed (2026-10-14): app traffic blocked at 185.1 MB, status "timeout", after unblocking and Retry the `.part` file kept growing (196.0 MB 8 s later, no restart at 0) up to 487,170,055 bytes; archive sha256 accepted |
+| Active session in `STATE_PAUSED` receives media buttons | Task 15 Step 8 | Failed (2026-10-14): `dumpsys media_session` named `com.spotify.music` as media button session, `dispatch play-pause` toggled Spotify, no Wing round. Fallback `STATE_PLAYING` (4a1a86c) also failed: Wing session `active=true`, `PLAYING`, but the media button session stayed `null` and the next dispatch again went to Spotify. Wing's session has `flags=0` and `mediaButtonReceiver=null`. Cause not established; untried: `setMediaButtonReceiver`, setting the state after `isActive = true` |
 
 ## Verification status (2026-10-14)
 
-- Suite `bash tools/factory/ci-suite.sh` on bd5df3df: `ci-suite: run 38474706147 conclusion=success`.
-- On-device (Task 15): APK from bd5df3df built, signed (`cae14a2c…`) and installed as an update. Steps 3–11
-  (model download, self-test, audio-source A/B, media key) are still open because the phone stayed locked.
+- Suite `bash tools/factory/ci-suite.sh` on 4a1a86c6f3e9: `ci-suite: run 38480782174 conclusion=success`.
+- On-device (Task 15): see "On-device verification 2026-10-14". Open: audio-source A/B and the self-test rounds (a wired
+  headset stayed connected), media key (fails, see above).
+
+## On-device verification 2026-10-14
+
+APK: first bd5df3df (sha256 `caaad84f…77fa`), for Step 8 4a1a86c6f3e9 (`ef80a1ed…d1b6`, signer `cae14a2c…` both); installed
+as updates, data kept.
+
+| Item | Result |
+|---|---|
+| Model download (Step 3) | 487,170,055 byte archive via the phone's own connection at about 2.4 MB/s, unpacked to `parakeet-tdt-0.6b-v3-int8/` (encoder 652,184,281 B, decoder 11,845,275 B, joiner 6,355,277 B, tokens 93,939 B), download directory empty, manifest `archiveSha256` `5793d0fd…16bf`, UI "Speech model ready" |
+| Resume (Step 5) | Confirmed, see ANNAHME table. Interruption by blocking the app uid with `iptables` instead of airplane mode (airplane mode would cut the adb link over the tailnet); rule removed afterwards |
+| Preload (Step 4) | `model loaded in 2767 ms`; TOTAL PSS 807,050 kB, TOTAL RSS 918,392 kB |
+| Self-test A/B (Step 7) | Not done. A wired headset (`h2w`, type 3, sink and source) was connected the whole time, so playback went to the headset, not the speaker. One round with "Call processing": source `VOICE_COMMUNICATION`, inputDevice `h2w (type 3)`, 376 windows, max p 0.053, `noSpeech` at window 374 (12 s wait), no recognition. Not a valid A/B; no "Recognition" round |
+| No-speech timeout (Step 7b) | Pass: wait 8 s, "No speech detected. Try again.", `decision.reason == 'noSpeech'`, `atWindow == 249`, 252 windows, max p 0.27 (room), no `recognition` timings; inputDevice `h2w (type 3)` |
+| Media key (Step 8) | Fail, see ANNAHME table |
+| Keep screen on (Step 9) | Pass: conversation mode on, "Dictate message": Wing window flags include `KEEP_SCREEN_ON` (count 1); "Cancel recording" 2 s later: count 0 |
+| Per-chunk decode times | Not measured (no long segment) |
+
+Notes: Birk used the phone in parallel (other rounds appeared in the debug directory and settings values changed
+meanwhile); only the four rounds of this run were removed from the phone, the others were left alone.
+
+## Open items for Birk
+
+- Unplug the wired headset (or run on the speaker and built-in mic) and repeat the Step 7 A/B with
+  `tools/voice/make_selftest_audio.py` output; the headset case should also be compared with the built-in mic.
+- Media key: decide on the follow-up for the session (see ANNAHME table) and repeat Step 8 with another media app present.
+- A test drive with the phone mic as Android routes it (car connected as usual), debug recordings on, alternating the audio
+  source "Call processing" / "Recognition" between rounds. This decides the default source (spec 1.2).
+- Whether 8 s "Wait for speech" fits in the car; the cue tone choice.
+- After the drive, tune the pause from the debug rounds with `vad_offline_check.py` and delete the recordings.
 
 ## Vad.compute window size (Task 13, sherpa-onnx tag v1.13.8)
 
