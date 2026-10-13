@@ -423,7 +423,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 child: Text(switch (_voiceInput.phase) {
                   VoiceInputPhase.starting => 'Opening microphone…',
                   VoiceInputPhase.recording =>
-                    'Recording · ${_voiceInput.seconds}s / 120s',
+                    'Recording · ${_voiceInput.seconds}s / '
+                        '${VoiceInputController.maxRecordingSeconds}s',
                   VoiceInputPhase.transcribing => 'Transcribing…',
                   VoiceInputPhase.idle => '',
                 }),
