@@ -20,6 +20,10 @@ Duration transcriptionDeadlineFor(int recordedSeconds) {
 /// A single capture, tied to a draft snapshot and an immutable remote owner.
 /// Only a completed transcript edits the draft; cancellation preserves it exactly.
 class VoiceInputController extends ChangeNotifier {
+  /// Hard ceiling on a single hermes recording, in seconds. Spec/brainstorming
+  /// sessions run 3-6 minutes; 600s leaves headroom above that.
+  static const maxRecordingSeconds = 600;
+
   final VoiceDevice device;
   final RemoteVoice Function() createRemote;
   late final StreamSubscription<Map<String, dynamic>> _events;
@@ -81,7 +85,7 @@ class VoiceInputController extends ChangeNotifier {
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         seconds++;
         _notify();
-        if (seconds >= 120) unawaited(stop());
+        if (seconds >= maxRecordingSeconds) unawaited(stop());
       });
     } catch (failure) {
       if (_id == id) _fail(failure);
