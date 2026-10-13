@@ -19,7 +19,11 @@ for _ in $(seq 1 30); do
 done
 [ -n "$id" ] || { echo "ci-suite: no pr-quality run appeared for $br" >&2; exit 2; }
 echo "ci-suite: run $id for $sha"
-gh run watch "$id" -R "$repo" --exit-status --interval 20 >/dev/null && rc=0 || rc=$?
-gh run view "$id" -R "$repo" --log 2>/dev/null | grep -E "PASSED|FAILED|All tests passed|Some tests failed|[0-9]+ issues? found|No issues found" | sed 's/^.*Z //' | tail -8
-echo "ci-suite: run $id result rc=$rc"
-exit $rc
+gh run watch "$id" -R "$repo" --interval 20 >/dev/null 2>&1 || true
+# Result from the API, not from the logs: the log download host
+# (results-receiver.actions.githubusercontent.com) is blocked by the egress firewall.
+concl=$(gh run view "$id" -R "$repo" --json conclusion --jq .conclusion)
+gh run view "$id" -R "$repo" --json jobs \
+  --jq '.jobs[] | "\(.name): \(.conclusion)" , (.steps[] | select(.conclusion=="failure") | "  failed step: \(.name)")' || true
+echo "ci-suite: run $id conclusion=$concl https://github.com/$repo/actions/runs/$id"
+[ "$concl" = "success" ]
