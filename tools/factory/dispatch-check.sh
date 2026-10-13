@@ -42,5 +42,7 @@ gh run watch "$id" -R "$repo" --interval 20 >/dev/null 2>&1 || true
 concl=$(gh run view "$id" -R "$repo" --json conclusion --jq .conclusion)
 gh run view "$id" -R "$repo" --json jobs \
   --jq '.jobs[] | "\(.name): \(.conclusion)" , (.steps[] | select(.conclusion=="failure") | "  failed step: \(.name)")' || true
+gh api "repos/$repo/check-runs/$(gh run view "$id" -R "$repo" --json jobs --jq '.jobs[0].databaseId')/annotations" \
+  --jq '.[] | select(.annotation_level=="failure") | "  annotation: \(.message)"' 2>/dev/null | head -60 || true
 echo "dispatch-check: $workflow run $id conclusion=$concl https://github.com/$repo/actions/runs/$id"
 [ "$concl" = "success" ]

@@ -43,7 +43,16 @@ jobs:
       - name: Tests (voice)
         run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart test/vad_endpoint_test.dart test/voice_vad_input_test.dart
       - name: Build unsigned arm64 APK
-        run: flutter build apk --release --split-per-abi --target-platform android-arm64 -PvoiceVariant=true
+        # Actions log download is blocked on the dev server; surface the build
+        # errors as annotations (readable via the check-runs API).
+        run: |
+          set +e
+          flutter build apk --release --split-per-abi --target-platform android-arm64 -PvoiceVariant=true 2>&1 | tee /tmp/build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            grep -E "^e: |error:|FAILED|What went wrong|Execution failed|Caused by|Missing class|ERROR" -A3 /tmp/build.log | head -60 | while IFS= read -r l; do echo "::error::${l:0:900}"; done
+          fi
+          exit "$rc"
       - name: Publish to voice-apk-bin branch
         if: github.ref_name == 'voice-offline' || startsWith(github.ref_name, 'ci-voice-apk-publish/') || inputs.publish
         env:
