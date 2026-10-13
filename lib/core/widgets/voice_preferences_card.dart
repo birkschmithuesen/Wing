@@ -143,7 +143,7 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     super.dispose();
   }
 
-  Widget _engine(String title, String key, VoiceProcessing selected) =>
+  Widget _engine(String title, String key, Enum selected) =>
       StudioSelect<String>(
         key: ValueKey('$key-${selected.name}'),
         label: title,
@@ -239,11 +239,11 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
         _engine('Voice input', VoicePreferences.inputKey, _preferences.input),
         const SizedBox(height: 12),
         Text(
-          _preferences.input == VoiceProcessing.local
+          _preferences.input == VoiceInputRoute.local
               ? 'Transcribe on this phone. Review the text before sending.'
               : 'Send a recording to the selected Hermes profile and its speech provider. Review the text before sending.',
         ),
-        if (_preferences.input == VoiceProcessing.local) ...[
+        if (_preferences.input == VoiceInputRoute.local) ...[
           const SizedBox(height: 12),
           if (_capabilities?.recognitionAvailable == false)
             const Text(
@@ -373,7 +373,7 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           ),
           if (_preview.error != null) StudioError(_preview.error!),
         ],
-        if (_preferences.input == VoiceProcessing.hermes ||
+        if (_preferences.input == VoiceInputRoute.hermes ||
             _preferences.output == VoiceProcessing.hermes) ...[
           const SizedBox(height: 12),
           Text(

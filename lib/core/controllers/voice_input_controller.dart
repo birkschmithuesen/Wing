@@ -57,7 +57,7 @@ class VoiceInputController extends ChangeNotifier {
     phase = VoiceInputPhase.starting;
     _notify();
     try {
-      if (settings.input == VoiceProcessing.hermes) _remote = createRemote();
+      if (settings.input == VoiceInputRoute.hermes) _remote = createRemote();
       await device.start(
         id,
         local: _remote == null,

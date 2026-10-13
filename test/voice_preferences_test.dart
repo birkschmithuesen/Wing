@@ -78,7 +78,7 @@ void main() {
     'independent engines and Android voice settings survive reload',
     () async {
       final prefs = await SharedPreferences.getInstance();
-      expect(VoicePreferences.read(prefs).input, VoiceProcessing.local);
+      expect(VoicePreferences.read(prefs).input, VoiceInputRoute.local);
       expect(VoicePreferences.read(prefs).output, VoiceProcessing.local);
       await saveDevicePreference(prefs, VoicePreferences.inputKey, 'hermes');
       await saveDevicePreference(prefs, VoicePreferences.voiceKey, 'french');
@@ -86,7 +86,7 @@ void main() {
       await saveDevicePreference(prefs, VoicePreferences.rateKey, '0.8');
       await prefs.reload();
       final saved = VoicePreferences.read(prefs);
-      expect(saved.input, VoiceProcessing.hermes);
+      expect(saved.input, VoiceInputRoute.hermes);
       expect(saved.output, VoiceProcessing.local);
       expect(saved.voice, 'french');
       expect(saved.language, 'fr-FR');
@@ -129,6 +129,85 @@ void main() {
     await saveDevicePreference(prefs, VoicePreferences.conversationKey, 'off');
     await prefs.reload();
     expect(VoicePreferences.read(prefs).conversation, isFalse);
+  });
+
+  test('vad route and its settings persist with card defaults', () async {
+    final prefs = await SharedPreferences.getInstance();
+    final initial = VoicePreferences.read(prefs);
+    expect(initial.input, VoiceInputRoute.local);
+    expect(initial.vad.pause, const Duration(milliseconds: 1800));
+    expect(initial.vad.minSpeech, const Duration(milliseconds: 250));
+    expect(initial.vad.preRoll, const Duration(milliseconds: 300));
+    expect(initial.vad.maxDuration, const Duration(seconds: 120));
+    expect(initial.vad.noSpeechTimeout, const Duration(seconds: 8));
+    expect(initial.cues, isTrue);
+    expect(initial.debugRecordings, isFalse);
+    expect(initial.audioSource, VadAudioSource.communication);
+    await saveDevicePreference(prefs, VoicePreferences.inputKey, 'vad');
+    await saveDevicePreference(prefs, VoicePreferences.vadPauseKey, '2400');
+    await saveDevicePreference(prefs, VoicePreferences.vadMinSpeechKey, '400');
+    await saveDevicePreference(prefs, VoicePreferences.vadPreRollKey, '500');
+    await saveDevicePreference(prefs, VoicePreferences.vadMaxKey, '60');
+    await saveDevicePreference(prefs, VoicePreferences.vadNoSpeechKey, '12');
+    await saveDevicePreference(prefs, VoicePreferences.vadCuesKey, 'off');
+    await saveDevicePreference(prefs, VoicePreferences.vadDebugKey, 'on');
+    await saveDevicePreference(
+      prefs,
+      VoicePreferences.vadSourceKey,
+      'recognition',
+    );
+    await prefs.reload();
+    final saved = VoicePreferences.read(prefs);
+    expect(saved.input, VoiceInputRoute.vad);
+    expect(saved.output, VoiceProcessing.local);
+    expect(saved.vad.pause, const Duration(milliseconds: 2400));
+    expect(saved.vad.minSpeech, const Duration(milliseconds: 400));
+    expect(saved.vad.preRoll, const Duration(milliseconds: 500));
+    expect(saved.vad.maxDuration, const Duration(seconds: 60));
+    expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
+    expect(saved.cues, isFalse);
+    expect(saved.debugRecordings, isTrue);
+    expect(saved.audioSource, VadAudioSource.recognition);
+  });
+
+  test('vad choices are validated for backups; output never accepts vad', () {
+    expect(VoicePreferences.accepts(VoicePreferences.inputKey, 'vad'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.outputKey, 'vad'), isFalse);
+    for (final key in [
+      VoicePreferences.vadPauseKey,
+      VoicePreferences.vadMinSpeechKey,
+      VoicePreferences.vadPreRollKey,
+      VoicePreferences.vadMaxKey,
+      VoicePreferences.vadNoSpeechKey,
+      VoicePreferences.vadCuesKey,
+      VoicePreferences.vadDebugKey,
+      VoicePreferences.vadSourceKey,
+    ]) {
+      expect(VoicePreferences.keys, contains(key));
+      expect(VoicePreferences.accepts(key, '0'), isFalse, reason: key);
+    }
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '1800'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '0'), isFalse);
+    expect(VoicePreferences.accepts(VoicePreferences.vadMaxKey, '120'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '8'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '7'), isFalse);
+    expect(
+      VoicePreferences.accepts(VoicePreferences.vadSourceKey, 'recognition'),
+      isTrue,
+    );
+    expect(VoicePreferences.keys, isNot(contains('voice.vad_microphone')));
+    expect(VoicePreferences.accepts(VoicePreferences.vadDebugKey, 'on'), isTrue);
+  });
+
+  test('unknown stored vad values fall back to defaults', () async {
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.vadPauseKey: '7',
+      VoicePreferences.vadNoSpeechKey: '99',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    final read = VoicePreferences.read(prefs);
+    expect(read.vad.pause, const Duration(milliseconds: 1800));
+    expect(read.vad.noSpeechTimeout, const Duration(seconds: 8));
   });
 
   Future<void> show(
@@ -180,7 +259,7 @@ void main() {
           .firstWhere((w) => w.label == 'Voice output');
       output.onChanged!('hermes');
       await tester.pumpAndSettle();
-      expect(VoicePreferences.read(prefs).input, VoiceProcessing.local);
+      expect(VoicePreferences.read(prefs).input, VoiceInputRoute.local);
       expect(VoicePreferences.read(prefs).output, VoiceProcessing.hermes);
       expect(find.text('Android voice'), findsNothing);
       expect(find.textContaining('belong to the selected server profile'), findsOneWidget);
@@ -214,7 +293,7 @@ void main() {
       find.text('Could not save this voice setting. Please retry.'),
       findsOneWidget,
     );
-    expect(VoicePreferences.read(prefs).input, VoiceProcessing.local);
+    expect(VoicePreferences.read(prefs).input, VoiceInputRoute.local);
     await tester.pumpWidget(const SizedBox());
     await show(tester, prefs, device);
     expect(

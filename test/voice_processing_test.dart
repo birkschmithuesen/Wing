@@ -8,7 +8,7 @@ import 'support/voice_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  for (final input in VoiceProcessing.values) {
+  for (final input in [VoiceInputRoute.local, VoiceInputRoute.hermes]) {
     for (final output in VoiceProcessing.values) {
       test('independent routes: input $input and output $output', () async {
         final device = VoiceDeviceFixture();
@@ -43,9 +43,9 @@ void main() {
           ),
           (value) => result = value,
         );
-        expect(device.local, input == VoiceProcessing.local);
+        expect(device.local, input == VoiceInputRoute.local);
         expect(result, isNull);
-        if (input == VoiceProcessing.local) {
+        if (input == VoiceInputRoute.local) {
           device.stream.add({
             'id': device.recording,
             'text': 'partial',
@@ -64,11 +64,11 @@ void main() {
         }
         expect(
           result!.text,
-          input == VoiceProcessing.local
+          input == VoiceInputRoute.local
               ? 'Draft: Bonjour'
               : 'Draft: Hello from Hermes',
         );
-        expect(inputClients, input == VoiceProcessing.local ? 0 : 1);
+        expect(inputClients, input == VoiceInputRoute.local ? 0 : 1);
         expect(recorder.active, isFalse);
         await player.speak(
           'reply',
@@ -138,7 +138,7 @@ void main() {
       addTearDown(device.stream.close);
       var edits = 0;
       await controller.start(
-        const VoicePreferences(input: VoiceProcessing.hermes),
+        const VoicePreferences(input: VoiceInputRoute.hermes),
         TextEditingValue.empty,
         (_) => edits++,
       );
@@ -194,7 +194,7 @@ void main() {
       addTearDown(controller.dispose);
       addTearDown(device.stream.close);
       await controller.start(
-        const VoicePreferences(input: VoiceProcessing.hermes),
+        const VoicePreferences(input: VoiceInputRoute.hermes),
         TextEditingValue.empty,
         (_) => fail('Unexpected draft edit'),
       );
