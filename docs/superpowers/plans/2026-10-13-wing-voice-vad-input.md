@@ -4,8 +4,9 @@
 
 **Goal:** A new voice input route "vad" ends an utterance by itself in a moving car. It uses its own `AudioRecord`
 capture, a Silero VAD end-of-utterance state machine and Parakeet TDT 0.6B v3 int8 speech-to-text on the phone.
-It adds a media-key fallback, a Bluetooth hands-free mic option, cue tones, keep-screen-on during conversations and
-debug WAV/JSON recordings.
+It adds a media-key fallback, cue tones, a no-speech timeout, keep-screen-on during conversations and debug WAV/JSON
+recordings. It records from whatever input Android routes (normally the built-in phone mic). The microphone setting
+was gestrichen by Birk on 13.10. (spec 1.1).
 
 **Architecture:** Kotlin does I/O only. It records 16 kHz mono, turns each 32 ms window into a Silero probability
 (`Vad.compute`) and streams the probabilities in batches to Dart. On request it cuts the decided segment and decodes
@@ -27,7 +28,10 @@ algorithm), 5 (channel contract) and 13 (decisions) before starting any task.
 - The Parakeet model is **not** in the APK. Archive URL `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2`, size `487170055` bytes, SHA256 `5793d0fd397c5778d2cf2126994d58e9d56b1be7c04d13c7a15bb1b4eafb16bf`.
 - Silero VAD: `https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx`, `643854` bytes, SHA256 `9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6`. Fetched at build time into generated APK assets, never committed.
 - sherpa-onnx AAR: `https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar`. Its SHA256 is confirmed in Task 1 (expected `633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96`). Fetched at build time, never committed.
-- Endpoint constants: window 512 samples = 32 ms at 16 kHz; start threshold 0.5; end threshold 0.35; tail 250 ms. Defaults: pause 1800 ms, min speech 250 ms, pre-roll 300 ms, max 120 s.
+- Endpoint constants: window 512 samples = 32 ms at 16 kHz; start threshold 0.5; end threshold 0.35; tail 250 ms. Defaults: pause 1800 ms, min speech 250 ms, pre-roll 300 ms, max 120 s, no-speech timeout 8 s.
+- **Microphone: gestrichen (Birk 13.10.).** Record from whatever input Android routes. No `startBluetoothSco`, no `setCommunicationDevice`, no microphone preference, UI or test. The debug JSON records the routed device read-only (`inputDevice`).
+- Audio source: default `VOICE_COMMUNICATION`, fallback `VOICE_RECOGNITION`, selectable only via the debug setting "Audio source". The default is decided by measurement (Task 15 A/B, then Birk's drive), never silently.
+- No fixed 7 s emergency stop on route vad: "no speech" is the explicit, configurable no-speech timeout.
 - Silero windows passed to `Vad.compute` are **576 floats**: the last 64 samples of the previous window + 512 new samples. `SileroVadModelConfig.windowSize` must stay `512` (any other value aborts the process).
 - **Private data:** never copy, commit, upload or print the content of `/home/birk/handy-builds/messung/auto-2026-10-13-1528.wav`, debug recordings or transcripts. Scripts take paths as arguments and print numbers only. Debug recordings retrieved from the phone go to `build/voice-debug/` (git-ignored) and are deleted after analysis.
 - Test command: `bash tools/factory/ci-suite.sh` runs the **whole** pr-quality workflow (analyze + all Flutter tests + `scripts/tests`) on GitHub Actions for **committed HEAD**. It ignores path arguments. Commit before running it. Success = exit code 0 and a last line `ci-suite: run <id> conclusion=success …`.
@@ -51,7 +55,7 @@ algorithm), 5 (channel contract) and 13 (decisions) before starting any task.
 | `tools/voice/vad_offline_check.py` | create | Offline car/synthetic check, numbers only. |
 | `tools/voice/make_selftest_audio.py` | create | Synthetic speech + noise test file for the device self-test. |
 | `tools/voice/pull_debug_round.py` | create | Fetch one debug round from the phone via `hadb`. |
-| `lib/core/services/voice_preferences.dart` | modify | `VoiceInputRoute`, `VadMicrophone`, `VadAudioSource`, new keys. |
+| `lib/core/services/voice_preferences.dart` | modify | `VoiceInputRoute`, `VadAudioSource`, new keys. |
 | `lib/core/services/android_voice.dart` | modify | `VadCaptureOptions`, `VadModelState`, `VadModelStatus`, new `VoiceDevice` methods. |
 | `lib/core/controllers/voice_input_controller.dart` | modify | vad branch, `stopHandsFree()`. |
 | `lib/core/screens/profile_workspace_screen.dart` | modify | Media key, keep-screen-on, preload. |
@@ -67,7 +71,7 @@ algorithm), 5 (channel contract) and 13 (decisions) before starting any task.
 | `.gitignore` | modify | `/android/app/libs/`. |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/SpeechModelStore.kt` | create | Model download/verify/extract/import/remove. |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/OfflineSpeech.kt` | create | Parakeet lifecycle and decode. |
-| `android/app/src/main/kotlin/com/tarkilhk/wing/VadCapture.kt` | create | Mic, probabilities, cut, cues, SCO. |
+| `android/app/src/main/kotlin/com/tarkilhk/wing/VadCapture.kt` | create | Recording on the routed input, probabilities, cut, cues. |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/VoiceDebugStore.kt` | create | WAV + JSON per round. |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/VoiceMediaKeys.kt` | create | MediaSession → `{mediaKey}` events. |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/VoiceChannel.kt` | modify | New methods/events; `resume()`. |
@@ -228,7 +232,7 @@ git commit -m "chore(voice): verify sherpa-onnx 1.13.8 AAR for the vad route"
 - Produces (used by Tasks 3, 6, 7, 8, 11):
   - `const int vadWindowMs = 32; const int vadWindowSamples = 512; const double vadStartThreshold = 0.5; const double vadEndThreshold = 0.35; const Duration vadTail = Duration(milliseconds: 250);`
   - `int vadWindowsFor(Duration duration)`, which is `ceil(ms / 32)`
-  - `class VadEndpointConfig { const VadEndpointConfig({Duration pause, Duration minSpeech, Duration preRoll, Duration maxDuration}); Map<String, Object> toJson(); }`
+  - `class VadEndpointConfig { const VadEndpointConfig({Duration pause, Duration minSpeech, Duration preRoll, Duration maxDuration, Duration noSpeechTimeout}); Map<String, Object> toJson(); }` (defaults 1800 ms, 250 ms, 300 ms, 120 s, 8 s)
   - `enum VadEndReason { pause, maxDuration, manual, mediaKey, noSpeech }`
   - `class VadDecision { final VadEndReason reason; final int startWindow, endWindow, atWindow; Duration get segment; bool get hasSpeech; }`
   - `class VadEndpointer { VadEndpointer(VadEndpointConfig config); int get windows; VadDecision? get decision; VadDecision? feed(double p); VadDecision? feedAll(Iterable<double> ps); VadDecision forceEnd(VadEndReason reason); }`
@@ -236,7 +240,7 @@ git commit -m "chore(voice): verify sherpa-onnx 1.13.8 AAR for the vad route"
 
 - [ ] **Step 1: Write the golden cases**
 
-`test/fixtures/vad_endpoint_cases.json`. Every expected value follows from spec section 4 with the defaults: pauseW 57, minSpeechW 8, preRollW 10, tailW 8, maxW 3750.
+`test/fixtures/vad_endpoint_cases.json`. Every expected value follows from spec section 4 with the defaults: pauseW 57, minSpeechW 8, preRollW 10, tailW 8, maxW 3750, noSpeechW 250.
 
 ```json
 {
@@ -254,6 +258,15 @@ git commit -m "chore(voice): verify sherpa-onnx 1.13.8 AAR for the vad route"
     {"name": "a burst shorter than minimum speech never starts a round",
      "config": {"maxMs": 3200}, "runs": [[0.9, 7], [0.1, 100]], "force": null,
      "expect": {"reason": "noSpeech", "startWindow": 0, "endWindow": 0, "atWindow": 99}},
+    {"name": "no speech start ends the round after the no-speech timeout",
+     "config": {}, "runs": [[0.05, 300]], "force": null,
+     "expect": {"reason": "noSpeech", "startWindow": 0, "endWindow": 0, "atWindow": 249}},
+    {"name": "a speech start in progress at the no-speech timeout is not cut",
+     "config": {}, "runs": [[0.05, 245], [0.9, 30], [0.1, 80]], "force": null,
+     "expect": {"reason": "pause", "startWindow": 235, "endWindow": 283, "atWindow": 331}},
+    {"name": "a shorter no-speech timeout setting ends earlier",
+     "config": {"noSpeechMs": 5000}, "runs": [[0.05, 200]], "force": null,
+     "expect": {"reason": "noSpeech", "startWindow": 0, "endWindow": 0, "atWindow": 155}},
     {"name": "max duration ends a long utterance",
      "config": {"maxMs": 3200}, "runs": [[0.9, 150]], "force": null,
      "expect": {"reason": "maxDuration", "startWindow": 0, "endWindow": 100, "atWindow": 99}},
@@ -299,6 +312,7 @@ VadEndpointConfig _config(Map<String, dynamic> raw) => VadEndpointConfig(
   minSpeech: Duration(milliseconds: raw['minSpeechMs'] as int? ?? 250),
   preRoll: Duration(milliseconds: raw['preRollMs'] as int? ?? 300),
   maxDuration: Duration(milliseconds: raw['maxMs'] as int? ?? 120000),
+  noSpeechTimeout: Duration(milliseconds: raw['noSpeechMs'] as int? ?? 8000),
 );
 
 Iterable<double> _expand(List<dynamic> runs) sync* {
@@ -378,11 +392,22 @@ void main() {
     expect(config.minSpeech, const Duration(milliseconds: 250));
     expect(config.preRoll, const Duration(milliseconds: 300));
     expect(config.maxDuration, const Duration(seconds: 120));
+    expect(config.noSpeechTimeout, const Duration(seconds: 8));
     expect(vadWindowsFor(config.pause), 57);
     expect(config.toJson(), {
       'pauseMs': 1800, 'minSpeechMs': 250, 'preRollMs': 300, 'maxMs': 120000,
+      'noSpeechMs': 8000,
       'startThreshold': 0.5, 'endThreshold': 0.35, 'tailMs': 250, 'windowMs': 32,
     });
+  });
+
+  test('no fixed 7 s stop: silence ends only at the configured no-speech timeout', () {
+    final endpointer = VadEndpointer(const VadEndpointConfig());
+    // 7 s = 218 windows of noise: still recording.
+    expect(endpointer.feedAll(List.filled(219, 0.05)), isNull);
+    final decision = endpointer.feedAll(List.filled(40, 0.05))!;
+    expect(decision.reason, VadEndReason.noSpeech);
+    expect(decision.atWindow, 249);
   });
 
   test('recognition budget scales with the segment instead of a fixed deadline', () {
@@ -428,6 +453,7 @@ class VadEndpointConfig {
     this.minSpeech = const Duration(milliseconds: 250),
     this.preRoll = const Duration(milliseconds: 300),
     this.maxDuration = const Duration(seconds: 120),
+    this.noSpeechTimeout = const Duration(seconds: 8),
   });
 
   /// Silence after speech that ends the round.
@@ -442,11 +468,15 @@ class VadEndpointConfig {
   /// Longest round; ends with or without speech.
   final Duration maxDuration;
 
+  /// A round in which no speech starts ends after this (no fixed 7 s stop).
+  final Duration noSpeechTimeout;
+
   Map<String, Object> toJson() => {
     'pauseMs': pause.inMilliseconds,
     'minSpeechMs': minSpeech.inMilliseconds,
     'preRollMs': preRoll.inMilliseconds,
     'maxMs': maxDuration.inMilliseconds,
+    'noSpeechMs': noSpeechTimeout.inMilliseconds,
     'startThreshold': vadStartThreshold,
     'endThreshold': vadEndThreshold,
     'tailMs': vadTail.inMilliseconds,
@@ -476,7 +506,8 @@ class VadEndpointer {
       _minSpeechWindows = vadWindowsFor(config.minSpeech),
       _preRollWindows = vadWindowsFor(config.preRoll),
       _tailWindows = vadWindowsFor(vadTail),
-      _maxWindows = config.maxDuration.inMilliseconds ~/ vadWindowMs;
+      _maxWindows = config.maxDuration.inMilliseconds ~/ vadWindowMs,
+      _noSpeechWindows = config.noSpeechTimeout.inMilliseconds ~/ vadWindowMs;
 
   final VadEndpointConfig config;
   final int _pauseWindows;
@@ -484,6 +515,7 @@ class VadEndpointer {
   final int _preRollWindows;
   final int _tailWindows;
   final int _maxWindows;
+  final int _noSpeechWindows;
 
   int _windows = 0;
   int _run = 0;
@@ -527,6 +559,11 @@ class VadEndpointer {
           i,
         );
       }
+    }
+    // Nothing said: end after the no-speech timeout, but never cut a speech
+    // start that is still being confirmed.
+    if (_speechStart < 0 && _run == 0 && i + 1 >= _noSpeechWindows) {
+      return _decision = VadDecision(VadEndReason.noSpeech, 0, 0, i);
     }
     if (i + 1 >= _maxWindows) {
       return _decision = _speechStart >= 0
@@ -584,7 +621,7 @@ Expected: exit 0, `Analyze & Test: success`, last line `ci-suite: run <id> concl
 
 **Interfaces:**
 - Consumes: `test/fixtures/vad_endpoint_cases.json` (Task 2).
-- Produces (Task 5): `class Config(pause_ms=1800, min_speech_ms=250, pre_roll_ms=300, max_ms=120000)`, `class Decision(reason, start_window, end_window, at_window)`, `class Endpointer(config)` with `feed(p) -> Decision | None`, `feed_all(ps) -> Decision | None`, `force_end(reason) -> Decision`, constants `WINDOW_MS = 32`, `WINDOW_SAMPLES = 512`, `START_THRESHOLD = 0.5`, `END_THRESHOLD = 0.35`, `TAIL_MS = 250`.
+- Produces (Task 5): `class Config(pause_ms=1800, min_speech_ms=250, pre_roll_ms=300, max_ms=120000, no_speech_ms=8000)`, `class Decision(reason, start_window, end_window, at_window)`, `class Endpointer(config)` with `feed(p) -> Decision | None`, `feed_all(ps) -> Decision | None`, `force_end(reason) -> Decision`, constants `WINDOW_MS = 32`, `WINDOW_SAMPLES = 512`, `START_THRESHOLD = 0.5`, `END_THRESHOLD = 0.35`, `TAIL_MS = 250`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -612,7 +649,7 @@ def expand(runs):
 class VadEndpointParityTest(unittest.TestCase):
     def test_golden_cases(self):
         cases = json.loads((ROOT / "test/fixtures/vad_endpoint_cases.json").read_text())["cases"]
-        self.assertGreaterEqual(len(cases), 13)
+        self.assertGreaterEqual(len(cases), 16)
         for case in cases:
             with self.subTest(case["name"]):
                 raw = case["config"]
@@ -621,6 +658,7 @@ class VadEndpointParityTest(unittest.TestCase):
                     min_speech_ms=raw.get("minSpeechMs", 250),
                     pre_roll_ms=raw.get("preRollMs", 300),
                     max_ms=raw.get("maxMs", 120000),
+                    no_speech_ms=raw.get("noSpeechMs", 8000),
                 )
                 endpointer = vad_endpoint.Endpointer(config)
                 decision = endpointer.feed_all(expand(case["runs"]))
@@ -677,6 +715,7 @@ class Config:
     min_speech_ms: int = 250
     pre_roll_ms: int = 300
     max_ms: int = 120000
+    no_speech_ms: int = 8000
 
 
 @dataclass(frozen=True)
@@ -695,6 +734,7 @@ class Endpointer:
         self._pre_roll_windows = windows_for(config.pre_roll_ms)
         self._tail_windows = windows_for(TAIL_MS)
         self._max_windows = config.max_ms // WINDOW_MS
+        self._no_speech_windows = config.no_speech_ms // WINDOW_MS
         self.windows = 0
         self._run = 0
         self._run_start = -1
@@ -731,6 +771,9 @@ class Endpointer:
                 end = min(self._last_speech + 1 + self._tail_windows, i + 1)
                 self.decision = Decision("pause", self._cut_start(), end, i)
                 return self.decision
+        if self._speech_start < 0 and self._run == 0 and i + 1 >= self._no_speech_windows:
+            self.decision = Decision("noSpeech", 0, 0, i)
+            return self.decision
         if i + 1 >= self._max_windows:
             if self._speech_start >= 0:
                 self.decision = Decision("maxDuration", self._cut_start(), i + 1, i)
@@ -787,8 +830,8 @@ Expected red tests (the first silent window after speech now ends the round):
 - `test/vad_endpoint_test.dart`:
   - `a thinking pause shorter than the pause keeps the round open`: atWindow 100 instead of 227. **This is the named mutation test.**
   - `ends after the pause and keeps the tail`: atWindow 100 instead of 156.
-  - Also red: `56 silent windows do not end it and pre-roll is clamped at zero`, `probabilities between the thresholds keep speech going`, `probabilities between the thresholds do not reset a starting run`, `a shorter pause setting ends earlier`, `media key stop keeps speech minus pre-roll` (a pause decision now comes before the forced stop).
-  - Still green, as expected: the noSpeech/maxDuration/manual cases, `pre-roll is included in the cut`, and `defaults match the card` (it reads `vadWindowsFor`, not the field).
+  - Also red: `56 silent windows do not end it and pre-roll is clamped at zero`, `probabilities between the thresholds keep speech going`, `probabilities between the thresholds do not reset a starting run`, `a shorter pause setting ends earlier`, `a speech start in progress at the no-speech timeout is not cut`, `media key stop keeps speech minus pre-roll` (a pause decision now comes before the forced stop).
+  - Still green, as expected: the noSpeech cases (including both no-speech timeout cases), the maxDuration and manual cases, `pre-roll is included in the cut`, `no fixed 7 s stop: …`, and `defaults match the card` (it reads `vadWindowsFor`, not the field).
 - `scripts/tests/test_vad_endpoint_parity.py`: `test_golden_cases` fails in the same subTests.
 
 - [ ] **Step 1: Branch and mutate**
@@ -1087,7 +1130,8 @@ Expected: `share_above_start` ≥ 0.3 (speech 1.000–4.634 s of 5.634 s per `ro
 ends only 1.0 s after the speech, so the round ends with `reason` `endOfFile` (not `pause`), and `start_s` lies
 between 0.5 and 1.6. The pause behaviour is checked in Step 6, where the file has a 6 s tail.
 Run: `build/vad-venv/bin/python -I tools/voice/vad_offline_check.py --model build/vad-check/silero_vad.onnx --wav /mnt/HC_Volume_106183673/hermes/profiles/worker/cache/scratch/wingvoice/tts/noise_only_15s.wav`
-Expected: exactly one round with `reason` `endOfFile` or `noSpeech` and no `pause` round (no false alarm).
+Expected: no `pause` or `maxDuration` round (no false alarm). With the 8 s no-speech timeout the 15 s file yields
+one `noSpeech` round (decided at ≈ 8.0 s) followed by an `endOfFile` round for the remaining ≈ 7 s.
 
 - [ ] **Step 6: Thinking-pause file with labels**
 
@@ -1106,6 +1150,21 @@ for each pause the number of rounds with speech and their `decided_s − end_s`.
 reveal what was said; times and counts only. Check by eye: driving noise alone must not produce rounds that never
 end (a `maxDuration` round lasting the whole file would mean noise counted as speech). If it does, write that down as
 the key tuning finding for Birk; do not change the defaults without his decision.
+
+This recording is the real reference for the **built-in phone mic in driving noise** (Birk's finding, spec 1.1). It is
+one fixed file, so it tunes and verifies the endpoint parameters but **cannot compare audio sources** (that is the
+Task 15 A/B). Record two further numbers:
+- `noSpeech` rounds: how many rounds end by the 8 s no-speech timeout while Birk was actually speaking. These are
+  candidates for "speech not detected at phone-mic distance". Compare them with the percentiles: if the speech share
+  never exceeds the start threshold, Silero does not hear the far voice. That is a finding for Birk, not a parameter
+  to change silently.
+- The same report with `--no-speech-ms 12000` (see the flag below) to see whether a longer wait changes the picture.
+
+Add the flag to `vad_offline_check.py` in this step:
+`parser.add_argument("--no-speech-ms", type=int, default=8000)`, then pass
+`ve.Config(pause_ms=pause, no_speech_ms=args.no_speech_ms)` in the `segments(...)` call inside `main()`.
+Run: `build/vad-venv/bin/python -I tools/voice/vad_offline_check.py --model build/vad-check/silero_vad.onnx --wav /home/birk/handy-builds/messung/auto-2026-10-13-1528.wav --grid --no-speech-ms 12000`
+Expected: the same `input` block. Record the counts per pause.
 
 - [ ] **Step 8: Commit**
 
@@ -1128,11 +1187,11 @@ git commit -m "chore(voice): offline vad endpoint check and synthetic self-test 
 - Consumes: `VadEndpointConfig` (Task 2).
 - Produces:
   - `enum VoiceInputRoute { local, hermes, vad }`
-  - `enum VadMicrophone { phone, bluetooth }`
   - `enum VadAudioSource { communication, recognition }`
-  - `VoicePreferences` fields: `final VoiceInputRoute input; final VadEndpointConfig vad; final VadMicrophone microphone; final bool cues; final bool debugRecordings; final VadAudioSource audioSource;`
-  - keys: `vadPauseKey = 'voice.vad_pause_ms'`, `vadMinSpeechKey = 'voice.vad_min_speech_ms'`, `vadPreRollKey = 'voice.vad_preroll_ms'`, `vadMaxKey = 'voice.vad_max_seconds'`, `vadMicrophoneKey = 'voice.vad_microphone'`, `vadCuesKey = 'voice.vad_cues'`, `vadDebugKey = 'voice.vad_debug'`, `vadSourceKey = 'voice.vad_source'`
-  - choice lists: `static const vadPauseChoices = ['1000','1400','1800','2400','3000']`, `vadMinSpeechChoices = ['150','250','400']`, `vadPreRollChoices = ['200','300','500']`, `vadMaxChoices = ['30','60','120']`
+  - `VoicePreferences` fields: `final VoiceInputRoute input; final VadEndpointConfig vad; final bool cues; final bool debugRecordings; final VadAudioSource audioSource;`
+  - keys: `vadPauseKey = 'voice.vad_pause_ms'`, `vadMinSpeechKey = 'voice.vad_min_speech_ms'`, `vadPreRollKey = 'voice.vad_preroll_ms'`, `vadMaxKey = 'voice.vad_max_seconds'`, `vadNoSpeechKey = 'voice.vad_no_speech_seconds'`, `vadCuesKey = 'voice.vad_cues'`, `vadDebugKey = 'voice.vad_debug'`, `vadSourceKey = 'voice.vad_source'`
+  - choice lists: `static const vadPauseChoices = ['1000','1400','1800','2400','3000']`, `vadMinSpeechChoices = ['150','250','400']`, `vadPreRollChoices = ['200','300','500']`, `vadMaxChoices = ['30','60','120']`, `vadNoSpeechChoices = ['5','8','12','20']`
+  - **No microphone preference** (gestrichen, Birk 13.10.): recording uses whatever input Android routes.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1147,7 +1206,7 @@ Append to `test/voice_preferences_test.dart` inside `main()` after the conversat
     expect(initial.vad.minSpeech, const Duration(milliseconds: 250));
     expect(initial.vad.preRoll, const Duration(milliseconds: 300));
     expect(initial.vad.maxDuration, const Duration(seconds: 120));
-    expect(initial.microphone, VadMicrophone.phone);
+    expect(initial.vad.noSpeechTimeout, const Duration(seconds: 8));
     expect(initial.cues, isTrue);
     expect(initial.debugRecordings, isFalse);
     expect(initial.audioSource, VadAudioSource.communication);
@@ -1156,7 +1215,7 @@ Append to `test/voice_preferences_test.dart` inside `main()` after the conversat
     await saveDevicePreference(prefs, VoicePreferences.vadMinSpeechKey, '400');
     await saveDevicePreference(prefs, VoicePreferences.vadPreRollKey, '500');
     await saveDevicePreference(prefs, VoicePreferences.vadMaxKey, '60');
-    await saveDevicePreference(prefs, VoicePreferences.vadMicrophoneKey, 'bluetooth');
+    await saveDevicePreference(prefs, VoicePreferences.vadNoSpeechKey, '12');
     await saveDevicePreference(prefs, VoicePreferences.vadCuesKey, 'off');
     await saveDevicePreference(prefs, VoicePreferences.vadDebugKey, 'on');
     await saveDevicePreference(prefs, VoicePreferences.vadSourceKey, 'recognition');
@@ -1168,7 +1227,7 @@ Append to `test/voice_preferences_test.dart` inside `main()` after the conversat
     expect(saved.vad.minSpeech, const Duration(milliseconds: 400));
     expect(saved.vad.preRoll, const Duration(milliseconds: 500));
     expect(saved.vad.maxDuration, const Duration(seconds: 60));
-    expect(saved.microphone, VadMicrophone.bluetooth);
+    expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
     expect(saved.cues, isFalse);
     expect(saved.debugRecordings, isTrue);
     expect(saved.audioSource, VadAudioSource.recognition);
@@ -1182,7 +1241,7 @@ Append to `test/voice_preferences_test.dart` inside `main()` after the conversat
       VoicePreferences.vadMinSpeechKey,
       VoicePreferences.vadPreRollKey,
       VoicePreferences.vadMaxKey,
-      VoicePreferences.vadMicrophoneKey,
+      VoicePreferences.vadNoSpeechKey,
       VoicePreferences.vadCuesKey,
       VoicePreferences.vadDebugKey,
       VoicePreferences.vadSourceKey,
@@ -1193,20 +1252,22 @@ Append to `test/voice_preferences_test.dart` inside `main()` after the conversat
     expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '1800'), isTrue);
     expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '0'), isFalse);
     expect(VoicePreferences.accepts(VoicePreferences.vadMaxKey, '120'), isTrue);
-    expect(VoicePreferences.accepts(VoicePreferences.vadMicrophoneKey, 'bluetooth'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '8'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadNoSpeechKey, '7'), isFalse);
     expect(VoicePreferences.accepts(VoicePreferences.vadSourceKey, 'recognition'), isTrue);
+    expect(VoicePreferences.keys, isNot(contains('voice.vad_microphone')));
     expect(VoicePreferences.accepts(VoicePreferences.vadDebugKey, 'on'), isTrue);
   });
 
   test('unknown stored vad values fall back to defaults', () async {
     SharedPreferences.setMockInitialValues({
       VoicePreferences.vadPauseKey: '7',
-      VoicePreferences.vadMicrophoneKey: 'usb',
+      VoicePreferences.vadNoSpeechKey: '99',
     });
     final prefs = await SharedPreferences.getInstance();
     final read = VoicePreferences.read(prefs);
     expect(read.vad.pause, const Duration(milliseconds: 1800));
-    expect(read.microphone, VadMicrophone.phone);
+    expect(read.vad.noSpeechTimeout, const Duration(seconds: 8));
   });
 ```
 
@@ -1233,8 +1294,6 @@ enum VoiceProcessing { local, hermes }
 /// vad = own capture + Silero end of utterance + Parakeet on this phone.
 enum VoiceInputRoute { local, hermes, vad }
 
-enum VadMicrophone { phone, bluetooth }
-
 /// communication = platform noise/echo processing; recognition = raw-ish.
 enum VadAudioSource { communication, recognition }
 
@@ -1251,7 +1310,7 @@ class VoicePreferences {
   static const vadMinSpeechKey = 'voice.vad_min_speech_ms';
   static const vadPreRollKey = 'voice.vad_preroll_ms';
   static const vadMaxKey = 'voice.vad_max_seconds';
-  static const vadMicrophoneKey = 'voice.vad_microphone';
+  static const vadNoSpeechKey = 'voice.vad_no_speech_seconds';
   static const vadCuesKey = 'voice.vad_cues';
   static const vadDebugKey = 'voice.vad_debug';
   static const vadSourceKey = 'voice.vad_source';
@@ -1267,7 +1326,7 @@ class VoicePreferences {
     vadMinSpeechKey,
     vadPreRollKey,
     vadMaxKey,
-    vadMicrophoneKey,
+    vadNoSpeechKey,
     vadCuesKey,
     vadDebugKey,
     vadSourceKey,
@@ -1276,6 +1335,7 @@ class VoicePreferences {
   static const vadMinSpeechChoices = ['150', '250', '400'];
   static const vadPreRollChoices = ['200', '300', '500'];
   static const vadMaxChoices = ['30', '60', '120'];
+  static const vadNoSpeechChoices = ['5', '8', '12', '20'];
 
   static bool accepts(String key, Object value) => switch (key) {
     inputKey => value == 'local' || value == 'hermes' || value == 'vad',
@@ -1288,7 +1348,7 @@ class VoicePreferences {
     vadMinSpeechKey => vadMinSpeechChoices.contains(value),
     vadPreRollKey => vadPreRollChoices.contains(value),
     vadMaxKey => vadMaxChoices.contains(value),
-    vadMicrophoneKey => value == 'phone' || value == 'bluetooth',
+    vadNoSpeechKey => vadNoSpeechChoices.contains(value),
     vadSourceKey => value == 'communication' || value == 'recognition',
     _ => false,
   };
@@ -1308,7 +1368,6 @@ class VoicePreferences {
 
   /// End-of-utterance settings for [VoiceInputRoute.vad].
   final VadEndpointConfig vad;
-  final VadMicrophone microphone;
 
   /// Short tones for "listening" and "got it" on the vad route.
   final bool cues;
@@ -1326,7 +1385,6 @@ class VoicePreferences {
     this.autoSpeak = false,
     this.conversation = false,
     this.vad = const VadEndpointConfig(),
-    this.microphone = VadMicrophone.phone,
     this.cues = true,
     this.debugRecordings = false,
     this.audioSource = VadAudioSource.communication,
@@ -1364,10 +1422,10 @@ class VoicePreferences {
         ),
         preRoll: Duration(milliseconds: choice(vadPreRollKey, vadPreRollChoices, 300)),
         maxDuration: Duration(seconds: choice(vadMaxKey, vadMaxChoices, 120)),
+        noSpeechTimeout: Duration(
+          seconds: choice(vadNoSpeechKey, vadNoSpeechChoices, 8),
+        ),
       ),
-      microphone: preferences.getString(vadMicrophoneKey) == 'bluetooth'
-          ? VadMicrophone.bluetooth
-          : VadMicrophone.phone,
       cues: preferences.getString(vadCuesKey) != 'off',
       debugRecordings: preferences.getString(vadDebugKey) == 'on',
       audioSource: preferences.getString(vadSourceKey) == 'recognition'
@@ -1408,13 +1466,13 @@ Expected: exit 0, `conclusion=success`. `test/config_backup_service_test.dart` (
 - Modify: `test/support/voice_fixture.dart`
 
 **Interfaces:**
-- Consumes: `VadDecision`, `VadEndpointConfig` (Task 2); `VadMicrophone`, `VadAudioSource` (Task 6).
-- Produces (Tasks 8, 10, 11):
+- Consumes: `VadDecision`, `VadEndpointConfig` (Task 2); `VadAudioSource` (Task 6).
+- Produces (Tasks 8, 10, 11). There is no microphone option: recording uses Android's routed input.
 
 ```dart
 class VadCaptureOptions {
-  const VadCaptureOptions({required this.microphone, required this.cues, required this.debug, required this.source, required this.maxDuration});
-  final VadMicrophone microphone; final bool cues; final bool debug; final VadAudioSource source; final Duration maxDuration;
+  const VadCaptureOptions({required this.cues, required this.debug, required this.source, required this.maxDuration});
+  final bool cues; final bool debug; final VadAudioSource source; final Duration maxDuration;
   Map<String, Object> toMap();
 }
 enum VadModelState { absent, downloading, verifying, unpacking, installed, failed }
@@ -1451,20 +1509,17 @@ import 'voice_preferences.dart';
 ```dart
 class VadCaptureOptions {
   const VadCaptureOptions({
-    required this.microphone,
     required this.cues,
     required this.debug,
     required this.source,
     required this.maxDuration,
   });
-  final VadMicrophone microphone;
   final bool cues;
   final bool debug;
   final VadAudioSource source;
   final Duration maxDuration;
 
   Map<String, Object> toMap() => {
-    'microphone': microphone.name,
     'cues': cues,
     'debug': debug,
     'source': source.name,
@@ -1699,11 +1754,13 @@ void main() {
   TextEditingValue? result;
   const settings = VoicePreferences(
     input: VoiceInputRoute.vad,
-    microphone: VadMicrophone.bluetooth,
     cues: false,
     debugRecordings: true,
     audioSource: VadAudioSource.recognition,
-    vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
+    vad: VadEndpointConfig(
+      maxDuration: Duration(seconds: 60),
+      noSpeechTimeout: Duration(seconds: 12),
+    ),
   );
 
   setUp(() {
@@ -1728,7 +1785,7 @@ void main() {
   test('starts the own capture with the saved vad options', () async {
     await start();
     expect(device.calls, ['startVad']);
-    expect(device.vadOptions!.microphone, VadMicrophone.bluetooth);
+    expect(device.vadOptions!.toMap().containsKey('microphone'), isFalse);
     expect(device.vadOptions!.cues, isFalse);
     expect(device.vadOptions!.debug, isTrue);
     expect(device.vadOptions!.source, VadAudioSource.recognition);
@@ -1783,12 +1840,18 @@ void main() {
     expect(recorder.finishedOnItsOwn, isTrue);
   });
 
-  test('no speech until the longest recording fails without recognition', () async {
+  test('no speech within the no-speech timeout ends the round without recognition', () async {
     await start();
-    // 60 s = 1875 windows of noise.
-    device.emitWindows(_p(0.05, 1875));
+    // 12 s timeout = 375 windows. 7 s (218 windows) is no limit on this route.
+    device.emitWindows(_p(0.05, 374));
     await pumpEventQueue();
-    expect(device.finishes, isEmpty);
+    expect(recorder.phase, VoiceInputPhase.recording);
+    expect(recorder.error, isNull);
+    device.emitWindows(_p(0.05, 1));
+    await pumpEventQueue();
+    // The phone only learns the reason (for the debug JSON); Kotlin skips recognition.
+    expect(device.finishes.single.reason, VadEndReason.noSpeech);
+    expect(device.finishes.single.atWindow, 374);
     expect(recorder.error, 'No speech detected. Try again.');
     expect(device.cancelled, isNotEmpty);
     expect(result, isNull);
@@ -1811,15 +1874,6 @@ void main() {
     await start();
     expect(recorder.error, 'Download the speech model in App settings → Voice.');
     expect(recorder.active, isFalse);
-  });
-
-  test('a notice from the phone is shown while recording', () async {
-    await start();
-    device.stream.add({
-      'id': device.recording,
-      'notice': 'Bluetooth microphone unavailable. Using the phone microphone.',
-    });
-    expect(recorder.partial, 'Bluetooth microphone unavailable. Using the phone microphone.');
   });
 
   test('windows after the decision are ignored', () async {
@@ -1887,7 +1941,6 @@ In `start(...)`, replace the `try { … }` body up to `phase = VoiceInputPhase.r
         await device.startVad(
           id,
           VadCaptureOptions(
-            microphone: settings.microphone,
             cues: settings.cues,
             debug: settings.debugRecordings,
             source: settings.audioSource,
@@ -1932,12 +1985,10 @@ In `_event`, before the `if (event['text'] …` block:
       if (decision != null) unawaited(_finishVad(decision));
       return;
     }
-    if (event['notice'] case final String notice) {
-      partial = notice;
-      _notify();
-      return;
-    }
 ```
+
+A `noSpeech` decision (from the no-speech timeout or max duration) goes through `_finishVad`, which fails with
+"No speech detected. Try again." and cancels the capture without recognition.
 
 `stop()` gets a vad branch directly after its first line `if (id == null || phase != VoiceInputPhase.recording) return;`,
 **before** `_stopRequested = true;` (`_finishVad` sets `_stopRequested` and the phase itself):
@@ -1969,6 +2020,14 @@ New methods:
     }
     _timer?.cancel();
     if (!decision.hasSpeech) {
+      // Tell the phone why the round ended (debug JSON reason "noSpeech"; Kotlin
+      // skips recognition for it), then end the round. Channel calls keep their
+      // order, so the following cancel finds no round left.
+      unawaited(
+        device
+            .finishVad(id, decision, endpointer.config)
+            .then((_) {}, onError: (Object _) {}),
+      );
       _fail(StateError('No speech detected. Try again.'));
       return;
     }
@@ -2221,9 +2280,10 @@ Expected: exit 0 (Dart unaffected).
 
 Design (spec 8, arrangement B): the route select's third option is `(value: 'vad', label: 'On this phone · Parakeet')`.
 For vad, the input description reads "Recognize on this phone. Pauses end each message automatically." Then come the
-model row, "Microphone" select and "Cue tones" switch, then the collapsed `AnchoredExpansionTile` "Pause detection"
-with the four selects, "Debug recordings", and (debug on) "Audio source" plus "Delete debug recordings". The
-recognition language row is hidden for vad.
+model row and the "Cue tones" switch (there is no microphone select: gestrichen, Birk 13.10.), then the collapsed `AnchoredExpansionTile` "Pause detection"
+with five selects ("Pause before sending", "Wait for speech", "Minimum speech", "Lead-in kept", "Longest
+recording"), "Debug recordings", and (debug on) "Audio source" plus "Delete debug recordings". The recognition
+language row is hidden for vad.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2376,16 +2436,18 @@ void main() {
     expect(device.removals, 1);
   });
 
-  testWidgets('microphone, cues and pause detection settings persist', (tester) async {
+  testWidgets('cues and pause detection settings persist; no microphone choice', (tester) async {
     await show(tester);
-    select(tester, 'Microphone').onChanged!('bluetooth');
-    await tester.pumpAndSettle();
+    expect(find.text('Microphone'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('vad-cues')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Pause detection'));
     await tester.tap(find.text('Pause detection'));
     await tester.pumpAndSettle();
     select(tester, 'Pause before sending').onChanged!('2400');
+    await tester.pumpAndSettle();
+    expect(select(tester, 'Wait for speech').value, '8');
+    select(tester, 'Wait for speech').onChanged!('12');
     await tester.pumpAndSettle();
     select(tester, 'Minimum speech').onChanged!('400');
     await tester.pumpAndSettle();
@@ -2394,9 +2456,9 @@ void main() {
     select(tester, 'Longest recording').onChanged!('60');
     await tester.pumpAndSettle();
     final saved = VoicePreferences.read(prefs);
-    expect(saved.microphone, VadMicrophone.bluetooth);
     expect(saved.cues, isFalse);
     expect(saved.vad.pause, const Duration(milliseconds: 2400));
+    expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
     expect(saved.vad.minSpeech, const Duration(milliseconds: 400));
     expect(saved.vad.preRoll, const Duration(milliseconds: 500));
     expect(saved.vad.maxDuration, const Duration(seconds: 60));
@@ -2486,7 +2548,8 @@ import 'studio_error.dart';
 import 'studio_select.dart';
 
 /// Settings that exist only for the vad input route: the on-phone speech
-/// model, microphone, cue tones, pause detection and debug recordings.
+/// model, cue tones, pause detection and debug recordings. There is no
+/// microphone choice: recording uses whatever input Android routes.
 class VadSettingsSection extends StatefulWidget {
   const VadSettingsSection({
     super.key,
@@ -2669,10 +2732,6 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
       children: [
         _model(context),
         const SizedBox(height: 12),
-        _choice('Microphone', VoicePreferences.vadMicrophoneKey, s.microphone.name, const [
-          (value: 'phone', label: 'Phone'),
-          (value: 'bluetooth', label: 'Bluetooth hands-free'),
-        ]),
         CompactSwitchListTile(
           key: const ValueKey('vad-cues'),
           contentPadding: EdgeInsets.zero,
@@ -2694,6 +2753,16 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
               VoicePreferences.vadPauseKey,
               s.vad.pause.inMilliseconds.toString(),
               _seconds(VoicePreferences.vadPauseChoices),
+            ),
+            const SizedBox(height: 12),
+            _choice(
+              'Wait for speech',
+              VoicePreferences.vadNoSpeechKey,
+              s.vad.noSpeechTimeout.inSeconds.toString(),
+              [
+                for (final value in VoicePreferences.vadNoSpeechChoices)
+                  (value: value, label: '$value s'),
+              ],
             ),
             const SizedBox(height: 12),
             _choice(
@@ -3386,7 +3455,7 @@ Expected: exit 0, `conclusion=success`.
 
 ---
 
-### Task 13: Kotlin: vad capture, cues, Bluetooth, debug store
+### Task 13: Kotlin: vad capture, cues, debug store
 
 **Files:**
 - Create: `android/app/src/main/kotlin/com/tarkilhk/wing/VadCapture.kt`
@@ -3395,7 +3464,10 @@ Expected: exit 0, `conclusion=success`.
 
 **Interfaces:**
 - Consumes: `OfflineSpeech`, `SpeechModelStore` (Task 12); asset `silero_vad.onnx` (Task 9); channel contract (spec 5).
-- Produces: channel methods `startVad`, `finishVad`, `deleteVadDebugRecordings`; `cancel` also cancels vad rounds; events `{id, first, windows}`, `{id, notice}`, `{id, error}`.
+- Produces: channel methods `startVad`, `finishVad`, `deleteVadDebugRecordings`; `cancel` also cancels vad rounds; events `{id, first, windows}`, `{id, error}`.
+- Recording uses whatever input Android routes. There is **no own audio routing** (gestrichen, Birk 13.10.): never call
+  `startBluetoothSco`, `setCommunicationDevice` or `setSpeakerphone`. The routed device is only *read*
+  (`AudioRecord.getRoutedDevice()`, API 24) for the debug JSON field `inputDevice`.
 
 - [ ] **Step 1: Debug store**
 
@@ -3471,13 +3543,11 @@ class VoiceDebugStore(context: Context) {
 package com.tarkilhk.wing
 
 import android.app.Activity
-import android.media.AudioDeviceInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.ToneGenerator
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
@@ -3491,7 +3561,8 @@ import kotlin.concurrent.thread
 
 /** Route vad: 16 kHz mono capture, one Silero probability per 32 ms window
  *  (sent to Dart in batches of 4), cut + on-phone recognition on request.
- *  The end-of-utterance decision lives in Dart (vad_endpoint.dart). */
+ *  The end-of-utterance decision lives in Dart (vad_endpoint.dart).
+ *  Records from whatever input Android routes; never changes audio routing. */
 class VadCapture(
     private val activity: Activity,
     private val models: SpeechModelStore,
@@ -3499,7 +3570,7 @@ class VadCapture(
     private val debug: VoiceDebugStore,
     private val emit: (Map<String, Any>) -> Unit,
 ) {
-    data class Options(val microphone: String, val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int)
+    data class Options(val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int)
 
     private class Round(val id: String, val options: Options, val startedAt: Long, capacity: Int) {
         val pcm = ShortArray(capacity)
@@ -3511,11 +3582,10 @@ class VadCapture(
         var reader: Thread? = null
         var vad: Vad? = null
         var sourceName = ""
-        var microphoneUsed = "phone"
+        var inputDevice = "unknown"
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private val audio = activity.getSystemService(AudioManager::class.java)
     private var round: Round? = null
 
     fun start(id: String, options: Options) {
@@ -3524,7 +3594,6 @@ class VadCapture(
         val r = Round(id, options, System.currentTimeMillis(), (options.maxMs + 5_000) * 16)
         round = r
         try {
-            if (options.microphone == "bluetooth") r.microphoneUsed = routeBluetooth(r)
             if (options.cues) cue(ToneGenerator.TONE_PROP_BEEP, wait = true)
             r.vad = Vad(
                 assetManager = activity.assets,
@@ -3536,18 +3605,10 @@ class VadCapture(
             )
             r.record = openRecord(r)
             r.record!!.startRecording()
+            // Read-only diagnosis: which input Android routed this recording to.
+            r.inputDevice = r.record!!.routedDevice?.let { "${it.productName} (type ${it.type})" } ?: "unknown"
             r.reader = thread(name = "WingVad") { read(r) }
         } catch (error: Exception) { release(r); round = null; throw error }
-    }
-
-    private fun routeBluetooth(r: Round): String {
-        val device = if (Build.VERSION.SDK_INT >= 31) try {
-            audio.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
-                ?.takeIf { audio.setCommunicationDevice(it) }
-        } catch (_: SecurityException) { null } else null
-        if (device != null) return "bluetooth"
-        handler.post { if (round === r) emit(mapOf("id" to r.id, "notice" to "Bluetooth microphone unavailable. Using the phone microphone.")) }
-        return "bluetooth-unavailable"
     }
 
     /** [wait] keeps the "listening" cue out of the recording (≈250 ms before capture starts). */
@@ -3619,6 +3680,13 @@ class VadCapture(
                config: Map<String, Any?>, response: MethodChannel.Result) {
         val r = round?.takeIf { it.id == id } ?: run { response.error("cancelled", "Recording cancelled.", null); return }
         stopReading(r)
+        if (reason == "noSpeech") {
+            // Nothing was said: no cue, no recognition; keep the timing for diagnosis.
+            if (r.options.debug) writeDebug(r, JSONObject().put("reason", reason).put("atWindow", atWindow), config, JSONObject())
+            round = null
+            response.success("")
+            return
+        }
         if (r.options.cues) cue(ToneGenerator.TONE_PROP_ACK, wait = false)
         val start = (startWindow * 512).coerceIn(0, r.length)
         val end = (endWindow * 512).coerceIn(start, r.length)
@@ -3649,7 +3717,6 @@ class VadCapture(
     private fun release(r: Round) {
         r.record?.release(); r.record = null
         r.vad?.release(); r.vad = null
-        if (r.microphoneUsed == "bluetooth" && Build.VERSION.SDK_INT >= 31) audio.clearCommunicationDevice()
     }
 
     private fun writeDebug(r: Round, decision: JSONObject, config: Map<String, Any?>, recognition: JSONObject) {
@@ -3657,7 +3724,7 @@ class VadCapture(
         debug.write(r.id, r.startedAt, r.pcm, r.length, JSONObject()
             .put("version", 1).put("roundId", r.id).put("startedAt", Instant.ofEpochMilli(r.startedAt).toString())
             .put("sampleRate", 16000).put("windowSamples", 512).put("windowMs", 32)
-            .put("source", r.sourceName).put("microphone", r.microphoneUsed)
+            .put("source", r.sourceName).put("inputDevice", r.inputDevice)
             .put("config", JSONObject(config)).put("probabilities", probabilities)
             .put("computeErrors", r.computeErrors).put("decision", decision).put("recognition", recognition))
     }
@@ -3725,7 +3792,6 @@ Change `private fun start(call, result)` to branch on the method name (`VoiceCap
         if (call.method == "startVad") {
             capture.cancel(id)
             vad.start(id, VadCapture.Options(
-                microphone = call.argument<String>("microphone") ?: "phone",
                 cues = call.argument<Boolean>("cues") != false,
                 debug = call.argument<Boolean>("debug") == true,
                 source = call.argument<String>("source") ?: "communication",
@@ -3744,7 +3810,9 @@ Change `private fun start(call, result)` to branch on the method name (`VoiceCap
 - [ ] **Step 4: Compile**
 
 Run: `git add android/app/src/main/kotlin/com/tarkilhk/wing/VadCapture.kt android/app/src/main/kotlin/com/tarkilhk/wing/VoiceDebugStore.kt android/app/src/main/kotlin/com/tarkilhk/wing/VoiceChannel.kt`
-Run: `git commit -m "feat(voice): vad capture with Silero probabilities, cues, Bluetooth mic and debug recordings"`
+Run: `git commit -m "feat(voice): vad capture with Silero probabilities, cues and debug recordings"`
+Run: `grep -rnE "BluetoothSco|setCommunicationDevice|setSpeakerphone|TYPE_BLUETOOTH_SCO" android/app/src/main/kotlin`
+Expected: no output and exit code 1 (no own audio routing, Birk 13.10.).
 Run: `bash tools/factory/dispatch-check.sh voice-apk.yml publish=false`
 Expected: exit 0, `conclusion=success`.
 
@@ -3952,13 +4020,14 @@ jobs:
 `docs/VOICE.md`, under "Choose where speech is processed", add a paragraph:
 
 ```markdown
-**On this phone · Parakeet** records with Wing's own microphone capture, detects the end of each message with
-Silero VAD and recognizes the speech on the phone with Parakeet TDT 0.6B v3 (sherpa-onnx). No audio leaves the
-phone. The speech model (487 MB download, about 670 MB installed) is downloaded once in App settings → Voice and
-checked against its published SHA256. "Pause detection" sets how long a pause ends a message (default 1.8 s),
+**On this phone · Parakeet** records with Wing's own capture from the input Android currently routes (normally the
+phone's built-in microphone), detects the end of each message with Silero VAD and recognizes the speech on the phone
+with Parakeet TDT 0.6B v3 (sherpa-onnx). No audio leaves the phone. The speech model (487 MB download, about 670 MB
+installed) is downloaded once in App settings → Voice and checked against its published SHA256. "Pause detection"
+sets how long a pause ends a message (default 1.8 s), how long Wing waits for you to start speaking (default 8 s),
 the minimum speech, the lead-in kept before speech and the longest recording. On this route the steering-wheel or
-headset play/pause key ends the current message or starts a new one, "Microphone" can use a Bluetooth hands-free
-microphone, and short cue tones mark "listening" and "got it". During Conversation mode the screen stays on.
+headset play/pause key ends the current message or starts a new one, and short cue tones mark "listening" and
+"got it". During Conversation mode the screen stays on.
 ```
 
 `docs/TESTING.md`, at the end of "Voice acceptance", add:
@@ -4080,10 +4149,16 @@ Run: `hadb shell 'sha256sum /sdcard/Music/wingvad-selftest.wav'`
 Expected: equals `sha256sum build/vad-check/selftest.wav`.
 Run: `hadb shell 'cmd package install-existing org.lineageos.twelve'`
 
-- [ ] **Step 7: Self-test round (phone speaker → phone mic)**
+- [ ] **Step 7: Self-test rounds, audio source A/B (phone speaker → built-in phone mic)**
 
-In Wing Voice: route vad, **Debug recordings on**, Audio source "Call processing", Conversation mode **off**, cue tones
-on, an empty draft in a chat. Then:
+The round records from whatever Android routes; with no headset or car connected that is the built-in mic. That is
+the mic that matters (Birk's finding, spec 1.1). Run the round below **twice with the same file**: first with Audio
+source "Call processing" (`VOICE_COMMUNICATION`, the default), then with "Recognition" (`VOICE_RECOGNITION`). Keep
+both rounds' JSON for the comparison before deleting anything.
+
+In Wing Voice: route vad, **Debug recordings on**, Audio source as above, "Wait for speech" **12 s** (the 8 s noise lead
+plus the time to switch apps must fit inside it), Conversation mode **off**, cue tones on, an empty draft in a chat.
+Then:
 1. Start playback: `hadb shell 'am start -a android.intent.action.VIEW -t audio/wav -d file:///sdcard/Music/wingvad-selftest.wav org.lineageos.twelve'` (8 s noise lead).
 2. Immediately bring Wing to the front: `hadb shell 'am start -n com.tarkilhk.wing.voice/com.tarkilhk.wing.MainActivity'`.
 3. Tap "Dictate message" (find its bounds by `content-desc` in the uiautomator dump).
@@ -4093,17 +4168,38 @@ Run: `python3 -I tools/voice/pull_debug_round.py --list`
 Expected: one new `*.json`/`*.wav` pair.
 Run: `python3 -I tools/voice/pull_debug_round.py --round <newest base name> --out build/voice-debug`
 Expected: `… sha256 ok` twice.
-Run: `python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); p=d['probabilities']; print(d['decision'], d['recognition'], d['source'], len(p), max(p))" build/voice-debug/<base>.json`
+Run: `python3 -I -c "import json,sys; d=json.load(open(sys.argv[1])); p=d['probabilities']; print(d['decision'], d['recognition'], d['source'], d['inputDevice'], len(p), max(p))" build/voice-debug/<base>.json`
 Expected (the proof that the round ended by itself):
 - `decision.reason == 'pause'`.
 - `recognition.error is None` and `textLength > 0`.
 - `endWindow` < the number of probabilities, and `atWindow − endWindow` = 48 (at = lastSpeech + 57, end = lastSpeech + 1 + 8).
+- `inputDevice` names the built-in mic (e.g. `… (type 15)`, `TYPE_BUILTIN_MIC`).
 - The two sentences are in one round: the uiautomator dump of the composer shows the words of both `s1.txt` and `s2.txt` (synthetic test sentences, allowed to read).
 
-`ANNAHME` echo cancellation: if `max(p) < 0.5` (no speech detected through call processing), set Audio source
-"Recognition" and repeat Step 7. Record which source worked.
-Then clear the draft (select all + delete via uiautomator), and delete the self-test rounds with "Delete debug recordings".
+Clear the draft (select all + delete via uiautomator), switch Audio source to "Recognition", and repeat.
+
+**A/B comparison** (numbers only, into `docs/VAD_INPUT.md`): for both rounds, `source`, `inputDevice`,
+`decision` (start/end/at windows), max p, the median p over the noise-lead windows (first ≈ 200 windows), and the first
+window with p ≥ 0.5. Align the two rounds on the labeled speech start (`build/vad-check/selftest.labels.json`, 8.0 s
+into the file) using that first speech window. Better means a higher speech p, a lower noise p, and an end
+decision closer to label end + 1.8 s.
+`ANNAHME` echo cancellation: if "Call processing" shows `max(p) < 0.5`, the platform AEC probably removed the phone's
+own playback. Record that as the reason the A/B is inconclusive for `VOICE_COMMUNICATION`, not as evidence against it
+(spec 1.2). **Do not change the default source** here: the decision is Birk's, after his test drive with the
+alternating source.
+Then clear the draft, and delete the self-test rounds with "Delete debug recordings".
 Run: `rm -r build/voice-debug`
+
+- [ ] **Step 7b: No-speech timeout on the device**
+
+"Wait for speech" back to **8 s**, debug on, no playback. Tap "Dictate message" and stay silent (the room may
+not be perfectly quiet; that is fine).
+Expected: after ≈ 8 s (not 7 s, not 120 s) the round ends with "No speech detected. Try again.", without the "got
+it" cue and without "Transcribing…".
+Run: `python3 -I tools/voice/pull_debug_round.py --list`, then pull the newest round as in Step 7 and print `decision`.
+Expected: `decision.reason == 'noSpeech'`, `atWindow == 249`, no `recognition` timings. If someone spoke in the room
+and a round with speech started instead, repeat. Delete the round afterwards ("Delete debug recordings",
+`rm -r build/voice-debug`).
 
 - [ ] **Step 8: Media key**
 
@@ -4138,13 +4234,16 @@ Expected: empty or missing.
 - [ ] **Step 11: Record and commit**
 
 Add a section "On-device verification <date>" to `docs/VAD_INPUT.md`. It records numbers and outcomes only: APK
-commit, model load ms, PSS/RSS, download resume outcome, self-test decision/recognition timings, source used, media key
-outcome, keep-screen-on outcome, and every ANNAHME row updated.
+commit, model load ms, PSS/RSS, download resume outcome, self-test decision/recognition timings, the audio source A/B
+table, routed `inputDevice`, the no-speech timeout outcome, media key outcome, keep-screen-on outcome, and every
+ANNAHME row updated.
 Run: `git add docs/VAD_INPUT.md`
 Run: `git commit -m "docs(voice): on-device verification of the vad route"`
 
 Open items for Birk (write them at the end of `docs/VAD_INPUT.md`, do not do them):
-- a test drive with Bluetooth hands-free and with the phone mic, debug recordings on;
+- a test drive with the phone mic as Android routes it (car connected as usual), debug recordings on, alternating
+  the audio source "Call processing" / "Recognition" between rounds. This decides the default source (spec 1.2);
+- whether 8 s "Wait for speech" fits in the car;
 - the cue tone choice;
 - after the drive, tuning the pause from the debug rounds with `vad_offline_check.py` and deleting the recordings.
 ```

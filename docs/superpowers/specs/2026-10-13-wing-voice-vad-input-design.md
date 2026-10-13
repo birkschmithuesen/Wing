@@ -21,6 +21,38 @@ Out of scope: speech output (concept part B), barge-in, an upstream PR to tarkil
 
 Hermes constraint (AGENTS.md): the route is client-only. It uses no server endpoint at all. No backend change.
 
+### 1.1 Scope change: microphone setting gestrichen (Birk 13.10.)
+
+Scope item 3 of the brief ("Setting microphone: phone / Bluetooth hands-free (SCO)") is **gestrichen (Birk 13.10.)**.
+The microphone is always whatever Android currently routes for recording. Wing does no own Bluetooth SCO activation
+(no `startBluetoothSco`, no `setCommunicationDevice`) and has no microphone preference.
+
+Measured finding behind it (Birk, 13.10. 16:20): the car was connected via Bluetooth, and `BT SCO Headset Mic` was
+available as an input device, but `mBtScoOnByApp=false`. Playback went through the car (A2DP); recording
+(`VOICE_RECOGNITION`) stayed on the built-in phone mic. With the phone far away, the level was about 1/100 of close
+speech, no speech start was detected, and Offline Voice Input's 7 s emergency stop ended the round. **Consequence:
+the vad chain must work with the built-in phone mic in driving noise.** The debug JSON records the actually routed
+input device (`AudioRecord.getRoutedDevice()`), read-only, for diagnosis.
+
+The 7 s emergency stop belongs to Offline Voice Input (route local). Route vad does not use it. It has its own
+explicit no-speech timeout (section 4, a setting, default 8 s) and the 120 s maximum from the card.
+
+### 1.2 Audio source (open question, decided by measurement)
+
+`VOICE_COMMUNICATION` (platform noise suppression + echo cancellation) is the default, with `VOICE_RECOGNITION` as
+the fallback when it cannot initialize. The source stays selectable through the debug-only setting "Audio source", and
+the debug JSON records it. How it gets decided:
+- **The car recording cannot compare sources.** `auto-2026-10-13-1528.wav` is one fixed file. It is used offline to
+  tune and verify the endpoint parameters (pause, min speech, no-speech timeout) on real driving noise with the phone
+  mic (plan Task 5).
+- **On-device A/B** (plan Task 15): the same synthetic sentence + noise file through the phone speaker, one round per
+  source, then compare the debug JSON (speech start/end windows, max p, p percentiles in the noise lead).
+- Caveat, and why the A/B is not the final word: echo cancellation on `VOICE_COMMUNICATION` may treat audio the phone
+  plays itself as echo and suppress it. The speaker A/B is therefore biased against `VOICE_COMMUNICATION` and cannot
+  reproduce a real voice in a real car. The deciding comparison is Birk's test drive with debug on, alternating the
+  source between rounds. The plan prepares this but does not perform it. Until then the default stays
+  `VOICE_COMMUNICATION`. A default change is a one-line, reversible change after that drive.
+
 ## 2. Verified facts that shape the design
 
 ### 2.1 Test layers in CI (checked)
@@ -98,7 +130,7 @@ The plan adds a `publish` input to that workflow, so compile checks do not overw
  ┌───────────────────────────────────────────┐        ┌──────────────────────────────────────────┐
  │ VoiceInputController (route vad)           │ start  │ VadCapture                                │
  │  ├─ VadEndpointer (state machine)  ◄───────┼────────┤  AudioRecord 16k mono (VOICE_COMMUNICATION│
- │  │    windows: [p…] batches                 │ events │   → VOICE_RECOGNITION), optional BT SCO    │
+ │  │    windows: [p…] batches                 │ events │   → VOICE_RECOGNITION), Android's routing  │
  │  │    decision: pause | max | manual |      │        │  576-sample windows → Vad.compute → p      │
  │  │              mediaKey | noSpeech         │        │  round PCM buffer (≤ max + 5 s)            │
  │  ├─ finishVad(start,end,reason) ───────────┼───────►│  cut [start*512, end*512) → OfflineSpeech  │
@@ -121,8 +153,8 @@ Units and their single purpose:
 | `VoiceDevice` additions, `VadModelStatus`, `VadCaptureOptions` | `lib/core/services/android_voice.dart` | Channel contract. | services |
 | `VoiceInputController` (vad branch) | `lib/core/controllers/voice_input_controller.dart` | One round: start, feed, finish, budget, errors. | endpointer, device |
 | Workspace integration | `lib/core/screens/profile_workspace_screen.dart` | Media key, keep-screen-on, preload. | controller |
-| Settings UI | `lib/core/widgets/voice_preferences_card.dart` + `lib/core/widgets/vad_settings_section.dart` | Route, model install, tuning, mic, cues, debug. | device, prefs |
-| `VadCapture` | `android/.../VadCapture.kt` | Mic, probabilities, cut, cues, SCO. | sherpa `Vad`, `OfflineSpeech`, `VoiceDebugStore` |
+| Settings UI | `lib/core/widgets/voice_preferences_card.dart` + `lib/core/widgets/vad_settings_section.dart` | Route, model install, tuning, cues, debug. | device, prefs |
+| `VadCapture` | `android/.../VadCapture.kt` | Recording (routed input), probabilities, cut, cues. | sherpa `Vad`, `OfflineSpeech`, `VoiceDebugStore` |
 | `OfflineSpeech` | `android/.../OfflineSpeech.kt` | Parakeet lifecycle and decode on one executor. | sherpa `OfflineRecognizer`, `SpeechModelStore` |
 | `SpeechModelStore` | `android/.../SpeechModelStore.kt` | Download, resume, SHA256, extract, manifest, import, remove. | commons-compress |
 | `VoiceDebugStore` | `android/.../VoiceDebugStore.kt` | WAV + JSON per round, keep newest 30, delete all. | — |
@@ -136,8 +168,9 @@ Constants: sample rate 16,000 Hz; window = 512 samples = **32 ms**; window *i* c
 `[i*512, (i+1)*512)`. `startThreshold = 0.5`, `endThreshold = 0.35` (hysteresis, as in the Silero reference),
 `tail = 250 ms`. These three are internal constants, not settings.
 
-Settings (defaults): `pause` 1800 ms, `minSpeech` 250 ms, `preRoll` 300 ms, `maxDuration` 120 s.
-`w(ms) = ceil(ms / 32)` and `maxW = floor(maxMs / 32)`. So pauseW = 57, minSpeechW = 8, preRollW = 10, tailW = 8, maxW = 3750.
+Settings (defaults): `pause` 1800 ms, `minSpeech` 250 ms, `preRoll` 300 ms, `maxDuration` 120 s,
+`noSpeechTimeout` 8 s. `w(ms) = ceil(ms / 32)`, `maxW = floor(maxMs / 32)` and `noSpeechW = floor(noSpeechMs / 32)`.
+So pauseW = 57, minSpeechW = 8, preRollW = 10, tailW = 8, maxW = 3750, noSpeechW = 250.
 
 State: `run = 0`, `runStart = -1`, `speechStart = -1`, `lastSpeech = -1`, `silence = 0`.
 
@@ -152,7 +185,10 @@ State: `run = 0`, `runStart = -1`, `speechStart = -1`, `lastSpeech = -1`, `silen
    - `p >= endThreshold`: `lastSpeech = i`, `silence = 0`.
    - otherwise: `silence++`. If `silence >= pauseW`, decide
      **End(reason = pause, start = max(0, speechStart − preRollW), end = min(lastSpeech + 1 + tailW, i + 1), at = i)**.
-3. If no decision yet and `i + 1 >= maxW`: speech confirmed → **End(maxDuration, start = max(0, speechStart − preRollW), end = i + 1, at = i)**;
+3. If no decision yet, speech is not confirmed, `run == 0` (no speech start in progress) and `i + 1 >= noSpeechW`:
+   **NoSpeech(at = i)**. This ends a round in which nothing was said, after 8 s by default instead of 120 s. A speech
+   start still in progress at the timeout is not cut: the check waits until that run confirms or resets.
+4. If no decision yet and `i + 1 >= maxW`: speech confirmed → **End(maxDuration, start = max(0, speechStart − preRollW), end = i + 1, at = i)**;
    otherwise **NoSpeech(at = i)**.
 
 `forceEnd(reason)` (Stop button or media key, after `n` windows have been fed): speech confirmed →
@@ -168,6 +204,8 @@ a 120 s segment 70 s.
 Behaviour required by the card, all tested:
 - end after the pause; a thinking pause shorter than the pause does not end the round;
 - max duration ends the round (with or without speech);
+- no speech start within the no-speech timeout ends the round (NoSpeech) without recognition; a speech start in
+  progress at that moment is not cut;
 - pre-roll is included in the cut (start = first speech window − preRollW, clamped at 0);
 - speech shorter than `minSpeech` never starts a round (noise click);
 - probabilities between the thresholds neither start nor end speech in the state that would need them to.
@@ -184,7 +222,7 @@ decisions) is read by both the Dart test and the Python parity test, so the two 
 
 | Method | Arguments | Result |
 |---|---|---|
-| `startVad` | `id`, `microphone` (`phone`/`bluetooth`), `cues` (bool), `debug` (bool), `source` (`communication`/`recognition`), `maxMs` | `null`, or error `voice_unavailable` (model missing, mic unavailable) |
+| `startVad` | `id`, `cues` (bool), `debug` (bool), `source` (`communication`/`recognition`), `maxMs` | `null`, or error `voice_unavailable` (model missing, mic unavailable) |
 | `finishVad` | `id`, `startWindow`, `endWindow`, `atWindow`, `reason`, `config` (map for debug JSON) | transcript `String` (may be empty) |
 | `vadModelStatus` | — | map `{state, bytes, total, error}` |
 | `installVadModel` | — | `null` (progress via events) |
@@ -197,7 +235,6 @@ decisions) is read by both the Dart test and the Python parity test, so the two 
 
 Events (through the existing `event` method):
 - `{id, first: <int>, windows: <List<double>>}`: probability batches of 4 windows (128 ms).
-- `{id, notice: <String>}`: e.g. Bluetooth microphone unavailable, phone microphone used.
 - `{id, error: <String>}`: as today.
 - `{model: {state, bytes, total, error}}`: no `id`. `state` is one of `absent | downloading | verifying | unpacking | installed | failed`.
 - `{mediaKey: "playPause"}`: no `id`.
@@ -209,14 +246,16 @@ is extended in `VoiceChannel` to also cancel a vad round with that id.
 
 1. `VoiceInputController.start` with route vad: reject with "Download the speech model in App settings → Voice" if
    the model status is not `installed` (checked natively in `startVad`). Then `startVad`.
-2. Kotlin: optional SCO (API ≥ 31 `setCommunicationDevice(TYPE_BLUETOOTH_SCO)`; none available or API < 31 → phone
-   mic plus a `notice` event), cue "listening" (`ToneGenerator`, 150 ms), then `AudioRecord` with
-   `VOICE_COMMUNICATION` (falls back to `VOICE_RECOGNITION` if not initialized), new `Vad` from asset `silero_vad.onnx`.
-   A reader thread computes p per window and posts batches to the main thread.
+2. Kotlin: cue "listening" (`ToneGenerator`, 150 ms), then `AudioRecord` on the input Android currently routes (no
+   own routing) with `VOICE_COMMUNICATION` (falls back to `VOICE_RECOGNITION` if not initialized; the debug setting
+   can force `VOICE_RECOGNITION`), new `Vad` from asset `silero_vad.onnx`. The routed device
+   (`AudioRecord.getRoutedDevice()`) is noted for the debug JSON. A reader thread computes p per window and posts
+   batches to the main thread.
 3. Dart feeds every batch into `VadEndpointer`. On `End`: `finishedOnItsOwn = reason ∈ {pause, mediaKey}`, phase
    `transcribing`, `finishVad(...)` with timeout `vadRecognitionBudget(segment)`.
-   On `NoSpeech`: fail "No speech detected. Try again." (ends a conversation, as today).
-4. Kotlin `finishVad`: stop the reader, cue "got it", release SCO, cut the PCM, decode on the `OfflineSpeech`
+   On `NoSpeech` (no-speech timeout or max without speech): cancel the capture and fail "No speech detected. Try
+   again." This ends a conversation, as today. No recognition runs.
+4. Kotlin `finishVad`: stop the reader, cue "got it", cut the PCM, decode on the `OfflineSpeech`
    executor (waits for a running preload), write the debug files when enabled, return the text.
 5. Dart `_finish(text)`: an empty text is "No speech detected", the same as today.
 6. Stop button: `forceEnd(manual)`, not sent in a conversation (unchanged rule). Media key during a round:
@@ -259,24 +298,25 @@ Preload: `ProfileWorkspaceScreen.initState` and a route switch to vad call `prep
 
 User's task: choose how speech is recognized. When "On this phone · Parakeet" is chosen, the task is to install the
 model once, then optionally tune pause detection. Primary action: **Download speech model** (only while it is not
-installed). Editable controls: route, microphone, cue tones, the four tuning values, debug switch, debug-only audio
-source. Passive context: model size. Temporary status: download/unpack progress, errors.
+installed). Editable controls: route, cue tones, the five tuning values, debug switch, debug-only audio source.
+Passive context: model size. Temporary status: download/unpack progress, errors. There is no microphone choice
+(gestrichen, Birk 13.10.; see 1.1).
 
 Arrangements considered:
 - A: all controls flat in the Voice card. That means 9+ rows under "Voice input", tuning values dominate, and
   rarely changed values push the output settings off screen.
-- B (chosen): route select. Under it, only for vad: one model row (status + one action), then "Microphone" select
-  and "Cue tones" switch. Tuning and debug sit behind one collapsed disclosure, **"Pause detection"**. This means one
-  extra tap for rare changes, the everyday controls stay visible, and it matches Studio's grouped-list density.
+- B (chosen): route select. Under it, only for vad: one model row (status + one action), then the "Cue tones"
+  switch. Tuning and debug sit behind one collapsed disclosure, **"Pause detection"**. This means one extra tap for
+  rare changes, the everyday controls stay visible, and it matches Studio's grouped-list density.
 
 Rows (vad only):
 - Model row. Not installed: "Speech model · 487 MB download" + `Download`. Downloading: determinate
   `LinearProgressIndicator` + "123 / 487 MB" + `Cancel`. Verifying/unpacking: indeterminate + "Checking…" / "Unpacking…".
   Installed: "Speech model ready" + `Remove`. Failed: `StudioError(message)` + `Retry`.
-- `StudioSelect` "Microphone": `Phone`, `Bluetooth hands-free`.
 - `CompactSwitchListTile` "Cue tones" (default on).
 - Disclosure "Pause detection":
   - `StudioSelect` "Pause before sending": 1.0 / 1.4 / **1.8** / 2.4 / 3.0 s.
+  - "Wait for speech" (no-speech timeout): 5 / **8** / 12 / 20 s.
   - "Minimum speech": 0.15 / **0.25** / 0.4 s.
   - "Lead-in kept": 0.2 / **0.3** / 0.5 s.
   - "Longest recording": 30 / 60 / **120** s.
@@ -303,7 +343,7 @@ installed, failed, disclosure open). On-device screenshots in the last task supp
 | Archive hash mismatch | Delete the archive; `failed` "Download was corrupted. Retry." |
 | Not enough space | `failed` "Needs about 1.2 GB free space." |
 | `AudioRecord` cannot initialize with either source | Error "Microphone is unavailable." |
-| BT SCO unavailable | Phone mic, notice shown as partial status text. |
+| Nothing said within "Wait for speech" | Round ends without recognition: "No speech detected. Try again." The conversation ends. |
 | Parakeet load fails (OOM, corrupt) | `finishVad` error "Speech model could not be loaded (…)." The model state is kept. |
 | Recognition exceeds budget | `TimeoutException` → existing "Speech processing timed out. Please retry." |
 | `Vad.compute` returns −1 | Treated as p = 0, counted in the debug JSON `computeErrors`. |
@@ -312,7 +352,7 @@ installed, failed, disclosure open). On-device screenshots in the last task supp
 ## 10. Debug recordings
 
 - `filesDir/voice-debug/<yyyyMMdd-HHmmss>-<id8>.wav` (16 kHz mono PCM16, the whole round) and `.json`
-  `{version: 1, roundId, startedAt, sampleRate, windowSamples, windowMs, source, microphone, config{…}, probabilities[…3 decimals],
+  `{version: 1, roundId, startedAt, sampleRate, windowSamples, windowMs, source, inputDevice (routed device, read-only: product name + type), config{…}, probabilities[…3 decimals],
   computeErrors, decision{reason, startWindow, endWindow, atWindow}, recognition{segmentMs, decodeMs, modelReadyAtFinish, textLength, error}}`.
   **No transcript text** in the JSON.
 - Written only when the switch is on (default off). Cancelled rounds are written too (reason `cancelled`). The newest
@@ -334,9 +374,11 @@ installed, failed, disclosure open). On-device screenshots in the last task supp
   probability distribution, the endpoints per parameter grid and, if `--labels` is given, the end errors in ms.
 - Kotlin: compiled by `voice-apk.yml` through `tools/factory/dispatch-check.sh` (no Kotlin unit tests; the logic is in Dart).
 - On device (last task): signed build, install as update, in-app model download, preload/RAM, self-test with a
-  synthetic sentence + noise through the phone speaker, proven by debug WAV + JSON; media key via
-  `cmd media_session dispatch play-pause`; keep-screen-on flag via `dumpsys window`.
-- Birk's manual acceptance (not automatable here): a drive with BT hands-free and phone mic, with debug on.
+  synthetic sentence + noise through the phone speaker, proven by debug WAV + JSON; audio source A/B (same file,
+  both sources, compare the debug JSON, see 1.2); media key via `cmd media_session dispatch play-pause`;
+  keep-screen-on flag via `dumpsys window`.
+- Birk's manual acceptance (not automatable here): a drive with the phone mic as Android routes it, debug on,
+  alternating the audio source between rounds.
 
 ## 12. Privacy
 
@@ -355,13 +397,16 @@ Each is the smaller, reversible option.
 5. **sherpa-onnx from the v1.13.8 release AAR**, downloaded at build time by a Gradle task with a pinned SHA256 (not committed). Silero is downloaded the same way into a generated assets directory. Fallback if the AAR lacks the classes: copied kotlin-api sources + `.so` files.
 6. **576-sample windows to `Vad.compute`** (64 context + 512 new), new `Vad` per round, own state machine (not the detector's `acceptWaveform` segmentation).
 7. **Hysteresis 0.5/0.35 and a 250 ms tail as internal constants.** They are tuned with the offline check, not exposed in the UI.
-8. **No separate no-speech timeout**: a round without speech ends at "Longest recording" (NoSpeech).
+8. **No-speech timeout as a setting "Wait for speech", default 8 s** (choices 5/8/12/20 s), replacing the earlier
+   "ends at 120 s" decision (revised 13.10. after Birk's note: a 2-minute dead round in the car is not acceptable).
+   8 s is a little longer than Offline Voice Input's 7 s emergency stop, so there is room to think after the reply.
+   A speech start in progress at the timeout is not cut. Reversible: one preference key and one endpointer rule.
 9. **Media key ending a round counts as hands-free (sent in conversation mode)**. The on-screen Stop keeps today's "not sent" rule. Media keys are active only on route vad and in the foreground.
-10. **Bluetooth unavailable → phone mic with a visible notice** instead of failing the round.
+10. *(gestrichen, Birk 13.10.: microphone choice removed, see 1.1. The routed input device is recorded read-only in the debug JSON instead.)*
 11. **Cue tones = system `ToneGenerator` beeps** (`TONE_PROP_BEEP` "listening", `TONE_PROP_ACK` "got it"), default on. This is a placeholder until Birk picks sounds (aesthetics are his call; easy to swap).
 12. **Keep screen on for conversation mode on every input route.** A screen timeout pauses the activity and kills any capture, so this fixes the loop for all routes. It does not touch the local recognizer.
 13. **Debug data in internal storage, newest 30 rounds kept, manual delete, no transcript in JSON**, cancelled rounds included.
-14. **Debug-only "Audio source" select**, visible only with debug on. It is needed if echo cancellation removes the self-test audio played through the phone speaker, and useful for comparing sources in the car.
+14. **Debug-only "Audio source" select** (default `VOICE_COMMUNICATION`, fallback `VOICE_RECOGNITION`), visible only with debug on. This is how the open source question gets measured (1.2): on-device A/B plus Birk's drive. It is also needed if echo cancellation removes the self-test audio played through the phone speaker.
 15. **Model in internal storage, downloaded by the phone from GitHub**, resumable. Archive hash, then extraction, then a manifest with derived per-file hashes. Pre-placed archive import from the app's external files dir.
 16. **Parakeet preloaded only when the route is vad**, released when switching away (≈ 800 MB RAM).
 17. **Recognition budget 10 s + 0.5 × segment.**
@@ -375,10 +420,10 @@ Each is the smaller, reversible option.
 
 - `ANNAHME:` the AAR contains the Kotlin classes incl. `Vad.compute` and arm64 JNI libs. Check: plan task 1 script.
 - `ANNAHME:` `implementation(files("libs/sherpa-onnx-1.13.8.aar"))` in the app module works with the Gradle fetch task hooked before `preBuild`. Check: `dispatch-check.sh` run succeeds.
-- `ANNAHME:` `compute` on 576-sample windows gives probabilities comparable to the detector's own path. Check: offline script `--compare-detector` on synthetic speech + noise (max abs diff of detected segment boundaries ≤ 1 window), and on-device debug JSON shows p > 0.5 during speech.
+- `ANNAHME:` `compute` on 576-sample windows gives usable probabilities (same layout as the offline onnxruntime check). Check: the offline positive/negative controls (plan Task 5), and the on-device debug JSON showing p > 0.5 during the self-test speech.
+- `ANNAHME:` Silero separates speech from driving noise with the **built-in phone mic** at car distance (Birk's finding 1.1: level ≈ 1/100 of close speech). Check: offline on the car WAV (plan Task 5, percentiles and rounds), then Birk's drive. If p stays below 0.5 for real speech, that is a finding for Birk (thresholds/source), not something the plan changes silently.
 - `ANNAHME:` the onnxruntime input names of `silero_vad.onnx` are `x`/`state`/`sr` (v5). Check: `vad_offline_check.py --inspect` prints the inputs.
 - `ANNAHME:` Parakeet decodes a 120 s segment within RAM limits on the Xperia 5 IV. Check: on-device with a 100 s+ synthetic round (debug JSON `decodeMs`, `dumpsys meminfo`).
-- `ANNAHME:` `setCommunicationDevice` needs no `BLUETOOTH_CONNECT` permission. Check: in the car with Birk; a `SecurityException` is handled as "BT unavailable".
 - `ANNAHME:` a `MediaSession` that is active with `STATE_PAUSED` receives play/pause from `cmd media_session dispatch` and AVRCP. Check: `dumpsys media_session` shows Wing Voice as the media button session; fallback: `STATE_PLAYING` while a conversation runs.
 - `ANNAHME:` echo cancellation on `VOICE_COMMUNICATION` does not remove audio played by another app through the same phone's speaker. Check: self-test JSON max p during speech; otherwise switch the debug audio source to recognition.
 - `ANNAHME:` `HttpURLConnection` follows the GitHub release redirect (https→https) and the CDN honours `Range`. Check: interrupt a download on the device (toggle airplane mode) and retry; the progress continues.
@@ -387,4 +432,6 @@ Each is the smaller, reversible option.
 
 ## 15. Open questions for Birk
 
-None block the implementation. Revisable later: cue sounds (13.11), debug retention of 30 rounds (13.13), and keep-screen-on for all routes (13.12).
+None block the implementation. Revisable later: cue sounds (13.11), debug retention of 30 rounds (13.13),
+keep-screen-on for all routes (13.12), the no-speech timeout default of 8 s (13.8), and the audio source default
+after the test drive (1.2).
