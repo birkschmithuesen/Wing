@@ -156,7 +156,6 @@ void main() {
     // Listeners run in the zone that subscribed; rebuild inside the fake-async
     // test zone so the recognition budget timer follows tester.pump.
     recorder.dispose();
-    await device.stream.close();
     device = VoiceDeviceFixture();
     recorder = VoiceInputController(
       device: device,
