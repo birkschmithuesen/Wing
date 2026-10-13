@@ -1,5 +1,8 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
+import java.io.File
 import java.io.FileInputStream
+import java.net.URI
+import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -47,8 +50,8 @@ abstract class FetchVerifiedFile : DefaultTask() {
         val target = outputDirectory.file(fileName).get().asFile
         if (target.isFile && digest(target) == sha256.get()) return
         target.parentFile.mkdirs()
-        val part = java.io.File(target.path + ".part")
-        java.net.URI(url.get()).toURL().openStream().use { input ->
+        val part = File(target.path + ".part")
+        URI(url.get()).toURL().openStream().use { input ->
             part.outputStream().use { input.copyTo(it) }
         }
         val actual = digest(part)
@@ -56,8 +59,8 @@ abstract class FetchVerifiedFile : DefaultTask() {
         check(part.renameTo(target)) { "Could not move $part to $target" }
     }
 
-    private fun digest(file: java.io.File): String {
-        val md = java.security.MessageDigest.getInstance("SHA-256")
+    private fun digest(file: File): String {
+        val md = MessageDigest.getInstance("SHA-256")
         file.inputStream().use { stream ->
             val buffer = ByteArray(1 shl 16)
             while (true) {
