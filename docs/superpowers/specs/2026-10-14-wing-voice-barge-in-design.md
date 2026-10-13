@@ -221,14 +221,17 @@ formula yields a threshold > 0.9 or windows > 31 (1 s), the gate is considered f
 
 ### 4.3 Delivery and transcript filter (pure)
 
-`ListenDelivery decideDelivery(ProfileTurnStatus status, String transcript, {bool steerRejected = false})`:
+`ListenDelivery decideDelivery(ListenChatState state, String transcript, {bool steerRejected = false})`.
+The policy file does not import the 7000-line controller. The screen adapter maps `ProfileTurnStatus`
+(`profile_workspace_controller.dart:86-95`) to `ListenChatState`: `running`/`attention` → `steerable`;
+`submitting`/`reconnecting` → `busy`; `idle`/`completed`/`cancelled`/`failed` → `idle`.
 
 - `drop` when the trimmed transcript has no letter (`\p{L}`), or all its words (lower-cased,
   punctuation stripped) are in the filler set `{äh, ähm, öh, hm, hmm, mhm, uh, um, uhm, eh}`. "ja" and
   "nein" are **not** fillers.
-- `steer` for `running`, `attention` (but `queue` when `steerRejected`);
-- `queue` for `submitting`, `reconnecting`;
-- `send` for `idle`, `completed`, `cancelled`, `failed`.
+- `steer` for `steerable` (but `queue` when `steerRejected`);
+- `queue` for `busy`;
+- `send` for `idle`.
 
 A `steer` result of `false` re-runs `decideDelivery` with the then-current status and
 `steerRejected: true`. If the status is still `running` (a theoretical `rejected` from `agent.steer`
@@ -311,8 +314,8 @@ dropped utterance shows nothing.
 
 - `CompactSwitchListTile` **"Listen while Hermes works"**, subtitle "Speak to steer the running reply".
   It is shown only when the input route is vad and Conversation mode is on. Default: see D1.
-- Choice row **"Speech needed to steer"** with 250 / 400 / 600 ms (`StudioRadioTile`, like the existing
-  VAD rows). It is shown under the switch.
+- Choice row **"Speech needed to steer"** with 0.25 / 0.4 / 0.6 s (`StudioSelect`, like the existing
+  VAD rows in `lib/core/widgets/vad_settings_section.dart:160-175`). It is shown under the switch.
 - `CompactSwitchListTile` **"Interrupt read-aloud by speaking"**, default off. It is shown only after
   Task 7 enabled it (constant `bargeInPlaybackAvailable`), and only with Conversation mode on.
 - Debug only (with "Keep voice recordings"): text button **"Measure speaker echo"**. The synthetic script
@@ -368,6 +371,7 @@ thin hooks. New files live under `lib/voice_offline/`, the folder the TTS-langua
 | `lib/voice_offline/barge_in_policy.dart` | Pure: `listenConfig(VoicePreferences)`, `PlaybackGate` (4.2), `EchoStats` (5.3), `isSendableTranscript`, `ListenDelivery decideDelivery(status, text)` | `vad_endpoint.dart`, `voice_preferences.dart` |
 | `lib/voice_offline/turn_listener.dart` | `TurnListener extends ChangeNotifier`: owns listen rounds on a `VoiceDevice` (start with `keepPlayback`, feed windows to `VadEndpointer` + `PlaybackGate`, finish/transcribe, silent restart, close, probe). It emits `onUtterance(String)` and `onBarge()`. It does not know chats. | `android_voice.dart`, policy |
 | `lib/voice_offline/barge_in_coordinator.dart` | Glue: opens and closes the listener for a chat, serializes deliveries, calls `ListenTarget` (steer/queue/send) per `decideDelivery`, logs. | `ListenTarget` interface (implemented in the screen by a 20-line adapter), `TurnListener` |
+| `lib/voice_offline/barge_in_settings.dart` | `BargeInSettings` widget: the §6 setting rows and the debug echo probe button | `voice_preferences.dart`, `TurnListener`, `VoiceOutputController` |
 | `docs/VOICE_BARGE_IN.md` | Behaviour, settings, log lines, measurement results | |
 | tests: `test/voice_offline/barge_in_policy_test.dart`, `turn_listener_test.dart`, `barge_in_coordinator_test.dart` | | `test/support/voice_fixture.dart` |
 
@@ -378,8 +382,10 @@ thin hooks. New files live under `lib/voice_offline/`, the folder the TTS-langua
 | `android/.../VadCapture.kt` (fork-owned, VAD chain) | `Options` gets `startCue` (default = `cues`); `start()` plays the beep only if `startCue` |
 | `android/.../VoiceChannel.kt` | `start()`: skip `playback.stop()` when `keepPlayback == true`; pass `startCue` |
 | `lib/core/services/android_voice.dart` | `VadCaptureOptions` gets `keepPlayback` (default false) and `startCue` (default null → = cues) in `toMap` |
+| `lib/core/services/vad_endpoint.dart` (fork-owned) | getter `bool get speechStarted` (no behaviour change; Python mirror unaffected) |
+| `test/support/profile_browser_fixture.dart` | `rpcResponses` map so widget tests can answer `session.steer` |
 | `lib/core/services/voice_preferences.dart` | 3 keys: `voice.listen_turn` (on/off), `voice.listen_min_speech_ms` (250/400/600), `voice.barge_in_playback` (on/off); 3 fields |
-| `lib/core/widgets/voice_preferences_card.dart` | the rows from §6 |
+| `lib/core/widgets/voice_preferences_card.dart` | one line: insert `BargeInSettings` (new own file `lib/voice_offline/barge_in_settings.dart`, holds the rows from §6 and the probe button) after the Conversation mode switch |
 | `lib/core/screens/profile_workspace_screen.dart` | create/dispose the coordinator; `_conversation` setter → `close()`; after `_sendConversationTurn` → `open`; `_speakCompletedReply` → playback mode / skip per D3; 3.3 re-open; media key branch; status row; `_sendConversationTurn` busy → steer |
 | `test/support/voice_fixture.dart` | record `keepPlayback` / `startCue` (already records `vadOptions`) |
 
