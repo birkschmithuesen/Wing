@@ -107,7 +107,7 @@ class VoiceInputController extends ChangeNotifier {
     phase = VoiceInputPhase.transcribing;
     _notify();
     try {
-      final bytes = await device.stop(id);
+      final bytes = await device.stop(id, timeout: const Duration(seconds: 5));
       if (_id != id || _disposed) return;
       final remote = _remote;
       if (remote != null) {

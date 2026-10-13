@@ -284,6 +284,36 @@ void main() {
       expect(controller.active, false);
     },
   );
+  test(
+    'stop() asks the native layer to wait longer for longer recordings',
+    () async {
+      expect(transcriptionDeadlineFor(0), const Duration(milliseconds: 5000));
+      expect(
+        transcriptionDeadlineFor(50),
+        const Duration(milliseconds: 30000),
+      );
+      expect(
+        transcriptionDeadlineFor(500),
+        const Duration(milliseconds: 90000),
+      );
+
+      final device = VoiceDeviceFixture();
+      final controller = VoiceInputController(
+        device: device,
+        createRemote: RemoteVoiceFixture.new,
+      );
+      addTearDown(controller.dispose);
+      addTearDown(device.stream.close);
+      await controller.start(
+        const VoicePreferences(),
+        TextEditingValue.empty,
+        (_) => fail('Unexpected draft edit'),
+      );
+      controller.seconds = 50;
+      await controller.stop();
+      expect(device.lastStopTimeout, const Duration(milliseconds: 30000));
+    },
+  );
   test('insertion preserves text around selected range and cursor', () {
     final result = insertVoiceTranscript(
       const TextEditingValue(
