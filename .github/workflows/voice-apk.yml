@@ -5,10 +5,17 @@ name: Wing Voice APK (unsigned)
 # owner's sideload key (never stored in the repo or in Actions secrets).
 # Output goes to branch `voice-apk-bin` (git transport works behind egress
 # firewalls that block the artifact blob storage).
+# ci-voice-apk/** and ci-voice-apk-publish/** are the throwaway refs of
+# tools/factory/dispatch-check.sh (workflow_dispatch needs the file on main).
 on:
   workflow_dispatch:
+    inputs:
+      publish:
+        description: Update branch voice-apk-bin with this build
+        type: boolean
+        default: true
   push:
-    branches: [voice-offline]
+    branches: [voice-offline, 'ci-voice-apk/**', 'ci-voice-apk-publish/**']
 
 permissions:
   contents: write
@@ -34,10 +41,11 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Tests (voice)
-        run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart
+        run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart test/vad_endpoint_test.dart test/voice_vad_input_test.dart
       - name: Build unsigned arm64 APK
         run: flutter build apk --release --split-per-abi --target-platform android-arm64 -PvoiceVariant=true
       - name: Publish to voice-apk-bin branch
+        if: github.ref_name == 'voice-offline' || startsWith(github.ref_name, 'ci-voice-apk-publish/') || inputs.publish
         env:
           TOKEN: ${{ github.token }}
         run: |
