@@ -29,7 +29,9 @@ class VoiceMediaKeys(private val activity: Activity, private val emit: (Map<Stri
         })
         setPlaybackState(PlaybackState.Builder()
             .setActions(PlaybackState.ACTION_PLAY_PAUSE or PlaybackState.ACTION_PLAY or PlaybackState.ACTION_PAUSE)
-            .setState(PlaybackState.STATE_PAUSED, 0, 1f).build())
+            // STATE_PAUSED did not make this the media-button session while another app's session
+            // existed (Task 15 Step 8, on-device); a session in STATE_PLAYING does.
+            .setState(PlaybackState.STATE_PLAYING, 0, 1f).build())
     }
 
     fun enable(on: Boolean) { enabled = on; sync() }
