@@ -260,7 +260,7 @@ void main() {
     },
   );
   testWidgets(
-    'recording is bounded and native errors leave the draft untouched',
+    'recording is bounded at the new maximum duration and native errors leave the draft untouched',
     (tester) async {
       final device = VoiceDeviceFixture();
       final controller = VoiceInputController(
@@ -274,7 +274,13 @@ void main() {
         TextEditingValue.empty,
         (_) => fail('Unexpected draft edit'),
       );
-      await tester.pump(const Duration(seconds: 120));
+      await tester.pump(const Duration(seconds: 121));
+      expect(device.calls.where((c) => c == 'stop').length, 0);
+      await tester.pump(
+        Duration(
+          seconds: VoiceInputController.maxRecordingSeconds - 121,
+        ),
+      );
       expect(device.calls.where((c) => c == 'stop').length, 1);
       device.stream.add({
         'id': device.recording,
