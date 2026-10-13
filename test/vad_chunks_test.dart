@@ -74,12 +74,18 @@ void main() {
     expect(chunks.first, const VadChunk(0, 710));
   });
 
-  test('a pause that only dips above the end threshold is not a pause', () {
+  test('a dip that stays above the end threshold is cut at its lowest window', () {
     final values = _speech(1500);
     for (var i = 700; i < 760; i++) {
       values[i] = 0.4;
     }
-    expect(vadChunksFor(values, 0, 1500).first, const VadChunk(0, 938));
+    values[720] = 0.37;
+    values[730] = 0.37;
+    expect(vadChunksFor(values, 0, 1500).first, const VadChunk(0, 720));
+  });
+
+  test('a flat region is cut at 30 s', () {
+    expect(vadChunksFor(_speech(1500), 0, 1500).first, const VadChunk(0, 938));
   });
 
   test('ten minutes with pauses: cuts in pauses, chunks <= 30 s, full coverage', () {

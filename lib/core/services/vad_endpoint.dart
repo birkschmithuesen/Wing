@@ -221,7 +221,8 @@ class VadChunkConfig {
 /// most [VadChunkConfig.chunkMax]. Each cut goes into the middle of the longest
 /// run of windows below [vadEndThreshold] within the last
 /// [VadChunkConfig.search] of the allowed chunk (earliest run on ties); with no
-/// such pause the chunk is cut at [VadChunkConfig.chunkMax] exactly. A final
+/// such pause the cut falls at the quietest window of that region (earliest on
+/// ties); a flat region is cut at [VadChunkConfig.chunkMax] exactly. A final
 /// remainder shorter than [VadChunkConfig.minTail] is merged into the previous
 /// chunk when it stays within [VadChunkConfig.mergeLimit]. Windows beyond
 /// [probabilities] count as speech.
@@ -256,7 +257,25 @@ List<VadChunk> vadChunksFor(
         runStart = -1;
       }
     }
-    final cut = bestStart < 0 ? limit : bestStart + bestLength ~/ 2;
+    var cut = limit;
+    if (bestStart >= 0) {
+      cut = bestStart + bestLength ~/ 2;
+    } else {
+      // No pause below the end threshold: cut at the quietest window (earliest
+      // on ties) when it is strictly quieter than the loudest one.
+      var minAt = from;
+      var minValue = double.infinity;
+      var maxValue = double.negativeInfinity;
+      for (var i = from; i < limit; i++) {
+        final p = i < probabilities.length ? probabilities[i] : 1.0;
+        if (p < minValue) {
+          minValue = p;
+          minAt = i;
+        }
+        if (p > maxValue) maxValue = p;
+      }
+      if (minValue < maxValue) cut = minAt;
+    }
     chunks.add(VadChunk(start, cut));
     start = cut;
   }
