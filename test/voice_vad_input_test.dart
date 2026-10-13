@@ -153,6 +153,15 @@ void main() {
   });
 
   testWidgets('recognition gets a budget that scales with the segment', (tester) async {
+    // Listeners run in the zone that subscribed; rebuild inside the fake-async
+    // test zone so the recognition budget timer follows tester.pump.
+    recorder.dispose();
+    await device.stream.close();
+    device = VoiceDeviceFixture();
+    recorder = VoiceInputController(
+      device: device,
+      createRemote: () => throw StateError('vad never uses Hermes'),
+    );
     device.finishDelay = Completer<String>();
     await start();
     // 2 s of speech + tail: budget = 10 s + half the segment (≈ 11.3 s).
