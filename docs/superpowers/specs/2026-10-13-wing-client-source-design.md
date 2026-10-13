@@ -195,16 +195,23 @@ desktop app build and is a Folgekarte.
 
 ## 6. Config
 
-Append to `/home/birk/.hermes/profiles/birk/config.yaml` under the existing `platform_hints:` (line 1078). The
-`telegram` entry stays untouched:
+In `/home/birk/.hermes/profiles/birk/config.yaml`, insert **only** the two `wing:` lines directly after the
+telegram `append:` line (line 1080 at review time, under `platform_hints:` at line 1078). Do not touch the
+`telegram` entry: its value stays byte-identical to whatever the file holds.
 
 ```yaml
 platform_hints:
   telegram:
-    append: "Standard Telegram: Gesprächsmodus mit Sprachnachrichten (Skill voice-conversational-mode)."
+    # (unchanged — keep the existing append line exactly as it is)
   wing:
     append: "Standard Wing (Handy-App): Gesprächsmodus (Skill voice-conversational-mode, Abschnitt Ausgabekanal je Client). Wing liest deine Antwort selbst vor: Plain Text im Gesprächsstil, kein Markdown, keine Listen, keine Pfade, kein text_to_speech."
 ```
+
+The telegram value is not quoted here on purpose. The 2026-10-13 review quoted a longer text,
+`Standardmodus Telegram: … Tippt Birk lange Textnachrichten oder sagt 'Text', antworte als Text.`. The file read
+during review correction held
+`Standard Telegram: Gesprächsmodus mit Sprachnachrichten (Skill voice-conversational-mode).`. The file is
+authoritative, and the edit must leave it unchanged (plan Task D1 checks this before and after).
 
 It takes effect only after a gateway restart, which only Birk runs, in a separate shell. Then update skill
 `voice-conversational-mode` line 13: "Wing meldet sich als `wing` (seit Karte t_9d9bcf31); der Hinweis kommt über
