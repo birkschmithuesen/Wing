@@ -95,7 +95,7 @@ a busy chat"** hook in `_sendConversationTurn` (§6.3).
 | | A: own route on top of the workspace (**chosen**) | B: overlay layer inside the workspace | C: extract the conversation loop into its own controller |
 |---|---|---|---|
 | Idea | `CarModeScreen` is pushed with `Navigator.push`. The workspace stays mounted below and keeps running the loop | A `Stack` layer over the chat in `_buildWorkspace` | The loop moves out of the screen; car mode and chat both drive it |
-| Hooks in `profile_workspace_screen.dart` | ~30 lines (§8) | ~35 lines, plus a guard in every chat `PopScope`. All `PopScope`s on a route get `onPopInvoked`, so Back would also run the chat's `_leaveChat()` | Hundreds of lines in exactly the file upstream rewrote (±4516 lines) |
+| Hooks in `profile_workspace_screen.dart` | ~35 lines (§8) | ~40 lines, plus a guard in every chat `PopScope`. All `PopScope`s on a route get `onPopInvoked`, so Back would also run the chat's `_leaveChat()` | Hundreds of lines in exactly the file upstream rewrote (±4516 lines) |
 | Back, orientation, system bars | Own `PopScope` on its own route; clean | Shared with the chat route | — |
 | Risk | The workspace below thinks it lost focus (`_routeIsCurrent` false), which stops the loop and media keys. Fixed with one line (§6.1) | Back-gesture side effects | Merge conflicts, scope creep |
 
@@ -203,7 +203,7 @@ the WCAG formula from the light hex values in `lib/core/theme/wing_theme.dart:19
 - `warning` B45309 / white: 5.0:1
 - `muted` 586970 / white: 5.7:1
 
-The night pairs are computed by the palette test (plan Task 6), which requires ≥ 4.5:1 for the hint and
+The night pairs (and every accent family) are checked by the palette test (plan Task 2), which requires ≥ 4.5:1 for the hint and
 ≥ 3:1 for the 40+ sp label.
 
 **Type:**
@@ -230,7 +230,7 @@ All new code lives in `lib/car_mode/`. Tests live in `test/car_mode/`.
 
 | File | Responsibility | Depends on |
 |---|---|---|
-| `lib/car_mode/car_mode_state.dart` | Pure: `enum CarPhase`, `class CarSnapshot`, `CarPhase carPhaseOf(CarSnapshot)`, `enum CarTapAction { talk, sendNow, retry, ignore }`, `CarTapAction carTapActionFor(CarPhase, CarSnapshot)`, `class CarTapGate` (debounce, injectable clock), `enum CarDelivery { send, steer, queue, end }`, `CarDelivery carDeliveryFor({...})` | `VoiceInputPhase` only |
+| `lib/car_mode/car_mode_state.dart` | Pure: `enum CarPhase`, `class CarSnapshot`, `CarPhase carPhaseOf(CarSnapshot)`, `enum CarTapAction { talk, sendNow, retry, ignore }`, `CarTapAction carTapActionFor(CarPhase, CarSnapshot)`, `carTextFor`, `carIconFor`, `class CarTapGate` (timer-based debounce, so widget tests drive it with `pump`), `enum CarDelivery { send, steer, queue, end }`, `CarDelivery carDeliveryFor({...})` | `VoiceInputPhase` only |
 | `lib/car_mode/car_mode_bridge.dart` | `class CarModeBridge` (the operations the screen offers, as closures) + `CarSnapshot carSnapshotOf(...)`, the **only** car code that reads `ProfileChat`, the controllers and `ServerConnectionStatus` | fork types; body re-adapted after the upstream merge |
 | `lib/car_mode/car_mode_session.dart` | `class CarModeSession extends ChangeNotifier`: `active`, `enter(BuildContext)`, `exit()`, `tap()`, screen-on holder, auto-exit on chat change, log lines | bridge, state, `VoiceSwitchHolders` |
 | `lib/car_mode/car_mode_screen.dart` | `CarModeScreen` route widget: big button, hold-to-exit pill, Back hint, portrait/landscape layout, `Semantics` | session, `WingTokens` |
@@ -246,50 +246,64 @@ enum CarConnection { ok, reconnecting, offline }
 
 class CarSnapshot {
   const CarSnapshot({
-    required this.chatKey,        // Object? – identity of the chat on screen
-    required this.input,          // VoiceInputPhase
-    required this.speaking,       // output owner != null (incl. preparing)
-    required this.working,        // turn submitting/running/attention/reconnecting
-    required this.steerable,      // turn running or attention (steer accepted)
-    required this.needsInput,     // approval / clarification / secure prompt
-    required this.connection,     // CarConnection
-    this.error,                   // short voice/turn error text, or null
+    required this.chatKey,                    // Object? – identity of the chat on screen
+    this.title,                               // shown small, never logged
+    this.input = VoiceInputPhase.idle,
+    this.speaking = false,                    // output owner != null (incl. preparing)
+    this.working = false,                     // turn submitting/running/attention/reconnecting
+    this.needsInput = false,                  // approval / clarification / secure prompt
+    this.connection = CarConnection.ok,
+    this.error,                               // short voice/turn error text, never logged
   });
 }
 
 CarPhase carPhaseOf(CarSnapshot s);
 CarTapAction carTapActionFor(CarPhase phase, CarSnapshot s);   // see table 4.2
-CarDelivery carDeliveryFor({required bool working, required bool steerable,
+CarText carTextFor(CarPhase phase, CarSnapshot s);             // ({label, hint, detail})
+IconData carIconFor(CarPhase phase);
+CarDelivery carDeliveryFor({required bool working,
     required bool steerAvailable, required bool queueAvailable});
 
-class CarTapGate {                    // debounce
-  CarTapGate({Duration gap = const Duration(milliseconds: 600), DateTime Function()? now});
+class CarTapGate {                    // debounce, Timer based
+  CarTapGate({Duration gap = const Duration(milliseconds: 600)});
   bool accept();
+  void dispose();
 }
 
 // car_mode_bridge.dart
 class CarModeBridge {
   const CarModeBridge({
-    required this.changes,            // Listenable: controller + voice in/out
+    required this.changes,            // Listenable: controller, connection status, voice in/out
     required this.read,               // CarSnapshot Function()
+    required this.preferences,        // SharedPreferences: accent theme + input route name for the log
     required this.talk,               // Future<void> Function(): stop playback, open a round (loop forced on)
     required this.sendNow,            // Future<void> Function(): end round, deliver as hands-free
+    required this.stopSpeech,         // Future<void> Function(): VoiceOutputController.stop (timed for the log)
     required this.retry,              // Future<void> Function(): controller.resumeConnection()
     required this.leave,              // VoidCallback: cancel round + stop speech (workspace _cancelVoice)
   });
 }
+CarSnapshot carSnapshotOf(ProfileWorkspaceController controller,
+    VoiceInputController input, VoiceOutputController output);
 
 // car_mode_session.dart
 class CarModeSession extends ChangeNotifier {
   CarModeSession({required VoiceDevice device, required CarModeBridge bridge,
       void Function(String line)? log});
   bool get active;
+  CarSnapshot get snapshot;
   CarPhase get phase;
   Future<void> enter(BuildContext context);   // push CarModeScreen, screen-on holder
-  void exit();                                // leave(), release holder, pop
-  void tap();                                 // gate → carTapActionFor → bridge
+  void exit([String reason = 'hold']);        // leave(), release holder, pop
+  Future<void> tap();                         // carTapActionFor → gate → bridge
+  void logDelivery(CarDelivery delivery);     // called by the workspace hook (§6.3)
 }
 ```
+
+The pushed route sits outside the workspace's `Theme(profileWorkspaceTheme(...))` wrapper (wt `:680-686`).
+`CarModeScreen` therefore re-applies `profileWorkspaceTheme(Theme.of(context), accent:
+WorkspaceAccent.fromName(prefs.getString(WorkspaceAccent.preferenceKey)))`, so the user's accent is used
+(`lib/core/theme/profile_workspace_theme.dart:17-30`).
 
 ## 6. Hooks in `profile_workspace_screen.dart` (fork lines wt)
 
@@ -326,16 +340,18 @@ usually still busy. Today `_sendConversationTurn` ends the loop there (wt `:306`
 
 - **If barge-in has landed** (`git grep -n "decideDelivery" lib/`): its hook already steers/queues. Car mode
   adds no code and only tests the path.
-- **If not:** car mode adds the minimal version, only while `_car.active`. Before the `chat.busy` abort:
+- **If not:** car mode adds the minimal version, only while `_car.active`. Before the `chat.busy` abort
+  (the full guarded code is in plan Task 7):
 
   ```dart
-  if (chat.busy && _car.active) {
+  if (_car.active && chat.busy /* + mounted, own chat, non-empty, no slash */) {
+    final actions = _composerActions(chat);   // steer already checks running/attention
     final delivery = carDeliveryFor(
       working: true,
-      steerable: {ProfileTurnStatus.running, ProfileTurnStatus.attention}.contains(chat.status),
-      steerAvailable: _composerActions(chat)[ComposerAction.steer] == null,
-      queueAvailable: _composerActions(chat)[ComposerAction.queue] == null,
+      steerAvailable: actions[ComposerAction.steer] == null,
+      queueAvailable: actions[ComposerAction.queue] == null,
     );
+    _car.logDelivery(delivery);
     if (delivery != CarDelivery.end) {
       _conversationAwaitingReply = true;
       await _performComposerAction(chat,
@@ -351,15 +367,19 @@ usually still busy. Today `_sendConversationTurn` ends the loop there (wt `:306`
   visible. The rejection is rare: `rejected` only comes when the turn already ended (barge-in spec §2). The
   car screen then shows `idle`, and the user can tap again. When barge-in lands later, its
   `decideDelivery` replaces this block. The barge-in card must delete `carDeliveryFor` and its call
-  (named in plan Task 5).
+  (named in plan Task 7).
+
+  Known edge: a **queued** utterance runs as its own turn after the current one. `_canContinueConversation`
+  then sees a busy chat, and the microphone stays closed until the next tap. This is documented in
+  `docs/CAR_MODE.md` limits.
 
 ### 6.4 Entry, field and dispose
 
 - **Menu item:** one `PopupMenuItem(value: 'car', child: Text('Car mode'))` (`StudioPopupMenuItem` after
   the upstream merge).
 - **`onSelected`:** one branch `else if (action == 'car') unawaited(_car.enter(context));`.
-- **Field:** `late final _car = CarModeSession(device: _voiceDevice, bridge: CarModeBridge(...))`, about 12
-  lines of closures over `_dictate`, `_carSend`, `_voiceInput`, `_voiceOutput`, `controller`,
+- **Field:** `late final _car = CarModeSession(device: _voiceDevice, bridge: CarModeBridge(...))`, about
+  18 lines of closures over `_dictate`, `_carSend`, `_voiceInput`, `_voiceOutput`, `controller`,
   `_cancelVoice`.
 - **`dispose`:** `_car.dispose();`.
 
@@ -384,7 +404,7 @@ WingCar exit reason=<hold|chatChanged|disposed>
 
 | File | Lines (estimate) | What |
 |---|---|---|
-| `lib/core/screens/profile_workspace_screen.dart` | ~30 changed or added (import 1, field 12, dispose 1, menu 3, `onSelected` 1, focus 1, `_loopWanted` 1 + 4 replacements, `_carSend` 3); + ~14 for §6.3 only if barge-in has not landed | thin hooks §6 |
+| `lib/core/screens/profile_workspace_screen.dart` | ~35 changed or added (imports 3, `_car` field 18 + `_loopWanted` 1 + `_carSend` 1, 4 replaced conditions, `_carSend` reset 1 + send condition 2, focus 1, menu 3, dispose 1); + ~22 for §6.3 only if barge-in has not landed | thin hooks §6 |
 | `.github/workflows/voice-review.yml` (fork-owned, VAD chain) | 1 | add `test/car_mode/car_mode_screen_test.dart` to the render list |
 
 Not touched: `voice_input_controller.dart`, `voice_output_controller.dart`, `android_voice.dart`,
@@ -393,7 +413,7 @@ No overlap with the TTS-language plan, which touches `android_voice.dart` `speak
 `VoiceChannel.kt`.
 
 The goal "only an entry point of a few lines" is not reachable. The loop, the focus rule and the auto-send
-condition are private members of the screen. ~30 lines of hooks at five named spots is the minimum
+condition are private members of the screen. ~35 lines of hooks at five named spots is the minimum
 without moving the loop out (approach C).
 
 ## 9. Dependencies and base

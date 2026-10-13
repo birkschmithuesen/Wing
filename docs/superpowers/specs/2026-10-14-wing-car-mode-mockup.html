@@ -291,7 +291,7 @@
     const extra = S.phase === 'listening'
       ? `<span class="pulse" style="border-color:${S.look === 'B' ? pal.fill : 'currentColor'}"></span>`
       : '';
-    const bars = S.phase === 'speaking' ? '<div class="bars"><i></i><i></i><i></i><i></i></div>' : '';
+    const bars = ''; // Only listening moves (pulse ring); see spec 4.4.
     const err = S.phase === 'error' ? `<div class="err">${S.error}</div>` : '';
     const temp = S.temp ? `<div class="temp">${S.temp}</div>` : '';
     const hint = hintFor(S.phase);
