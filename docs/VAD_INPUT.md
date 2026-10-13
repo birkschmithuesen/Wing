@@ -45,7 +45,7 @@ carry the chunk planner (it only mirrors the end-of-utterance decision for tunin
 
 - Suite `bash tools/factory/ci-suite.sh` on 4a1a86c6f3e9: `ci-suite: run 38480782174 conclusion=success`.
 - On-device (Task 15): see "On-device verification 2026-10-14". Open: audio-source A/B and the self-test rounds (a wired
-  headset stayed connected), media key (fails, see above).
+  headset stayed connected), media key (fails, see above and "Known open gap").
 
 ## On-device verification 2026-10-14
 
@@ -65,6 +65,13 @@ as updates, data kept.
 
 Notes: Birk used the phone in parallel (other rounds appeared in the debug directory and settings values changed
 meanwhile); only the four rounds of this run were removed from the phone, the others were left alone.
+
+## Known open gap (review note, 2026-10-14)
+
+**Media key / A/B gap: Wing does not receive the media key; Spotify holds the media button session. The audio-source
+A/B (Task 15 Step 7) has no valid numbers.** Birk recorded the media key as a review finding during his own device
+test and does not want another phone run for it. Commit 4a1a86c6 (`STATE_PLAYING`) stays: CI is green and it shows no
+regression, but it does not solve the problem. A follow-up card is created after this run.
 
 ## Open items for Birk
 
