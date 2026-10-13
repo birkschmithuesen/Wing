@@ -538,6 +538,35 @@ void main() {
     expect(device.mediaKeysCalls, [true]);
   });
 
+  testWidgets('leaving the workspace releases media keys and the model', (
+    tester,
+  ) async {
+    await vadRoute();
+    await show(tester);
+    expect(device.releases, 0);
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump();
+    expect(device.mediaKeysCalls, [true, false]);
+    expect(device.releases, 1);
+  });
+
+  testWidgets('backgrounding releases media keys and resume restores them', (
+    tester,
+  ) async {
+    await vadRoute();
+    await show(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await tester.pump();
+    expect(device.mediaKeysCalls, [true, false]);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pump();
+    expect(device.mediaKeysCalls, [true, false, true]);
+  });
+
   testWidgets('a running conversation keeps the screen on until it ends', (
     tester,
   ) async {
