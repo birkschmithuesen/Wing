@@ -569,9 +569,9 @@ void main() {
     expect(device.mediaKeysCalls.last, isFalse);
   });
 
-  testWidgets('settings destination never holds media keys', (tester) async {
+  testWidgets('a non-chat destination never holds media keys', (tester) async {
     await vadRoute();
-    await show(tester, destination: AppDestination.settings);
+    await show(tester, destination: AppDestination.activity);
     expect(device.mediaKeysCalls, isEmpty);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

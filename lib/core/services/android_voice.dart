@@ -232,7 +232,11 @@ class VoiceSwitchHolders {
   /// holder arrives or the last one leaves.
   void set(Object owner, bool on) {
     final wasOn = _holders.isNotEmpty;
-    on ? _holders.add(owner) : _holders.remove(owner);
+    if (on) {
+      _holders.add(owner);
+    } else {
+      _holders.remove(owner);
+    }
     final isOn = _holders.isNotEmpty;
     if (isOn != wasOn) {
       unawaited(_apply(isOn).catchError((Object _) {}));
