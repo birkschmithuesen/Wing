@@ -41,7 +41,7 @@ jobs:
           cache: true
       - run: flutter pub get
       - name: Tests (voice)
-        run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart test/vad_endpoint_test.dart test/voice_vad_input_test.dart
+        run: flutter test --no-pub test/voice_preferences_test.dart test/voice_processing_test.dart test/voice_workspace_test.dart test/vad_endpoint_test.dart test/voice_vad_input_test.dart test/vad_settings_test.dart
       - name: Build unsigned arm64 APK
         # Actions log download is blocked on the dev server; surface the build
         # errors as annotations (readable via the check-runs API).

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../controllers/voice_output_controller.dart';
@@ -7,6 +8,7 @@ import '../services/voice_preferences.dart';
 import '../services/voice_sample.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
+import 'vad_settings_section.dart';
 
 class VoicePreferencesPage extends StatelessWidget {
   const VoicePreferencesPage({
@@ -143,7 +145,21 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     super.dispose();
   }
 
-  Widget _engine(String title, String key, Enum selected) =>
+  Future<void> _saveInput(String value) async {
+    final device = widget.device ?? AndroidVoice.instance;
+    final wasVad = _preferences.input == VoiceInputRoute.vad;
+    await _save(VoicePreferences.inputKey, value);
+    final isVad = _preferences.input == VoiceInputRoute.vad;
+    if (isVad == wasVad) return;
+    try {
+      await device.setMediaKeys(isVad);
+      await (isVad ? device.prepareVad() : device.releaseVad());
+    } catch (_) {
+      // The workspace retries on resume; settings stay saved.
+    }
+  }
+
+  Widget _engine(String title, String key, VoiceProcessing selected) =>
       StudioSelect<String>(
         key: ValueKey('$key-${selected.name}'),
         label: title,
@@ -236,13 +252,39 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           style: Theme.of(context).textTheme.bodySmall,
         ),
         const SizedBox(height: 16),
-        _engine('Voice input', VoicePreferences.inputKey, _preferences.input),
-        const SizedBox(height: 12),
-        Text(
-          _preferences.input == VoiceInputRoute.local
-              ? 'Transcribe on this phone. Review the text before sending.'
-              : 'Send a recording to the selected Hermes profile and its speech provider. Review the text before sending.',
+        StudioSelect<String>(
+          key: ValueKey('voice-input-${_preferences.input.name}'),
+          label: 'Voice input',
+          value: _preferences.input.name,
+          options: const [
+            (value: 'local', label: 'Local · Android'),
+            (value: 'hermes', label: 'Hermes · server profile'),
+            (value: 'vad', label: 'On this phone · Parakeet'),
+          ],
+          onChanged: _saving
+              ? null
+              : (value) {
+                  if (value != null) unawaited(_saveInput(value));
+                },
         ),
+        const SizedBox(height: 12),
+        Text(switch (_preferences.input) {
+          VoiceInputRoute.local =>
+            'Transcribe on this phone. Review the text before sending.',
+          VoiceInputRoute.hermes =>
+            'Send a recording to the selected Hermes profile and its speech provider. Review the text before sending.',
+          VoiceInputRoute.vad =>
+            'Recognize on this phone. Pauses end each message automatically.',
+        }),
+        if (_preferences.input == VoiceInputRoute.vad) ...[
+          const SizedBox(height: 12),
+          VadSettingsSection(
+            settings: _preferences,
+            device: widget.device ?? AndroidVoice.instance,
+            saving: _saving,
+            onSave: _save,
+          ),
+        ],
         if (_preferences.input == VoiceInputRoute.local) ...[
           const SizedBox(height: 12),
           if (_capabilities?.recognitionAvailable == false)
