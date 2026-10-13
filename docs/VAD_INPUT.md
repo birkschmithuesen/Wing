@@ -73,3 +73,36 @@ Car recording (68.52 s, 44.1 kHz stereo, built-in phone mic in driving noise):
   an `endOfFile` round from 64.9 s. A longer wait therefore only removes the trailing/idle `noSpeech` rounds, nothing else changes.
 - Whether the `noSpeech` stretches correspond to silent passages or to unheard speech cannot be decided without labels;
   the high share above start suggests the former.
+
+## Debug recordings
+
+With the debug switch on (App settings → Voice → Pause detection), every vad round writes
+`files/voice-debug/<yyyyMMdd-HHmmss>-<id8>.wav` (16 kHz mono PCM16, whole round) and `.json` inside the app's private
+storage. Cancelled rounds are written too; the newest 30 rounds are kept; "Delete debug recordings" removes all. The JSON
+holds `version, roundId, startedAt, sampleRate, windowSamples, windowMs, source, inputDevice, config, probabilities`
+(3 decimals), `computeErrors`, `decision{reason, startWindow, endWindow, atWindow}` and
+`recognition{segmentMs, decodeMs, modelReadyAtFinish, textLength, error}`. It contains no transcript text. Nothing is
+uploaded by the app.
+
+Retrieval from the phone (root, over `hadb`; 48 kB base64 chunks, SHA256 compared with the phone):
+
+```bash
+python3 -I tools/voice/pull_debug_round.py --list
+python3 -I tools/voice/pull_debug_round.py --round <yyyyMMdd-HHmmss-id8> --out build/voice-debug
+```
+
+The recordings are private: keep them under `build/` (git-ignored), never commit, upload or paste them, and delete the
+directory after analysis.
+
+## Tuning
+
+Offline check against a recording (numbers only; venv with numpy and onnxruntime, model `silero_vad.onnx`):
+
+```bash
+python3 -I tools/voice/vad_offline_check.py --model <silero_vad.onnx> --inspect
+python3 -I tools/voice/vad_offline_check.py --model <silero_vad.onnx> --wav <round.wav> --grid
+python3 -I tools/voice/vad_offline_check.py --model <silero_vad.onnx> --wav <round.wav> --labels <labels> --no-speech-ms 12000
+```
+
+`--grid` prints the endpoints for pause values 1000-3000 ms; `--labels` adds the end error in ms; `--no-speech-ms`
+changes the wait for speech start. Change the defaults in the app only with numbers from such a run.

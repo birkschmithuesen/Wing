@@ -3,6 +3,7 @@ package com.tarkilhk.wing
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
+import android.view.WindowManager
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -16,6 +17,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val speech = OfflineSpeech(models)
     private val debugStore = VoiceDebugStore(activity)
     private val vad = VadCapture(activity, models, speech, debugStore, ::emit)
+    private val mediaKeys = VoiceMediaKeys(activity, ::emit)
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     init {
         // A previous process may have died before its normal cleanup.
@@ -76,6 +78,12 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                 "removeVadModel" -> { speech.release(); models.remove(); result.success(null) }
                 "prepareVad" -> { if (models.verifyManifest() == null) speech.prepare(); result.success(null) }
                 "releaseVad" -> { speech.release(); result.success(null) }
+                "setMediaKeys" -> { mediaKeys.enable(call.argument<Boolean>("on") == true); result.success(null) }
+                "keepScreenOn" -> {
+                    if (call.argument<Boolean>("on") == true) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
@@ -112,9 +120,11 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         }
         return true
     }
-    fun pause() { capture.pause(); vad.pause(); playback.stop() }
+    fun pause() { capture.pause(); vad.pause(); playback.stop(); mediaKeys.pause() }
+    fun resume() { mediaKeys.resume() }
     fun close() {
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
+        mediaKeys.close(); activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         capture.close(); playback.close(); vad.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
     }
 }
