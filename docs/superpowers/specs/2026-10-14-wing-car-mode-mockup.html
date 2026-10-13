@@ -1,0 +1,489 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wing – Automodus (klickbarer Entwurf)</title>
+<!--
+  Klickbarer Entwurf für Karte t_c8de9cba. Eigenständig: kein Netzwerk, kein externes Font.
+  Spec: docs/superpowers/specs/2026-10-14-wing-car-mode-design.md
+  Screenshot-Modus: ?shot=1&state=<phase>&orient=portrait|landscape&theme=day|night&look=A|B&d2=A|B|C
+-->
+<style>
+  :root {
+    /* Studio tokens (lib/core/theme/wing_theme.dart, light 192-202 / dark 174-184) */
+    --l-surface:#F7F7F4; --l-raised:#FFFFFF; --l-border:#D6E0E1; --l-on:#1B2D36; --l-muted:#586970;
+    --l-accent:#126D70; --l-danger:#B91C1C; --l-running:#1D4ED8; --l-warning:#B45309;
+    --d-surface:#101B24; --d-raised:#192934; --d-border:#344C58; --d-on:#EBF1F2; --d-muted:#ADBDC4;
+    --d-accent:#65C7BC; --d-danger:#F87171; --d-running:#60A5FA; --d-warning:#FBBF24;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; }
+  body { font-family: Roboto, "Segoe UI", system-ui, -apple-system, sans-serif; background:#E6E8E6; color:#1B2D36; }
+  body.shot { background: transparent; }
+
+  /* ---------- page layout (not part of the app) ---------- */
+  .page { display:flex; gap:24px; padding:16px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+  .stage { flex: 0 0 auto; display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .frame { background:#0A0F14; border-radius:36px; padding:10px; box-shadow:0 10px 30px rgba(0,0,0,.25); }
+  .scaler { transform-origin: top left; }
+  .panel { flex: 1 1 380px; max-width: 560px; background:#fff; border-radius:12px; padding:16px 18px; box-shadow:0 2px 10px rgba(0,0,0,.08); font-size:15px; line-height:1.45; }
+  .panel h1 { font-size:20px; margin:0 0 4px; }
+  .panel h2 { font-size:15px; margin:18px 0 6px; text-transform:uppercase; letter-spacing:.04em; color:#586970; }
+  .panel .big { font-size:30px; font-weight:700; margin:2px 0 0; color:#126D70; }
+  .panel .sub { color:#586970; font-size:13px; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; align-items:center; margin:4px 0; }
+  .seg { display:inline-flex; border:1px solid #D6E0E1; border-radius:8px; overflow:hidden; }
+  .seg button { border:0; background:#fff; padding:8px 10px; font:inherit; font-size:14px; cursor:pointer; min-height:40px; }
+  .seg button + button { border-left:1px solid #D6E0E1; }
+  .seg button.on { background:#E2F1EE; font-weight:600; }
+  .btn { border:1px solid #D6E0E1; background:#fff; border-radius:6px; padding:8px 10px; font:inherit; font-size:14px; cursor:pointer; min-height:40px; }
+  .btn:hover, .seg button:hover { background:#F0F4F4; }
+  .dec { border:1px solid #D6E0E1; border-radius:8px; padding:10px; margin:8px 0; }
+  .dec b { display:block; margin-bottom:4px; }
+  .rec { color:#15803D; font-weight:600; }
+  .note { font-size:13px; color:#3B4B52; }
+  table.tap { border-collapse:collapse; font-size:13px; width:100%; }
+  table.tap td, table.tap th { border-bottom:1px solid #E5ECEC; padding:4px 6px; text-align:left; vertical-align:top; }
+  .log { font-family: ui-monospace, Menlo, Consolas, monospace; font-size:12px; background:#0F1A21; color:#ADBDC4; border-radius:6px; padding:8px; height:120px; overflow:auto; white-space:pre; }
+
+  /* ---------- the app screen ---------- */
+  .screen { position:relative; overflow:hidden; border-radius:26px; display:flex; flex-direction:column; user-select:none; -webkit-user-select:none; touch-action:manipulation; }
+  body.shot .screen { border-radius:0; }
+  .screen.portrait { width:411px; height:960px; }
+  .screen.landscape { width:960px; height:411px; }
+  .screen.day   { --surface:var(--l-surface); --raised:var(--l-raised); --border:var(--l-border); --on:var(--l-on); --muted:var(--l-muted); --accent:var(--l-accent); }
+  .screen.night { --surface:var(--d-surface); --raised:var(--d-raised); --border:var(--d-border); --on:var(--d-on); --muted:var(--d-muted); --accent:var(--d-accent); }
+  .screen { background:var(--surface); color:var(--on); }
+  .statusbar { height:24px; flex:0 0 24px; display:flex; justify-content:space-between; align-items:center; padding:0 16px; font-size:13px; color:var(--muted); }
+  .statusbar .ic { display:flex; gap:6px; align-items:center; }
+  .statusbar svg { width:14px; height:14px; fill:var(--muted); }
+  .navbar { height:20px; flex:0 0 20px; display:flex; justify-content:center; align-items:center; }
+  .navbar i { width:108px; height:4px; border-radius:2px; background:var(--muted); opacity:.55; }
+  .body { flex:1 1 auto; display:flex; min-height:0; }
+  .portrait .body { flex-direction:column; }
+  .landscape .body { flex-direction:row; }
+  .strip { display:flex; align-items:center; gap:12px; padding:4px 12px; }
+  .portrait .strip { height:64px; flex:0 0 64px; }
+  .landscape .strip { width:172px; flex:0 0 172px; flex-direction:column; align-items:flex-start; justify-content:flex-start; padding:12px 4px 12px 12px; }
+  .title { font-size:16px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; flex:1 1 auto; text-align:right; }
+  .landscape .title { text-align:left; width:100%; }
+
+  .exit { position:relative; display:inline-flex; align-items:center; gap:6px; height:48px; padding:0 16px 0 12px; border-radius:24px;
+          border:2px solid var(--border); background:var(--raised); color:var(--on); font:inherit; font-size:16px; cursor:pointer; flex:0 0 auto; white-space:nowrap; }
+  .exit svg { width:20px; height:20px; fill:var(--muted); }
+  .exit .ring { position:absolute; inset:-2px; border-radius:24px; pointer-events:none;
+                background: conic-gradient(var(--accent) calc(var(--p,0) * 1turn), transparent 0);
+                -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude; padding:3px; }
+
+  .area { flex:1 1 auto; position:relative; min-height:0; min-width:0; padding:0 12px 12px; }
+  .landscape .area { padding:12px 12px 12px 4px; }
+  .bigbtn { position:absolute; inset:0 12px 12px; border-radius:28px; border:0; padding:24px; cursor:pointer;
+            display:flex; flex-direction:column; justify-content:center; align-items:center; gap:18px; text-align:center;
+            font:inherit; transition: background-color .2s ease, transform .08s ease; overflow:hidden; }
+  .landscape .bigbtn { inset:12px 12px 12px 4px; flex-direction:row; gap:36px; text-align:left; }
+  .bigbtn:active { transform: scale(.992); }
+  .bigbtn .icon { width:120px; height:120px; flex:0 0 auto; position:relative; display:flex; align-items:center; justify-content:center; }
+  .landscape .bigbtn .icon { width:112px; height:112px; }
+  .bigbtn .icon svg { width:100%; height:100%; position:relative; z-index:1; fill:currentColor; }
+  .bigbtn .label { font-size:44px; font-weight:600; line-height:1.1; letter-spacing:-.01em; }
+  .landscape .bigbtn .label { font-size:40px; }
+  .bigbtn .hint { font-size:22px; line-height:1.3; margin-top:10px; }
+  .bigbtn .err { font-size:20px; margin-top:10px; }
+  .bigbtn .temp { font-size:20px; margin-top:12px; font-weight:600; }
+
+  /* look B: circle */
+  .lookB .bigbtn { background: transparent !important; border: 0 !important; cursor: default; }
+  .lookB .bigbtn .icon { border-radius:50%; width:min(86%, 340px); height:auto; aspect-ratio:1; cursor:pointer; }
+  .lookB.landscape .bigbtn .icon { width:auto; height:min(92%, 330px); }
+  .lookB .bigbtn .icon svg { width:38%; height:38%; }
+  .lookB .bigbtn:active { transform:none; }
+
+  /* listening pulse */
+  .pulse { position:absolute; inset:-6%; border-radius:50%; border:6px solid currentColor; opacity:.0; animation: pulse 1.6s ease-out infinite; }
+  @keyframes pulse { 0% { transform:scale(.7); opacity:.55; } 100% { transform:scale(1.25); opacity:0; } }
+  body.shot .pulse, .reduce .pulse { animation:none; opacity:.35; transform:scale(1.05); }
+  .bars { display:flex; gap:6px; align-items:flex-end; height:28px; margin-top:6px; justify-content:center; }
+  .bars i { width:8px; background:currentColor; border-radius:3px; animation: bar 1s ease-in-out infinite; }
+  .bars i:nth-child(2){animation-delay:.15s} .bars i:nth-child(3){animation-delay:.3s} .bars i:nth-child(4){animation-delay:.45s}
+  @keyframes bar { 0%,100% { height:6px } 50% { height:26px } }
+  body.shot .bars i { animation:none; } body.shot .bars i:nth-child(odd){height:20px} body.shot .bars i:nth-child(even){height:10px}
+  .landscape .bars { justify-content:flex-start; }
+  .shake { animation: shake .3s; }
+  @keyframes shake { 25%{transform:translateX(-6px)} 75%{transform:translateX(6px)} }
+
+  .toast { position:absolute; left:50%; bottom:44px; transform:translateX(-50%); background:var(--raised); color:var(--on);
+           border:1px solid var(--border); border-radius:8px; padding:12px 16px; font-size:17px; box-shadow:0 4px 14px rgba(0,0,0,.25);
+           opacity:0; transition:opacity .2s; pointer-events:none; white-space:nowrap; z-index:5; }
+  .toast.show { opacity:1; }
+  .closed { position:absolute; inset:24px 0 20px; background:var(--surface); display:none; flex-direction:column; align-items:center; justify-content:center; gap:16px; padding:24px; text-align:center; z-index:6; }
+  .closed.show { display:flex; }
+  .closed p { color:var(--muted); font-size:16px; margin:0; }
+</style>
+</head>
+<body>
+<div class="page" id="page">
+  <div class="stage">
+    <div class="frame" id="frame"><div class="scaler" id="scaler"><div id="screen" class="screen portrait day lookA"></div></div></div>
+    <div class="sub" id="stageNote">Sony Xperia 5 IV · 411 × 960 CSS px (21:9)</div>
+  </div>
+
+  <div class="panel" id="panel">
+    <h1>Wing Automodus – klickbarer Entwurf</h1>
+    <div class="sub">Karte t_c8de9cba · Stand 14.10.2026 · Texte in der App auf Englisch (Wing hat keine Übersetzungen), Erklärungen hier auf Deutsch.</div>
+
+    <h2>Aktueller Zustand</h2>
+    <div class="big" id="stateBig">idle</div>
+    <div class="sub" id="stateDe">Leerlauf – Tippen startet die Runde.</div>
+
+    <h2>Ansicht</h2>
+    <div class="row">
+      <span class="seg" data-key="orient"><button data-v="portrait">Hochformat</button><button data-v="landscape">Querformat (Halterung)</button></span>
+      <span class="seg" data-key="theme"><button data-v="day">Tag</button><button data-v="night">Nacht</button></span>
+    </div>
+
+    <h2>Entscheidungen für Birk</h2>
+    <div class="dec">
+      <b>D1 · Tippen, während Hermes arbeitet</b>
+      <span class="seg" data-key="d1"><button data-v="A">A Mikro auf, Gesagtes steuert die Runde ★</button><button data-v="B">B Runde stoppen, neu sprechen</button><button data-v="C">C nichts (nur Vibration)</button></span>
+      <div class="note"><span class="rec">Empfehlung A:</span> nichts geht verloren, entspricht „Steer“ im Composer und dem Reinreden-Plan. B wirft bei einem versehentlichen Tipp Arbeit weg.</div>
+    </div>
+    <div class="dec">
+      <b>D2 · Automodus verlassen</b>
+      <span class="seg" data-key="d2"><button data-v="A">A „Exit“ 1 s halten ★</button><button data-v="B">B „Exit“ doppelt tippen</button><button data-v="C">C „Exit“ tippen / Zurück</button></span>
+      <div class="note"><span class="rec">Empfehlung A:</span> immer sichtbar und beschriftet, aber kein Holpern und kein Streifen löst es aus. Zurück-Geste zeigt nur einen Hinweis.</div>
+    </div>
+    <div class="dec">
+      <b>D3 · Aussehen der Taste</b>
+      <span class="seg" data-key="look"><button data-v="A">A Farbfläche ★</button><button data-v="B">B großer Kreis</button></span>
+      <div class="note"><span class="rec">Empfehlung A:</span> größtmögliche Trefferfläche, gleich im Querformat. Bei B tun die Ecken nichts – blind schlecht.</div>
+    </div>
+
+    <h2>Simulation</h2>
+    <div class="row">
+      <label><input type="checkbox" id="auto" checked> automatisch weiter (Pause erkannt nach 5 s, Hermes 4 s, Vorlesen 6 s)</label>
+    </div>
+    <div class="row">
+      <button class="btn" data-sim="reply">Antwort fertig → Vorlesen</button>
+      <button class="btn" data-sim="attention">Freigabe nötig</button>
+      <button class="btn" data-sim="error">Fehler (nichts verstanden)</button>
+      <button class="btn" data-sim="offline">Verbindung weg</button>
+      <button class="btn" data-sim="online">Verbindung zurück</button>
+      <button class="btn" data-sim="back">Android „Zurück“</button>
+      <button class="btn" data-sim="reset">Neu starten</button>
+    </div>
+    <div class="row">
+      <span class="sub">Direkt springen:</span>
+      <span class="seg" data-key="jump"><button data-v="idle">idle</button><button data-v="listening">listening</button><button data-v="transcribing">transcribing</button><button data-v="thinking">thinking</button><button data-v="speaking">speaking</button><button data-v="attention">attention</button><button data-v="error">error</button><button data-v="offline">offline</button></span>
+    </div>
+
+    <h2>Was ein Tipp auf die große Taste tut</h2>
+    <table class="tap">
+      <tr><th>Zustand</th><th>Anzeige</th><th>Tipp</th></tr>
+      <tr><td>idle</td><td>Tap to talk</td><td>Mikro auf, Runde startet</td></tr>
+      <tr><td>listening</td><td>Listening</td><td>Runde sofort beenden und <b>abschicken</b></td></tr>
+      <tr><td>transcribing</td><td>Got it</td><td>nichts (kurz)</td></tr>
+      <tr><td>thinking</td><td>Hermes is working</td><td>je nach D1</td></tr>
+      <tr><td>speaking</td><td>Reading aloud</td><td>Vorlesen stoppen (≤ 0,5 s) und Mikro auf</td></tr>
+      <tr><td>attention</td><td>Needs you on screen</td><td>nichts – ein Tipp darf nie etwas freigeben</td></tr>
+      <tr><td>error</td><td>Didn't work</td><td>neue Runde</td></tr>
+      <tr><td>offline</td><td>No connection</td><td>neu verbinden</td></tr>
+    </table>
+    <p class="note">Doppeltreffer innerhalb 0,6 s werden ignoriert. Jeder angenommene Tipp vibriert kräftig, ein ignorierter kurz (hier: Wackeln). Gesprochener Text und Antworttext erscheinen absichtlich nicht – sie stehen im Chat. Der Bildschirm bleibt an, solange der Automodus offen ist. Tag/Nacht folgt dem App-Thema; nachts gibt es keine weißen Flächen.</p>
+
+    <h2>Log (so sieht das echte Log aus – ohne Text)</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const P = new URLSearchParams(location.search);
+  const SHOT = P.get('shot') === '1';
+  const S = {
+    orient: P.get('orient') || 'portrait',
+    theme: P.get('theme') || 'day',
+    look: P.get('look') || 'A',
+    d1: P.get('d1') || 'A',
+    d2: P.get('d2') || 'A',
+    phase: P.get('state') || 'idle',
+    steer: false,
+    temp: P.get('temp') || '',
+    error: 'No speech detected. Try again.',
+    reconnecting: P.get('reconnecting') === '1',
+    lastTap: 0,
+    closed: false,
+  };
+  const ICON = {
+    mic: 'M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm5.3-3c0 3-2.54 5.1-5.3 5.1S6.7 14 6.7 11H5c0 3.41 2.72 6.23 6 6.72V21h2v-3.28c3.28-.48 6-3.3 6-6.72h-1.7z',
+    stop: 'M6 6h12v12H6z',
+    dots: 'M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z',
+    hourglass: 'M6 2v6h.01L6 8.01 10 12l-4 4 .01.01H6V22h12v-5.99h-.01L18 16l-4-4 4-3.99-.01-.01H18V2H6zm10 14.5V20H8v-3.5l4-4 4 4zm-4-5l-4-4V4h8v3.5l-4 4z',
+    speaker: 'M3 9v6h4l5 5V4L7 9H3zm13.5 3c0-1.77-1.02-3.29-2.5-4.03v8.05c1.48-.73 2.5-2.25 2.5-4.02zM14 3.23v2.06c2.89.86 5 3.54 5 6.71s-2.11 5.85-5 6.71v2.06c4.01-.91 7-4.49 7-8.77s-2.99-7.86-7-8.77z',
+    eye: 'M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5zM12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5zm0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z',
+    warn: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
+    cloudoff: 'M19.35 10.04C18.67 6.59 15.64 4 12 4c-1.48 0-2.85.43-4.01 1.17l1.46 1.46C10.21 6.23 11.08 6 12 6c3.04 0 5.5 2.46 5.5 5.5v.5H19c1.66 0 3 1.34 3 3 0 1.13-.64 2.11-1.56 2.62l1.45 1.45C23.16 18.16 24 16.68 24 15c0-2.64-2.05-4.78-4.65-4.96zM3 5.27l2.75 2.74C2.56 8.15 0 10.77 0 14c0 3.31 2.69 6 6 6h11.73l2 2L21 20.73 4.27 4 3 5.27zM7.73 10l8 8H6c-2.21 0-4-1.79-4-4s1.79-4 4-4h1.73z',
+    close: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+    wifi: 'M1 9l2 2c4.97-4.97 13.03-4.97 18 0l2-2C16.93 2.93 7.08 2.93 1 9zm8 8l3 3 3-3c-1.65-1.66-4.34-1.66-6 0zm-4-4l2 2c2.76-2.76 7.24-2.76 10 0l2-2C15.14 9.14 8.87 9.14 5 13z',
+    battery: 'M15.67 4H14V2h-4v2H8.33C7.6 4 7 4.6 7 5.33v15.33C7 21.4 7.6 22 8.33 22h7.33c.74 0 1.34-.6 1.34-1.33V5.33C17 4.6 16.4 4 15.67 4z',
+  };
+  const svg = (k) => `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="${ICON[k]}"/></svg>`;
+
+  // Palette: day = token fill + white text; night = lerp(surface, token, .28) fill + token label + softer hint.
+  // Values computed from wing_theme.dart (see spec §4.4).
+  const PAL = {
+    day: {
+      idle:        { fill:'#FFFFFF', label:'#126D70', hint:'#586970', border:'#126D70' },
+      listening:   { fill:'#B91C1C', label:'#FFFFFF', hint:'#FFFFFF' },
+      transcribing:{ fill:'#B91C1C', label:'#FFFFFF', hint:'#FFFFFF' },
+      thinking:    { fill:'#1D4ED8', label:'#FFFFFF', hint:'#FFFFFF' },
+      speaking:    { fill:'#126D70', label:'#FFFFFF', hint:'#FFFFFF' },
+      attention:   { fill:'#B45309', label:'#FFFFFF', hint:'#FFFFFF' },
+      error:       { fill:'#B45309', label:'#FFFFFF', hint:'#FFFFFF' },
+      offline:     { fill:'#586970', label:'#FFFFFF', hint:'#FFFFFF' },
+    },
+    night: {
+      idle:        { fill:'#192934', label:'#65C7BC', hint:'#ADBDC4', border:'#65C7BC' },
+      listening:   { fill:'#513339', label:'#F87171', hint:'#F2B1B2' },
+      transcribing:{ fill:'#513339', label:'#F87171', hint:'#F2B1B2' },
+      thinking:    { fill:'#264260', label:'#60A5FA', hint:'#A6CBF6' },
+      speaking:    { fill:'#284B4F', label:'#65C7BC', hint:'#A8DCD7' },
+      attention:   { fill:'#524924', label:'#FBBF24', hint:'#F3D88B' },
+      error:       { fill:'#524924', label:'#FBBF24', hint:'#F3D88B' },
+      offline:     { fill:'#3C4851', label:'#ADBDC4', hint:'#CCD7DB' },
+    },
+  };
+
+  const VIEW = {
+    idle:        { icon:'mic',       label:'Tap to talk',        hint:'' , de:'Leerlauf – Tippen startet die Runde.' },
+    listening:   { icon:'stop',      label:'Listening',          hint:'Tap to send', de:'Mikro offen – Tippen schickt das Gesagte sofort ab. Sonst endet die Runde nach der Sprechpause von selbst.' },
+    transcribing:{ icon:'dots',      label:'Got it',             hint:'Transcribing…', de:'Gesagtes wird auf dem Handy in Text umgewandelt – Tippen tut nichts.' },
+    thinking:    { icon:'hourglass', label:'Hermes is working',  hint:'Tap to add something', de:'Hermes arbeitet – Tippen je nach D1.' },
+    speaking:    { icon:'speaker',   label:'Reading aloud',      hint:'Tap to interrupt', de:'Antwort wird vorgelesen – Tippen stoppt sofort und öffnet das Mikro.' },
+    attention:   { icon:'eye',       label:'Needs you on screen',hint:'Approval or question waiting. Look when parked.', de:'Freigabe/Rückfrage wartet – Tippen tut absichtlich nichts.' },
+    error:       { icon:'warn',      label:"Didn't work",        hint:'Tap to try again', de:'Fehler – Tippen startet eine neue Runde.' },
+    offline:     { icon:'cloudoff',  label:'No connection',      hint:'Tap to retry', de:'Keine Verbindung – Tippen verbindet neu.' },
+  };
+
+  const $ = (id) => document.getElementById(id);
+  const screen = $('screen');
+  let timer = null, tempTimer = null, holdTimer = null, holdStart = 0, lastExitTap = 0;
+
+  function log(line) {
+    if (SHOT) return;
+    const el = $('log');
+    const t = new Date().toTimeString().slice(0, 8);
+    el.textContent += `${t} WingCar ${line}\n`;
+    el.scrollTop = el.scrollHeight;
+  }
+
+  function hintFor(phase) {
+    if (phase === 'thinking') return S.d1 === 'A' ? 'Tap to add something' : S.d1 === 'B' ? 'Tap to stop and talk' : '';
+    if (phase === 'offline') return S.reconnecting ? 'Reconnecting…' : 'Tap to retry';
+    return VIEW[phase].hint;
+  }
+  function exitLabel() { return S.d2 === 'A' ? 'Hold to exit' : S.d2 === 'B' ? 'Double-tap to exit' : 'Exit'; }
+
+  function render() {
+    const v = VIEW[S.phase];
+    const pal = PAL[S.theme][S.phase];
+    screen.className = `screen ${S.orient} ${S.theme} look${S.look}`;
+    const extra = S.phase === 'listening'
+      ? `<span class="pulse" style="border-color:${S.look === 'B' ? pal.fill : 'currentColor'}"></span>`
+      : '';
+    const bars = S.phase === 'speaking' ? '<div class="bars"><i></i><i></i><i></i><i></i></div>' : '';
+    const err = S.phase === 'error' ? `<div class="err">${S.error}</div>` : '';
+    const temp = S.temp ? `<div class="temp">${S.temp}</div>` : '';
+    const hint = hintFor(S.phase);
+    const iconStyle = S.look === 'B'
+      ? `background:${pal.fill};color:${pal.label};${pal.border ? `box-shadow: inset 0 0 0 4px ${pal.border};` : ''}`
+      : `color:${pal.label}`;
+    const btnStyle = S.look === 'A'
+      ? `background:${pal.fill};color:${pal.label};${pal.border ? `box-shadow: inset 0 0 0 4px ${pal.border};` : ''}`
+      : `color:${pal.label}`;
+    const textColor = S.look === 'A' ? pal.label : (S.theme === 'day' ? (S.phase === 'idle' ? pal.label : pal.fill) : pal.label);
+    const hintColor = S.look === 'A' ? pal.hint : (S.theme === 'day' ? '#3B4B52' : pal.hint);
+    screen.innerHTML = `
+      <div class="statusbar"><span>14:32</span><span class="ic">${svg('wifi')}${svg('battery')}</span></div>
+      <div class="body">
+        <div class="strip">
+          <button class="exit" id="exit" aria-label="${exitLabel()}">${svg('close')}<span>${exitLabel()}</span><span class="ring" id="ring"></span></button>
+          <div class="title">Weekend trip</div>
+        </div>
+        <div class="area">
+          <button class="bigbtn" id="big" style="${btnStyle}" aria-live="polite" aria-label="${v.label}. ${hint}">
+            <div class="icon" id="iconHit" style="${iconStyle}">${extra}${svg(v.icon)}</div>
+            <div class="text">
+              <div class="label" style="color:${textColor}">${v.label}</div>
+              ${err}
+              ${hint ? `<div class="hint" style="color:${hintColor}">${hint}</div>` : ''}
+              ${temp}${bars ? `<div style="color:${textColor}">${bars}</div>` : ''}
+            </div>
+          </button>
+        </div>
+      </div>
+      <div class="navbar"><i></i></div>
+      <div class="toast" id="toast"></div>
+      <div class="closed ${S.closed ? 'show' : ''}" id="closed">
+        <p>Car mode closed – back in the chat (simulated).</p>
+        <button class="exit" id="reenter">Open car mode again</button>
+      </div>`;
+    wire();
+    if (!SHOT) {
+      $('stateBig').textContent = S.phase;
+      $('stateDe').textContent = VIEW[S.phase].de + (S.phase === 'thinking' ? ` (aktuell D1 = ${S.d1})` : '');
+      document.querySelectorAll('.seg').forEach((seg) => {
+        const key = seg.dataset.key;
+        const cur = key === 'jump' ? S.phase : S[key];
+        seg.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b.dataset.v === cur));
+      });
+      $('stageNote').textContent = S.orient === 'portrait' ? 'Sony Xperia 5 IV · 411 × 960 CSS px (21:9)' : 'Sony Xperia 5 IV quer · 960 × 411 CSS px';
+      fit();
+    }
+  }
+
+  function toast(text, ms = 3000) {
+    const t = $('toast'); if (!t) return;
+    t.textContent = text; t.classList.add('show');
+    setTimeout(() => t && t.classList.remove('show'), ms);
+  }
+  function shake() {
+    const b = $('big'); if (!b) return;
+    b.classList.remove('shake'); void b.offsetWidth; b.classList.add('shake');
+  }
+  function setTemp(text, ms = 2200) {
+    S.temp = text; clearTimeout(tempTimer);
+    tempTimer = setTimeout(() => { S.temp = ''; render(); }, ms);
+  }
+
+  function go(phase) {
+    clearTimeout(timer);
+    S.phase = phase;
+    render();
+    if (!$('auto') || !$('auto').checked) return;
+    const next = {
+      listening: [5000, () => { log('round end reason=pause'); go('transcribing'); }],
+      transcribing: [1200, () => {
+        if (S.steer) { S.steer = false; log('deliver kind=steer'); setTemp('Added to the running reply'); go('thinking'); }
+        else { log('deliver kind=send'); go('thinking'); }
+      }],
+      thinking: [4000, () => go('speaking')],
+      speaking: [6000, () => { log('loop reopen'); go('listening'); }],
+    }[phase];
+    if (next) timer = setTimeout(next[1], next[0]);
+  }
+
+  function tap() {
+    const now = Date.now();
+    if (now - S.lastTap < 600) { log(`tap phase=${S.phase} action=debounced`); return; }
+    const p = S.phase;
+    let action = 'ignore';
+    if (p === 'idle' || p === 'error') action = 'talk';
+    else if (p === 'listening') action = 'sendNow';
+    else if (p === 'speaking') action = 'talk';
+    else if (p === 'thinking') action = S.d1 === 'C' ? 'ignore' : 'talk';
+    else if (p === 'offline') action = S.reconnecting ? 'ignore' : 'retry';
+    log(`tap phase=${p} action=${action}`);
+    if (action === 'ignore') { shake(); return; }
+    S.lastTap = now;
+    if (action === 'talk') {
+      if (p === 'speaking') log('stopSpeech ms=120');
+      if (p === 'thinking') { if (S.d1 === 'A') S.steer = true; else { log('interrupt'); setTemp('Stopped Hermes'); } }
+      go('listening');
+    } else if (action === 'sendNow') {
+      go('transcribing');
+    } else if (action === 'retry') {
+      S.reconnecting = true; render();
+      setTimeout(() => { S.reconnecting = false; if (S.phase === 'offline') go('idle'); }, 1500);
+    }
+  }
+
+  function exitNow(reason) {
+    clearTimeout(timer);
+    log(`exit reason=${reason}`);
+    S.closed = true; S.steer = false; render();
+  }
+
+  function wire() {
+    const big = $('big');
+    const hit = S.look === 'B' ? $('iconHit') : big;
+    hit.addEventListener('click', (e) => { e.stopPropagation(); tap(); });
+    if (S.look === 'B') big.addEventListener('click', () => shake());
+    const ex = $('exit');
+    const ring = $('ring');
+    const startHold = (e) => {
+      e.preventDefault();
+      if (S.d2 !== 'A') return;
+      holdStart = Date.now();
+      clearInterval(holdTimer);
+      holdTimer = setInterval(() => {
+        const p = Math.min(1, (Date.now() - holdStart) / 1000);
+        ring.style.setProperty('--p', p);
+        if (p >= 1) { clearInterval(holdTimer); exitNow('hold'); }
+      }, 16);
+    };
+    const endHold = () => {
+      if (S.d2 !== 'A') return;
+      clearInterval(holdTimer);
+      if (ring) ring.style.setProperty('--p', 0);
+      if (Date.now() - holdStart < 1000 && !S.closed) toast('Keep holding to exit', 1600);
+    };
+    ex.addEventListener('pointerdown', startHold);
+    ex.addEventListener('pointerup', endHold);
+    ex.addEventListener('pointerleave', () => { if (S.d2 === 'A') { clearInterval(holdTimer); ring.style.setProperty('--p', 0); } });
+    ex.addEventListener('click', () => {
+      if (S.d2 === 'C') exitNow('tap');
+      else if (S.d2 === 'B') {
+        const now = Date.now();
+        if (now - lastExitTap < 400) exitNow('doubleTap'); else { lastExitTap = now; toast('Tap again to exit', 1200); }
+      }
+    });
+    const re = $('reenter');
+    if (re) re.addEventListener('click', () => { S.closed = false; log('enter route=vad'); go('idle'); });
+  }
+
+  function fit() {
+    const w = S.orient === 'portrait' ? 411 : 960, h = S.orient === 'portrait' ? 960 : 411;
+    const availW = Math.min(window.innerWidth - 32 - 20, S.orient === 'portrait' ? 411 : 960);
+    const availH = window.innerHeight - 80;
+    const scale = Math.min(1, availW / w, Math.max(0.45, availH / h));
+    const sc = $('scaler');
+    sc.style.transform = `scale(${scale})`;
+    sc.style.width = `${w * scale}px`; sc.style.height = `${h * scale}px`;
+  }
+
+  if (SHOT) {
+    document.body.classList.add('shot');
+    document.body.innerHTML = '';
+    document.body.appendChild(screen);
+    render();
+    return;
+  }
+
+  document.querySelectorAll('.seg').forEach((seg) => seg.addEventListener('click', (e) => {
+    const b = e.target.closest('button'); if (!b) return;
+    const key = seg.dataset.key, v = b.dataset.v;
+    if (key === 'jump') { S.closed = false; S.steer = false; go(v); return; }
+    S[key] = v; render();
+  }));
+  document.querySelectorAll('[data-sim]').forEach((b) => b.addEventListener('click', () => {
+    const sim = b.dataset.sim;
+    S.closed = false;
+    if (sim === 'reply') go('speaking');
+    if (sim === 'attention') { log('loop end reason=needsInput'); go('attention'); }
+    if (sim === 'error') { S.error = 'No speech detected. Try again.'; go('error'); }
+    if (sim === 'offline') { S.reconnecting = false; go('offline'); }
+    if (sim === 'online') go('idle');
+    if (sim === 'reset') { S.steer = false; S.temp = ''; $('log').textContent = ''; log('enter route=vad'); go('idle'); }
+    if (sim === 'back') {
+      if (S.d2 === 'C') exitNow('back'); else { log('back blocked'); toast('Hold Exit to leave car mode'.replace('Hold', S.d2 === 'B' ? 'Double-tap' : 'Hold')); }
+    }
+  }));
+  $('auto').addEventListener('change', () => go(S.phase));
+  window.addEventListener('resize', fit);
+  log('enter route=vad');
+  go(S.phase);
+})();
+</script>
+</body>
+</html>
