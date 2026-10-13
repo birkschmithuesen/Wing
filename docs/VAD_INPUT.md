@@ -106,3 +106,5 @@ python3 -I tools/voice/vad_offline_check.py --model <silero_vad.onnx> --wav <rou
 
 `--grid` prints the endpoints for pause values 1000-3000 ms; `--labels` adds the end error in ms; `--no-speech-ms`
 changes the wait for speech start. Change the defaults in the app only with numbers from such a run.
+
+Render review 2026-10-13: none. Light and dark, 320 dp at 100% and 200% text (voice-review-bin run 38453228316): the speech-model row sits under the route select with a single action per state (Download / Cancel with progress / Retry with error), no clipped text at 200%, switch rows share the trailing column, dark contrast is fine, no permanent success text. Minor: the debug-audio-source field sits close under the debug switch row; left as is.
