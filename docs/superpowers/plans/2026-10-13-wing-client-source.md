@@ -633,7 +633,12 @@ env -C /tmp/hermes-wing-source TMPDIR=/tmp HERMES_PYTHON=/home/birk/.hermes/herm
 Expected: no failure beyond those that also fail on bare `origin/main` (check each failing file there as in C1
 Step 7). Record the pass/fail counts in the card comment.
 
-- [ ] **Step 2: Mirror the feat ref into the live repo (ref only, no checkout)**
+> **Steps 2-4 are executed by the Hermes worker (coder card shell), not by a Claude Code subagent.** Claude Code
+> runs with a deny rule on `git push*`, so an SDD subagent cannot push or mirror refs. A subagent stops after
+> Step 1, reports the test counts and the clone path `/tmp/hermes-wing-source`, and hands Steps 2-4 to the Hermes
+> worker unchanged.
+
+- [ ] **Step 2: Mirror the feat ref into the live repo (ref only, no checkout). Executor: Hermes worker.**
 
 ```bash
 git -C /home/birk/.hermes/hermes-agent fetch /tmp/hermes-wing-source "+refs/heads/feat/wing-session-source:refs/heads/feat/wing-session-source"
@@ -643,7 +648,7 @@ git -C /home/birk/.hermes/hermes-agent log --oneline -2 feat/wing-session-source
 Expected: the two commits from C1 and C2. Use the leading `+` and one branch, never a wildcard
 (skill `hermes-core-fork-workflow`, "Ref-Spiegeln").
 
-- [ ] **Step 3: Push to the fork**
+- [ ] **Step 3: Push to the fork. Executor: Hermes worker.**
 
 ```bash
 git -C /tmp/hermes-wing-source push -q fork feat/wing-session-source
@@ -652,7 +657,7 @@ git ls-remote https://github.com/birkschmithuesen/hermes-agent.git refs/heads/fe
 
 Expected: the SHA equals `git -C /tmp/hermes-wing-source rev-parse feat/wing-session-source`.
 
-- [ ] **Step 4: Register the feat**
+- [ ] **Step 4: Register the feat. Executor: Hermes worker.**
 
 Append the line `feat/wing-session-source` to the end of the active block in
 `/home/birk/.hermes/hermes-agent-features.txt`, with a comment line above it:
@@ -953,26 +958,47 @@ Expected: exit code 0, `conclusion=success`.
 - Modify: `/home/birk/.hermes/profiles/birk/config.yaml:1078-1080`
 - Modify: `/home/birk/.hermes/profiles/birk/skills/note-taking/voice-conversational-mode/SKILL.md:13`
 
-- [ ] **Step 1: Add the hint**
+- [ ] **Step 1: Add the hint (insert only, never touch the telegram entry)**
 
-Replace the block at `config.yaml:1078-1080` (verify first with
-`grep -n "platform_hints" -A 3 /home/birk/.hermes/profiles/birk/config.yaml`) with:
+First, locate the block and save the current telegram value:
+
+```bash
+grep -n "platform_hints" -A 3 /home/birk/.hermes/profiles/birk/config.yaml
+/home/birk/.hermes/hermes-agent/venv/bin/python -c "import yaml; open('/tmp/telegram-hint-before.txt','w').write(yaml.safe_load(open('/home/birk/.hermes/profiles/birk/config.yaml'))['platform_hints']['telegram']['append'])"
+```
+
+Expected: `platform_hints:` (line 1078 at plan time), then `  telegram:`, then the telegram `    append: …` line
+(line 1080 at plan time).
+
+Insert **only** these two lines directly after the telegram `append:` line. Do not edit, reformat or re-quote the
+telegram entry:
 
 ```yaml
 platform_hints:
   telegram:
-    append: "Standard Telegram: Gesprächsmodus mit Sprachnachrichten (Skill voice-conversational-mode)."
+    # (unchanged — existing append line stays exactly as it is)
   wing:
     append: "Standard Wing (Handy-App): Gesprächsmodus (Skill voice-conversational-mode, Abschnitt Ausgabekanal je Client). Wing liest deine Antwort selbst vor: Plain Text im Gesprächsstil, kein Markdown, keine Listen, keine Pfade, kein text_to_speech."
 ```
 
-Validate:
+Only the `  wing:` line and its `    append:` line are new. The `platform_hints:` and `telegram:` lines are context.
+
+Validate. The wing hint must be present, and the telegram value must be byte-identical to the one saved before
+the edit:
 
 ```bash
-/home/birk/.hermes/hermes-agent/venv/bin/python -c "import yaml; c=yaml.safe_load(open('/home/birk/.hermes/profiles/birk/config.yaml')); print(sorted(c['platform_hints']), c['platform_hints']['wing']['append'][:25])"
+/home/birk/.hermes/hermes-agent/venv/bin/python -c "import yaml; h=yaml.safe_load(open('/home/birk/.hermes/profiles/birk/config.yaml'))['platform_hints']; t=h['telegram']['append']; print(sorted(h), h['wing']['append'][:25], t == open('/tmp/telegram-hint-before.txt').read(), t.startswith('Standardmodus Telegram'), 'Tippt Birk lange Textnachrichten' in t)"
 ```
 
-Expected: `['telegram', 'wing'] Standard Wing (Handy-App)`.
+Expected: `['telegram', 'wing'] Standard Wing (Handy-App) True` followed by two booleans. The third value
+(`True`, unchanged) is the required check.
+
+The last two booleans test the architect's version of the telegram hint. That version starts with
+`Standardmodus Telegram` and contains `Tippt Birk lange Textnachrichten`. If the file holds that version, both
+print `True`. If it still holds the shorter `Standard Telegram: …` text that was on disk on 2026-10-13, both
+print `False`. That is correct too: the edit must not change the telegram text, so record which version you saw
+in the card comment. Also confirm with `git diff` in the profile repo that the diff consists of exactly two added
+lines.
 
 - [ ] **Step 2: Update the skill sentence**
 
