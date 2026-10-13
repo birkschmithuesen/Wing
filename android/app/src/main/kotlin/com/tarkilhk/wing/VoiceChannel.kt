@@ -14,6 +14,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val playback = VoicePlayback(activity, ::emit)
     private val models = SpeechModelStore(activity, ::emit)
     private val speech = OfflineSpeech(models)
+    private val debugStore = VoiceDebugStore(activity)
+    private val vad = VadCapture(activity, models, speech, debugStore, ::emit)
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     init {
         // A previous process may have died before its normal cleanup.
@@ -45,12 +47,24 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                         activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST)
                     } else start(call, result)
                 }
+                "startVad" -> {
+                    check(id.isNotEmpty()) { "Missing capture ID." }
+                    if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+                        check(pending == null) { "Wait for microphone permission." }
+                        pending = call to result
+                        activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST)
+                    } else start(call, result)
+                }
+                "finishVad" -> vad.finish(id, call.argument<Int>("startWindow") ?: 0, call.argument<Int>("endWindow") ?: 0,
+                    call.argument<Int>("atWindow") ?: 0, call.argument<String>("reason").orEmpty(),
+                    call.argument<Map<String, Any?>>("config") ?: emptyMap(), result)
+                "deleteVadDebugRecordings" -> result.success(debugStore.deleteAll())
                 "stop" -> result.success(capture.stop(id))
                 "cancel" -> {
                     if (pending?.first?.argument<String>("id") == id) {
                         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
                     }
-                    capture.cancel(id); result.success(null)
+                    vad.cancel(id); capture.cancel(id); result.success(null)
                 }
                 "speak" -> playback.speak(id, call.argument<String>("text").orEmpty(),
                     call.argument<String>("voice").orEmpty(), call.argument<Number>("rate")?.toFloat() ?: 1f, result)
@@ -68,8 +82,19 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     }
     private fun start(call: MethodCall, result: MethodChannel.Result) {
         playback.stop()
-        capture.start(call.argument<String>("id")!!, call.argument<Boolean>("local") == true,
-            call.argument<String>("language").orEmpty())
+        val id = call.argument<String>("id")!!
+        if (call.method == "startVad") {
+            capture.cancel(id)
+            vad.start(id, VadCapture.Options(
+                cues = call.argument<Boolean>("cues") != false,
+                debug = call.argument<Boolean>("debug") == true,
+                source = call.argument<String>("source") ?: "communication",
+                maxMs = call.argument<Int>("maxMs") ?: 120_000,
+            ))
+        } else {
+            vad.cancel(id)
+            capture.start(id, call.argument<Boolean>("local") == true, call.argument<String>("language").orEmpty())
+        }
         result.success(null)
     }
     fun permissionResult(requestCode: Int, grants: IntArray): Boolean {
@@ -87,9 +112,9 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         }
         return true
     }
-    fun pause() { capture.pause(); playback.stop() }
+    fun pause() { capture.pause(); vad.pause(); playback.stop() }
     fun close() {
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
-        capture.close(); playback.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
+        capture.close(); playback.close(); vad.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
     }
 }

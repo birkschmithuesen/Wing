@@ -20,6 +20,18 @@ Design: `docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md`.
 |---|---|---|
 | AAR has classes + JNI libs | Task 1 | Confirmed: all 9 classes and member names present, arm64 JNI libs present; no fallback needed |
 
+## Vad.compute window size (Task 13, sherpa-onnx tag v1.13.8)
+
+The plan's 576-sample rule (64 context + 512) is the Silero v5 layout; it is wrong for the pinned model.
+- `sherpa-onnx/csrc/silero-vad-model.cc` lines 208-211: `(4 inputs && 3 outputs) || IsExportedByK2Fsa()` selects `is_v5_ = false`;
+  lines 277-288: `IsExportedByK2Fsa()` is true for inputs `x,h,c` and outputs `prob,new_h,new_c`, exactly our model (see above).
+  `window_overlap_ = 64` is set only in the v5 branch (line 216), so here it stays 0.
+- `RunV4` (line 416) builds `x_shape = {1, n}` from the array length and feeds `x, h, c`; the model needs `x[1,512]`.
+- `sherpa-onnx/jni/voice-activity-detector.cc` `Vad_compute` (line 264-): `n = GetArrayLength(samples)`, then `vad->Compute(p, n)`
+  (`voice-activity-detector.cc` line 46) -> `SileroVadModel::Compute` -> `Run`; no windowing or context added by sherpa.
+- Kotlin `Vad.kt` `compute(samples)` (line 61) is a thin `external` call.
+Result: `VadCapture` passes exactly 512 new samples per call (no context prefix); h/c state is kept inside sherpa.
+
 ## Mutation check (pause threshold 0)
 
 `_pauseWindows = 0` (Dart) / `self._pause_windows = 0` (Python): CI run 38428132411 failed in
