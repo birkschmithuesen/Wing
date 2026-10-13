@@ -190,7 +190,7 @@ Rules for both variants (D3):
 | transcribing | `danger`, dimmed | three dots |
 | thinking | `running` | hourglass |
 | speaking | `accent` (the user's accent) | speaker |
-| attention | `warning` | hand |
+| attention | `warning` | eye ("look at the screen") |
 | error | `warning` | alert triangle |
 | offline | `muted` | cloud-off |
 
@@ -442,9 +442,29 @@ Landscape lock, own cue sounds, a car-mode shortcut (Android launcher shortcut /
 auto-enter when a car Bluetooth or Android Auto connects (Birk does not pair the phone), and a voice command
 "exit car mode".
 
+## Mockup and screenshots
+
+The clickable draft is `docs/superpowers/specs/2026-10-14-wing-car-mode-mockup.html`. It is a single file
+with no network access. It covers:
+
+- the state machine from §4.2, with auto-advance;
+- simulation buttons for reply, approval, error, offline and Android Back;
+- portrait and landscape, day and night;
+- toggles for D1-D3;
+- a log panel showing the text-free log lines from §7.
+
+The screenshots are in `docs/superpowers/specs/2026-10-14-wing-car-mode-shots/`:
+
+- `<state>-<portrait|landscape>-<day|night>.png` for all 8 states (32 shots);
+- variant shots `*-lookB`, `*-d1B`, `*-d1C`, `*-d2B`, `*-d2C`, `offline-…-reconnecting` and
+  `thinking-…-steered`.
+
+To re-render them: `python3 docs/superpowers/specs/2026-10-14-wing-car-mode-shots/render_shots.py`
+(Playwright + `/usr/bin/chromium`).
+
 ## Open decisions for Birk
 
-All three are switchable in the mockup (panel "Entscheidungen").
+All three are switchable in the mockup (panel "Entscheidungen für Birk").
 
 1. **D1: Tap while Hermes is working (thinking).**
    - (A) The tap opens the microphone. What Birk says is **steered** into the running turn (fallback:
