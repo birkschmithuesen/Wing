@@ -59,7 +59,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                 }
                 "finishVad" -> vad.finish(id, call.argument<Int>("startWindow") ?: 0, call.argument<Int>("endWindow") ?: 0,
                     call.argument<Int>("atWindow") ?: 0, call.argument<String>("reason").orEmpty(),
-                    call.argument<Map<String, Any?>>("config") ?: emptyMap(), result)
+                    call.argument<Map<String, Any?>>("config") ?: emptyMap(), call.argument<List<List<Int>>>("chunks"), result)
                 "deleteVadDebugRecordings" -> result.success(debugStore.deleteAll())
                 "stop" -> result.success(capture.stop(id))
                 "cancel" -> {

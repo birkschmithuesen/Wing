@@ -46,8 +46,14 @@ abstract interface class VoiceDevice {
   /// Route vad: own capture; probabilities arrive as `{id, first, windows}` events.
   Future<void> startVad(String id, VadCaptureOptions options);
 
-  /// Ends the vad round and returns the on-device transcript of the decided windows.
-  Future<String> finishVad(String id, VadDecision decision, VadEndpointConfig config);
+  /// Ends the vad round and returns the on-device transcript of the decided windows,
+  /// recognised piece by piece along [chunks] (same window indexing as [decision]).
+  Future<String> finishVad(
+    String id,
+    VadDecision decision,
+    VadEndpointConfig config, {
+    List<VadChunk> chunks = const [],
+  });
   Future<VadModelStatus> vadModelStatus();
   Future<void> installVadModel();
   Future<void> cancelVadModelInstall();
@@ -120,8 +126,9 @@ class AndroidVoice implements VoiceDevice {
   Future<String> finishVad(
     String id,
     VadDecision decision,
-    VadEndpointConfig config,
-  ) async =>
+    VadEndpointConfig config, {
+    List<VadChunk> chunks = const [],
+  }) async =>
       await channel.invokeMethod<String>('finishVad', {
         'id': id,
         'startWindow': decision.startWindow,
@@ -129,6 +136,7 @@ class AndroidVoice implements VoiceDevice {
         'atWindow': decision.atWindow,
         'reason': decision.reason.name,
         'config': config.toJson(),
+        'chunks': [for (final chunk in chunks) chunk.toList()],
       }) ??
       '';
   @override

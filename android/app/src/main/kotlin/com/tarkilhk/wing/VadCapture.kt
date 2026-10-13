@@ -44,7 +44,7 @@ class VadCapture(
     }
 
     private val handler = Handler(Looper.getMainLooper())
-    private var round: Round? = null
+    @Volatile private var round: Round? = null
 
     fun start(id: String, options: Options) {
         cancelCurrent()
@@ -142,7 +142,7 @@ class VadCapture(
     }
 
     fun finish(id: String, startWindow: Int, endWindow: Int, atWindow: Int, reason: String,
-               config: Map<String, Any?>, response: MethodChannel.Result) {
+               config: Map<String, Any?>, chunks: List<List<Int>>?, response: MethodChannel.Result) {
         val r = round?.takeIf { it.id == id } ?: run { response.error("cancelled", "Recording cancelled.", null); return }
         stopReading(r)
         if (reason == "noSpeech") {
@@ -155,12 +155,19 @@ class VadCapture(
         if (r.options.cues) cue(ToneGenerator.TONE_PROP_ACK, wait = false)
         val start = (startWindow * 512).coerceIn(0, r.length)
         val end = (endWindow * 512).coerceIn(start, r.length)
-        val samples = FloatArray(end - start) { r.pcm[start + it] / 32768f }
-        speech.transcribe(samples) { result, decodeMs, readyAtStart ->
+        // Dart decides the chunks (window indices); without them the whole cut is one chunk.
+        val ranges = chunks?.mapNotNull { c ->
+            if (c.size < 2) return@mapNotNull null
+            val from = (c[0] * 512).coerceIn(start, end)
+            val to = (c[1] * 512).coerceIn(from, end)
+            if (to > from) intArrayOf(from, to) else null
+        }?.takeIf { it.isNotEmpty() } ?: listOf(intArrayOf(start, end))
+        speech.transcribeChunks(r.pcm, ranges, { round !== r }) { result, decodeMs, readyAtStart, timings ->
             handler.post {
                 if (r.options.debug) writeDebug(r, JSONObject().put("reason", reason).put("startWindow", startWindow)
                     .put("endWindow", endWindow).put("atWindow", atWindow), config, JSONObject()
                     .put("segmentMs", (end - start) / 16).put("decodeMs", decodeMs).put("modelReadyAtFinish", readyAtStart)
+                    .put("chunks", JSONArray(timings.map { JSONArray(listOf(it[0] / 512, it[1] / 512, it[2])) }))
                     .put("textLength", result.getOrNull()?.length ?: 0).put("error", result.exceptionOrNull()?.message ?: JSONObject.NULL))
                 val current = round === r
                 if (current) round = null

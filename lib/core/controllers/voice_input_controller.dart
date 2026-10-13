@@ -194,9 +194,14 @@ class VoiceInputController extends ChangeNotifier {
     phase = VoiceInputPhase.transcribing;
     _notify();
     try {
+      final chunks = vadChunksFor(
+        endpointer.probabilities,
+        decision.startWindow,
+        decision.endWindow,
+      );
       final text = await device
-          .finishVad(id, decision, endpointer.config)
-          .timeout(vadRecognitionBudget(decision.segment));
+          .finishVad(id, decision, endpointer.config, chunks: chunks)
+          .timeout(vadRecognitionBudget(decision.segment, chunks: chunks.length));
       if (_id == id && !_disposed) _finish(text);
     } catch (failure) {
       if (_id == id) _fail(failure);

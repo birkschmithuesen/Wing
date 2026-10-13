@@ -21,6 +21,7 @@ class VoiceDeviceFixture implements VoiceDevice {
   int vadStarts = 0;
   VadCaptureOptions? vadOptions;
   final finishes = <VadDecision>[];
+  final finishChunks = <List<VadChunk>>[];
   String vadTranscript = 'Hello from the phone';
   Completer<String>? finishDelay;
   Object? finishError;
@@ -70,10 +71,12 @@ class VoiceDeviceFixture implements VoiceDevice {
   Future<String> finishVad(
     String id,
     VadDecision decision,
-    VadEndpointConfig config,
-  ) async {
+    VadEndpointConfig config, {
+    List<VadChunk> chunks = const [],
+  }) async {
     calls.add('finishVad');
     finishes.add(decision);
+    finishChunks.add(chunks);
     if (finishError != null) throw finishError!;
     return finishDelay?.future ?? vadTranscript;
   }

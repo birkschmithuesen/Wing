@@ -46,20 +46,40 @@ class OfflineSpeech(private val store: SpeechModelStore) {
         }
     }
 
-    fun transcribe(samples: FloatArray, done: (Result<String>, Long, Boolean) -> Unit) {
+    /** Decodes [ranges] (sample offsets `[start, end)` into [pcm]) one after the other, one stream per
+     *  chunk released right after it, so a long round never needs one huge float copy. Chunk texts are
+     *  joined with a single space. [cancelled] is checked between chunks and stops further decoding.
+     *  [done] gets the text, the total ms, whether the model was ready at the call, and per chunk
+     *  `[startSample, endSample, decodeMs]`. */
+    fun transcribeChunks(
+        pcm: ShortArray,
+        ranges: List<IntArray>,
+        cancelled: () -> Boolean,
+        done: (Result<String>, Long, Boolean, List<LongArray>) -> Unit,
+    ) {
         val readyAtStart = ready
         executor.execute {
             val started = SystemClock.elapsedRealtime()
+            val timings = ArrayList<LongArray>()
             val result = runCatching {
                 val model = load()
-                val stream = model.createStream()
-                try {
-                    stream.acceptWaveform(samples, 16000)
-                    model.decode(stream)
-                    model.getResult(stream).text.trim()
-                } finally { stream.release() }
+                val texts = ArrayList<String>()
+                for (range in ranges) {
+                    if (cancelled()) break
+                    val chunkStarted = SystemClock.elapsedRealtime()
+                    val from = range[0]
+                    val samples = FloatArray(range[1] - from) { pcm[from + it] / 32768f }
+                    val stream = model.createStream()
+                    try {
+                        stream.acceptWaveform(samples, 16000)
+                        model.decode(stream)
+                        model.getResult(stream).text.trim().takeIf { it.isNotEmpty() }?.let { texts.add(it) }
+                    } finally { stream.release() }
+                    timings.add(longArrayOf(range[0].toLong(), range[1].toLong(), SystemClock.elapsedRealtime() - chunkStarted))
+                }
+                texts.joinToString(" ").trim()
             }
-            done(result, SystemClock.elapsedRealtime() - started, readyAtStart)
+            done(result, SystemClock.elapsedRealtime() - started, readyAtStart, timings)
         }
     }
 

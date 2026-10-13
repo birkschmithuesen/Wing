@@ -93,6 +93,12 @@ class VadEndpointer {
   int _silence = 0;
   VadDecision? _decision;
 
+  final List<double> _probabilities = [];
+
+  /// Every probability fed so far (window index = list index); the chunk
+  /// planner reads the pauses of the decided segment from it.
+  List<double> get probabilities => List.unmodifiable(_probabilities);
+
   int get windows => _windows;
   VadDecision? get decision => _decision;
 
@@ -102,6 +108,7 @@ class VadEndpointer {
   VadDecision? feed(double p) {
     if (_decision != null) return null;
     final i = _windows++;
+    _probabilities.add(p);
     if (_speechStart < 0) {
       if (p >= vadStartThreshold) {
         if (_run == 0) _runStart = i;
@@ -167,7 +174,113 @@ class VadEndpointer {
   }
 }
 
+/// Window range `[startWindow, endWindow)` recognised as one piece.
+class VadChunk {
+  const VadChunk(this.startWindow, this.endWindow);
+  final int startWindow;
+  final int endWindow;
+
+  int get windows => endWindow - startWindow;
+  List<int> toList() => [startWindow, endWindow];
+
+  @override
+  bool operator ==(Object other) =>
+      other is VadChunk &&
+      other.startWindow == startWindow &&
+      other.endWindow == endWindow;
+  @override
+  int get hashCode => Object.hash(startWindow, endWindow);
+  @override
+  String toString() => 'VadChunk($startWindow, $endWindow)';
+}
+
+/// Limits for splitting a long segment before recognition (Parakeet memory
+/// and latency); see [vadChunksFor].
+class VadChunkConfig {
+  const VadChunkConfig({
+    this.chunkMax = const Duration(seconds: 30),
+    this.search = const Duration(seconds: 10),
+    this.minTail = const Duration(seconds: 2),
+    this.mergeLimit = const Duration(seconds: 32),
+  });
+
+  /// Longest chunk.
+  final Duration chunkMax;
+
+  /// A cut is looked for in the last [search] of the allowed chunk.
+  final Duration search;
+
+  /// A final remainder shorter than this joins the previous chunk ...
+  final Duration minTail;
+
+  /// ... if that chunk then stays within this length.
+  final Duration mergeLimit;
+}
+
+/// Splits the windows `[startWindow, endWindow)` into contiguous chunks of at
+/// most [VadChunkConfig.chunkMax]. Each cut goes into the middle of the longest
+/// run of windows below [vadEndThreshold] within the last
+/// [VadChunkConfig.search] of the allowed chunk (earliest run on ties); with no
+/// such pause the chunk is cut at [VadChunkConfig.chunkMax] exactly. A final
+/// remainder shorter than [VadChunkConfig.minTail] is merged into the previous
+/// chunk when it stays within [VadChunkConfig.mergeLimit]. Windows beyond
+/// [probabilities] count as speech.
+List<VadChunk> vadChunksFor(
+  List<double> probabilities,
+  int startWindow,
+  int endWindow, {
+  VadChunkConfig config = const VadChunkConfig(),
+}) {
+  if (endWindow <= startWindow) return const [];
+  final maxWindows = vadWindowsFor(config.chunkMax);
+  final searchWindows = vadWindowsFor(config.search);
+  final chunks = <VadChunk>[];
+  var start = startWindow;
+  while (endWindow - start > maxWindows) {
+    final limit = start + maxWindows;
+    final from = limit - searchWindows > start ? limit - searchWindows : start + 1;
+    var bestStart = -1;
+    var bestLength = 0;
+    var runStart = -1;
+    for (var i = from; i <= limit; i++) {
+      final quiet = i < limit &&
+          i < probabilities.length &&
+          probabilities[i] < vadEndThreshold;
+      if (quiet) {
+        if (runStart < 0) runStart = i;
+      } else if (runStart >= 0) {
+        if (i - runStart > bestLength) {
+          bestLength = i - runStart;
+          bestStart = runStart;
+        }
+        runStart = -1;
+      }
+    }
+    final cut = bestStart < 0 ? limit : bestStart + bestLength ~/ 2;
+    chunks.add(VadChunk(start, cut));
+    start = cut;
+  }
+  chunks.add(VadChunk(start, endWindow));
+  if (chunks.length > 1) {
+    final last = chunks.last;
+    final previous = chunks[chunks.length - 2];
+    if (last.windows < vadWindowsFor(config.minTail) &&
+        last.endWindow - previous.startWindow <=
+            vadWindowsFor(config.mergeLimit)) {
+      chunks.removeLast();
+      chunks[chunks.length - 1] = VadChunk(
+        previous.startWindow,
+        last.endWindow,
+      );
+    }
+  }
+  return chunks;
+}
+
 /// Time allowed for on-device recognition of [segment]: covers a cold model
-/// load (3.1 s measured) and a real-time factor up to 0.5 (measured <= 0.11).
-Duration vadRecognitionBudget(Duration segment) =>
-    const Duration(seconds: 10) + segment * 0.5;
+/// load (3.1 s measured) and a real-time factor up to 0.5 (measured <= 0.11),
+/// plus 1 s overhead for every chunk after the first.
+Duration vadRecognitionBudget(Duration segment, {int chunks = 1}) =>
+    const Duration(seconds: 10) +
+    segment * 0.5 +
+    Duration(seconds: chunks > 1 ? chunks - 1 : 0);

@@ -111,5 +111,10 @@ void main() {
     expect(vadRecognitionBudget(const Duration(minutes: 10)), const Duration(seconds: 310));
     expect(vadRecognitionBudget(const Duration(minutes: 30)), const Duration(seconds: 910));
     expect(vadRecognitionBudget(Duration.zero), const Duration(seconds: 10));
+    // 30 min in 60 chunks: 10 s + 900 s + 59 s overhead.
+    expect(
+      vadRecognitionBudget(const Duration(minutes: 30), chunks: 60),
+      const Duration(seconds: 969),
+    );
   });
 }

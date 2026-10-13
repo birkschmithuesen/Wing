@@ -174,4 +174,44 @@ void main() {
     expect(recorder.error, 'Speech processing timed out. Please retry.');
     expect(device.cancelled, isNotEmpty);
   });
+
+  test('a long round sends the chunk plan with the finish call', () async {
+    await recorder.start(
+      const VoicePreferences(
+        input: VoiceInputRoute.vad,
+        cues: false,
+        vad: VadEndpointConfig(),
+      ),
+      const TextEditingValue(text: ''),
+      (value) => result = value,
+    );
+    device.emitWindows(_p(0.05, 40));
+    device.emitWindows(_p(0.9, 1000));
+    device.emitWindows(_p(0.1, 30));
+    device.emitWindows(_p(0.9, 1200));
+    device.emitWindows(_p(0.1, 80));
+    await pumpEventQueue();
+    final decision = device.finishes.single;
+    final chunks = device.finishChunks.single;
+    expect(decision.reason, VadEndReason.pause);
+    expect(chunks.length, greaterThan(1));
+    expect(chunks.first.startWindow, decision.startWindow);
+    expect(chunks.last.endWindow, decision.endWindow);
+    for (var i = 0; i < chunks.length; i++) {
+      expect(chunks[i].windows, lessThanOrEqualTo(1000));
+      if (i > 0) expect(chunks[i].startWindow, chunks[i - 1].endWindow);
+    }
+    expect(result!.text, 'Hello from the phone');
+  });
+
+  test('a short round sends a single chunk covering the segment', () async {
+    await start();
+    device.emitWindows(_p(0.9, 60));
+    device.emitWindows(_p(0.1, 80));
+    await pumpEventQueue();
+    final decision = device.finishes.single;
+    expect(device.finishChunks.single, [
+      VadChunk(decision.startWindow, decision.endWindow),
+    ]);
+  });
 }

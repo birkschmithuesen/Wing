@@ -20,6 +20,18 @@ Birk 13.10. 17:33: the longest recording on route vad must be at least 10 minute
 not 120 s. Choices are 10 / 15 / 20 / 30 min, default 10 min. Older stored values below 10 min load as the 10 min default.
 Kotlin keeps a round as 16-bit PCM sized from the configured maximum (30 min = 57.6 MB); the debug WAV is streamed to disk in blocks.
 
+## Chunked recognition (steering 13.10. 17:33)
+
+Birk 13.10. 17:33: long segments are recognized in pieces (memory, latency). Dart plans the pieces
+(`vadChunksFor` in `lib/core/services/vad_endpoint.dart`) and sends them as `chunks` (`[startWindow, endWindow]` pairs) with `finishVad`;
+Kotlin decodes them one after the other with one sherpa stream per chunk and joins the non-empty texts with one space.
+Rules: a segment up to 30 s is one chunk; otherwise every chunk is at most 30 s and ends in the middle of the longest pause
+(windows below 0.35, earliest on ties) within the last 10 s of the allowed chunk, or at 30 s exactly when there is no pause.
+A final remainder under 2 s joins the previous chunk if that stays within 32 s. Without `chunks` Kotlin decodes the whole cut as one chunk.
+Cancelling between chunks stops further decoding. The recognition budget adds 1 s per chunk after the first.
+The debug JSON `recognition.chunks` lists `[startWindow, endWindow, decodeMs]` per chunk. The Python mirror does not
+carry the chunk planner (it only mirrors the end-of-utterance decision for tuning); `test/vad_chunks_test.dart` covers it.
+
 ## ANNAHME outcomes
 
 | Assumption | Check | Outcome |
