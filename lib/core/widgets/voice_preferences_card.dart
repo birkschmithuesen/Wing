@@ -6,6 +6,7 @@ import '../services/android_voice.dart';
 import '../services/device_preference.dart';
 import '../services/voice_preferences.dart';
 import '../services/voice_sample.dart';
+import '../../voice_offline/barge_in_settings.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
 import 'vad_settings_section.dart';
@@ -333,6 +334,12 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
                   VoicePreferences.conversationKey,
                   value ? 'on' : 'off',
                 ),
+        ),
+        BargeInSettings(
+          settings: _preferences,
+          device: widget.device ?? AndroidVoice.instance,
+          saving: _saving,
+          onSave: _save,
         ),
         if (_preferences.output == VoiceProcessing.local && !_loading) ...[
           const SizedBox(height: 12),

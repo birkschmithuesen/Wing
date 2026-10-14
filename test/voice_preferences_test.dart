@@ -285,6 +285,52 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<SharedPreferences> vadConversation() async {
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.inputKey: 'vad',
+      VoicePreferences.conversationKey: 'on',
+    });
+    return SharedPreferences.getInstance();
+  }
+
+  testWidgets('listen-while-working settings appear only with vad conversation', (
+    tester,
+  ) async {
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    SharedPreferences.setMockInitialValues({});
+    await show(tester, await SharedPreferences.getInstance(), device);
+    expect(find.text('Listen while Hermes works'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    final prefs = await vadConversation();
+    await show(tester, prefs, device);
+    await tester.ensureVisible(find.text('Listen while Hermes works'));
+    expect(find.text('Speech needed to steer'), findsOneWidget);
+    expect(find.text('Interrupt read-aloud by speaking'), findsNothing);
+    expect(find.text('Measure speaker echo'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('voice-listen-turn')));
+    await tester.pumpAndSettle();
+    expect(VoicePreferences.read(prefs).listenTurn, isFalse);
+    expect(find.text('Speech needed to steer'), findsNothing);
+  });
+
+  testWidgets('echo probe plays the synthetic text while a listen round records', (
+    tester,
+  ) async {
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    final prefs = await vadConversation();
+    await prefs.setString(VoicePreferences.vadDebugKey, 'on');
+    await show(tester, prefs, device);
+    await tester.ensureVisible(find.text('Measure speaker echo'));
+    await tester.tap(find.text('Measure speaker echo'));
+    await tester.pumpAndSettle();
+    expect(device.calls, containsAllInOrder(['startVad', 'speak']));
+    expect(device.vadOptions!.keepPlayback, isTrue);
+    expect(device.spoken, contains('Messtext'));
+    expect(find.text('Measure speaker echo'), findsOneWidget);
+  });
+
   testWidgets(
     'output selection persists; remote voice is a profile link, not a picker',
     (tester) async {
