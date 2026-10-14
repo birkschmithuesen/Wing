@@ -21,7 +21,7 @@ jobs:
         run: |
           run_id=$(sed -n 1p .ci-log-fetch/request)
           gh run view "$run_id" --repo "${{ github.repository }}" --log > /tmp/payload.txt || true
-          grep -E "\[E\]|Some tests failed|error:|Expected:|Actual:" /tmp/payload.txt > /tmp/payload_filtered.txt || true
+          grep -n -B 40 -A 2 "a dictation while reconnecting is queued and sent once reconnected \[E\]" /tmp/payload.txt > /tmp/payload_filtered.txt || true
           tail -c 60000 /tmp/payload_filtered.txt > /tmp/payload_trunc.txt
           git config user.name ci-log-fetch
           git config user.email ci-log-fetch@users.noreply.github.com
