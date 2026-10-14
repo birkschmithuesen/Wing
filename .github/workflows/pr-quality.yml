@@ -71,23 +71,19 @@ jobs:
           python3 - <<'PYEOF'
           import re
           lines = open('test_output.txt', errors='replace').read().splitlines()
-          ts = re.compile(r'^\d\d:\d\d ')
-          blocks = []
-          current = None
-          for line in lines:
-              if ts.match(line):
-                  if current is not None:
-                      blocks.append(current)
-                  current = [line]
-              elif current is not None:
-                  current.append(line)
-          if current is not None:
-              blocks.append(current)
-          failing = [b for b in blocks if '[E]' in b[0]]
-          for b in failing[:10]:
-              text = '\n'.join(b)
+          ts = re.compile(r'^\d\d:\d\d .*\[E\]$')
+          fail_idx = [i for i, l in enumerate(lines) if ts.match(l)]
+          chunks_sent = 0
+          for idx in fail_idx[:3]:
+              start = max(0, idx - 80)
+              block = lines[start:idx + 6]
+              text = '\n'.join(block)
               esc = text.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-              print(f"::error::{esc[:900]}")
+              for i in range(0, len(esc), 850):
+                  if chunks_sent >= 20:
+                      break
+                  print(f"::error::{esc[i:i + 850]}")
+                  chunks_sent += 1
           PYEOF
 
       # ── Step 3: Summary & failure report ─────────────────
