@@ -33,7 +33,9 @@ MethodChannel `com.tarkilhk.wing/background_voice`.
 - **Scope.** Route vad only. Routes `local`/`hermes` and car mode keep today's behaviour (the conversation ends on
   pause). Car mode is always screen-on (operator note) and never holds.
 - **Logcat tag** `WingBgVoice`, Kotlin only. Log lines carry only state, reason and durations. Never transcript,
-  reply, chat or profile text.
+  reply, chat or profile text. The complete set of line forms:
+  `hold on`, `hold refused reason=<r>`, `pause kept`, `stop reason=<r>`, `wakelock released heldMs=<n>`,
+  `listening on`, `listening off`.
 - **Time limit without speech.** It is the existing `voice.vad_no_speech_seconds` (default 8 s,
   `VadEndpointConfig.noSpeechTimeout`). No new timer.
 - **Notification copy (exact).**
@@ -43,11 +45,18 @@ MethodChannel `com.tarkilhk.wing/background_voice`.
   | Channel name | "Voice conversation" |
   | Title | "Conversation mode" |
   | Text | "Microphone opens after each reply." |
+  | Text while a barge-in listen round is open | "Microphone is listening." |
   | Action | "Stop" |
 
   Channel id `voice_conversation`, notification id `214611`, small icon `R.drawable.ic_stat_monitoring`.
-- **Decisions D1–D3.** This plan implements the recommended options: D1-a no new setting, D2-a no listen rounds with
-  the screen off, D3-a hold from conversation start. Deltas for the alternatives are at the end.
+- **Decisions D1–D3 (decided by Birk, 14.10.).** This plan implements them:
+  - **D1-a:** no own switch. Conversation mode on route vad keeps running with the screen off automatically,
+    visible through the notification with Stop.
+  - **D2-b:** listening/steering while Hermes works also runs with the screen off (pocket). The only control is the
+    barge-in switch "Listen while Hermes works" (`voice.listen_turn`, default on, can be switched off in the voice
+    settings); there is no screen-off special rule. Interrupting read-aloud stays headphones-only (barge-in D2). The
+    microphone can be open for a whole Hermes turn; the notification shows it (Task 5).
+  - **D3-a:** the notification and foreground service start when conversation mode starts.
 - **Test command.**
   - `bash tools/factory/ci-suite.sh <test path>` pushes HEAD to a throwaway branch and runs the **whole**
     `pr-quality.yml` suite. The path argument only documents the target; the script ignores it. Commit before
@@ -78,14 +87,14 @@ If car mode or barge-in have not landed, the anchors A9/A10 say what to skip and
 
 | File | Action | Responsibility |
 |---|---|---|
-| `lib/voice_offline/background_voice.dart` | Create | `BackgroundVoiceHost`, `AndroidBackgroundVoiceHost`, `BackgroundVoice` (policy/state) |
+| `lib/voice_offline/background_voice.dart` | Create | `BackgroundVoiceHost`, `AndroidBackgroundVoiceHost`, `BackgroundVoice` (policy/state, listening text) |
 | `test/voice_offline/background_voice_test.dart` | Create | Unit tests for `BackgroundVoice` |
 | `test/support/background_voice_fixture.dart` | Create | Fake host for widget tests |
-| `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt` | Create | Microphone FGS, notification, wake lock, call watch |
-| `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceChannel.kt` | Create | MethodChannel, preconditions, start/stop |
+| `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt` | Create | Microphone FGS, notification (incl. listening text), wake lock, call watch |
+| `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceChannel.kt` | Create | MethodChannel, preconditions, start/stop, listening |
 | `android/app/src/main/AndroidManifest.xml` | Modify (≤ 8) | Permission and service |
 | `android/app/src/main/kotlin/com/tarkilhk/wing/VoiceChannel.kt` | Modify (≤ 7) | Field, `pause()` guard, `close()` |
-| `lib/core/screens/profile_workspace_screen.dart` | Modify (≤ 20) | Parameter, field, setter sync, lifecycle, `_loopFocus`, dispose; D2 gate |
+| `lib/core/screens/profile_workspace_screen.dart` | Modify (≤ 20) | Parameter, field, setter sync, lifecycle, `_loopFocus`, dispose; listening hook (Task 5) |
 | `test/voice_workspace_test.dart` | Modify | Group "screen off"; `show()` passes the fixture |
 | `docs/VOICE.md` | Modify | User-facing paragraph |
 
@@ -95,6 +104,9 @@ If car mode or barge-in have not landed, the anchors A9/A10 say what to skip and
 
 **Files:** none changed except the commit message. If the Android pages can be fetched, also
 `docs/superpowers/specs/2026-10-14-wing-voice-background-design.md` §3.
+
+**Interfaces:**
+- Produces: `BASE` (SHA, used by Task 6) and the anchor results A1–A18 (used by Tasks 2–6).
 
 - [ ] **Step 1: Record the base commit**
 
@@ -117,7 +129,7 @@ command decides, not the number.
 | A7 | `git grep -n "_hasWorkspaceFocus || _destination != AppDestination.chats\|        _hasChatFocus &&" -- lib/core/screens/profile_workspace_screen.dart` | 2 hits: `_speakCompletedReply` (wt :239), `_canContinueConversation` (wt :282) | If the loop moved into another file (e.g. a conversation controller), apply the `_loopFocus` change there. If the loop is gone, **stop**, `FRAGE:`. |
 | A8 | `git grep -n "set _conversation(" -- lib/core/screens/profile_workspace_screen.dart` | 1 hit (wt :217) | Missing → find where `VoiceSwitchHolders.screenOn(_voiceDevice).set(this, …)` follows the conversation key and sync there. |
 | A9 | `git grep -n "_car.active" -- lib/core/screens/profile_workspace_screen.dart` | hits → car mode merged | No hits → leave out `&& !_car.active` in Task 4, and add a line to the Task 4 commit message: "car mode must add `&& !_car.active` to the `_background.sync` want". |
-| A10 | `git grep -n "void _openListen" -- lib/core/screens/profile_workspace_screen.dart` | 1 hit → barge-in merged | No hit → skip Task 5, and add to the Task 6 commit message: "barge-in must gate `_openListen` on `_background.screenOff`". |
+| A10 | `git grep -n "void _openListen\|late final _bargeIn\|void initState()" -- lib/core/screens/profile_workspace_screen.dart` | 3 hits → barge-in merged (`_openListen`, the `_bargeIn` field, `initState`) | No `_openListen` hit → run Task 5 Steps 1–7 only, skip Steps 8–11, leave out the Task 4 `listenTurn(false)` line, and add to the Task 6 commit message: "barge-in must add `_bargeIn.addListener(() => _background.listening(_bargeIn.listening));` to initState". |
 | A11 | `git grep -n "_completedReplies.add" -- lib/core/services/profile_workspace_controller.dart` | 1 hit (wt :6124), no lifecycle/visibility condition in the enclosing `if` | If a foreground flag now gates it, or `setForeground`/`setActive` closes event streams in the background, the loop cannot hear replies → **stop**, `FRAGE:`. |
 | A12 | `git grep -n "setForeground\|_supervision?.setActive" -- lib/main.dart lib/core/screens/profile_workspace_screen.dart lib/core/services/profile_workspace_registry.dart` | upstream `setForeground` only toggles group notifications (up registry :40-45) | Read each hit. If any closes sockets or stops turn events when not resumed → **stop**, `FRAGE:`. |
 | A13 | `git grep -n "noSpeechTimeout = const Duration(seconds: 8)\|vadNoSpeechChoices" -- lib/core/services` | 2 hits (`vad_endpoint.dart:24`, `voice_preferences.dart:52`) | Changed default → update the spec §8 value and the device Step 7 expectation. |
@@ -858,7 +870,8 @@ Expected: added ≤ 7, deleted ≤ 1.
 
 **Interfaces:**
 - Consumes: Task 1 `BackgroundVoice`, `AndroidBackgroundVoiceHost.instance`, `BackgroundVoiceFixture`.
-- Produces (Task 5): the field `_background` (`BackgroundVoice`).
+- Produces (Task 5): the field `_background` (`BackgroundVoice`) and the test helpers `startVadConversation`,
+  `speakAndSend`, `screenOff`, `screenOn` inside group "screen off".
 
 - [ ] **Step 1: Wire the fixture into the test harness**
 
@@ -875,6 +888,9 @@ In `test/voice_workspace_test.dart`:
 ```dart
   group('screen off', () {
     Future<void> startVadConversation(WidgetTester tester) async {
+      // Only if A10 found barge-in: these tests count VAD starts, so listen
+      // rounds stay off here; Task 5 switches them on explicitly.
+      await listenTurn(false);
       await vadRoute();
       await conversationMode(true);
       await show(tester);
@@ -1007,6 +1023,9 @@ In `test/voice_workspace_test.dart`:
     });
   });
 ```
+
+If A10 found no barge-in, leave out the `listenTurn(false)` line and its comment (the helper does not exist). With
+barge-in, `listenTurn` is the helper the barge-in plan put next to `vadRoute()`.
 
 If car mode is merged (A9 has hits), add one more test inside the group. The car-mode test group shows how car mode
 is entered (look for `group('car mode'` in the same file):
@@ -1142,70 +1161,342 @@ Expected: added ≤ 20.
 
 ---
 
-### Task 5: Barge-in gate (D2-a) — only if A10 found `_openListen`
+### Task 5: The notification shows an open listen round (D2-b)
+
+D2-b lets barge-in listen rounds run with the screen off, so the microphone can stay open for a whole Hermes turn.
+Nothing is gated; this task only makes that visible. While a listen round is open and the hold is active, the
+notification text reads "Microphone is listening." and returns to "Microphone opens after each reply." when the round
+closes. Steps 1–7 (own files) always run. Steps 8–11 (screen hook) run only if A10 found `_openListen`; otherwise the
+barge-in card adds the one hook line (A10).
 
 **Files:**
-- Modify: `lib/core/screens/profile_workspace_screen.dart` (2 lines; the screen total stays ≤ 20 → 19)
-- Test: `test/voice_workspace_test.dart` (group "screen off")
+- Modify: `lib/voice_offline/background_voice.dart` (Task 1)
+- Modify: `test/support/background_voice_fixture.dart` (Task 1)
+- Modify: `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt` (Task 2)
+- Modify: `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceChannel.kt` (Task 2)
+- Modify (only with A10): `lib/core/screens/profile_workspace_screen.dart`, 1 line in `initState`; the screen total
+  becomes 17 + 1 = 18 of ≤ 20. The cap does not move.
+- Test: `test/voice_offline/background_voice_test.dart`
+- Test (only with A10): `test/voice_workspace_test.dart` (group "screen off")
 
 **Interfaces:**
-- Consumes: `_background.screenOff` (Task 4); barge-in `_openListen` and `_bargeIn.close(String)` (barge-in plan
-  :2059-2072, :2022).
+- Consumes: Task 1 `BackgroundVoice`, `BackgroundVoiceHost`; Task 2 `BackgroundVoiceService`; Task 4 `_background`
+  and the group "screen off" helpers; barge-in `_bargeIn` (`BargeInCoordinator extends ChangeNotifier`,
+  `bool get listening`, barge-in plan Task 8/9), `listenTurn(bool)` and `fixture.rpcResponses` (barge-in plan Task 9).
+- Produces:
+  - `BackgroundVoiceHost.listening(bool on)` → `Future<void>`;
+  - `BackgroundVoice.listening(bool on)` → `void` (deduplicated; forwarded only while held; re-applied when a hold
+    starts; reset when a hold ends);
+  - `BackgroundVoiceFixture.listens` (`List<bool>`);
+  - channel contract: Dart → native `listening {on: bool}` → `null`;
+  - `BackgroundVoiceService.listening(on: Boolean)`, which logs `listening on` / `listening off`.
 
-- [ ] **Step 1: Failing test**, inside group "screen off":
+- [ ] **Step 1: Write the failing unit tests**
+
+In `test/voice_offline/background_voice_test.dart`, extend `_Host` with these members:
 
 ```dart
-    testWidgets('no listen round opens with the screen off', (tester) async {
-      await controller.preferences.setString('voice.listen_turn', 'on');
+  final listens = <bool>[];
+  Object? listenError;
+
+  @override
+  Future<void> listening(bool on) async {
+    listens.add(on);
+    if (listenError != null) throw listenError!;
+  }
+```
+
+Append inside `main()`:
+
+```dart
+  test('listening is forwarded once per change while held', () async {
+    voice.sync(want: true);
+    await pumpEventQueue();
+    voice.listening(true);
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    voice.listening(false);
+    await pumpEventQueue();
+    expect(host.listens, [true, false]);
+  });
+
+  test('listening before a hold is shown once the hold starts', () async {
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, isEmpty);
+    voice.sync(want: true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+  });
+
+  test('a native stop ends the listening state with the hold', () async {
+    voice.sync(want: true);
+    voice.listening(true);
+    await pumpEventQueue();
+    host.controller.add('call');
+    voice.listening(false);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    voice.sync(want: true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+  });
+
+  test('a failing listening update keeps the hold', () async {
+    voice.sync(want: true);
+    await pumpEventQueue();
+    host.listenError = StateError('channel');
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    expect(voice.held, isTrue);
+  });
+```
+
+- [ ] **Step 2: Commit the tests and run them to see them fail**
+
+```bash
+git add test/voice_offline/background_voice_test.dart
+git commit -m "test(voice-bg): notification shows an open listen round"
+```
+
+Run: `bash tools/factory/ci-suite.sh test/voice_offline/background_voice_test.dart`
+Expected: `ci-suite: run <id> conclusion=failure` (the analyzer reports that `listening` is not defined for
+`BackgroundVoice` and that `_Host.listening` overrides nothing).
+
+- [ ] **Step 3: Dart implementation in `lib/voice_offline/background_voice.dart`**
+
+In `BackgroundVoiceHost`, after `Stream<String> get stopped;` add:
+
+```dart
+
+  /// Shows whether a barge-in listen round has the microphone open.
+  Future<void> listening(bool on);
+```
+
+In `AndroidBackgroundVoiceHost`, after `hold`, add:
+
+```dart
+
+  @override
+  Future<void> listening(bool on) =>
+      _channel.invokeMethod<void>('listening', {'on': on});
+```
+
+In `BackgroundVoice`:
+- in the `stopped` listener, after `_want = false;`, add `_shown = false;`;
+- after `bool _disposed = false;` add:
+
+```dart
+  bool _listening = false;
+  bool _shown = false;
+```
+
+- replace `_apply()` with:
+
+```dart
+  Future<void> _apply() async {
+    final want = _want && !_disposed;
+    if (want == _held) return;
+    bool held;
+    try {
+      held = await _host.hold(want);
+    } on Object {
+      held = false;
+    }
+    _held = want && held;
+    if (!_held) _shown = false;
+    await _show();
+  }
+```
+
+- after `sync`, add:
+
+```dart
+  /// A barge-in listen round opened or closed (spec 2026-10-14 background,
+  /// D2-b). The notification says so while the hold is active.
+  void listening(bool on) {
+    if (_disposed || on == _listening) return;
+    _listening = on;
+    _queue = _queue.then((_) => _show());
+  }
+
+  Future<void> _show() async {
+    final on = _listening && _held;
+    if (on == _shown) return;
+    _shown = on;
+    try {
+      await _host.listening(on);
+    } on Object {
+      // The text is cosmetic; the hold and the Android indicator stay.
+    }
+  }
+```
+
+- [ ] **Step 4: Fixture.** In `test/support/background_voice_fixture.dart`, after `bool grant = true;` add:
+
+```dart
+  final listens = <bool>[];
+
+  @override
+  Future<void> listening(bool on) async => listens.add(on);
+```
+
+- [ ] **Step 5: Kotlin service.** In `BackgroundVoiceService.kt`:
+
+5a. In `onStartCommand`, directly after `running = true` add:
+
+```kotlin
+            instance = this
+```
+
+5b. Change `private fun notification(): Notification {` to:
+
+```kotlin
+    private fun notification(listening: Boolean = false): Notification {
+```
+
+and `.setContentText("Microphone opens after each reply.")` to:
+
+```kotlin
+            .setContentText(if (listening) "Microphone is listening." else "Microphone opens after each reply.")
+```
+
+5c. In `onDestroy`, directly after `running = false` add:
+
+```kotlin
+        instance = null
+```
+
+5d. In the companion, after `var onStopped`, add:
+
+```kotlin
+        private var instance: BackgroundVoiceService? = null
+
+        /** Barge-in listen round open or closed: updates the notification text only. */
+        fun listening(on: Boolean) {
+            val service = instance ?: return
+            if (!notificationsAllowed(service)) return
+            Log.i(TAG, if (on) "listening on" else "listening off")
+            service.getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, service.notification(on))
+        }
+```
+
+- [ ] **Step 6: Kotlin channel.** In `BackgroundVoiceChannel.kt`, replace the first line of `handle`
+(`if (call.method != "hold") return result.notImplemented()`) with:
+
+```kotlin
+        if (call.method == "listening") {
+            BackgroundVoiceService.listening(call.argument<Boolean>("on") == true)
+            return result.success(null)
+        }
+        if (call.method != "hold") return result.notImplemented()
+```
+
+- [ ] **Step 7: Commit and run**
+
+```bash
+git add lib/voice_offline/background_voice.dart test/support/background_voice_fixture.dart android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground
+git commit -m "feat(voice-bg): notification text while a listen round is open"
+```
+
+Run: `bash tools/factory/ci-suite.sh test/voice_offline/background_voice_test.dart`
+Expected: `ci-suite: run <id> conclusion=success`.
+
+Run: `bash tools/factory/dispatch-check.sh voice-apk.yml publish=false`
+Expected: `dispatch-check: voice-apk.yml run <id> conclusion=success …`.
+
+If A10 found no `_openListen`, stop here and go to Task 6.
+
+- [ ] **Step 8: Write the failing widget tests** (only with A10), inside group "screen off":
+
+```dart
+    testWidgets('a listen round with the screen off shows in the notification', (
+      tester,
+    ) async {
+      fixture.rpcResponses['session.steer'] = {
+        'status': 'queued',
+        'text': 'Pocket steer',
+      };
       await startVadConversation(tester);
-      await speakAndSend(tester);
-      final before = vadStarts();
+      await listenTurn(true);
       screenOff(tester);
-      await settle(tester);
-      // Hermes is still working: barge-in would open a listen round now.
-      expect(vadStarts(), before);
-      expect(device.recording == null || device.cancelled.contains(device.recording), isTrue);
+      await tester.pump();
+      await speakAndSend(tester);
+      expect(prompts(), 1);
+      expect(vadStarts(), 2);
+      expect(background.listens.last, isTrue);
+      device.vadTranscript = 'Pocket steer';
+      await speakAndSend(tester);
+      expect(
+        fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
+        'Pocket steer',
+      );
+      expect(prompts(), 1);
+      await completeReply(tester, 'Done.');
+      expect(background.listens.first, isTrue);
+      expect(background.listens.last, isFalse);
+      expect(background.holds, [true]);
       screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    });
+
+    testWidgets('with listening off no listen round opens with the screen off', (
+      tester,
+    ) async {
+      await startVadConversation(tester);
+      screenOff(tester);
+      await tester.pump();
+      await speakAndSend(tester);
+      expect(prompts(), 1);
+      expect(vadStarts(), 1);
+      await completeReply(tester, 'Done.');
+      expect(vadStarts(), 2);
+      expect(background.listens, isEmpty);
+      screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
       await settle(tester);
     });
 ```
 
-If the barge-in key name differs, use the constant from `VoicePreferences` that the barge-in plan added (grep
-`listen_turn` in `lib/core/services/voice_preferences.dart`).
+The second test guards the switch and already passes; the first fails until Step 10.
 
-- [ ] **Step 2: Commit and run to see it fail**
+- [ ] **Step 9: Commit the tests and run them to see them fail**
 
 ```bash
 git add test/voice_workspace_test.dart
-git commit -m "test(voice-bg): no listen round with the screen off"
+git commit -m "test(voice-bg): listen round with the screen off is visible"
 ```
 
 Run: `bash tools/factory/ci-suite.sh test/voice_workspace_test.dart`
-Expected: `conclusion=failure`.
+Expected: `conclusion=failure` (`background.listens` is empty in the first test).
 
-- [ ] **Step 3: Implement (2 lines)**
-
-In `_openListen`, change the early-return condition `if (!mounted ||` to:
-
-```dart
-    if (!mounted || _background.screenOff ||
-```
-
-In `didChangeAppLifecycleState`, directly after `_background.lifecycle(state);` add:
+- [ ] **Step 10: Screen hook (1 line).** Find `initState` with
+`git grep -n "void initState()" -- lib/core/screens/profile_workspace_screen.dart`. Directly after its
+`super.initState();` add:
 
 ```dart
-    if (_background.screenOff) unawaited(_bargeIn.close('screenOff').catchError((Object _) {}));
+    _bargeIn.addListener(() => _background.listening(_bargeIn.listening));
 ```
 
-- [ ] **Step 4: Commit and run**
+`_bargeIn` notifies on every listen phase change (barge-in `TurnListener._notify`); `BackgroundVoice.listening`
+deduplicates. After `_background.dispose()` the callback is a no-op.
+
+- [ ] **Step 11: Commit and run**
 
 ```bash
 git add lib/core/screens/profile_workspace_screen.dart
-git commit -m "feat(voice-bg): no listen rounds while the screen is off"
+git commit -m "feat(voice-bg): show open listen rounds in the conversation notification"
 ```
 
 Run: `bash tools/factory/ci-suite.sh test/voice_workspace_test.dart`
-Expected: `conclusion=success`.
+Expected: `conclusion=success`; the barge-in tests stay green.
+
+Run: `git diff --numstat HEAD~1 HEAD -- lib/core/screens/profile_workspace_screen.dart`
+Expected: added 1, deleted 0.
 
 ---
 
@@ -1214,14 +1505,25 @@ Expected: `conclusion=success`.
 **Files:**
 - Modify: `docs/VOICE.md` (wt :17)
 
+**Interfaces:**
+- Consumes: `BASE` (Task 0); the log line forms from Global Constraints.
+- Produces: none.
+
 - [ ] **Step 1: Docs.** In `docs/VOICE.md`, replace the sentence `During Conversation mode the screen stays on.` with:
 
 ```markdown
 During Conversation mode the screen stays on. On the VAD input you can also switch the screen off or
 pocket the phone: the conversation continues, and a "Conversation mode" notification with Stop shows
-it. Staying silent after a reply (the "Wait for speech" time) ends it, as do a phone call, Stop and
-swiping the notification away. Car mode always keeps the screen on.
+it. With "Listen while Hermes works" on, the microphone also stays open while Hermes works with the
+screen off, so you can steer from your pocket; the notification then reads "Microphone is listening."
+Switch that setting off to keep the microphone closed until the reply has been read. Interrupting the
+read-aloud by speaking still needs headphones. Staying silent after a reply (the "Wait for speech"
+time) ends the conversation, as do a phone call, Stop and swiping the notification away. Car mode
+always keeps the screen on.
 ```
+
+If A10 found no barge-in, leave out the sentences about "Listen while Hermes works" and read-aloud interruption;
+the barge-in card adds them.
 
 - [ ] **Step 2: Hook caps against BASE (Task 0)**
 
@@ -1241,8 +1543,8 @@ Expected: no output.
 
 Run: `git grep -n "Log\.\|debugPrint\|print(" -- android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground lib/voice_offline/background_voice.dart`
 Expected: only `Log.i(TAG, …)` / `Log.i(BackgroundVoiceService.TAG, …)` lines with the literals `hold on`,
-`hold refused reason=…`, `pause kept`, `stop reason=…` and `wakelock released heldMs=…`. No `text`, `transcript` or
-`reply` argument.
+`hold refused reason=…`, `pause kept`, `stop reason=…`, `wakelock released heldMs=…`, `listening on` and
+`listening off` (Global Constraints). No `text`, `transcript` or `reply` argument.
 
 - [ ] **Step 4: Commit and run the suite**
 
@@ -1251,12 +1553,19 @@ git add docs/VOICE.md
 git commit -m "docs(voice-bg): conversation with the screen off"
 ```
 
+If A10 found no `_openListen`, add a second `-m` with: `barge-in must add _bargeIn.addListener(() => _background.listening(_bargeIn.listening)); to initState`.
+
 Run: `bash tools/factory/ci-suite.sh test/voice_workspace_test.dart`
 Expected: `conclusion=success`.
 
 ---
 
 ### Task 7: Phone build
+
+**Files:** none.
+
+**Interfaces:**
+- Produces: the APK used by Task 8.
 
 - [ ] **Step 1:** Run: `bash tools/factory/dispatch-check.sh voice-apk.yml publish=true`
 Expected: `conclusion=success`. The APK for `com.tarkilhk.wing.voice` is published to `voice-apk-bin`, as in the VAD
@@ -1268,7 +1577,14 @@ plan Task 15.
 
 Run this on Birk's Sony Xperia (LineageOS) through `hadb`. Claude subagents never do it. One command per call. If
 the phone is locked, ask Birk to unlock it (as in the VAD plan). Package: `com.tarkilhk.wing.voice`. Record only
-pass/fail and numbers, never spoken text or log dumps, in the Results section (Step 18).
+pass/fail and numbers, never spoken text or log dumps, in the Results section (Step 20).
+
+**Files:**
+- Modify: `docs/superpowers/plans/2026-10-14-wing-voice-background.md` (Results section, Step 20 only).
+
+**Interfaces:**
+- Consumes: the Task 7 APK; the log line forms and notification copy from Global Constraints.
+- Produces: none.
 
 - [ ] **Step 1: Device facts**
 
@@ -1277,7 +1593,7 @@ lower means Step 10 expects the fallback behaviour.
 
 Run: `hadb shell getprop ro.lineage.version`. Record it.
 
-Run: `hadb shell settings get system screen_off_timeout`. Record it, to restore in Step 17.
+Run: `hadb shell settings get system screen_off_timeout`. Record it, to restore in Step 19.
 
 - [ ] **Step 2: Install and set up**
 
@@ -1285,7 +1601,9 @@ Install the Task 7 APK with `hadb install -r <apk>` (large files: the curl/`pm i
 In Wing, set:
 - input route VAD;
 - Conversation mode on;
-- notifications allowed.
+- notifications allowed;
+- if barge-in is merged: "Listen while Hermes works" off for Steps 3–15 (they count rounds and measure the plain
+  loop); Steps 16–17 switch it.
 
 Run: `hadb logcat -c`.
 
@@ -1413,19 +1731,58 @@ After the conversation:
   and the foreground-service time.
 - Expected: the service is not stopped by the system during the 10 min (no `stop reason` before Birk ends it).
 
-- [ ] **Step 16: Log privacy**
+- [ ] **Step 16: Steer from the pocket while Hermes works (D2-b)**
+
+Only if barge-in is merged; otherwise record "n/a (barge-in not merged)". In Wing, switch "Listen while Hermes
+works" on. Run: `hadb logcat -c`.
+
+Ask a question that takes Hermes > 30 s (for example the barge-in plan's synthetic `sleep 25` prompt). Right after
+sending, run: `hadb shell input keyevent KEYCODE_SLEEP`.
+
+Run: `hadb shell input keyevent KEYCODE_WAKEUP`
+Expected: on the lock screen the notification reads "Conversation mode — Microphone is listening.", and the green
+microphone indicator is on.
+
+Run: `hadb shell input keyevent KEYCODE_SLEEP`. While Hermes still works, Birk speaks a short steer.
+Expected after the turn: the reply is spoken with the screen off, and the next round opens. After unlocking, the
+steer is in the chat as a steer of the running turn.
+
+Run: `hadb logcat -d -v time -s WingBgVoice`
+Expected: `listening on` after the send, then `listening off` when the turn ends, with no `stop reason` in between.
+Record the seconds between the first `listening on` and the last `listening off`: that is how long the microphone
+indicator stayed on for the listen round.
+
+Wake the phone after the turn. Expected: the notification reads "Conversation mode — Microphone opens after each
+reply." again.
+
+- [ ] **Step 17: "Listen while Hermes works" off → no listen round with the screen off**
+
+Only if barge-in is merged. In Wing, switch "Listen while Hermes works" off. Run: `hadb logcat -c`.
+Ask the same long question and switch the screen off right after sending (`hadb shell input keyevent KEYCODE_SLEEP`).
+During the turn, run `hadb shell input keyevent KEYCODE_WAKEUP`.
+Expected: no green microphone indicator; the notification reads "Microphone opens after each reply.".
+
+Run: `hadb shell input keyevent KEYCODE_SLEEP`. After the turn:
+
+Run: `hadb logcat -d -s WingBgVoice`
+Expected: no `listening on`; the reply is spoken and the next round opens as in Step 6.
+
+Switch "Listen while Hermes works" back on (its default).
+
+- [ ] **Step 18: Log privacy**
 
 Run: `hadb logcat -d -s WingBgVoice`
 Expected: only the line forms from Global Constraints. No words Birk spoke and no reply text.
 
-- [ ] **Step 17: Restore**
+- [ ] **Step 19: Restore**
 
 Run: `hadb shell settings put system screen_off_timeout <value from Step 1>`.
 
-- [ ] **Step 18: Results**
+- [ ] **Step 20: Results**
 
-Append a section `## Results (device)` to this plan with one line per step: pass/fail, SDK and LineageOS version,
-CPU %, wake lock minutes and foreground-service minutes. No logs and no spoken text. Then commit:
+Append a section `## Results (device)` to this plan with one line per step (Steps 1–19): pass/fail, SDK and
+LineageOS version, CPU %, wake lock minutes, foreground-service minutes, and the listen-round microphone seconds from
+Step 16. No logs and no spoken text. Then commit:
 
 ```bash
 git add docs/superpowers/plans/2026-10-14-wing-voice-background.md
@@ -1437,31 +1794,10 @@ If Step 4 shows silence instead of transcription (P2 false), stop and end the re
 
 ---
 
-## Deltas for the alternatives (spec §12)
+## Options not chosen (history, spec §12)
 
-**D1-b — own switch "Keep going with screen off", default off**
-- Task 1: no change.
-- New Task 4a, before Task 4:
-  - `lib/core/services/voice_preferences.dart` gets `static const conversationBackgroundKey = 'voice.conversation_background';`,
-    a field `final bool conversationBackground;` (default `false`, read like `conversation`) and a test in
-    `test/voice_preferences_test.dart`.
-  - `lib/core/widgets/voice_preferences_card.dart` gets a `SwitchListTile` titled "Keep going with screen off" under
-    Conversation mode. It is enabled only when Conversation mode is on and the route is VAD.
-  - Check the card in both themes at 200 % text (DESIGN_SYSTEM.md).
-- Task 4 step 4d: `want` becomes
-  `value != null && _vadRoute() == true && VoicePreferences.read(controller.preferences).conversationBackground`.
-- Widget tests set the key to `'on'` in `startVadConversation`.
-- Device Step 3 is run with the switch on; one extra check with it off expects no `hold on`.
-
-**D2-b — listen rounds also with the screen off**
-- Skip Task 5.
-- Device: add a step during a long Hermes turn with the screen off. Speak a steer and expect it to arrive in the chat.
-  Record the time the microphone indicator stays on.
-
-**D3-b — notification only from screen-off**
-- `BackgroundVoice` gets `arm(bool)` instead of holding at conversation start. The Dart setter calls `arm`, and Kotlin
-  `VoiceChannel.pause()` calls `BackgroundVoiceChannel.startIfArmed()` before the guard. That starts the service from
-  `onPause` (P2/P3 exemption).
-- If the start throws `ForegroundServiceStartNotAllowedException`, the guard returns false and today's behaviour
-  applies.
-- Device Step 4 is the decision point: if recording is silent or the service is refused, revert to D3-a.
+Birk decided D1–D3 on 14.10. The alternatives below are recorded only so the decision is traceable; they are not
+part of this plan and nothing here is to be implemented.
+- D1-b (own switch "Keep going with screen off", default off): not chosen.
+- D3-b (start the service only at screen-off, from `onPause`): not chosen; it relied on background-start exemptions
+  (spec §3 P2/P3).

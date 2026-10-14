@@ -1,6 +1,7 @@
 # Wing Voice: conversation mode keeps running with the screen off
 
-Card: t_4934d7d4 (board wing). Date: 2026-10-14. Status: design, no product code.
+Card: t_4934d7d4 (board wing). Date: 2026-10-14. Status: design, no product code. Birk's decisions D1-a, D2-b,
+D3-a (14.10.) are in §12.
 
 ## 1. Goal and scope
 
@@ -13,6 +14,8 @@ screen off, only the reply notification sound arrives.
 - Starting it while Wing is visible.
 - Continuing it when the activity pauses: screen off, lock screen, or another app in front.
 - A persistent notification with Stop.
+- Barge-in listen rounds (t_7e81e040) while Hermes works, also with the screen off (D2-b), made visible in the
+  notification.
 - Interruptions: call, audio focus, headset.
 - Battery and Doze behaviour.
 - Privacy.
@@ -157,8 +160,8 @@ microphone access.** Recommended.
 
 | Unit | File | Purpose | Interface |
 |---|---|---|---|
-| `BackgroundVoiceService` | new `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt` | Microphone FGS: notification with Stop, partial wake lock, audio-mode watch. Stops itself on Stop, swipe or call. | Intents `ACTION_HOLD`, `ACTION_STOP`. Companion `running: Boolean`, `onStopped: ((String) -> Unit)?`. |
-| `BackgroundVoiceChannel` | new `…/voicebackground/BackgroundVoiceChannel.kt` | MethodChannel `com.tarkilhk.wing/background_voice`. `hold(on)` checks the preconditions and starts or stops the service; it forwards stop reasons to Dart. | Dart → native `hold {on: bool}` → `{held: bool, reason: String}`. Native → Dart `stopped {reason}`. |
+| `BackgroundVoiceService` | new `android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt` | Microphone FGS: notification with Stop, partial wake lock, audio-mode watch. Stops itself on Stop, swipe or call. Switches the notification text while a listen round is open. | Intents `ACTION_HOLD`, `ACTION_STOP`. Companion `running: Boolean`, `onStopped: ((String) -> Unit)?`, `listening(on: Boolean)`. |
+| `BackgroundVoiceChannel` | new `…/voicebackground/BackgroundVoiceChannel.kt` | MethodChannel `com.tarkilhk.wing/background_voice`. `hold(on)` checks the preconditions and starts or stops the service; it forwards stop reasons to Dart; `listening(on)` updates the notification text. | Dart → native `hold {on: bool}` → `{held: bool, reason: String}`; `listening {on: bool}` → `null`. Native → Dart `stopped {reason}`. |
 | `BackgroundVoice` | new `lib/voice_offline/background_voice.dart` | Dart policy and state: whether to hold, whether a lifecycle pause keeps voice, stop events. | `BackgroundVoiceHost` (interface), `AndroidBackgroundVoiceHost`, `BackgroundVoice` (§5.3). |
 | Test fake | new `test/support/background_voice_fixture.dart` | Records `hold` calls and emits `stopped`. | Implements `BackgroundVoiceHost`. |
 | Hooks | `VoiceChannel.kt`, `profile_workspace_screen.dart`, `AndroidManifest.xml` | Bypass K1–K4 while held. | §5.5. |
@@ -168,8 +171,10 @@ microphone access.** Recommended.
 **Want.** Dart computes `want` every time `_conversation` changes:
 
 ```
-want = _conversation != null && route == vad && !carModeActive [&& setting on — only for alternative D1-b]
+want = _conversation != null && route == vad && !carModeActive
 ```
+
+There is no own setting (D1-a).
 
 **Hold (when `want` becomes true).** Dart calls `hold(true)`. Native refuses with a reason in each of these cases:
 
@@ -191,8 +196,11 @@ behaviour in place: the conversation still runs while visible and ends on pause.
 - call (`call`);
 - `VoiceChannel.close()` (`activityClosed`).
 
-**Why the service starts with the conversation and not at screen-off:** see Decision D3. The service is already in the
+**Why the service starts with the conversation and not at screen-off:** Decision D3-a. The service is already in the
 foreground state when the screen turns off, so no background start is needed (P2, P3).
+
+**Listen rounds.** While held, Dart forwards whether a barge-in listen round is open (`listening(on)`); the service
+only changes the notification text (§5.4). Outside a hold nothing is forwarded.
 
 ### 5.3 Dart interface
 
@@ -203,6 +211,8 @@ abstract interface class BackgroundVoiceHost {
   /// Reasons the native side ended the hold on its own
   /// (notification, dismissed, call, activityClosed).
   Stream<String> get stopped;
+  /// Shows whether a barge-in listen round has the microphone open.
+  Future<void> listening(bool on);
 }
 
 class BackgroundVoice {
@@ -210,6 +220,7 @@ class BackgroundVoice {
   bool get held;                       // last confirmed native state
   bool get screenOff;                  // held && app not resumed
   void sync({required bool want});     // idempotent, serialised
+  void listening(bool on);             // deduplicated; forwarded only while held
   bool keepsVoice(AppLifecycleState s);// held && s != detached
   void lifecycle(AppLifecycleState s); // tracks screenOff
   void dispose();                      // hold(false), cancel subscription
@@ -228,6 +239,7 @@ cancels, because the engine is losing its view.
 | Small icon | the existing `R.drawable.ic_stat_monitoring` (no new asset, per DESIGN_SYSTEM.md:119-125 notification identity) |
 | Title | "Conversation mode" |
 | Text | "Microphone opens after each reply." |
+| Text while a barge-in listen round is open | "Microphone is listening." (back to the text above when the round closes) |
 | Action | "Stop" → `ACTION_STOP` |
 | Tap | opens Wing (same `PendingIntent` pattern as `BackgroundMonitoringService.kt:50-58`) |
 | Swipe | `setDeleteIntent` → `ACTION_STOP` with reason `dismissed` (P6) |
@@ -240,7 +252,7 @@ No spoken text, transcript or reply ever appears in the notification.
 | File | Change | Cap |
 |---|---|---|
 | `android/.../VoiceChannel.kt` | (1) field `private val background = BackgroundVoiceChannel(activity, messenger)`. (2) First line of `pause()`: `if (BackgroundVoiceService.running) { capture.pause(); mediaKeys.pause(); return }` keeps the vad round and playback alive; the `local`/`hermes` capture is still stopped, and media keys stay foreground-only. (3) `close()`: `background.close()`, which releases the hold with reason `activityClosed`. | ≤ 7 added/changed lines including the 2 imports |
-| `lib/core/screens/profile_workspace_screen.dart` | import; constructor parameter `backgroundVoice` (like `voiceDevice`); field `_background`; `_conversation` setter → `_background.sync(want: …)`; lifecycle → `if (... && !_background.keepsVoice(state)) _cancelVoice();` plus `_background.lifecycle(state)`; `_loopFocus` getter used at `:239` and `:282` instead of `_hasWorkspaceFocus`/`_hasChatFocus`; `dispose` → `_background.dispose()`. | ≤ 20 added/changed lines |
+| `lib/core/screens/profile_workspace_screen.dart` | import; constructor parameter `backgroundVoice` (like `voiceDevice`); field `_background`; `_conversation` setter → `_background.sync(want: …)`; lifecycle → `if (... && !_background.keepsVoice(state)) _cancelVoice();` plus `_background.lifecycle(state)`; `_loopFocus` getter used at `:239` and `:282` instead of `_hasWorkspaceFocus`/`_hasChatFocus`; `dispose` → `_background.dispose()`; with barge-in merged, one `initState` line `_bargeIn.addListener(() => _background.listening(_bargeIn.listening));` (plan Task 5). | ≤ 20 added/changed lines (planned: 18) |
 | `android/app/src/main/AndroidManifest.xml` | `FOREGROUND_SERVICE_MICROPHONE` permission; `<service android:name=".voicebackground.BackgroundVoiceService" android:exported="false" android:foregroundServiceType="microphone" />` | ≤ 8 lines |
 | `MainActivity.kt`, `VoiceCapture.kt`, `voice_input_controller.dart`, `android_voice.dart`, `VadCapture.kt`, `VoicePlayback.kt` | none | 0 lines |
 
@@ -262,7 +274,7 @@ It replaces the focus test in `_speakCompletedReply` (`:239`) and in `_canContin
 | VAD round recording | `pause()` hook keeps `vad` | `keepsVoice` → no cancel | `onResult` checks only `mounted`, owner, `current == chat` and `_destination` (`:413-419`) → `_sendConversationTurn` (no focus check, `:300-312`) |
 | Awaiting reply | — | no cancel | `completedReplies` → `_speakCompletedReply` with `_loopFocus` |
 | Reading aloud | hook keeps `playback` | no cancel | `speak` returns true → `_canContinueConversation` with `_loopFocus` → `_dictate(resume: true)` (`:392-400`, no focus check) |
-| Barge-in listen round (t_7e81e040, if merged) | hook keeps `vad` | no cancel | Per D2 (recommended): the coordinator closes the listen round when the screen goes off and opens none while `screenOff`. |
+| Barge-in listen round (t_7e81e040, if merged) | hook keeps `vad` | no cancel | D2-b: the listen round keeps running; `_openListen` checks no focus, so new listen rounds also open with the screen off when `voice.listen_turn` is on. A steer goes through barge-in's `controller.steer`. The notification reads "Microphone is listening." |
 
 Coming back (`resumed`) changes nothing in the loop. The hold stays while the conversation runs.
 
@@ -290,7 +302,9 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
 - The service lives only while the conversation runs.
 - The conversation ends at most `noSpeech` seconds after a reply finishes if nobody speaks (§8). The only long
   holder is a long Hermes turn, during which the monitoring service already holds its own wake lock whenever
-  notifications are on.
+  notifications are on. With `voice.listen_turn` on (D2-b), a listen round also runs VAD for that whole turn; its CPU
+  cost is the barge-in card's measurement, and plan Task 8 Step 16 records the open-microphone time with the screen
+  off.
 
 **Doze.**
 - A walking person rarely triggers deep Doze.
@@ -306,10 +320,18 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
 ## 8. Privacy
 
 - **The microphone is only open during a round.** The service itself never records. `AudioRecord` runs only inside a
-  VAD round started by the loop.
+  VAD round started by the loop or inside a barge-in listen round.
+- **A whole Hermes turn with the screen off (D2-b).** With "Listen while Hermes works" (`voice.listen_turn`, default
+  on) the microphone can stay open for a whole Hermes turn while the phone is in a pocket. What it hears nearby can be
+  transcribed and sent as a steer. Birk accepted this on 14.10.
+- **The only control is `voice.listen_turn`.** It applies the same way with the screen on and off; there is no
+  screen-off special rule and no extra setting. With it off, the microphone opens with the screen off only for the
+  round after a reply, bounded by the no-speech limit below.
+- **Interrupting read-aloud stays headphones-only** (barge-in D2), unchanged by this card.
 - **Visibility.** While the screen is off, the microphone's state is visible only through the ongoing notification
-  (§5.4) and Android's microphone indicator (P8). If notifications are disabled, there is no hold (§5.2), so the
-  microphone is never open unseen.
+  (§5.4) and Android's microphone indicator (P8). During a listen round the notification text reads "Microphone is
+  listening."; after the round it returns to "Microphone opens after each reply.". If notifications are disabled,
+  there is no hold (§5.2), so the microphone is never open unseen with the screen off.
 - **Time limit without speech.** Background conversation ends when one round hears no speech for
   `voice.vad_no_speech_seconds`. The default is **8 s**: `VadEndpointConfig.noSpeechTimeout = Duration(seconds: 8)`
   (`lib/core/services/vad_endpoint.dart:24`), user choices 5/8/12/20 s (`lib/core/services/voice_preferences.dart:52`,
@@ -319,11 +341,12 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
     stops.
   - No second timer is needed: the same value bounds open-microphone-without-speech in both foreground and
     background.
-  - Barge-in listen rounds set `noSpeechTimeout = maxDuration` (barge-in spec :184). That is why D2 recommends no
-    listen rounds while the screen is off.
+  - Barge-in listen rounds set `noSpeechTimeout = maxDuration` (barge-in spec :184) and restart silently while the
+    turn runs, so this limit does not bound them; the end of the Hermes turn, Stop listening, notification Stop or
+    `voice.listen_turn` off do.
 - **Logs.** Tag `WingBgVoice`, Kotlin only. Lines carry only state, reason and durations: `hold on`, `hold refused
-  reason=notifications`, `pause kept`, `stop reason=call`, `wakelock released heldMs=…`. Never text, transcript, reply,
-  chat or profile name.
+  reason=notifications`, `pause kept`, `stop reason=call`, `wakelock released heldMs=…`, `listening on`,
+  `listening off`. Never text, transcript, reply, chat or profile name.
 - **No data in the repo.** Device logs and battery dumps from acceptance stay on the workstation. Only the observed
   pass/fail and numbers go into the plan's results section.
 
@@ -332,8 +355,8 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
 | Card | Interaction | Resolution |
 |---|---|---|
 | Car mode t_c8de9cba | Car mode is always screen-on, holds `screenOn` for its whole duration (car spec :113-115), and relies on `_cancelVoice()` on pause (car spec :126-128). | `want` includes `!_car.active`. With car mode active nothing is held, so `keepsVoice` is false and car behaviour is unchanged. If car mode is not merged yet, the term is added by whichever card lands second (plan anchor A9). |
-| Barge-in t_7e81e040 | Listen rounds while Hermes works (`_openListen`, barge-in plan :2059-2072) and the `_conversation` setter hook (:2014-2026). | D2: `_openListen` gets `|| _background.screenOff` in its early return; `lifecycle()` closes a running listen round when the screen goes off. Both setter hooks coexist (separate lines). |
-| Auto-steering t_f0c1d125 | No doc exists in `docs/` (grep, 2026-10-14). The card's premise is that a second dictation during a running turn is sent as steer. | With D2 the microphone is closed while Hermes works in the background, so no steer can arise there. In the foreground nothing changes. If D2-b is chosen, background steers go through the same `_sendConversationTurn` path; no extra code. |
+| Barge-in t_7e81e040 | Listen rounds while Hermes works (`_openListen`, barge-in plan :2059-2072), the `_conversation` setter hook (:2014-2026), the switch `voice.listen_turn` and headphones-only read-aloud interruption (barge-in D2). | D2-b: listen rounds are not gated; they run with the screen off exactly as with it on, controlled only by `voice.listen_turn`. This card adds one `initState` line that forwards `_bargeIn.listening` to the notification (plan Task 5). Read-aloud interruption is unchanged. Both setter hooks coexist (separate lines). If barge-in is not merged, it adds that line (plan anchor A10). |
+| Auto-steering t_f0c1d125 | No doc exists in `docs/` (grep, 2026-10-14). The card's premise is that a second dictation during a running turn is sent as steer. | With D2-b, steers spoken with the screen off go through barge-in's `controller.steer` / `_sendConversationTurn` path, as on screen; no extra code. |
 | TTS language t_d523010d | Changes `VoicePlayback.kt`, `VoiceChannel.kt:53-54` (`speak`), and adds `voiceoffline/LanguageSpeech.kt`. | Disjoint lines in `VoiceChannel.kt` (this card: field, `pause`, `close`). TTS in the background is P4 for both. |
 | Upstream merge t_f8523002 | Rewrites `VoiceChannel.kt` (`leaveForeground`), `MainActivity.kt` (`onStop`), and the screen (`:912`). | The plan starts with anchor checks. The hook stays in `VoiceChannel.pause()`, which `leaveForeground()` calls. |
 
@@ -375,7 +398,9 @@ must go earlier, the anchors A9 and A10 say which term the later card has to add
 - a refused hold;
 - a `stopped` stream entry calls `onStopped`;
 - `keepsVoice` truth table (`paused`/`hidden`/`inactive` true when held, `detached` false);
-- `screenOff`.
+- `screenOff`;
+- `listening`: forwarded once per change while held, applied when a hold starts, reset by a native stop, a failing
+  update keeps the hold.
 
 **Widget** (`test/voice_workspace_test.dart`, group "screen off"), with `VoiceDeviceFixture` and
 `BackgroundVoiceFixture`:
@@ -388,45 +413,48 @@ must go earlier, the anchors A9 and A10 say which term the later card has to add
    `false`.
 6. Held, no-speech failure → `hold(false)`.
 7. Hold refused → `paused` cancels as today.
+8. With barge-in merged: held, screen off, `voice.listen_turn` on → a listen round opens after the send, the
+   notification fake records `listening(true)`, a spoken steer reaches `session.steer`, and the turn end records
+   `listening(false)`.
+9. With barge-in merged: `voice.listen_turn` off → no listen round with the screen off, no `listening` call.
 
 **Kotlin:** compile check only (`dispatch-check.sh voice-apk.yml publish=false`). There are no Kotlin unit tests in
 the repo (`git ls-files android/app/src/test` is empty).
 
 **Device:** plan Task 8 on hadb, covering P1–P9 and §6.
 
-## 12. Decisions for Birk
+## 12. Decisions (Birk, 14.10.)
 
-**D1 — Does background need its own switch?**
-- **(a) Recommended:** no new setting. Conversation mode on route vad always continues with the screen off; the
-  notification and microphone indicator show it.
-- (b) A switch "Keep going with screen off" under Conversation mode, default off.
+Decided on the card on 14.10.; this spec and the plan implement them.
 
-Why (a): Birk asked for the loop to keep running, a switch adds a control to a crowded card, and the privacy signal is
-the notification itself. Plan delta for (b): new plan Task 4a adds the key `voice.conversation_background` and a `SwitchListTile`
-in `voice_preferences_card.dart`; `want` adds `&& settings.conversationBackground`.
+**D1-a — no own switch.** Birk: "(a) kein eigener Schalter. Gespraechsmodus auf Route vad laeuft mit Bildschirm aus
+automatisch weiter, sichtbar ueber Benachrichtigung mit Stopp-Knopf." Conversation mode on route vad always
+continues with the screen off; the notification with Stop (§5.4) and the microphone indicator show it.
 
-**D2 — Listen while Hermes works (barge-in) with the screen off?**
-- **(a) Recommended:** no. With the screen off, the microphone opens only for the round after a reply, and that round
-  is bounded by the no-speech limit (8 s).
-- (b) Yes. Listen rounds also run in the pocket; the microphone can stay open for a whole Hermes turn (up to
-  `maxDuration`, 600 s per round).
+**D2-b — listen while Hermes works also with the screen off.** Birk: "(b). Mithoeren/Steering waehrend Hermes
+arbeitet funktioniert AUCH mit Bildschirm aus (Tasche). Es gilt derselbe Schalter 'Mithoeren' aus der
+Barge-in-Karte (Standard an, in den Voice-Einstellungen abschaltbar); kein Sonderverbot fuer Bildschirm aus.
+Reinreden ins Vorlesen weiterhin nur mit Kopfhoerern (Barge-in D2). Das Mikro kann damit eine ganze Hermes-Runde
+offen sein; die Benachrichtigung muss das sichtbar machen (z. B. 'hoert mit')."
+- Listen rounds are not gated by this card; `voice.listen_turn` is the only control (§8).
+- The notification text shows an open listen round (§5.4, plan Task 5).
+- Device proof: plan Task 8 Steps 16 and 17.
 
-Why (a): in a pocket, conversations nearby would be transcribed and sent as steers. Plan delta for (b): skip Task 5.
+**D3-a — the notification starts with conversation mode.** Birk: "(a) Benachrichtigung/Vordergrunddienst startet
+schon beim Start des Gespraechsmodus." Android only allows a microphone foreground service started while Wing is
+visible (P2, P3), so the hold starts when a conversation starts on route vad, even with the screen on (§5.2).
 
-**D3 — When does the notification appear?**
-- **(a) Recommended:** when a conversation starts on route vad, even with the screen on. Android only allows a
-  microphone foreground service started while Wing is visible (P2, P3), so this is the reliable path.
-- (b) Only when the screen goes off. The service is started from `onPause`; this depends on P2/P3 exemptions that may
-  not hold, and if they don't, the conversation ends as today.
-
-Plan delta for (b): plan Task 1 replaces the hold at conversation start with `BackgroundVoice.arm`. Plan Task 3 makes
-`VoiceChannel.pause()` start the service when Dart armed it. Plan Task 8 Step 4 decides whether this works on LineageOS.
+Not chosen (history only): D1-b, an own switch "Keep going with screen off"; D3-b, starting the service only at
+screen-off from `onPause`.
 
 ## 13. Acceptance summary
 
 - Screen off (power button) in each phase of §5.6: the loop continues, the reply is heard, the next round is
   transcribed and sent.
 - The notification with Stop is present for exactly the conversation's lifetime. Stop, swipe and calls end it.
+- With barge-in merged and `voice.listen_turn` on: a steer spoken with the screen off during a Hermes turn reaches the
+  chat, and the notification reads "Microphone is listening." exactly while the listen round is open. With it off,
+  no listen round opens with the screen off.
 - After the last reply with no speech, the conversation and service end within `noSpeech` seconds plus the cue.
 - Car mode, route local and route hermes behave exactly as before. The existing lifecycle tests stay green.
 - Hook-line caps from §5.5 hold (`git diff --stat` per file).
