@@ -42,7 +42,7 @@ Line numbers: **vo** = `origin/voice-offline` @ `b4f5e4a0` (the VAD chain is mer
 | `_sendConversationTurn` ends the loop when the chat is busy or the send action is unavailable | vo `:300-322`, busy `:306`, send action `:309` |
 | `_dictate` first calls `await _voiceOutput.stop()`, so a new round always stops read-aloud | vo `:393` |
 | Media-key dispatcher (VAD route): recording → `stopHandsFree()`; idle → `_dictate(chat)` | vo `:356-369` |
-| Screen on: shared holder `VoiceSwitchHolders.screenOn(device).set(owner, on)` | vo `lib/core/services/android_voice.dart:218-259` (`screenOn` `:227-228`, `set` `:248-258`); `_conversation` setter vo `:217-222` |
+| Screen on: shared holder `VoiceSwitchHolders.screenOn(device).set(owner, on)` | vo `lib/core/services/android_voice.dart:218-256` (`screenOn` `:227-228`, `set` `:244-255`); `_conversation` setter vo `:217-222` |
 | `_hasWorkspaceFocus => _routeIsCurrent && _appIsActive`; `_routeIsCurrent` comes from `ModalRoute.isCurrentOf(context)` | vo `:552-555`, `didChangeDependencies` `:557-564`, assignment `:561` |
 | App paused, hidden or detached → `_cancelVoice()` | vo `:611-619` |
 | "Chat actions" overflow menu (`PopupMenuButton<String>`, values `parent/outputs/subagents/goal/background/find/refresh`) | vo `:979-1048` (`onSelected` `:982-1022`, `itemBuilder` `:1023-1047`) |
@@ -114,7 +114,7 @@ nothing, so it has not landed. Car mode does not depend on it. The tap *is* a ma
 | | A: own route on top of the workspace (**chosen**) | B: overlay layer inside the workspace | C: extract the conversation loop into its own controller |
 |---|---|---|---|
 | Idea | `CarModeScreen` is pushed with `Navigator.push`. The workspace stays mounted below and keeps running the loop | A `Stack` layer over the chat in `_buildWorkspace` | The loop moves out of the screen; car mode and chat both drive it |
-| Hooks in `profile_workspace_screen.dart` | ~46 lines + ~23 for steering (§8) | ~50, plus a guard in every chat `PopScope`: Back would also run the chat's `_leaveChat()` (vo `:838`) | Hundreds of lines in the file upstream rewrote |
+| Hooks in `profile_workspace_screen.dart` | ~53 lines + ~24 for steering (§8) | ~50, plus a guard in every chat `PopScope`: Back would also run the chat's `_leaveChat()` (vo `:838`) | Hundreds of lines in the file upstream rewrote |
 | Back, orientation, system bars | Own `PopScope` on its own route | Shared with the chat route | — |
 | Risk | The workspace below thinks it lost focus (`_routeIsCurrent` false). Fixed with one line (§6.1) | Back-gesture side effects | Merge conflicts, scope creep |
 
@@ -362,7 +362,7 @@ The button has one `GestureDetector` for the tap and the horizontal drag. Flutte
   beyond 18 dp also cancels the tap. That is intended on a bumpy road.
 - On drag end, car mode exits if `|dx| ≥ min(96 dp, 25 % of the width)`, or if `|velocity.dx| ≥ 700 dp/s` and
   `|dx| ≥ 48 dp`. Shorter drags do nothing: no tap, no exit, log `swipe action=short`. `ANNAHME:` these numbers;
-  check in Task 9 step 11 (a deliberate swipe leaves; a short slide of a finger does neither).
+  check in Task 9 step 8 (a deliberate swipe leaves; a short slide of a finger does neither).
 - While dragging, the content follows the finger at 35 % of `dx`, so the swipe visibly registers.
 - The system Back gesture from the edge is handled by Android and arrives as a route pop. It is not a drag on the
   button.
@@ -375,7 +375,7 @@ All new code lives in `lib/car_mode/`. Tests live in `test/car_mode/`.
 |---|---|---|
 | `lib/car_mode/car_mode_state.dart` | Pure: `enum CarPhase`, `enum CarConnection`, `class CarSnapshot`, `carPhaseOf`, `enum CarTapAction { talk, sendNow, ignore }`, `carTapActionFor`, `carTextFor`, `carIconFor`, `carStatusLine`, `carConnectionText`, `carSwipeExits`, `class CarTapGate`, `enum CarDelivery`, `carDeliveryFor` | `VoiceInputPhase` only |
 | `lib/car_mode/car_mode_palette.dart` | Day/night colours per phase and per connection, from `WingTokens` | `wing_theme.dart` |
-| `lib/car_mode/car_mode_bridge.dart` | `class CarModeBridge` (closures into the workspace), `carSnapshotOf(...)`, `carActivityOf(ProfileChat)`, `carTapOnlySettings(VoicePreferences)`. The **only** car code that reads `ProfileChat`, controllers and `ServerConnectionStatus` | fork types; body re-adapted after the upstream merge |
+| `lib/car_mode/car_mode_bridge.dart` | `class CarModeBridge` (closures into the workspace), `carSnapshotOf(...)`, `carActivityOf(ProfileChat)`, `carTapOnlySettings(VoicePreferences)`, `carConnectionOf(ServerConnectionPhase, {sendBlocked})`. The **only** car code that reads `ProfileChat`, controllers and `ServerConnectionStatus` | fork types; body re-adapted after the upstream merge |
 | `lib/car_mode/car_mode_session.dart` | `class CarModeSession extends ChangeNotifier`: enter/exit, screen-on holder, tap dispatch, hold/release, retry timer, connection signal, auto-exit, log lines | bridge, state, `VoiceSwitchHolders` |
 | `lib/car_mode/car_mode_screen.dart` | `CarModeScreen` route: one full-screen button, top strip, status line, swipe and Back, portrait/landscape, `Semantics` | session, palette, `WingTokens` |
 | `docs/CAR_MODE.md` | Behaviour, log lines, limits, device checks | |
@@ -432,6 +432,7 @@ CarSnapshot carSnapshotOf(ProfileWorkspaceController controller,
     VoiceInputController input, VoiceOutputController output);
 String? carActivityOf(ProfileChat chat);
 VoicePreferences carTapOnlySettings(VoicePreferences s);   // vad.pause := vad.maxDuration
+CarConnection carConnectionOf(ServerConnectionPhase phase, {required bool sendBlocked});   // table §4.4
 
 // car_mode_session.dart
 class CarModeSession extends ChangeNotifier {
@@ -544,7 +545,7 @@ within ~50 ms of the `stopPlayback` call; Task 9 step 6 checks it by ear.
 
 | File | Lines (estimate) | What |
 |---|---|---|
-| `lib/core/screens/profile_workspace_screen.dart` | **~46** (Task 6): imports 3, `_carSend` 1, `_car` field with bridge closures 29, `:245` 1, `:401` 1, `:402` 1, `_carSend` reset 1, `:411` 2, hold hook 2, focus 1, menu 3, dispose 1. **+ ~23** (Task 7) only if barge-in has not landed. Total **~69**; acceptance limit **80** (Task 6 alone ≤ 58) | thin hooks §6 |
+| `lib/core/screens/profile_workspace_screen.dart` | **~53 insertions** (Task 6, after `dart format`): imports 3, `_carSend` + doc 3, `_car` field with bridge closures 27, `:245` 2, `:401-402` 4, `_carSend` reset 1, `:411` 2, hold hook 4, focus 1, menu 3, dispose 1. **+ ~24** (Task 7) only if barge-in has not landed. Total **~77**. Acceptance limits: Task 6 **≤ 60**, Tasks 6 + 7 **≤ 90** | thin hooks §6 |
 | `.github/workflows/voice-review.yml` (fork-owned, VAD chain) | 1 | add `test/car_mode/car_mode_screen_test.dart` to the render list (vo `:34-35`) |
 
 Not touched: `voice_input_controller.dart`, `voice_output_controller.dart`, `vad_endpoint.dart`,
@@ -552,7 +553,7 @@ Not touched: `voice_input_controller.dart`, `voice_output_controller.dart`, `vad
 `pubspec.yaml`, Kotlin. No overlap with the TTS-language plan (`android_voice.dart` `speak`, `VoicePlayback.kt`,
 `VoiceChannel.kt`).
 
-The previous estimate was ~35 + ~22. The new lines are the hold hook, `sendHeld`/`retry` closures and the
+The previous estimate was ~35 + ~22 (limit 60 for Task 6). The new lines are the hold hook, `sendHeld`/`retry` closures and the
 `:401`/`:402` changes for case 2. The forced loop (`_loopWanted` at four places) is gone.
 
 ## 9. Dependencies and base
@@ -573,7 +574,8 @@ The previous estimate was ~35 + ~22. The new lines are the hold hook, `sendHeld`
   accent, both themes; no white at night.
 - **Bridge** (`test/car_mode/car_mode_bridge_test.dart`): `carTapOnlySettings` copies every field and only sets
   `vad.pause = vad.maxDuration`; a `VadEndpointer` built from it does not end on 200 silent windows after speech;
-  `carActivityOf` returns kind or display name, never `detail`.
+  `carConnectionOf` table. (`carActivityOf` needs a real `ProfileChat`; the workspace status-line test covers it and
+  checks that `detail` never shows.)
 - **Session** (`test/car_mode/car_mode_session_test.dart`) with a fake bridge and `VoiceDeviceFixture`:
   - screen-on holder on enter, off on exit/dispose (`keepScreenOnCalls`);
   - tap dispatch and debounce; auto-exit on chat change;
@@ -683,5 +685,5 @@ Mitte der Zustand.
   connection“. Sobald die Verbindung zurück ist, wird es genau einmal abgeschickt.
 - Der Bildschirm bleibt im Automodus immer an. Der Betrieb mit Bildschirm aus ist eine eigene Karte (t_4934d7d4).
 - Gesprochener Text, Antworttext und Tool-Details erscheinen weder auf dem Display noch im Log.
-- Im Upstream-Screen landen etwa 46 Zeilen Einhängepunkte, mit Steuern etwa 69 (Grenze 80). Alles andere liegt in
-  `lib/car_mode/`.
+- Im Upstream-Screen landen etwa 53 Zeilen Einhängepunkte, mit Steuern etwa 77. Die Grenzen sind 60 und 90 Zeilen.
+  Alles andere liegt in `lib/car_mode/`.
