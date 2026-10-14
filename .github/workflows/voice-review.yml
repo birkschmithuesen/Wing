@@ -32,7 +32,8 @@ jobs:
         run: |
           fonts="$(dirname "$(dirname "$(command -v flutter)")")/bin/cache/artifacts/material_fonts"
           flutter test --no-pub --dart-define=VOICE_REVIEW=true --dart-define=CAPTURE_FONT_DIR="$fonts" \
-            test/voice_preferences_test.dart test/vad_settings_test.dart test/voice_workspace_test.dart
+            test/voice_preferences_test.dart test/vad_settings_test.dart test/voice_workspace_test.dart \
+            test/car_mode/car_mode_screen_test.dart
       - name: Publish to voice-review-bin
         env:
           TOKEN: ${{ github.token }}
