@@ -133,8 +133,10 @@ points in upstream files", `hermes-entities/tools/technik/wing-fork-upstream-str
     pauses the activity, and `_cancelVoice()` runs (vo `:611-619`). Background operation with the screen off is
     a separate card (t_4934d7d4) and not part of car mode;
   - does **not** start the microphone. The first tap does;
-  - shows, once per visit and for 6 s, the small hint "Swipe sideways to leave" in the top strip, in place of
-    the chat title (§4.6). `ANNAHME:` 6 s; check in Task 9 that it is readable and gone afterwards.
+  - shows, once per visit and for 6 s, the small hint "↔ Swipe to leave" at the bottom edge of the button (§4.6).
+    Birk suggested the top strip as an example. In the mockup at 411 dp, the hint is cut off there next to the
+    connection badge, so it sits at the bottom edge instead, still drawn on the button. `ANNAHME:` 6 s; Task 9
+    step 2 checks that it is readable and then gone.
 - **Leave (D2):** Android Back (the edge swipe in gesture navigation, or the Back key) leaves **directly**, with no
   hint and no confirmation. A horizontal swipe across the screen also leaves (for 3-button navigation). There is
   no exit button. Leaving:
@@ -287,13 +289,14 @@ it. Everything else is drawn **on** the button and counts as button:
 
 ```
 ┌──────────────────────────────┐   portrait 411 × 960
-│ [● Connected]   Weekend trip │   top strip: connection badge, title (or the swipe hint for 6 s)
+│ [● Connected]   Weekend trip │   top strip: connection badge, chat title
 │                              │
 │          Terminal            │   status line, upper third (only while Hermes works)
 │                              │
 │             🎤               │
 │         Tap to talk          │   icon, label, hint
 │                              │
+│       ↔ Swipe to leave       │   only for the first 6 s of a visit
 └──────────────────────────────┘
 ```
 
@@ -584,7 +587,7 @@ The previous estimate was ~35 + ~22. The new lines are the hold hook, `sendHeld`
   - **a swipe exits** (`exit reason=swipe`, `leave` called) and **never starts a round** (no `talk`);
   - a short drag neither taps nor exits;
   - Back pops directly;
-  - the swipe hint shows for 6 s, then the title;
+  - the swipe hint shows for 6 s, then disappears;
   - 320 dp at 200 % text and 411×960 / 960×411, light and dark, with no overflow; `VOICE_REVIEW` captures.
 - **Workspace** (`test/voice_workspace_test.dart`, group "car mode"):
   - **case 2:** three rounds by tap only with conversation mode off on the `vad` route: tap → recording, silence does
@@ -672,7 +675,8 @@ Mitte der Zustand.
 - **Tippen beim Vorlesen:** stoppt das Vorlesen und startet die Aufnahme.
 - **Tippen, während Hermes arbeitet:** Das Gesagte steuert die laufende Runde (Annahme, wie bisher Option A).
 - **Verlassen:** Android-Zurück oder seitlich wischen, ohne Rückfrage. Ein Wisch zählt nie als Tippen. Beim Start
-  steht 6 s lang klein „Swipe sideways to leave“ oben.
+  steht 6 s lang klein „↔ Swipe to leave“ am unteren Rand. Oben neben dem Verbindungsstatus wurde der Hinweis im
+  Entwurf abgeschnitten, deshalb steht er unten.
 - **Verbindung weg:** Das Handy vibriert dreimal, beim Zurückkommen zweimal. Ein Ton geht nur mit einer kleinen
   Erweiterung im Android-Teil; die ist als Option vorbereitet.
 - **Aufnahme ohne Verbindung:** Das Gesagte bleibt als Entwurf auf dem Handy, und der Bildschirm zeigt „Waiting for
