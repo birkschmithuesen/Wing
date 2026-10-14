@@ -14,6 +14,19 @@ Wing reads replies sentence by sentence in German or English. Detection runs on 
   queues it. If English is not installed in the TTS engine, the segment is spoken with the German voice.
 - The gateway output route (Hermes TTS) is not affected.
 
+## Pause between paragraphs
+A blank line in the original reply (a new thematic block) is marked on the `SpeechSegment` that starts the
+following paragraph: `SpeechSegment.paragraphBreak` (Dart), sent over the channel as
+`'paragraphBreak': 'true'/'false'` next to `text` and `lang`. `LanguageSpeech.kt` queues a ~1 s silent
+utterance (`TextToSpeech.playSilentUtterance`) before such a segment's first spoken part, in addition to the
+shorter gap the engine leaves between ordinary queued utterances.
+
+The flag is set at **segment granularity**: it marks the point where a *new* segment begins at a paragraph
+boundary. If an unsure sentence takes its neighbour's language across a blank line, the two paragraphs merge
+into one same-language segment and the boundary survives only as a plain `\n` inside that segment's `text`
+(the sentence splitter already encodes every paragraph start this way); no spoken pause is inserted there.
+This keeps the wire format a flat list of `{text, lang, paragraphBreak}` and avoids a sentence-level payload.
+
 ## Phone setup (SherpaTTS)
 - SherpaTTS keeps one model per language. Install English via SherpaTTS → Manage languages.
 - Installing a language makes it SherpaTTS's current language. Set German back as current language so the

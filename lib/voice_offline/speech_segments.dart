@@ -9,21 +9,28 @@ import 'sentence_splitter.dart';
 class SpeechSegment {
   final String text;
   final SpeechLanguage language;
-  const SpeechSegment(this.text, this.language);
+  final bool paragraphBreak;
+  const SpeechSegment(this.text, this.language, [this.paragraphBreak = false]);
 
-  Map<String, String> toChannel() => {'text': text, 'lang': language.name};
+  Map<String, String> toChannel() => {
+    'text': text,
+    'lang': language.name,
+    'paragraphBreak': paragraphBreak.toString(),
+  };
 
   @override
   bool operator ==(Object other) =>
       other is SpeechSegment &&
       other.text == text &&
-      other.language == language;
+      other.language == language &&
+      other.paragraphBreak == paragraphBreak;
 
   @override
-  int get hashCode => Object.hash(text, language);
+  int get hashCode => Object.hash(text, language, paragraphBreak);
 
   @override
-  String toString() => '${language.name}: $text';
+  String toString() =>
+      '${language.name}${paragraphBreak ? ' ¶' : ''}: $text';
 }
 
 List<SpeechSegment> speechSegments(String text, {int maxLength = 1000}) {
@@ -49,9 +56,12 @@ List<SpeechSegment> speechSegments(String text, {int maxLength = 1000}) {
         segments.last = SpeechSegment(
           '${segments.last.text}$separator$sentence',
           language,
+          segments.last.paragraphBreak,
         );
       } else {
-        segments.add(SpeechSegment(sentence, language));
+        segments.add(
+          SpeechSegment(sentence, language, segments.isNotEmpty && position == 0),
+        );
       }
     }
   }

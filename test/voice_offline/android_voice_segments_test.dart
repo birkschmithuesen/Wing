@@ -26,8 +26,8 @@ void main() {
     final arguments = Map<String, Object?>.from(sent!.arguments as Map);
     expect(arguments['text'], 'Das ist gut.\n\nThis is the end.');
     expect(arguments['segments'], [
-      {'text': 'Das ist gut.', 'lang': 'de'},
-      {'text': 'This is the end.', 'lang': 'en'},
+      {'text': 'Das ist gut.', 'lang': 'de', 'paragraphBreak': 'false'},
+      {'text': 'This is the end.', 'lang': 'en', 'paragraphBreak': 'true'},
     ]);
   });
 }

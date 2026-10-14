@@ -22,11 +22,13 @@ void main() {
         'It helps with code reviews, calendars and long lists of tasks. '
         'When it is not working, it likes to read about old trains.',
         SpeechLanguage.en,
+        true,
       ),
       SpeechSegment(
         'Soll ich daraus noch eine kürzere Fassung machen? '
         'Den Pull Request für das Kanban-Board habe ich schon vorbereitet.',
         SpeechLanguage.de,
+        true,
       ),
     ]);
   });
@@ -66,8 +68,22 @@ void main() {
 
   test('payload uses the channel wire format', () {
     expect(speechSegmentsPayload('Das ist gut.\n\nThis is the end.'), [
-      {'text': 'Das ist gut.', 'lang': 'de'},
-      {'text': 'This is the end.', 'lang': 'en'},
+      {'text': 'Das ist gut.', 'lang': 'de', 'paragraphBreak': 'false'},
+      {'text': 'This is the end.', 'lang': 'en', 'paragraphBreak': 'true'},
     ]);
+  });
+
+  test('a text with two blank lines marks two paragraph breaks', () {
+    final segments = speechSegments(
+      'Hier beginnt der erste Absatz auf Deutsch.\n\n'
+      'This is the second block written in English.\n\n'
+      'Und hier endet alles wieder auf Deutsch.',
+    );
+    expect(segments.length, 3);
+    expect(segments.map((s) => s.paragraphBreak), [false, true, true]);
+  });
+
+  test('no paragraph break before the very first segment', () {
+    expect(speechSegments('Nur ein Satz.').single.paragraphBreak, isFalse);
   });
 }
