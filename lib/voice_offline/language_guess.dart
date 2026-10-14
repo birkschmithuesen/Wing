@@ -47,7 +47,7 @@ SpeechLanguage? guessLanguage(String sentence) {
     if (_umlaut.hasMatch(word)) de++;
     if (_english.contains(word)) en++;
   }
-  if (en >= 1 && en >= 2 * de) return SpeechLanguage.en;
+  if (en >= 2 && en >= 2 * de) return SpeechLanguage.en;
   if (de >= 1 && de >= en) return SpeechLanguage.de;
   return null;
 }
