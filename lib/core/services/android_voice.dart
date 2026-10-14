@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
+import '../../voice_offline/speech_segments.dart';
 
 class AndroidVoiceCapabilities {
   final bool recognitionAvailable;
@@ -91,6 +92,7 @@ class AndroidVoice implements VoiceDevice {
     'text': text,
     'voice': voice,
     'rate': rate,
+    'segments': speechSegmentsPayload(text),
   });
   @override
   Future<void> play(String id, Uint8List bytes) =>
