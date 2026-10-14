@@ -1,6 +1,10 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/controllers/voice_input_controller.dart';
+import '../core/controllers/voice_output_controller.dart';
+import '../core/models/gateway_activity.dart';
+import '../core/services/profile_workspace_controller.dart';
 import '../core/services/server_connection_status.dart';
 import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
@@ -74,3 +78,56 @@ CarConnection carConnectionOf(ServerConnectionPhase phase, {required bool sendBl
       ServerConnectionPhase.connected ||
       ServerConnectionPhase.unchecked => sendBlocked ? CarConnection.reconnecting : CarConnection.ok,
     };
+
+/// The only car code that reads chat and controller types; re-adapt this body
+/// when the workspace types change (upstream merge).
+CarSnapshot carSnapshotOf(
+  ProfileWorkspaceController controller,
+  VoiceInputController input,
+  VoiceOutputController output,
+) {
+  final chat = controller.notificationChat ?? controller.current?.chat;
+  return CarSnapshot(
+    chatKey: chat?.key,
+    title: chat?.title,
+    input: input.phase,
+    speaking: output.owner != null,
+    working: chat?.busy ?? false,
+    activity: chat == null ? null : carActivityOf(chat),
+    needsInput:
+        chat != null &&
+        (chat.approval != null || chat.clarification != null || chat.sensitivePrompt != null),
+    connection: carConnectionOf(
+      controller.connectionStatus.phase,
+      sendBlocked:
+          controller.recovering || (chat?.opening ?? false) || (chat?.offlineSnapshot ?? false),
+    ),
+    error:
+        input.error ??
+        output.error ??
+        (chat?.status == ProfileTurnStatus.failed ? 'Hermes could not finish this reply.' : null),
+  );
+}
+
+/// Status line (spec §4.6): the kind of work or the tool's display name.
+/// Never `detail`, arguments, commands or output.
+String? carActivityOf(ProfileChat chat) {
+  if (chat.commandRunning) return 'Command';
+  return switch (chat.status) {
+    ProfileTurnStatus.submitting => 'Sending',
+    ProfileTurnStatus.running => switch (chat.mainActivity) {
+      ProfileMainActivity.working => carWorking,
+      ProfileMainActivity.thinking => 'Thinking',
+      ProfileMainActivity.writing => 'Writing',
+      ProfileMainActivity.tool =>
+        chat.mainToolActivity?.displayName ??
+            (chat.tool == null
+                ? carWorking
+                : GatewayToolActivity(
+                    name: chat.tool!,
+                    phase: GatewayToolActivityPhase.running,
+                  ).displayName),
+    },
+    _ => null,
+  };
+}
