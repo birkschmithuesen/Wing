@@ -239,7 +239,7 @@ No spoken text, transcript or reply ever appears in the notification.
 
 | File | Change | Cap |
 |---|---|---|
-| `android/.../VoiceChannel.kt` | (1) field `private val background = BackgroundVoiceChannel(activity, messenger)`. (2) First line of `pause()`: `if (BackgroundVoiceService.running) { capture.pause(); mediaKeys.pause(); return }` keeps the vad round and playback alive; the `local`/`hermes` capture is still stopped, and media keys stay foreground-only. (3) `close()`: `background.close()`, which releases the hold with reason `activityClosed`. | ≤ 5 added/changed lines |
+| `android/.../VoiceChannel.kt` | (1) field `private val background = BackgroundVoiceChannel(activity, messenger)`. (2) First line of `pause()`: `if (BackgroundVoiceService.running) { capture.pause(); mediaKeys.pause(); return }` keeps the vad round and playback alive; the `local`/`hermes` capture is still stopped, and media keys stay foreground-only. (3) `close()`: `background.close()`, which releases the hold with reason `activityClosed`. | ≤ 7 added/changed lines including the 2 imports |
 | `lib/core/screens/profile_workspace_screen.dart` | import; constructor parameter `backgroundVoice` (like `voiceDevice`); field `_background`; `_conversation` setter → `_background.sync(want: …)`; lifecycle → `if (... && !_background.keepsVoice(state)) _cancelVoice();` plus `_background.lifecycle(state)`; `_loopFocus` getter used at `:239` and `:282` instead of `_hasWorkspaceFocus`/`_hasChatFocus`; `dispose` → `_background.dispose()`. | ≤ 20 added/changed lines |
 | `android/app/src/main/AndroidManifest.xml` | `FOREGROUND_SERVICE_MICROPHONE` permission; `<service android:name=".voicebackground.BackgroundVoiceService" android:exported="false" android:foregroundServiceType="microphone" />` | ≤ 8 lines |
 | `MainActivity.kt`, `VoiceCapture.kt`, `voice_input_controller.dart`, `android_voice.dart`, `VadCapture.kt`, `VoicePlayback.kt` | none | 0 lines |
@@ -342,7 +342,7 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
 | File | VAD | Car | Barge-in | TTS lang | This card |
 |---|---|---|---|---|---|
 | `profile_workspace_screen.dart` | M | M | M | — | M (≤ 20) |
-| `VoiceChannel.kt` | M | — | M | M | M (≤ 5) |
+| `VoiceChannel.kt` | M | — | M | M | M (≤ 7) |
 | `AndroidManifest.xml` | — | — | — | — | M (≤ 8) |
 | `test/voice_workspace_test.dart` | M | M | M | — | M (new group) |
 | `lib/voice_offline/` | — | — | C | C | C `background_voice.dart` |
