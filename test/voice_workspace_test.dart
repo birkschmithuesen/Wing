@@ -848,4 +848,28 @@ void main() {
     expect(fixture.calls.where((c) => c.$2.contains('approval')), isEmpty);
     await swipeOut(tester);
   });
+
+  testWidgets('car mode: speech during a running turn is steered into it', (tester) async {
+    await show(tester);
+    await openCarMode(tester);
+    await tapCar(tester);
+    var id = device.recording;
+    await tapCar(tester);
+    device.stream.add({'id': id, 'text': 'Plan the trip', 'final': true});
+    await settle(tester);
+    expect(prompts(), 1);
+    controller.current!.chat!.status = ProfileTurnStatus.running;
+    await tapCar(tester); // thinking → microphone (tap while working, option A)
+    id = device.recording;
+    expect(id, isNotNull);
+    await tapCar(tester);
+    device.stream.add({'id': id, 'text': 'Also the weather', 'final': true});
+    await settle(tester);
+    expect(prompts(), 1);
+    expect(
+      fixture.calls.where((c) => c.$2 == 'session.steer').single.$3['text'],
+      'Also the weather',
+    );
+    await swipeOut(tester);
+  });
 }

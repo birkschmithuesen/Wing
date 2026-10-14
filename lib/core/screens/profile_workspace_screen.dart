@@ -336,6 +336,32 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (_conversation == chat.key && text.isNotEmpty && _car.holdForConnection()) {
       return;
     }
+    // Car mode: speech while Hermes works steers the running turn (spec §6.4).
+    // Barge-in (t_7e81e040) replaces this block with its decideDelivery hook;
+    // keep the _car.logDelivery call when it does.
+    if (_car.active &&
+        mounted &&
+        chat.busy &&
+        _conversation == chat.key &&
+        text.isNotEmpty &&
+        !text.startsWith('/')) {
+      final actions = _composerActions(chat);
+      final delivery = carDeliveryFor(
+        working: true,
+        steerAvailable: actions[ComposerAction.steer] == null,
+        queueAvailable: actions[ComposerAction.queue] == null,
+      );
+      _car.logDelivery(delivery);
+      if (delivery != CarDelivery.end) {
+        _conversationAwaitingReply = true;
+        await _performComposerAction(
+          chat,
+          delivery == CarDelivery.steer ? ComposerAction.steer : ComposerAction.queue,
+          conversation: true,
+        );
+        return;
+      }
+    }
     if (!mounted ||
         _conversation != chat.key ||
         controller.current?.chat != chat ||
@@ -347,6 +373,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       _conversation = null;
       return;
     }
+    _car.logDelivery(CarDelivery.send);
     _conversationAwaitingReply = true;
     await _performComposerAction(
       chat,
