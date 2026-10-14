@@ -10,6 +10,7 @@ import 'profiles_repository.dart';
 import 'ws_client.dart';
 import 'server_connection_status.dart';
 import 'workspace_connection_failure.dart';
+import 'wing_session_source.dart';
 
 typedef ScopedGet =
     Future<Map<String, dynamic>> Function(
@@ -143,6 +144,14 @@ class ProfileGateway {
   // Administration RPC sockets do not carry chat updates and are not recovered
   // by the workspace. Their lifetime must not determine live chat availability.
   bool reportsLiveChat = true;
+
+  /// Set from `gateway.ready` on every socket open (true and false, so a
+  /// reconnect to an older gateway resets it).
+  bool wingSourceAdvertised = false;
+
+  /// The session `source` this gateway accepts from Wing.
+  String get sessionSource =>
+      wingSourceAdvertised ? wingSessionSource : desktopSessionSource;
   void _liveChanged(bool connected) {
     if (reportsLiveChat) {
       connectionStatus?.liveChanged(scope.profileName, connected);
@@ -249,8 +258,9 @@ class ProfileGateway {
       };
       try {
         await candidate.connect();
-        await candidate.waitForGatewayReady();
+        final ready = await candidate.waitForGatewayReady();
         if (closed) throw StateError('Gateway is closed');
+        gateway.wingSourceAdvertised = gatewayAdvertisesWingSource(ready);
         socket = candidate;
       } catch (_) {
         candidate.close();
@@ -532,7 +542,7 @@ class ProfileGateway {
     await requireProfile();
     return _ownedSession(
       await call('session.create', {
-        'source': 'desktop',
+        'source': sessionSource,
         'close_on_disconnect': false,
         'cwd': ?cwd,
         'title': ?title,
@@ -546,6 +556,7 @@ class ProfileGateway {
       await call('session.resume', {
         'session_id': durableId,
         'omit_messages': true,
+        'source': ?(wingSourceAdvertised ? wingSessionSource : null),
       }),
     );
   }

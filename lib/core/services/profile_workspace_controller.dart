@@ -2574,7 +2574,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       key: ProfileSessionKey(resource.scope, id),
       runtimeId: response['session_id'] as String,
       title: 'New chat',
-      source: 'desktop',
+      source: resource.gateway.sessionSource,
       projectId: project?['id'] as String?,
     ).._replaceableUnsubmittedRuntime = true;
     resource.chats[id] = chat;

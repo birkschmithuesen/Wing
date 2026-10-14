@@ -21,6 +21,7 @@ class FilterHost extends Host {
     {'id': 'kanban', 'title': 'Worker run', 'source': 'kanban'},
     {'id': 'oneshot', 'title': 'Technical run', 'source': 'oneshot'},
     {'id': 'chat', 'title': 'My conversation', 'source': 'desktop'},
+    {'id': 'wing', 'title': 'Phone conversation', 'source': 'wing'},
     {'id': 'unknown', 'title': 'Old conversation', 'source': 'unknown'},
     {'id': 'missing', 'title': 'Unlabelled conversation'},
     {
@@ -137,6 +138,7 @@ void main() {
     () {
       expect(controller.current!.sessions.map((r) => r['id']), [
         'chat',
+        'wing',
         'unknown',
         'missing',
         'branch',
@@ -156,7 +158,7 @@ void main() {
     while (controller.current!.nextSessionOffset != null) {
       await controller.loadMoreSessions();
     }
-    expect(controller.current!.sessions, hasLength(159));
+    expect(controller.current!.sessions, hasLength(160));
     expect(host.listRequests.last.$2.containsKey('exclude_sources'), isFalse);
     expect(host.listRequests.last.$2['offset'], '150');
     await controller.setSessionVisibility(SessionVisibility.all);
@@ -216,7 +218,7 @@ void main() {
       await controller.setSessionVisibility(SessionVisibility.chats);
       gate.complete();
       await page;
-      expect(controller.current!.sessions, hasLength(5));
+      expect(controller.current!.sessions, hasLength(6));
       expect(
         controller.current!.sessions.every((r) => r['source'] != 'cron'),
         isTrue,
