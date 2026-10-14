@@ -331,6 +331,30 @@ void main() {
     expect(find.text('Measure speaker echo'), findsOneWidget);
   });
 
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('barge-in settings render in $brightness at ${scale}x', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(320, 800);
+        addTearDown(tester.view.reset);
+        final prefs = await vadConversation();
+        await prefs.setString(VoicePreferences.vadDebugKey, 'on');
+        final device = VoiceDeviceFixture();
+        addTearDown(device.stream.close);
+        await show(tester, prefs, device, brightness: brightness, scale: scale);
+        await tester.ensureVisible(find.text('Listen while Hermes works'));
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await screenshot(
+          tester,
+          'barge-settings-${brightness.name}-${(scale * 100).round()}',
+        );
+      });
+    }
+  }
+
   testWidgets(
     'output selection persists; remote voice is a profile link, not a picker',
     (tester) async {

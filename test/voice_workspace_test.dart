@@ -628,6 +628,30 @@ void main() {
     await settle(tester);
   });
 
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('listening row renders in $brightness at ${scale}x', (
+        tester,
+      ) async {
+        await vadRoute();
+        await conversationMode(true);
+        await show(tester, brightness: brightness, scale: scale);
+        await tester.tap(find.byTooltip('Dictate message'));
+        await tester.pump();
+        await windows(tester, 0.9, 30);
+        await windows(tester, 0.1, 60);
+        expect(find.text('Stop listening'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await screenshot(
+          tester,
+          'listen-${brightness.name}-${(scale * 100).round()}',
+        );
+        await tester.tap(find.text('Stop listening'));
+        await settle(tester);
+      });
+    }
+  }
+
   testWidgets('vad conversation sends after the pause', (tester) async {
     await listenTurn(false);
     await vadRoute();
