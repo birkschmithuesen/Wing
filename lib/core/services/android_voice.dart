@@ -174,17 +174,28 @@ class VadCaptureOptions {
     required this.debug,
     required this.source,
     required this.maxDuration,
+    this.startCue,
+    this.keepPlayback = false,
   });
   final bool cues;
   final bool debug;
   final VadAudioSource source;
   final Duration maxDuration;
 
+  /// "Listening" beep before capture; defaults to [cues]. Listen rounds that
+  /// restart silently turn it off and keep the "got it" tone.
+  final bool? startCue;
+
+  /// Start capture without stopping read-aloud (barge-in listen rounds).
+  final bool keepPlayback;
+
   Map<String, Object> toMap() => {
     'cues': cues,
     'debug': debug,
     'source': source.name,
     'maxMs': maxDuration.inMilliseconds,
+    'startCue': startCue ?? cues,
+    'keepPlayback': keepPlayback,
   };
 }
 
