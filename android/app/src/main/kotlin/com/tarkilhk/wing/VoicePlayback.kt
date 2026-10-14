@@ -14,6 +14,7 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import com.tarkilhk.wing.voiceoffline.LanguageSpeech
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
 import java.util.Locale
@@ -101,7 +102,7 @@ class VoicePlayback(private val activity: Activity, private val emit: (Map<Strin
         timeout = Runnable { finishPlayback(owner, "Speech playback timed out.") }
         handler.postDelayed(timeout!!, 600000)
     }
-    fun speak(owner: String, text: String, voiceName: String, rate: Float, response: MethodChannel.Result) {
+    fun speak(owner: String, text: String, voiceName: String, rate: Float, segments: List<Map<String, String>>?, response: MethodChannel.Result) {
         claim(owner, response)
         withTts { ready ->
             if (id != owner) return@withTts
@@ -115,11 +116,7 @@ class VoicePlayback(private val activity: Activity, private val emit: (Map<Strin
                 if (voice != null) check(tts!!.setVoice(voice) == TextToSpeech.SUCCESS) { "Could not select the offline voice." }
                 check(tts!!.setSpeechRate(rate.coerceIn(0.5f, 2f)) == TextToSpeech.SUCCESS) { "Could not set speaking speed." }
                 check(text.isNotBlank()) { "There is no text to read." }
-                val chunks = text.chunked(TextToSpeech.getMaxSpeechInputLength() - 1)
-                chunks.forEachIndexed { index, chunk ->
-                    val tag = if (index == chunks.lastIndex) "$owner:last" else "$owner:$index"
-                    check(tts!!.speak(chunk, TextToSpeech.QUEUE_ADD, null, tag) == TextToSpeech.SUCCESS) { "Could not generate speech." }
-                }
+                LanguageSpeech.enqueue(tts!!, owner, text, segments, voice)
             } catch (error: Exception) { finishPlayback(owner, error.message ?: "Could not generate speech.") }
         }
     }
