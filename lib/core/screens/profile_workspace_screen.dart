@@ -73,6 +73,9 @@ import 'administration/provider_access_navigation.dart';
 import '../../car_mode/car_mode_bridge.dart';
 import '../../car_mode/car_mode_session.dart';
 import '../../car_mode/car_mode_state.dart';
+import '../../voice_offline/barge_in_coordinator.dart';
+import '../../voice_offline/barge_in_policy.dart';
+import '../../voice_offline/turn_listener.dart';
 
 enum _AttachmentChoice { camera, photos, files }
 
@@ -177,6 +180,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   late final _voiceOutput = VoiceOutputController(
     widget.voiceDevice ?? AndroidVoice.instance,
   );
+
+  /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
+  late final _bargeIn = BargeInCoordinator(
+    TurnListener(device: widget.voiceDevice ?? AndroidVoice.instance),
+  );
   VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
   StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
 
@@ -250,6 +258,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if ((_conversationKey == null) != (value == null)) {
       VoiceSwitchHolders.screenOn(_voiceDevice).set(this, value != null);
     }
+    if (value != _conversationKey) {
+      unawaited(_bargeIn.close('conversationEnd').catchError((Object _) {}));
+    }
     _conversationKey = value;
   }
 
@@ -284,6 +295,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     if (!_conversationAwaitingReply) _conversation = null;
     _conversationAwaitingReply = false;
+    if (_bargeIn.chat == chat.key && _bargeIn.listener.speechInProgress) {
+      // D3: the user is already talking; the reply stays in the chat and
+      // the utterance becomes the next prompt.
+      return;
+    }
+    unawaited(_bargeIn.close('turnEnd').catchError((Object _) {}));
     _voiceOwner = chat.key;
     final connection = controller.connection;
     final profile = chat.key.workspace.profileName;
@@ -298,6 +315,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         // Stop speech, a newer playback or a failure ends the conversation,
         // unless the user already tapped the microphone again.
         if (!_voiceInput.active) _conversation = null;
+        return;
+      }
+      if (_conversation == chat.key && chat.busy && _bargeIn.steered) {
+        // The gateway runs a steer that arrived during the final answer as a
+        // follow-up turn; its reply belongs to this conversation.
+        _conversationAwaitingReply = true;
+        _openListen(chat);
         return;
       }
       if (_canContinueConversation(chat)) {
@@ -389,6 +413,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       if (accepted && chat.draft.trim() == text) {
         await controller.updateDraft(chat, '');
       }
+      // Listen while Hermes works (spec 2026-10-14 barge-in): keep
+      // listening for a follow-up turn the gateway may start after a steer.
+      if (accepted) _openListen(chat);
       return;
     }
     if (actions[ComposerAction.send] != null) {
@@ -397,11 +424,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     _car.logDelivery(CarDelivery.send);
     _conversationAwaitingReply = true;
+    _bargeIn.beginTurn();
     await _performComposerAction(
       chat,
       ComposerAction.send,
       conversation: true,
     );
+    if (chat.busy) _openListen(chat);
     if (!chat.busy && !_voiceInput.active && _voiceOutput.owner == null) {
       _conversation = null;
     }
@@ -412,6 +441,61 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceOwner = null;
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
+  }
+
+  ListenChatState _listenState(ProfileChat chat) => switch (chat.status) {
+    ProfileTurnStatus.running ||
+    ProfileTurnStatus.attention => ListenChatState.steerable,
+    ProfileTurnStatus.submitting ||
+    ProfileTurnStatus.reconnecting => ListenChatState.busy,
+    _ => ListenChatState.idle,
+  };
+
+  ListenTarget _listenTarget(ProfileChat chat) => CallbackListenTarget(
+    readState: () => _listenState(chat),
+    onSteer: (text) async =>
+        await _runValue(
+          () => controller.steer(chat, text, preserveComposer: true),
+        ) ==
+        true,
+    onQueue: (text) => _run(() => controller.queuePrompt(chat, text)),
+    onSend: (text) async {
+      if (!mounted || _conversation != chat.key) return;
+      final value = insertVoiceTranscript(_composer.value, text);
+      _composer.value = value;
+      await _run(() async {
+        await controller.updateDraft(chat, value.text);
+        await _sendConversationTurn(chat);
+      });
+    },
+  );
+
+  /// Opens a listen round for the conversation's chat (vad route only).
+  void _openListen(ProfileChat chat, {bool playback = false}) {
+    final VoicePreferences settings;
+    try {
+      settings = VoicePreferences.read(controller.preferences);
+    } on FormatException {
+      return;
+    }
+    if (!mounted ||
+        _conversation != chat.key ||
+        settings.input != VoiceInputRoute.vad ||
+        !settings.conversation ||
+        !(settings.listenTurn || playback)) {
+      return;
+    }
+    unawaited(
+      _bargeIn
+          .open(
+            chat.key,
+            _listenTarget(chat),
+            settings,
+            playback: playback,
+            onBarge: _voiceOutput.stop,
+          )
+          .catchError((Object _) {}),
+    );
   }
 
   /// Route vad: preload the phone model. Media keys are captured only while
@@ -451,6 +535,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (_vadRoute() != true) {
       return;
     }
+    if (_bargeIn.listening && _voiceOutput.owner == null) {
+      unawaited(_bargeIn.listener.endUtterance());
+      return;
+    }
     if (_voiceInput.phase == VoiceInputPhase.recording) {
       unawaited(_voiceInput.stopHandsFree());
       return;
@@ -484,6 +572,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// if anything ended the loop in the meantime.
   Future<void> _dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
+    await _bargeIn.close('dictate');
     _carSend = false;
     if (!mounted ||
         (controller.notificationChat ?? controller.current?.chat) != chat ||
@@ -561,6 +650,29 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Widget _voiceActivity() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (_bargeIn.listening && !_voiceInput.active)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  _bargeIn.listener.phase == ListenPhase.transcribing
+                      ? 'Transcribing…'
+                      : 'Listening',
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('voice-stop-listening'),
+                onPressed: () => unawaited(_bargeIn.close('stopButton')),
+                child: const Text('Stop listening'),
+              ),
+            ],
+          ),
+        ),
       if (_voiceInput.active)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -761,6 +873,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceInput.removeListener(_voiceInputChanged);
     _voiceInput.dispose();
     _voiceOutput.dispose();
+    _bargeIn.dispose();
     controller.setRouteVisibility(this, false);
     if (_mediaKeysOn) {
       _mediaKeysOn = false;
@@ -894,7 +1007,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   ProfileWorkspaceBrowser? _browser;
 
   Widget _buildWorkspace(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([controller, _voiceInput, _voiceOutput]),
+    listenable: Listenable.merge([controller, _voiceInput, _voiceOutput, _bargeIn]),
     builder: (context, _) {
       final current = controller.current;
       final chat = controller.notificationChat ?? current?.chat;
