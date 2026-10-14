@@ -296,6 +296,63 @@ void main() {
     await settle(tester);
   });
 
+  testWidgets(
+    'a second dictation while the first turn still runs becomes a steering message',
+    (tester) async {
+      await conversationMode(true);
+      await show(tester);
+      final chat = controller.current!.chat!;
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'How is the weather');
+      expect(prompts(), 1);
+      expect(chat.busy, isTrue);
+      // The reply has not arrived yet; the mic can be tapped again.
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Actually, for tomorrow');
+      expect(prompts(), 1, reason: 'no second turn was started');
+      expect(fixture.calls.where((c) => c.$2 == 'session.steer').length, 1);
+      expect(
+        fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
+        'Actually, for tomorrow',
+      );
+      expect(chat.draft, isEmpty);
+      // The conversation stayed alive: the turn's eventual reply still
+      // continues the hands-free loop.
+      await completeReply(tester, 'Tomorrow looks sunny.');
+      expect(device.spoken, 'Tomorrow looks sunny.');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'a dictation while reconnecting is queued and sent once reconnected',
+    (tester) async {
+      await conversationMode(true);
+      await show(tester);
+      final chat = controller.current!.chat!;
+      chat.offlineSnapshot = true;
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Queue me please');
+      expect(prompts(), 0);
+      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
+      expect(chat.draft, isEmpty);
+      chat.offlineSnapshot = false;
+      await tester.runAsync(() => controller.reconnect(chat.key.workspace));
+      await settle(tester);
+      expect(prompts(), 1);
+      expect(chat.queuedPrompts, isEmpty);
+      await completeReply(tester, 'Queued answer.');
+      expect(device.spoken, 'Queued answer.');
+      expect(starts(), 2, reason: 'the mic reopened after the queued reply');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
   testWidgets('without conversation mode a final dictation is never sent', (
     tester,
   ) async {

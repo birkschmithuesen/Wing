@@ -16,6 +16,7 @@ class ProfileBrowserFixture {
   bool failHistory = false;
   String? historySessionIdOverride;
   bool failSearch = false;
+  Map<String, dynamic> steerResult = {'status': 'queued'};
   final historyDelays = <(String, int), Completer<void>>{};
   final searchDelays = <String, Completer<void>>{};
   final liveSessions = <String, List<Map<String, dynamic>>>{};
@@ -246,6 +247,7 @@ class ProfileBrowserFixture {
           'info': {'profile_name': scope.profileName},
         };
       }
+      if (method == 'session.steer') return steerResult;
       return {};
     },
   );

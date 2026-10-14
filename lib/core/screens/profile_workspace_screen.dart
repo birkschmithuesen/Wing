@@ -329,7 +329,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   /// Conversation mode: send a dictation the recognizer ended on its own.
-  /// Anything that blocks a normal send ends the conversation instead.
+  /// A running turn gets the text steered in instead of losing it, a down
+  /// connection queues it for once the connection returns; anything else
+  /// that blocks a normal send ends the conversation instead.
   Future<void> _sendConversationTurn(ProfileChat chat) async {
     final text = chat.draft.trim();
     // Car mode: offline, the draft waits on the device (spec §4.4).
@@ -366,10 +368,30 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         _conversation != chat.key ||
         controller.current?.chat != chat ||
         _destination != AppDestination.chats ||
-        chat.busy ||
         text.isEmpty ||
-        text.startsWith('/') ||
-        _composerActions(chat)[ComposerAction.send] != null) {
+        text.startsWith('/')) {
+      _conversation = null;
+      return;
+    }
+    if (controller.recovering || chat.opening || chat.offlineSnapshot) {
+      _conversationAwaitingReply = true;
+      await controller.queuePrompt(chat, text);
+      return;
+    }
+    final actions = _composerActions(chat);
+    if (chat.busy) {
+      if (actions[ComposerAction.steer] != null) {
+        _conversation = null;
+        return;
+      }
+      _conversationAwaitingReply = true;
+      final accepted = await controller.steer(chat, text);
+      if (accepted && chat.draft.trim() == text) {
+        await controller.updateDraft(chat, '');
+      }
+      return;
+    }
+    if (actions[ComposerAction.send] != null) {
       _conversation = null;
       return;
     }

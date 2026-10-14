@@ -5293,7 +5293,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat.queueDraining ||
         chat._attachmentPreparations != 0 ||
         chat.busy ||
-        chat.queuedPrompts.isEmpty) {
+        chat.queuedPrompts.isEmpty ||
+        chat.offlineSnapshot) {
+      // The connection isn't up yet; reconnect() drains the queue itself
+      // once it clears offlineSnapshot. Don't mark queuePaused here, that's
+      // a sticky error state, this is only "not connected yet".
       return;
     }
     if (chat.historyError != null ||
