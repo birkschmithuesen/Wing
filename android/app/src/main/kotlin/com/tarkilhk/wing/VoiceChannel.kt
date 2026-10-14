@@ -69,7 +69,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                     vad.cancel(id); capture.cancel(id); result.success(null)
                 }
                 "speak" -> playback.speak(id, call.argument<String>("text").orEmpty(),
-                    call.argument<String>("voice").orEmpty(), call.argument<Number>("rate")?.toFloat() ?: 1f, result)
+                    call.argument<String>("voice").orEmpty(), call.argument<Number>("rate")?.toFloat() ?: 1f,
+                    call.argument<List<Map<String, String>>>("segments"), result)
                 "play" -> playback.play(id, call.argument<ByteArray>("bytes") ?: error("Missing audio."), result)
                 "stopPlayback" -> { playback.stop(id); result.success(null) }
                 "vadModelStatus" -> result.success(models.status())
