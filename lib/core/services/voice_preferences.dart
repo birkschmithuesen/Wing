@@ -28,6 +28,9 @@ class VoicePreferences {
   static const vadCuesKey = 'voice.vad_cues';
   static const vadDebugKey = 'voice.vad_debug';
   static const vadSourceKey = 'voice.vad_source';
+  static const listenTurnKey = 'voice.listen_turn';
+  static const listenMinSpeechKey = 'voice.listen_min_speech_ms';
+  static const bargeInPlaybackKey = 'voice.barge_in_playback';
   static const keys = {
     inputKey,
     outputKey,
@@ -44,26 +47,35 @@ class VoicePreferences {
     vadCuesKey,
     vadDebugKey,
     vadSourceKey,
+    listenTurnKey,
+    listenMinSpeechKey,
+    bargeInPlaybackKey,
   };
   static const vadPauseChoices = ['1000', '1400', '1800', '2400', '3000'];
   static const vadMinSpeechChoices = ['150', '250', '400'];
   static const vadPreRollChoices = ['200', '300', '500'];
   static const vadMaxChoices = ['600', '900', '1200', '1800'];
   static const vadNoSpeechChoices = ['5', '8', '12', '20'];
+  static const listenMinSpeechChoices = ['250', '400', '600'];
 
   static bool accepts(String key, Object value) => switch (key) {
     inputKey => value == 'local' || value == 'hermes' || value == 'vad',
     outputKey => value == 'local' || value == 'hermes',
     languageKey || voiceKey => value is String,
     rateKey => {'0.8', '1.0', '1.2'}.contains(value),
-    autoSpeakKey || conversationKey || vadCuesKey || vadDebugKey =>
-      value == 'on' || value == 'off',
+    autoSpeakKey ||
+    conversationKey ||
+    vadCuesKey ||
+    vadDebugKey ||
+    listenTurnKey ||
+    bargeInPlaybackKey => value == 'on' || value == 'off',
     vadPauseKey => vadPauseChoices.contains(value),
     vadMinSpeechKey => vadMinSpeechChoices.contains(value),
     vadPreRollKey => vadPreRollChoices.contains(value),
     vadMaxKey => vadMaxChoices.contains(value),
     vadNoSpeechKey => vadNoSpeechChoices.contains(value),
     vadSourceKey => value == 'communication' || value == 'recognition',
+    listenMinSpeechKey => listenMinSpeechChoices.contains(value),
     _ => false,
   };
 
@@ -90,6 +102,16 @@ class VoicePreferences {
   final bool debugRecordings;
   final VadAudioSource audioSource;
 
+  /// Conversation mode on the vad route: keep listening while a turn runs
+  /// and steer it with what was said.
+  final bool listenTurn;
+
+  /// Continuous speech that opens an utterance in a listen round.
+  final Duration listenMinSpeech;
+
+  /// Speaking during read-aloud stops it (offered after the echo gate).
+  final bool bargeInPlayback;
+
   const VoicePreferences({
     this.input = VoiceInputRoute.local,
     this.output = VoiceProcessing.local,
@@ -102,6 +124,9 @@ class VoicePreferences {
     this.cues = true,
     this.debugRecordings = false,
     this.audioSource = VadAudioSource.communication,
+    this.listenTurn = true,
+    this.listenMinSpeech = const Duration(milliseconds: 400),
+    this.bargeInPlayback = false,
   });
 
   factory VoicePreferences.read(SharedPreferences preferences) {
@@ -151,6 +176,11 @@ class VoicePreferences {
       audioSource: preferences.getString(vadSourceKey) == 'recognition'
           ? VadAudioSource.recognition
           : VadAudioSource.communication,
+      listenTurn: preferences.getString(listenTurnKey) != 'off',
+      listenMinSpeech: Duration(
+        milliseconds: choice(listenMinSpeechKey, listenMinSpeechChoices, 400),
+      ),
+      bargeInPlayback: preferences.getString(bargeInPlaybackKey) == 'on',
     );
   }
 

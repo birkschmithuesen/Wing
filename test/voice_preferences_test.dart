@@ -222,6 +222,33 @@ void main() {
     }
   });
 
+  test('barge-in preferences: defaults, parsing and validation', () async {
+    SharedPreferences.setMockInitialValues({});
+    var prefs = await SharedPreferences.getInstance();
+    var read = VoicePreferences.read(prefs);
+    expect(read.listenTurn, isTrue);
+    expect(read.listenMinSpeech, const Duration(milliseconds: 400));
+    expect(read.bargeInPlayback, isFalse);
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.listenTurnKey: 'off',
+      VoicePreferences.listenMinSpeechKey: '600',
+      VoicePreferences.bargeInPlaybackKey: 'on',
+    });
+    prefs = await SharedPreferences.getInstance();
+    read = VoicePreferences.read(prefs);
+    expect(read.listenTurn, isFalse);
+    expect(read.listenMinSpeech, const Duration(milliseconds: 600));
+    expect(read.bargeInPlayback, isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.listenMinSpeechKey, '150'), isFalse);
+    expect(VoicePreferences.accepts(VoicePreferences.listenTurnKey, 'on'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.bargeInPlaybackKey, 'maybe'), isFalse);
+    expect(VoicePreferences.keys, containsAll([
+      VoicePreferences.listenTurnKey,
+      VoicePreferences.listenMinSpeechKey,
+      VoicePreferences.bargeInPlaybackKey,
+    ]));
+  });
+
   Future<void> show(
     WidgetTester tester,
     SharedPreferences prefs,
