@@ -93,14 +93,20 @@ jobs:
           # Temporary: the step summary above isn't fetchable from behind the
           # egress-blocked vServer. Surface failure detail as annotations too.
           if [ "${{ steps.analyze.outcome }}" != "success" ]; then
-            grep -E "error •" analyze_output.txt | head -5 | while IFS= read -r line; do
-              printf '::error::%s\n' "$line"
-            done
+            grep -E "(info|warning|error) •" analyze_output.txt | head -10 > /tmp/analyze_hits.txt || true
+            if [ -s /tmp/analyze_hits.txt ]; then
+              while IFS= read -r line; do printf '::error::ANALYZE: %s\n' "$line"; done < /tmp/analyze_hits.txt
+            else
+              tail -n 20 analyze_output.txt | while IFS= read -r line; do printf '::error::ANALYZE-TAIL: %s\n' "$line"; done
+            fi
           fi
           if [ "${{ steps.test.outcome }}" != "success" ]; then
-            grep -E "\[E\]|Expected:|Actual:|Some tests failed" test_output.txt | head -10 | while IFS= read -r line; do
-              printf '::error::%s\n' "$line"
-            done
+            grep -E "\[E\]|Expected:|Actual:|Exception|Some tests failed" test_output.txt | head -15 > /tmp/test_hits.txt || true
+            if [ -s /tmp/test_hits.txt ]; then
+              while IFS= read -r line; do printf '::error::TEST: %s\n' "$line"; done < /tmp/test_hits.txt
+            else
+              tail -n 20 test_output.txt | while IFS= read -r line; do printf '::error::TEST-TAIL: %s\n' "$line"; done
+            fi
           fi
 
       # ── Step 4: Pass/fail enforcement ────────────────────
