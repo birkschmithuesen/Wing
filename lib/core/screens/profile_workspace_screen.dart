@@ -417,6 +417,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     VoiceSwitchHolders.mediaKeys(_voiceDevice).set(this, want);
   }
 
+  /// Car mode entry/exit changes [_hasWorkspaceFocus] without a dependency
+  /// change the route system would notify on its own; resync here instead.
+  void _carActiveChanged() {
+    controller.setRouteVisibility(this, _hasChatFocus);
+    _syncMediaKeys();
+  }
+
   void _voiceDeviceEvent(Map<String, dynamic> event) {
     if (event['mediaKey'] != 'playPause' || !mounted || !_hasChatFocus) return;
     if (_vadRoute() != true) {
@@ -617,7 +624,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   bool _mediaKeysOn = false;
   static int _liveWorkspaces = 0;
 
-  bool get _hasWorkspaceFocus => _routeIsCurrent && _appIsActive;
+  // Read fresh: a route pushed before car mode was entered (e.g. the "Chat
+  // actions" menu) can leave [_routeIsCurrent] stuck false with no further
+  // dependency change to correct it (spec: car mode keeps the chat's focus).
+  bool get _hasWorkspaceFocus => (_routeIsCurrent || _car.active) && _appIsActive;
 
   bool get _hasChatFocus =>
       _hasWorkspaceFocus && _destination == AppDestination.chats;
@@ -643,6 +653,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _autoSpeak = controller.completedReplies.listen(_speakCompletedReply);
     _voiceInput.addListener(_voiceInputChanged);
     _voiceDeviceEvents = _voiceDevice.events.listen(_voiceDeviceEvent);
+    _car.addListener(_carActiveChanged);
     _syncVadRoute();
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
@@ -717,6 +728,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   @override
   void dispose() {
+    _car.removeListener(_carActiveChanged);
     _car.dispose();
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
