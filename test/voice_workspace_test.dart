@@ -843,9 +843,17 @@ void main() {
     gatewayEvent('approval', {'request_id': 'approve-1', 'command': 'rm -rf build'});
     await settle(tester);
     expect(find.text('Needs you on screen'), findsOneWidget);
+    // Session setup and the approval event itself already talk to
+    // 'approval.pending'; only the tap's own effect matters here.
+    final approvalCallsBeforeTap = fixture.calls
+        .where((c) => c.$2.contains('approval'))
+        .length;
     await tapCar(tester);
     expect(starts(), 0);
-    expect(fixture.calls.where((c) => c.$2.contains('approval')), isEmpty);
+    expect(
+      fixture.calls.where((c) => c.$2.contains('approval')).length,
+      approvalCallsBeforeTap,
+    );
     await swipeOut(tester);
   });
 
