@@ -295,6 +295,7 @@ class MainActivity : FlutterActivity() {
         super.onResume()
         if (!engineAttached) return
         activityResumed = true
+        voiceChannel?.resume()
         if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
             ChatNotifications.handleMainIntent(this, intent)
         }
