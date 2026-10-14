@@ -63,33 +63,6 @@ jobs:
           flutter test --no-pub --reporter=expanded 2>&1 | tee test_output.txt
           exit ${PIPESTATUS[0]}
 
-      # ── TEMP diagnostic: surface failures as annotations (no log/blob
-      # download needed) ────────────────────────────────────
-      - name: Surface failures as annotations (temp diagnostic)
-        if: steps.test.outcome != 'success'
-        run: |
-          python3 - <<'PYEOF'
-          import re
-          lines = open('test_output.txt', errors='replace').read().splitlines()
-          ts = re.compile(r'^\d\d:\d\d ')
-          blocks = []
-          current = None
-          for line in lines:
-              if ts.match(line):
-                  if current is not None:
-                      blocks.append(current)
-                  current = [line]
-              elif current is not None:
-                  current.append(line)
-          if current is not None:
-              blocks.append(current)
-          failing = [b for b in blocks if '[E]' in b[0]]
-          for b in failing[:10]:
-              text = '\n'.join(b)
-              esc = text.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-              print(f"::error::{esc[:900]}")
-          PYEOF
-
       # ── Step 3: Summary & failure report ─────────────────
       - name: Failure summary
         if: steps.analyze.outcome != 'success' || steps.test.outcome != 'success'
