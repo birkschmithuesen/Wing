@@ -112,17 +112,17 @@ timed out. Every platform statement below is therefore marked **ANNAHME**, with 
 that proves it. Plan Task 0 asks the implementer to fetch these pages and quote them into this section before writing
 Kotlin.
 
-| ID | ANNAHME | Verify in | Device proof (plan Task 9) |
+| ID | ANNAHME | Verify in | Device proof (plan Task 8) |
 |---|---|---|---|
-| P1 | From targetSdk 34, a service that records audio must declare `foregroundServiceType="microphone"`, hold `android.permission.FOREGROUND_SERVICE_MICROPHONE`, and call `startForeground(id, n, FOREGROUND_SERVICE_TYPE_MICROPHONE)`. `RECORD_AUDIO` must already be granted, otherwise `startForeground` throws `SecurityException`. | developer.android.com/develop/background-work/services/fgs/service-types (Microphone); /about/versions/14/changes/fgs-types-required | Step 3: `dumpsys activity services` shows `types=0x00000080` (microphone). |
-| P2 | Microphone is a while-in-use permission. A microphone FGS started **while the app is visible** may keep recording after the screen goes off. One started from the background gets no microphone access (silence), or the start is refused. | /develop/background-work/services/fgs/restrictions ("while-in-use permissions"); /restrictions-bg-start | Step 4: a round recorded with the screen off is transcribed (draft text arrives in the chat). |
+| P1 | From targetSdk 34, a service that records audio must declare `foregroundServiceType="microphone"`, hold `android.permission.FOREGROUND_SERVICE_MICROPHONE`, and call `startForeground(id, n, FOREGROUND_SERVICE_TYPE_MICROPHONE)`. `RECORD_AUDIO` must already be granted, otherwise `startForeground` throws `SecurityException`. | developer.android.com/develop/background-work/services/fgs/service-types (Microphone); /about/versions/14/changes/fgs-types-required | Task 8 Step 3: `dumpsys activity services` shows `foregroundServiceType=0x00000080` (microphone). |
+| P2 | Microphone is a while-in-use permission. A microphone FGS started **while the app is visible** may keep recording after the screen goes off. One started from the background gets no microphone access (silence), or the start is refused. | /develop/background-work/services/fgs/restrictions ("while-in-use permissions"); /restrictions-bg-start | Task 8 Step 4: a round recorded with the screen off is transcribed (draft text arrives in the chat). |
 | P3 | From Android 12, starting any FGS from the background throws `ForegroundServiceStartNotAllowedException`, except under listed exemptions. | /develop/background-work/services/fgs/restrictions-bg-start | Covered by design: the hold is only requested while visible (§5.2). |
-| P4 | Playing audio (TextToSpeech, MediaPlayer) from a process that already runs a foreground service needs no extra `mediaPlayback` type. | /develop/background-work/services/fgs/service-types (Media playback) | Step 4: the reply is heard with the screen off. |
-| P5 | In Doze, wake locks are ignored and network is deferred for ordinary apps. A process with a foreground service is exempt from these Doze restrictions. | /training/monitoring-device-state/doze-standby | Step 6: `dumpsys deviceidle force-idle` during "awaiting reply"; the reply is still spoken. |
-| P6 | From Android 14, users can swipe away an FGS notification. The service keeps running. | /develop/background-work/services/fgs/... (notification) / Android 14 behaviour changes | Step 5: swiping it away triggers the delete intent → conversation ends (§5.4). |
-| P7 | During a phone call, other apps' capture is silenced (concurrent capture policy, Android 10+). The audio mode becomes `MODE_IN_CALL` or `MODE_IN_COMMUNICATION`. `AudioManager.addOnModeChangedListener` exists from API 31. | /guide/topics/media/platform/sharing-audio-input; AudioManager reference | Step 7: a call during a round ends the conversation; logcat shows `stop reason=call`. |
-| P8 | Android 12+ shows the green microphone privacy indicator while an app records, including with the screen off once it is woken. | Android 12 privacy indicators | Step 4: the indicator is visible on the lock screen during a round. |
-| P9 | Android 15 FGS timeouts apply to `dataSync` and `mediaProcessing`, not `microphone`. | /about/versions/15/behavior-changes-15 | Step 8: a 10 min background conversation is not stopped by the system. |
+| P4 | Playing audio (TextToSpeech, MediaPlayer) from a process that already runs a foreground service needs no extra `mediaPlayback` type. | /develop/background-work/services/fgs/service-types (Media playback) | Task 8 Step 4: the reply is heard with the screen off. |
+| P5 | In Doze, wake locks are ignored and network is deferred for ordinary apps. A process with a foreground service is exempt from these Doze restrictions. | /training/monitoring-device-state/doze-standby | Task 8 Step 6: `dumpsys deviceidle force-idle` during "awaiting reply"; the reply is still spoken. |
+| P6 | From Android 14, users can swipe away an FGS notification. The service keeps running. | /develop/background-work/services/fgs/... (notification) / Android 14 behaviour changes | Task 8 Step 9: swiping it away triggers the delete intent → conversation ends (§5.4). |
+| P7 | During a phone call, other apps' capture is silenced (concurrent capture policy, Android 10+). The audio mode becomes `MODE_IN_CALL` or `MODE_IN_COMMUNICATION`. `AudioManager.addOnModeChangedListener` exists from API 31. | /guide/topics/media/platform/sharing-audio-input; AudioManager reference | Task 8 Step 10: a call during a round ends the conversation; logcat shows `stop reason=call`. |
+| P8 | Android 12+ shows the green microphone privacy indicator while an app records, including with the screen off once it is woken. | Android 12 privacy indicators | Task 8 Step 4: the indicator is visible on the lock screen during a round. |
+| P9 | Android 15 FGS timeouts apply to `dataSync` and `mediaProcessing`, not `microphone`. | /about/versions/15/behavior-changes-15 | Task 8 Step 15: a 10 min background conversation is not stopped by the system. |
 
 If P2 turns out false on the phone (recording is silent with the screen off), the feature cannot work client-only, and
 the device acceptance stops with `FRAGE:`. There is no server-side workaround (AGENTS.md).
@@ -298,7 +298,7 @@ Coming back (`resumed`) changes nothing in the loop. The hold stays while the co
 - If P5 fails (the reply is not spoken in forced idle), the existing battery-settings link (`openBatterySettings`,
   `MonitoringRuntime.kt:34`ff) is the remedy. Wing adds no new `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` prompt.
 
-**Measurements on hadb (plan Task 9):**
+**Measurements on hadb (plan Task 8):**
 - wake lock time and FGS time from `dumpsys batterystats`;
 - CPU from `top -b -n 1 -p <pid>` during "awaiting reply" (expected < 5 % of one core; Dart idle);
 - battery drop over a 10 min pocket conversation, recorded, not gated.
@@ -392,7 +392,7 @@ must go earlier, the anchors A9 and A10 say which term the later card has to add
 **Kotlin:** compile check only (`dispatch-check.sh voice-apk.yml publish=false`). There are no Kotlin unit tests in
 the repo (`git ls-files android/app/src/test` is empty).
 
-**Device:** plan Task 9 on hadb, covering P1–P9 and §6.
+**Device:** plan Task 8 on hadb, covering P1–P9 and §6.
 
 ## 12. Decisions for Birk
 
@@ -402,7 +402,7 @@ the repo (`git ls-files android/app/src/test` is empty).
 - (b) A switch "Keep going with screen off" under Conversation mode, default off.
 
 Why (a): Birk asked for the loop to keep running, a switch adds a control to a crowded card, and the privacy signal is
-the notification itself. Plan delta for (b): Task 3 adds the key `voice.conversation_background` and a `SwitchListTile`
+the notification itself. Plan delta for (b): new plan Task 4a adds the key `voice.conversation_background` and a `SwitchListTile`
 in `voice_preferences_card.dart`; `want` adds `&& settings.conversationBackground`.
 
 **D2 — Listen while Hermes works (barge-in) with the screen off?**
@@ -411,7 +411,7 @@ in `voice_preferences_card.dart`; `want` adds `&& settings.conversationBackgroun
 - (b) Yes. Listen rounds also run in the pocket; the microphone can stay open for a whole Hermes turn (up to
   `maxDuration`, 600 s per round).
 
-Why (a): in a pocket, conversations nearby would be transcribed and sent as steers. Plan delta for (b): skip Task 7.
+Why (a): in a pocket, conversations nearby would be transcribed and sent as steers. Plan delta for (b): skip Task 5.
 
 **D3 — When does the notification appear?**
 - **(a) Recommended:** when a conversation starts on route vad, even with the screen on. Android only allows a
@@ -419,8 +419,8 @@ Why (a): in a pocket, conversations nearby would be transcribed and sent as stee
 - (b) Only when the screen goes off. The service is started from `onPause`; this depends on P2/P3 exemptions that may
   not hold, and if they don't, the conversation ends as today.
 
-Plan delta for (b): Task 5 starts the service in `VoiceChannel.pause()` when Dart marked the hold "armed", and Task 9
-Step 4 decides whether it works on LineageOS.
+Plan delta for (b): plan Task 1 replaces the hold at conversation start with `BackgroundVoice.arm`. Plan Task 3 makes
+`VoiceChannel.pause()` start the service when Dart armed it. Plan Task 8 Step 4 decides whether this works on LineageOS.
 
 ## 13. Acceptance summary
 
