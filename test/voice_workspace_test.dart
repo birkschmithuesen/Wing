@@ -687,6 +687,12 @@ void main() {
   Future<void> swipeOut(WidgetTester tester) async {
     await tester.drag(carButton(), const Offset(-250, 0));
     await settle(tester);
+    // The pop is a page transition, not a spinner: pumping a fixed, bounded
+    // amount further (never pumpAndSettle, which a "Listening" pulse would
+    // never let finish) lets it run out without risking a hang.
+    for (var i = 0; i < 8; i++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
   }
 
   testWidgets('car mode case 2: three rounds by tap only, read aloud, then idle with the mic closed', (
