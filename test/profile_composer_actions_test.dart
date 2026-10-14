@@ -19,7 +19,6 @@ import 'package:wing/core/models/composer_action.dart';
 import 'package:wing/core/widgets/composer_action_button.dart';
 
 class _ComposerActionsFixture extends ProfileActionsFixture {
-  Map<String, dynamic> steerResult = {'status': 'queued'};
   Completer<Map<String, dynamic>>? steerReply;
   List<Map<String, dynamic>> transcript = [];
 
