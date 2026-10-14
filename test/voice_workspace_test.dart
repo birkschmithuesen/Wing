@@ -6,12 +6,14 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wing/car_mode/car_mode_screen.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/android_voice.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
@@ -658,5 +660,192 @@ void main() {
     await screenshot(tester, 'vad-recording-light-100');
     await tester.tap(find.text('Cancel recording'));
     await settle(tester);
+  });
+
+  // Car mode: the whole screen is one button over the chat (docs/CAR_MODE.md).
+  Finder carButton() => find.byKey(const ValueKey('car-button'));
+  Future<void> openCarMode(WidgetTester tester) async {
+    // Car mode holds sends unless the server counts as connected.
+    controller.connectionStatus
+      ..accessAvailable()
+      ..liveChanged('car-test', true);
+    await tester.pump();
+    expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
+    await tester.tap(find.byTooltip('Chat actions'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Car mode'));
+    await tester.pumpAndSettle();
+  }
+
+  Future<void> tapCar(WidgetTester tester) async {
+    await tester.tap(carButton());
+    // Past the 600 ms debounce; lets async voice work run.
+    await tester.pump(const Duration(milliseconds: 350));
+    await settle(tester);
+  }
+
+  Future<void> swipeOut(WidgetTester tester) async {
+    await tester.drag(carButton(), const Offset(-250, 0));
+    await settle(tester);
+  }
+
+  testWidgets('car mode case 2: three rounds by tap only, read aloud, then idle with the mic closed', (
+    tester,
+  ) async {
+    await vadRoute();
+    await conversationMode(false);
+    await show(tester);
+    await openCarMode(tester);
+    expect(find.byType(CarModeScreen), findsOneWidget);
+    expect(find.text('Tap to talk'), findsOneWidget);
+    expect(device.keepScreenOnCalls, [true]);
+    for (var round = 1; round <= 3; round++) {
+      await tapCar(tester); // tap = start recording
+      expect(vadStarts(), round);
+      expect(find.text('Listening'), findsOneWidget);
+      await windows(tester, 0.9, 30);
+      await windows(tester, 0.1, 200); // 6.4 s of silence: no automatic end in case 2
+      expect(device.finishes, hasLength(round - 1));
+      expect(prompts(), round - 1);
+      await tapCar(tester); // tap = stop and send
+      expect(device.finishes.last.reason.name, 'mediaKey');
+      expect(prompts(), round);
+      await completeReply(tester, 'Answer $round.');
+      expect(device.spoken, 'Answer $round.'); // read aloud although Spoken replies is off
+      expect(vadStarts(), round); // the microphone stays closed
+      expect(find.text('Tap to talk'), findsOneWidget);
+    }
+    expect(controller.preferences.getString(VoicePreferences.conversationKey), 'off');
+    expect(controller.preferences.getString(VoicePreferences.autoSpeakKey), isNot('on'));
+    await swipeOut(tester);
+    expect(find.byType(CarModeScreen), findsNothing);
+    expect(device.keepScreenOnCalls.last, isFalse);
+  });
+
+  testWidgets('car mode case 1: the loop runs; a tap while listening sends at once', (tester) async {
+    await conversationMode(true); // local route (default)
+    await show(tester);
+    await openCarMode(tester);
+    await tapCar(tester);
+    expect(starts(), 1);
+    final id = device.recording;
+    await tapCar(tester); // end of speech not detected: the tap sends now
+    device.stream.add({'id': id, 'text': 'Question', 'final': true});
+    await settle(tester);
+    expect(prompts(), 1);
+    await completeReply(tester, 'Answer.');
+    expect(device.spoken, 'Answer.');
+    expect(starts(), 2); // the saved loop reopened the microphone
+    expect(find.text('Listening'), findsOneWidget);
+    await swipeOut(tester);
+    expect(device.recording, isNull);
+  });
+
+  testWidgets('car mode: a tap during read-aloud stops it, then opens the microphone', (tester) async {
+    device.playbackDelay = Completer<void>();
+    await show(tester);
+    await openCarMode(tester);
+    await tapCar(tester);
+    final id = device.recording;
+    await tapCar(tester);
+    device.stream.add({'id': id, 'text': 'Question', 'final': true});
+    await settle(tester);
+    gatewayEvent('message.complete', {'text': 'A long answer.'});
+    await tester.pump();
+    await tester.pump();
+    expect(find.text('Reading aloud'), findsOneWidget);
+    device.calls.clear();
+    await tapCar(tester);
+    expect(device.calls, contains('stopPlayback'));
+    expect(device.calls.indexOf('stopPlayback'), lessThan(device.calls.indexOf('start')));
+    expect(find.text('Listening'), findsOneWidget);
+    device.playbackDelay!.complete();
+    device.playbackDelay = null;
+    await swipeOut(tester);
+  });
+
+  testWidgets('car mode: focus stays under the car route (media keys on)', (tester) async {
+    await vadRoute();
+    await show(tester);
+    await openCarMode(tester);
+    expect(device.mediaKeysCalls, [true]);
+    await tapCar(tester);
+    await windows(tester, 0.9, 30);
+    await tapCar(tester);
+    expect(prompts(), 1);
+    expect(device.mediaKeysCalls, [true]);
+    gatewayEvent('message.complete', {'text': 'Done.'});
+    await settle(tester);
+    await swipeOut(tester);
+  });
+
+  testWidgets('car mode: a swipe exit cancels the recording and keeps the draft', (tester) async {
+    final chat = controller.current!.chat!;
+    await controller.updateDraft(chat, 'Typed before');
+    await show(tester);
+    await openCarMode(tester);
+    await tapCar(tester);
+    final id = device.recording;
+    await swipeOut(tester);
+    expect(find.byType(CarModeScreen), findsNothing);
+    expect(device.cancelled, contains(id));
+    expect(chat.draft, 'Typed before');
+    expect(prompts(), 0);
+  });
+
+  testWidgets('car mode: the status line shows the running tool by name only', (tester) async {
+    await show(tester);
+    await openCarMode(tester);
+    gatewayEvent('message.start');
+    gatewayEvent('tool.start', {'name': 'terminal', 'tool_id': 't1', 'context': 'rm -rf /tmp/secret'});
+    await settle(tester);
+    expect(find.text('Hermes is working'), findsOneWidget);
+    expect(find.text('Terminal'), findsOneWidget);
+    expect(find.textContaining('secret'), findsNothing);
+    gatewayEvent('message.complete', {'text': 'Done.'});
+    await settle(tester);
+    await swipeOut(tester);
+  });
+
+  testWidgets('car mode: a recording finished offline waits and is sent once after reconnect', (
+    tester,
+  ) async {
+    await vadRoute();
+    await show(tester);
+    await openCarMode(tester);
+    await tapCar(tester);
+    controller.connectionStatus.failRecovery('car-test', 'Offline');
+    await settle(tester);
+    expect(find.text('Offline'), findsOneWidget);
+    await windows(tester, 0.9, 30); // recording goes on offline
+    await tapCar(tester);
+    expect(prompts(), 0);
+    expect(find.text('Waiting for connection'), findsOneWidget);
+    expect(controller.current!.chat!.draft, 'Hello from the phone'); // kept on the device
+    controller.connectionStatus.endRecovery('car-test');
+    await settle(tester);
+    expect(prompts(), 1);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      'Hello from the phone',
+    );
+    controller.connectionStatus.liveChanged('car-test', true); // more notifications
+    await settle(tester);
+    expect(prompts(), 1);
+    await completeReply(tester, 'Got it.');
+    expect(device.spoken, 'Got it.');
+    await swipeOut(tester);
+  });
+
+  testWidgets('car mode: a pending approval shows on screen and the tap does nothing', (tester) async {
+    await show(tester);
+    await openCarMode(tester);
+    gatewayEvent('approval', {'request_id': 'approve-1', 'command': 'rm -rf build'});
+    await settle(tester);
+    expect(find.text('Needs you on screen'), findsOneWidget);
+    await tapCar(tester);
+    expect(starts(), 0);
+    expect(fixture.calls.where((c) => c.$2.contains('approval')), isEmpty);
+    await swipeOut(tester);
   });
 }

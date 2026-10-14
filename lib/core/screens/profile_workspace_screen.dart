@@ -70,6 +70,9 @@ import '../services/hermes_voice.dart';
 import '../services/voice_preferences.dart';
 import 'administration/voice_settings_navigation.dart';
 import 'administration/provider_access_navigation.dart';
+import '../../car_mode/car_mode_bridge.dart';
+import '../../car_mode/car_mode_session.dart';
+import '../../car_mode/car_mode_state.dart';
 
 enum _AttachmentChoice { camera, photos, files }
 
@@ -177,6 +180,35 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
   StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
 
+  /// Car mode (docs/CAR_MODE.md). [_carSend] makes the next transcript count
+  /// as hands-free, so the big button sends on every input route.
+  bool _carSend = false;
+  late final _car = CarModeSession(
+    device: _voiceDevice,
+    bridge: CarModeBridge(
+      changes: Listenable.merge([controller, controller.connectionStatus, _voiceInput, _voiceOutput]),
+      read: () => carSnapshotOf(controller, _voiceInput, _voiceOutput),
+      preferences: controller.preferences,
+      talk: () async {
+        final chat = controller.notificationChat ?? controller.current?.chat;
+        if (chat != null) await _run(() => _dictate(chat));
+      },
+      sendNow: () {
+        _carSend = true;
+        return _voiceInput.stopHandsFree();
+      },
+      stopSpeech: _voiceOutput.stop,
+      retry: () => _run(controller.resumeConnection),
+      sendHeld: () async {
+        final chat = controller.notificationChat ?? controller.current?.chat;
+        if (chat == null) return;
+        _conversation = chat.key;
+        await _run(() => _sendConversationTurn(chat));
+      },
+      leave: _cancelVoice,
+    ),
+  );
+
   void _voiceWorkspaceChanged() {
     final current = controller.notificationChat ?? controller.current?.chat;
     if (_voiceOwner != null &&
@@ -242,7 +274,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     final settings = VoicePreferences.read(controller.preferences);
     if (!settings.conversation) _conversation = null;
-    if (!(settings.autoSpeak || settings.conversation) || _voiceInput.active) {
+    if (!(settings.autoSpeak || settings.conversation || _car.active) ||
+        _voiceInput.active) {
       return;
     }
     final chat = reply.chat;
@@ -299,6 +332,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Anything that blocks a normal send ends the conversation instead.
   Future<void> _sendConversationTurn(ProfileChat chat) async {
     final text = chat.draft.trim();
+    // Car mode: offline, the draft waits on the device (spec §4.4).
+    if (_conversation == chat.key && text.isNotEmpty && _car.holdForConnection()) {
+      return;
+    }
     if (!mounted ||
         _conversation != chat.key ||
         controller.current?.chat != chat ||
@@ -391,6 +428,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// if anything ended the loop in the meantime.
   Future<void> _dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
+    _carSend = false;
     if (!mounted ||
         (controller.notificationChat ?? controller.current?.chat) != chat ||
         controller.switching ||
@@ -398,8 +436,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       if (resume) _conversation = null;
       return;
     }
-    final settings = VoicePreferences.read(controller.preferences);
-    _conversation = settings.conversation ? chat.key : null;
+    final settings = _car.roundSettings(
+      VoicePreferences.read(controller.preferences),
+    );
+    _conversation = settings.conversation || _car.active ? chat.key : null;
     _conversationAwaitingReply = false;
     _voiceOwner = chat.key;
     final original = _composer.value;
@@ -408,7 +448,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       final current = controller.notificationChat ?? controller.current?.chat;
       // Only a dictation the recognizer ended itself continues the loop;
       // Stop, the recording limit or a server transcription do not.
-      final send = _conversation == chat.key && _voiceInput.finishedOnItsOwn;
+      final send =
+          _conversation == chat.key && (_voiceInput.finishedOnItsOwn || _carSend);
       if (!send) _conversation = null;
       if (!mounted ||
           _voiceOwner != chat.key ||
@@ -558,7 +599,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   void didChangeDependencies() {
     super.didChangeDependencies();
     final isCurrent = ModalRoute.isCurrentOf(context) ?? true;
-    _routeIsCurrent = isCurrent;
+    _routeIsCurrent = isCurrent || _car.active;
     controller.setRouteVisibility(this, _hasChatFocus);
     _syncMediaKeys();
   }
@@ -649,6 +690,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   @override
   void dispose() {
+    _car.dispose();
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
     unawaited(_voiceDeviceEvents?.cancel());
@@ -1016,6 +1058,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                         ),
                       ),
                     );
+                  } else if (action == 'car') {
+                    unawaited(_car.enter(context));
                   } else if (action == 'parent') {
                     unawaited(_run(() => controller.openParentChat(chat)));
                   }
@@ -1040,6 +1084,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                     value: 'find',
                     child: Text('Find in chat'),
                   ),
+                  const PopupMenuItem(value: 'car', child: Text('Car mode')),
                   const PopupMenuItem(
                     value: 'refresh',
                     child: Text('Refresh workspace'),
