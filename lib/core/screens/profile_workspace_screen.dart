@@ -174,6 +174,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   late final _voiceOutput = VoiceOutputController(
     widget.voiceDevice ?? AndroidVoice.instance,
   );
+  VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
+  StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
 
   void _voiceWorkspaceChanged() {
     final current = controller.notificationChat ?? controller.current?.chat;
@@ -207,7 +209,17 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Chat of the running hands-free conversation (Conversation mode). Set when
   /// the user starts dictating with the mode on; cleared by anything that ends
   /// the loop. The microphone only reopens while this still names the chat.
-  ProfileSessionKey? _conversation;
+  ProfileSessionKey? _conversationKey;
+  ProfileSessionKey? get _conversation => _conversationKey;
+
+  /// Keeps the display on while a hands-free conversation runs: a screen
+  /// timeout would pause the activity and end any capture.
+  set _conversation(ProfileSessionKey? value) {
+    if ((_conversationKey == null) != (value == null)) {
+      VoiceSwitchHolders.screenOn(_voiceDevice).set(this, value != null);
+    }
+    _conversationKey = value;
+  }
 
   /// True from the conversation's auto-send until its reply arrived. Only
   /// that reply may reopen the microphone, never a later or queued turn.
@@ -314,6 +326,46 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceOwner = null;
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
+  }
+
+  /// Route vad: preload the phone model. Media keys are captured only while
+  /// this workspace is the focused chat on the vad route (spec: foreground).
+  void _syncVadRoute() {
+    final vad = _vadRoute();
+    if (vad == null) return;
+    _syncMediaKeys();
+    if (vad) unawaited(_voiceDevice.prepareVad().catchError((Object _) {}));
+  }
+
+  bool? _vadRoute() {
+    try {
+      return VoicePreferences.read(controller.preferences).input ==
+          VoiceInputRoute.vad;
+    } on FormatException {
+      return null;
+    }
+  }
+
+  void _syncMediaKeys() {
+    final want = (_vadRoute() ?? false) && _hasChatFocus;
+    if (want == _mediaKeysOn) return;
+    _mediaKeysOn = want;
+    VoiceSwitchHolders.mediaKeys(_voiceDevice).set(this, want);
+  }
+
+  void _voiceDeviceEvent(Map<String, dynamic> event) {
+    if (event['mediaKey'] != 'playPause' || !mounted || !_hasChatFocus) return;
+    if (_vadRoute() != true) {
+      return;
+    }
+    if (_voiceInput.phase == VoiceInputPhase.recording) {
+      unawaited(_voiceInput.stopHandsFree());
+      return;
+    }
+    if (_voiceInput.active) return;
+    final chat = controller.notificationChat ?? controller.current?.chat;
+    if (chat == null || controller.switching || _needsUserInput(chat)) return;
+    unawaited(_run(() => _dictate(chat)));
   }
 
   VoidCallback? _hermesSpeechSettingsLink(BuildContext context) {
@@ -423,7 +475,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 child: Text(switch (_voiceInput.phase) {
                   VoiceInputPhase.starting => 'Opening microphone…',
                   VoiceInputPhase.recording =>
-                    'Recording · ${_voiceInput.seconds}s / 120s',
+                    'Recording · ${_voiceInput.seconds}s / ${_voiceInput.maxSeconds}s',
                   VoiceInputPhase.transcribing => 'Transcribing…',
                   VoiceInputPhase.idle => '',
                 }),
@@ -494,6 +546,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   WorkspaceActivityFilter _recentFilter = WorkspaceActivityFilter.all;
   bool _routeIsCurrent = true;
   bool _appIsActive = true;
+  bool _mediaKeysOn = false;
+  static int _liveWorkspaces = 0;
 
   bool get _hasWorkspaceFocus => _routeIsCurrent && _appIsActive;
 
@@ -506,11 +560,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final isCurrent = ModalRoute.isCurrentOf(context) ?? true;
     _routeIsCurrent = isCurrent;
     controller.setRouteVisibility(this, _hasChatFocus);
+    _syncMediaKeys();
   }
 
   @override
   void initState() {
     super.initState();
+    _liveWorkspaces++;
     _destination = widget.initialDestination;
     _appIsActive =
         WidgetsBinding.instance.lifecycleState == null ||
@@ -518,6 +574,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     controller.addListener(_voiceWorkspaceChanged);
     _autoSpeak = controller.completedReplies.listen(_speakCompletedReply);
     _voiceInput.addListener(_voiceInputChanged);
+    _voiceDeviceEvents = _voiceDevice.events.listen(_voiceDeviceEvent);
+    _syncVadRoute();
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
     // Shortcut navigation can reuse an owner still observed by the outgoing
@@ -560,6 +618,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       _cancelVoice();
     }
     _appIsActive = state == AppLifecycleState.resumed;
+    if (state == AppLifecycleState.resumed) {
+      _syncVadRoute();
+    } else {
+      _syncMediaKeys();
+    }
     controller.setRouteVisibility(this, _hasChatFocus);
   }
 
@@ -588,10 +651,23 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   void dispose() {
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
+    unawaited(_voiceDeviceEvents?.cancel());
+    if (_conversationKey != null) {
+      VoiceSwitchHolders.screenOn(_voiceDevice).set(this, false);
+    }
     _voiceInput.removeListener(_voiceInputChanged);
     _voiceInput.dispose();
     _voiceOutput.dispose();
     controller.setRouteVisibility(this, false);
+    if (_mediaKeysOn) {
+      _mediaKeysOn = false;
+      VoiceSwitchHolders.mediaKeys(_voiceDevice).set(this, false);
+    }
+    // A replacement workspace may already hold the model; release it only
+    // when the last workspace goes away.
+    if (--_liveWorkspaces <= 0 && _vadRoute() == true) {
+      unawaited(_voiceDevice.releaseVad().catchError((Object _) {}));
+    }
     WidgetsBinding.instance.removeObserver(this);
     _profileNavigation.dispose();
     _composer.dispose();
@@ -2573,6 +2649,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     setState(() => _destination = destination);
     controller.setRouteVisibility(this, _hasChatFocus);
+    _syncMediaKeys();
     if (destination == AppDestination.activity) {
       unawaited(_run(controller.refreshRecents));
     }

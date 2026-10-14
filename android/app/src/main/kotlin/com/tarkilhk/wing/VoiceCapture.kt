@@ -15,6 +15,11 @@ import android.speech.SpeechRecognizer
 import java.io.File
 import java.util.Locale
 
+/** Hard ceiling on a single hermes recording, in milliseconds. Spec/brainstorming
+ *  sessions run 3-6 minutes; 600s leaves headroom above that. */
+private const val MAX_RECORDING_MS = 600_000
+private const val RECORDING_DEADLINE_BUFFER_MS = 5_000
+
 /** One capture at a time. Local prefers Android's on-device recognizer and falls back to the
  *  default RecognitionService (e.g. an offline third-party recognizer set as system voice input). */
 class VoiceCapture(private val activity: Activity, private val emit: (Map<String, Any>) -> Unit) {
@@ -101,7 +106,7 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
                 capture.setAudioEncoder(MediaRecorder.AudioEncoder.AAC)
                 capture.setAudioSamplingRate(44100)
                 capture.setAudioEncodingBitRate(96000)
-                capture.setMaxDuration(120000)
+                capture.setMaxDuration(MAX_RECORDING_MS)
                 capture.setMaxFileSize(25L * 1024 * 1024)
                 capture.setOnInfoListener { _, what, _ ->
                     if (id == owner && (what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_DURATION_REACHED || what == MediaRecorder.MEDIA_RECORDER_INFO_MAX_FILESIZE_REACHED)) {
@@ -113,7 +118,7 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
                 capture.prepare(); capture.start()
             }
             deadline = Runnable { if (id == owner) fail("Recording reached its time limit. Please try a shorter recording.") }
-            handler.postDelayed(deadline!!, 125000)
+            handler.postDelayed(deadline!!, (MAX_RECORDING_MS + RECORDING_DEADLINE_BUFFER_MS).toLong())
         } catch (error: Exception) { clear(); throw error }
     }
 
