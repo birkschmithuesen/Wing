@@ -22,6 +22,8 @@ void main() {
     'It’s done, isn’t it?': SpeechLanguage.en,
     // An English clause dominates a short German lead-in
     'Er sagte: the fix is fine and it works.': SpeechLanguage.en,
+    // Grenzwert: ein Treffer reicht nicht
+    'The cat sat.': null,
     // No evidence: unsure
     'Kanban.': null,
     'Thanks!': null,
