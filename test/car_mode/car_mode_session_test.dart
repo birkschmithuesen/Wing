@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/car_mode/car_mode_bridge.dart';
+import 'package:wing/car_mode/car_mode_screen.dart';
 import 'package:wing/car_mode/car_mode_session.dart';
 import 'package:wing/car_mode/car_mode_state.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
