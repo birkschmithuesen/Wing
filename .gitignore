@@ -59,3 +59,4 @@ key.properties
 # Generated local analysis and design output
 /graphify-out/
 /output/
+/android/app/libs/

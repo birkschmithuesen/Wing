@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 import '../services/android_voice.dart';
 import '../services/hermes_voice.dart';
+import '../services/vad_endpoint.dart';
 import '../services/voice_preferences.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
@@ -20,6 +21,10 @@ Duration transcriptionDeadlineFor(int recordedSeconds) {
 /// A single capture, tied to a draft snapshot and an immutable remote owner.
 /// Only a completed transcript edits the draft; cancellation preserves it exactly.
 class VoiceInputController extends ChangeNotifier {
+  /// Hard ceiling on a single hermes recording, in seconds. Spec/brainstorming
+  /// sessions run 3-6 minutes; 600s leaves headroom above that.
+  static const maxRecordingSeconds = 600;
+
   final VoiceDevice device;
   final RemoteVoice Function() createRemote;
   late final StreamSubscription<Map<String, dynamic>> _events;
@@ -36,6 +41,13 @@ class VoiceInputController extends ChangeNotifier {
   String? _id;
   bool _disposed = false;
   RemoteVoice? _remote;
+  VadEndpointer? _endpointer;
+
+  /// Upper bound shown while recording ("Recording · 12s / 600s" on vad).
+  int maxSeconds = 120;
+
+  /// True while a round on the vad route is active.
+  bool get vad => _endpointer != null;
   Timer? _timer;
   TextEditingValue? _draft;
   void Function(TextEditingValue)? _onResult;
@@ -66,12 +78,27 @@ class VoiceInputController extends ChangeNotifier {
     phase = VoiceInputPhase.starting;
     _notify();
     try {
-      if (settings.input == VoiceProcessing.hermes) _remote = createRemote();
-      await device.start(
-        id,
-        local: _remote == null,
-        language: settings.language,
-      );
+      if (settings.input == VoiceInputRoute.vad) {
+        _endpointer = VadEndpointer(settings.vad);
+        maxSeconds = settings.vad.maxDuration.inSeconds;
+        await device.startVad(
+          id,
+          VadCaptureOptions(
+            cues: settings.cues,
+            debug: settings.debugRecordings,
+            source: settings.audioSource,
+            maxDuration: settings.vad.maxDuration,
+          ),
+        );
+      } else {
+        maxSeconds = maxRecordingSeconds;
+        if (settings.input == VoiceInputRoute.hermes) _remote = createRemote();
+        await device.start(
+          id,
+          local: _remote == null,
+          language: settings.language,
+        );
+      }
       if (_id != id || _disposed) {
         await device.cancel(id);
         return;
@@ -81,7 +108,10 @@ class VoiceInputController extends ChangeNotifier {
       _timer = Timer.periodic(const Duration(seconds: 1), (_) {
         seconds++;
         _notify();
-        if (seconds >= 120) unawaited(stop());
+        // The vad endpointer owns its own limit.
+        if (_endpointer == null && seconds >= maxRecordingSeconds) {
+          unawaited(stop());
+        }
       });
     } catch (failure) {
       if (_id == id) _fail(failure);
@@ -98,6 +128,15 @@ class VoiceInputController extends ChangeNotifier {
       unawaited(stop());
       return;
     }
+    if (event['windows'] case final List<Object?> windows) {
+      final endpointer = _endpointer;
+      if (endpointer == null || phase != VoiceInputPhase.recording) return;
+      final decision = endpointer.feedAll(
+        windows.map((value) => (value as num).toDouble()),
+      );
+      if (decision != null) unawaited(_finishVad(decision));
+      return;
+    }
     if (event['text'] case final String text) {
       partial = text;
       if (event['final'] == true) {
@@ -111,6 +150,11 @@ class VoiceInputController extends ChangeNotifier {
   Future<void> stop() async {
     final id = _id;
     if (id == null || phase != VoiceInputPhase.recording) return;
+    final endpointer = _endpointer;
+    if (endpointer != null) {
+      await _finishVad(endpointer.forceEnd(VadEndReason.manual));
+      return;
+    }
     _stopRequested = true;
     _timer?.cancel();
     phase = VoiceInputPhase.transcribing;
@@ -130,6 +174,53 @@ class VoiceInputController extends ChangeNotifier {
         if (_id == id && !_disposed) _finish(text);
       }
       // Local stop completes through a final native event, including timeout.
+    } catch (failure) {
+      if (_id == id) _fail(failure);
+    }
+  }
+
+  /// Media key: ends the round as a hands-free action (sent in conversation mode).
+  Future<void> stopHandsFree() async {
+    final endpointer = _endpointer;
+    if (_id == null || phase != VoiceInputPhase.recording) return;
+    if (endpointer == null) return stop();
+    await _finishVad(endpointer.forceEnd(VadEndReason.mediaKey));
+  }
+
+  Future<void> _finishVad(VadDecision decision) async {
+    final id = _id;
+    final endpointer = _endpointer;
+    if (id == null || endpointer == null || phase != VoiceInputPhase.recording) {
+      return;
+    }
+    _timer?.cancel();
+    if (!decision.hasSpeech) {
+      // Tell the phone why the round ended (debug JSON reason "noSpeech"; Kotlin
+      // skips recognition for it), then end the round. Channel calls keep their
+      // order, so the following cancel finds no round left.
+      unawaited(
+        device
+            .finishVad(id, decision, endpointer.config)
+            .then((_) {}, onError: (Object _) {}),
+      );
+      _fail(StateError('No speech detected. Try again.'));
+      return;
+    }
+    _stopRequested =
+        decision.reason != VadEndReason.pause &&
+        decision.reason != VadEndReason.mediaKey;
+    phase = VoiceInputPhase.transcribing;
+    _notify();
+    try {
+      final chunks = vadChunksFor(
+        endpointer.probabilities,
+        decision.startWindow,
+        decision.endWindow,
+      );
+      final text = await device
+          .finishVad(id, decision, endpointer.config, chunks: chunks)
+          .timeout(vadRecognitionBudget(decision.segment, chunks: chunks.length));
+      if (_id == id && !_disposed) _finish(text);
     } catch (failure) {
       if (_id == id) _fail(failure);
     }
@@ -163,6 +254,7 @@ class VoiceInputController extends ChangeNotifier {
     _timer = null;
     _remote?.close();
     _remote = null;
+    _endpointer = null;
     _draft = null;
     _onResult = null;
     phase = VoiceInputPhase.idle;

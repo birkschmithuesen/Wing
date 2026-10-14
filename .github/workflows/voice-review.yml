@@ -1,0 +1,48 @@
+name: Wing Voice review renders
+
+# Renders voice settings/composer screens (synthetic fixtures only) and pushes
+# the PNGs to branch voice-review-bin (git transport; artifact storage is
+# blocked for the vServer). Triggered by workflow_dispatch once on main, or by
+# a push to ci-voice-review/** (tools/factory/dispatch-check.sh).
+on:
+  workflow_dispatch:
+  push:
+    branches: ['ci-voice-review/**']
+
+permissions:
+  contents: write
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Set up Flutter
+        uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.44.0'
+          channel: 'stable'
+          cache: true
+      - run: flutter pub get
+      - name: Render
+        run: |
+          fonts="$(dirname "$(dirname "$(command -v flutter)")")/bin/cache/artifacts/material_fonts"
+          flutter test --no-pub --dart-define=VOICE_REVIEW=true --dart-define=CAPTURE_FONT_DIR="$fonts" \
+            test/voice_preferences_test.dart test/vad_settings_test.dart test/voice_workspace_test.dart \
+            test/car_mode/car_mode_screen_test.dart
+      - name: Publish to voice-review-bin
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/out
+          cp build/voice-review/*.png /tmp/out/
+          echo "${GITHUB_SHA}" > /tmp/out/SOURCE_COMMIT
+          cd /tmp/out
+          git init -q -b voice-review-bin
+          git config user.name "ci"; git config user.email "ci@localhost"
+          git add -A && git commit -q -m "voice review ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" voice-review-bin
