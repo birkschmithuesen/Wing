@@ -28,7 +28,8 @@ class VadCapture(
     private val debug: VoiceDebugStore,
     private val emit: (Map<String, Any>) -> Unit,
 ) {
-    data class Options(val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int)
+    data class Options(val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int,
+                       val startCue: Boolean = cues)
 
     private class Round(val id: String, val options: Options, val startedAt: Long, capacity: Int) {
         val pcm = ShortArray(capacity)
@@ -52,7 +53,7 @@ class VadCapture(
         val r = Round(id, options, System.currentTimeMillis(), (options.maxMs + 5_000) * 16)
         round = r
         try {
-            if (options.cues) cue(ToneGenerator.TONE_PROP_BEEP, wait = true)
+            if (options.startCue) cue(ToneGenerator.TONE_PROP_BEEP, wait = true)
             r.vad = Vad(
                 assetManager = activity.assets,
                 config = VadModelConfig(

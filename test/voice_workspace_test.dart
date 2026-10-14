@@ -514,12 +514,146 @@ void main() {
     VoicePreferences.inputKey,
     'vad',
   );
+  Future<void> listenTurn(bool on) => controller.preferences.setString(
+    VoicePreferences.listenTurnKey,
+    on ? 'on' : 'off',
+  );
   Future<void> windows(WidgetTester tester, double p, int count) async {
     device.emitWindows(List.filled(count, p));
     await settle(tester);
   }
 
+  Future<void> vadConversationTurn(WidgetTester tester) async {
+    await vadRoute();
+    await conversationMode(true);
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    await windows(tester, 0.9, 30);
+    await windows(tester, 0.1, 60);
+    expect(prompts(), 1);
+  }
+
+  testWidgets('while Hermes works the microphone listens and steers', (
+    tester,
+  ) async {
+    fixture.steerResult = {'status': 'queued', 'text': 'Testsatz eins'};
+    await vadConversationTurn(tester);
+    final chat = controller.current!.chat!;
+    expect(chat.busy, isTrue);
+    expect(vadStarts(), 2);
+    expect(device.vadOptions!.keepPlayback, isTrue);
+    expect(find.text('Listening'), findsOneWidget);
+    device.vadTranscript = 'Testsatz eins';
+    await windows(tester, 0.9, 30);
+    await windows(tester, 0.1, 60);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
+      'Testsatz eins',
+    );
+    expect(prompts(), 1);
+    expect(chat.messages.last['display_kind'], 'steer');
+    expect(vadStarts(), 3);
+    await completeReply(tester, 'Fertig.');
+    expect(find.text('Listening'), findsNothing);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('words spoken as the turn ends become the next prompt (D3)', (
+    tester,
+  ) async {
+    await vadConversationTurn(tester);
+    device.vadTranscript = 'Testsatz zwei';
+    await windows(tester, 0.9, 30);
+    // The turn completes while the user is still speaking.
+    await completeReply(tester, 'Antwort eins.');
+    expect(device.spoken, isNull);
+    await windows(tester, 0.1, 60);
+    expect(prompts(), 2);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      'Testsatz zwei',
+    );
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  testWidgets('Stop listening closes the round but keeps the conversation', (
+    tester,
+  ) async {
+    await vadConversationTurn(tester);
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+    expect(find.text('Listening'), findsNothing);
+    await completeReply(tester, 'Antwort.');
+    expect(device.spoken, 'Antwort.');
+    expect(find.textContaining('Recording ·'), findsOneWidget);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('an approval ends the conversation and the listen round', (
+    tester,
+  ) async {
+    await vadConversationTurn(tester);
+    gatewayEvent('approval', {'request_id': 'approve-1', 'command': 'rm -rf build'});
+    await settle(tester);
+    expect(find.text('Listening'), findsNothing);
+    expect(device.cancelled, isNotEmpty);
+  });
+
+  testWidgets('listening is off with the setting off', (tester) async {
+    await listenTurn(false);
+    await vadConversationTurn(tester);
+    expect(vadStarts(), 1);
+    expect(find.text('Listening'), findsNothing);
+    await completeReply(tester);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('media key ends a listen utterance and steers it', (tester) async {
+    fixture.steerResult = {'status': 'queued', 'text': 'x'};
+    await vadConversationTurn(tester);
+    device.vadTranscript = 'Testsatz drei';
+    await windows(tester, 0.9, 30);
+    device.emitMediaKey();
+    await settle(tester);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
+      'Testsatz drei',
+    );
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('listening row renders in $brightness at ${scale}x', (
+        tester,
+      ) async {
+        await vadRoute();
+        await conversationMode(true);
+        await show(tester, brightness: brightness, scale: scale);
+        await tester.tap(find.byTooltip('Dictate message'));
+        await tester.pump();
+        await windows(tester, 0.9, 30);
+        await windows(tester, 0.1, 60);
+        expect(find.text('Stop listening'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await screenshot(
+          tester,
+          'listen-${brightness.name}-${(scale * 100).round()}',
+        );
+        await tester.tap(find.text('Stop listening'));
+        await settle(tester);
+      });
+    }
+  }
+
   testWidgets('vad conversation sends after the pause', (tester) async {
+    await listenTurn(false);
     await vadRoute();
     await conversationMode(true);
     await show(tester);
@@ -558,6 +692,7 @@ void main() {
   testWidgets('media key ends a vad round and sends it in conversation mode', (
     tester,
   ) async {
+    await listenTurn(false);
     await vadRoute();
     await conversationMode(true);
     await show(tester);

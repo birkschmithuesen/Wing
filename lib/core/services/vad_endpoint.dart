@@ -102,6 +102,9 @@ class VadEndpointer {
   int get windows => _windows;
   VadDecision? get decision => _decision;
 
+  /// True once a speech start was confirmed in this round.
+  bool get speechStarted => _speechStart >= 0;
+
   int get _cutStart =>
       _speechStart - _preRollWindows < 0 ? 0 : _speechStart - _preRollWindows;
 

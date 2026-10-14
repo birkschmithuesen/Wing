@@ -89,15 +89,18 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
     }
     private fun start(call: MethodCall, result: MethodChannel.Result) {
-        playback.stop()
+        // Barge-in listen rounds record while Wing reads aloud.
+        if (call.argument<Boolean>("keepPlayback") != true) playback.stop()
         val id = call.argument<String>("id")!!
         if (call.method == "startVad") {
             capture.cancel(id)
+            val cues = call.argument<Boolean>("cues") != false
             vad.start(id, VadCapture.Options(
-                cues = call.argument<Boolean>("cues") != false,
+                cues = cues,
                 debug = call.argument<Boolean>("debug") == true,
                 source = call.argument<String>("source") ?: "communication",
                 maxMs = call.argument<Int>("maxMs") ?: 600_000,
+                startCue = call.argument<Boolean>("startCue") ?: cues,
             ))
         } else {
             vad.cancel(id)
