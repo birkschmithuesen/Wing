@@ -34,7 +34,11 @@ void main() {
       final gate = PlaybackGate(threshold: 0.7, windows: 16);
       int? fired;
       for (var i = 0; i < 40; i++) {
-        fired ??= gate.feed(i, i < 4 ? 0.1 : 0.9);
+        // Not `fired ??= gate.feed(...)`: that short-circuits after the
+        // first hit and would stop feeding the gate, leaving longestRun
+        // short of the full run.
+        final result = gate.feed(i, i < 4 ? 0.1 : 0.9);
+        fired ??= result;
       }
       expect(fired, 4);
       expect(gate.firedAt, 4);
