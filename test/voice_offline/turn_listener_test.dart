@@ -6,10 +6,17 @@ import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
 import '../support/voice_fixture.dart';
 
+// pause is shortened from the 1800 ms default: at maxDuration = 2 s
+// (62 windows) a 20-window speech leaves only 42 windows of silence budget
+// before the round hits maxDuration, which is less than the default 57
+// pause windows and would starve the pause decision this file exercises.
 const settings = VoicePreferences(
   input: VoiceInputRoute.vad,
   conversation: true,
-  vad: VadEndpointConfig(maxDuration: Duration(seconds: 2)),
+  vad: VadEndpointConfig(
+    pause: Duration(milliseconds: 960),
+    maxDuration: Duration(seconds: 2),
+  ),
 );
 
 void main() {
