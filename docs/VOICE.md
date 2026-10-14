@@ -23,3 +23,5 @@ Hermes speech uses the selected server profile's providers and voice settings. T
 Tap the composer microphone, speak, then tap **Stop recording**. The words appear in your draft for review and editing; Wing never sends them automatically. Use **Read aloud** on an assistant reply to hear its prose, or **Stop speech** to end playback. Recording and playback stop when you leave the foreground or change chats.
 
 [Voice setup details](PROFILE_VOICE.md) · [Privacy](../PRIVACY.md)
+
+Car mode (one big talk button for driving): see [CAR_MODE.md](CAR_MODE.md).
