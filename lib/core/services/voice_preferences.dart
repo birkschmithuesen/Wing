@@ -51,7 +51,15 @@ class VoicePreferences {
     listenMinSpeechKey,
     bargeInPlaybackKey,
   };
-  static const vadPauseChoices = ['1000', '1400', '1800', '2400', '3000'];
+  static const vadPauseChoices = [
+    '1000',
+    '1400',
+    '1800',
+    '2400',
+    '3000',
+    '4000',
+    '5000',
+  ];
   static const vadMinSpeechChoices = ['150', '250', '400'];
   static const vadPreRollChoices = ['200', '300', '500'];
   static const vadMaxChoices = ['600', '900', '1200', '1800'];
