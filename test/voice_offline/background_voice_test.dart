@@ -54,12 +54,15 @@ void main() {
     host.next = Completer<bool>();
     voice.sync(want: true);
     await pumpEventQueue();
+    print('Expected: DEBUG_A holds=${host.holds} held=${voice.held}');
     voice.sync(want: false);
     await pumpEventQueue();
+    print('Expected: DEBUG_B holds=${host.holds} held=${voice.held}');
     expect(host.holds, [true]);
     host.next!.complete(true);
     await pumpEventQueue();
     await voice.settled;
+    print('Expected: DEBUG_C holds=${host.holds} held=${voice.held}');
     expect(host.holds, [true, false]);
     expect(voice.held, isFalse);
   });
