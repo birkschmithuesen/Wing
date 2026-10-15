@@ -199,6 +199,29 @@ void main() {
     expect(VoicePreferences.accepts(VoicePreferences.vadDebugKey, 'on'), isTrue);
   });
 
+  test('vad pause accepts 4 s and 5 s for longer thinking pauses', () async {
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '4000'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '5000'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '4500'), isFalse);
+    expect(VoicePreferences.accepts(VoicePreferences.vadPauseKey, '6000'), isFalse);
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.vadPauseKey: '5000',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(
+      VoicePreferences.read(prefs).vad.pause,
+      const Duration(milliseconds: 5000),
+    );
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.vadPauseKey: '4500',
+    });
+    final invalid = await SharedPreferences.getInstance();
+    expect(
+      VoicePreferences.read(invalid).vad.pause,
+      const Duration(milliseconds: 1800),
+    );
+  });
+
   test('unknown stored vad values fall back to defaults', () async {
     SharedPreferences.setMockInitialValues({
       VoicePreferences.vadPauseKey: '7',
