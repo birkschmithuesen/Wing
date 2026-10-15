@@ -107,6 +107,11 @@ jobs:
             else
               tail -n 20 test_output.txt | while IFS= read -r line; do printf '::error::TEST-TAIL: %s\n' "$line"; done
             fi
+            # t_3d657c6f debug: full context before the two screen-off failures,
+            # whose failure detail doesn't match the grep above (revert after diagnosis).
+            grep -n -B 60 "screen off reading continues.*\[E\]\|screen off a reply.*\[E\]" test_output.txt \
+              > /tmp/test_ctx.txt || true
+            tail -n 130 /tmp/test_ctx.txt | while IFS= read -r line; do printf '::error::CTX: %s\n' "$line"; done
           fi
 
       # ── Step 4: Pass/fail enforcement ────────────────────
