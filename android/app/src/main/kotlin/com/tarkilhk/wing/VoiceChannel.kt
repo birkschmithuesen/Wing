@@ -4,6 +4,8 @@ import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
 import android.view.WindowManager
+import com.tarkilhk.wing.voicebackground.BackgroundVoiceChannel
+import com.tarkilhk.wing.voicebackground.BackgroundVoiceService
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
@@ -18,6 +20,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val debugStore = VoiceDebugStore(activity)
     private val vad = VadCapture(activity, models, speech, debugStore, ::emit)
     private val mediaKeys = VoiceMediaKeys(activity, ::emit)
+    private val background = BackgroundVoiceChannel(activity, messenger)
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     init {
         // A previous process may have died before its normal cleanup.
@@ -123,9 +126,10 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         }
         return true
     }
-    fun pause() { capture.pause(); vad.pause(); playback.stop(); mediaKeys.pause() }
+    fun pause() { if (BackgroundVoiceService.keepsVoice()) { capture.pause(); mediaKeys.pause(); return }; capture.pause(); vad.pause(); playback.stop(); mediaKeys.pause() }
     fun resume() { mediaKeys.resume() }
     fun close() {
+        background.close()
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
         mediaKeys.close(); activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         capture.close(); playback.close(); vad.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
