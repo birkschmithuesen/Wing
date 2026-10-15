@@ -741,152 +741,6 @@ void main() {
     expect(device.mediaKeysCalls, [true]);
   });
 
-  group('screen off', () {
-    Future<void> startVadConversation(WidgetTester tester) async {
-      // These tests count VAD starts, so listen rounds stay off here; Task 5
-      // switches them on explicitly.
-      await listenTurn(false);
-      await vadRoute();
-      await conversationMode(true);
-      await show(tester);
-      await tester.tap(find.byTooltip('Dictate message'));
-      await settle(tester);
-    }
-
-    Future<void> speakAndSend(WidgetTester tester) async {
-      await windows(tester, 0.9, 30);
-      await windows(tester, 0.1, 60);
-    }
-
-    void screenOff(WidgetTester tester) => tester.binding
-        .handleAppLifecycleStateChanged(AppLifecycleState.paused);
-
-    void screenOn(WidgetTester tester) {
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    }
-
-    testWidgets('a vad conversation holds while it runs', (tester) async {
-      await startVadConversation(tester);
-      expect(background.holds, [true]);
-      await tester.tap(find.text('Cancel recording'));
-      await settle(tester);
-      expect(background.holds, [true, false]);
-    });
-
-    testWidgets('the local route never holds and still cancels', (
-      tester,
-    ) async {
-      await conversationMode(true);
-      await show(tester);
-      await tester.tap(find.byTooltip('Dictate message'));
-      await settle(tester);
-      final id = device.recording;
-      screenOff(tester);
-      await tester.pump();
-      expect(background.holds, isEmpty);
-      expect(device.cancelled, contains(id));
-      screenOn(tester);
-      await settle(tester);
-    });
-
-    testWidgets('reading continues and the microphone reopens', (
-      tester,
-    ) async {
-      device.playbackDelay = Completer<void>();
-      await startVadConversation(tester);
-      await speakAndSend(tester);
-      expect(prompts(), 1);
-      gatewayEvent('message.complete', {'text': 'Answer.'});
-      await tester.pump();
-      await tester.pump();
-      expect(device.calls, contains('speak'));
-      screenOff(tester);
-      await tester.pump();
-      expect(device.calls, isNot(contains('stopPlayback')));
-      device.playbackDelay!.complete();
-      device.playbackDelay = null;
-      await settle(tester);
-      expect(vadStarts(), 2);
-      await speakAndSend(tester);
-      expect(prompts(), 2);
-      await completeReply(tester, 'Answer two.');
-      expect(vadStarts(), 3);
-      screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
-      await settle(tester);
-    });
-
-    testWidgets('a reply that arrives with the screen off is spoken', (
-      tester,
-    ) async {
-      await startVadConversation(tester);
-      await speakAndSend(tester);
-      screenOff(tester);
-      await tester.pump();
-      await completeReply(tester, 'Pocket answer.');
-      expect(device.spoken, 'Pocket answer.');
-      expect(vadStarts(), 2);
-      screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
-      await settle(tester);
-    });
-
-    testWidgets('no speech ends the conversation and releases the hold', (
-      tester,
-    ) async {
-      await startVadConversation(tester);
-      await speakAndSend(tester);
-      screenOff(tester);
-      await completeReply(tester);
-      expect(vadStarts(), 2);
-      await windows(tester, 0.05, 251);
-      expect(device.finishes.last.reason.name, 'noSpeech');
-      expect(background.holds.last, isFalse);
-      expect(device.keepScreenOnCalls.last, isFalse);
-      screenOn(tester);
-      await settle(tester);
-    });
-
-    testWidgets('notification Stop ends the conversation', (tester) async {
-      await startVadConversation(tester);
-      final id = device.recording;
-      screenOff(tester);
-      await tester.pump();
-      background.stop('notification');
-      await settle(tester);
-      expect(device.cancelled, contains(id));
-      expect(background.holds, [true]);
-      expect(device.keepScreenOnCalls.last, isFalse);
-      controller.current!.chat!.status = ProfileTurnStatus.running;
-      await completeReply(tester, 'Late reply.');
-      expect(vadStarts(), 1);
-      screenOn(tester);
-      await settle(tester);
-    });
-
-    testWidgets('a refused hold cancels on pause as before', (tester) async {
-      background.grant = false;
-      await startVadConversation(tester);
-      final id = device.recording;
-      screenOff(tester);
-      await tester.pump();
-      expect(device.cancelled, contains(id));
-      screenOn(tester);
-      await settle(tester);
-    });
-
-    testWidgets('car mode never holds', (tester) async {
-      await vadRoute();
-      await conversationMode(true);
-      await show(tester);
-      await openCarMode(tester);
-      await tapCar(tester);
-      expect(background.holds, isEmpty);
-    });
-  });
-
   testWidgets('stacked workspaces leave media keys and screen on enabled', (
     tester,
   ) async {
@@ -1037,6 +891,152 @@ void main() {
       await tester.pump(const Duration(milliseconds: 50));
     }
   }
+
+  group('screen off', () {
+    Future<void> startVadConversation(WidgetTester tester) async {
+      // These tests count VAD starts, so listen rounds stay off here; Task 5
+      // switches them on explicitly.
+      await listenTurn(false);
+      await vadRoute();
+      await conversationMode(true);
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await settle(tester);
+    }
+
+    Future<void> speakAndSend(WidgetTester tester) async {
+      await windows(tester, 0.9, 30);
+      await windows(tester, 0.1, 60);
+    }
+
+    void screenOff(WidgetTester tester) => tester.binding
+        .handleAppLifecycleStateChanged(AppLifecycleState.paused);
+
+    void screenOn(WidgetTester tester) {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    }
+
+    testWidgets('a vad conversation holds while it runs', (tester) async {
+      await startVadConversation(tester);
+      expect(background.holds, [true]);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+      expect(background.holds, [true, false]);
+    });
+
+    testWidgets('the local route never holds and still cancels', (
+      tester,
+    ) async {
+      await conversationMode(true);
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await settle(tester);
+      final id = device.recording;
+      screenOff(tester);
+      await tester.pump();
+      expect(background.holds, isEmpty);
+      expect(device.cancelled, contains(id));
+      screenOn(tester);
+      await settle(tester);
+    });
+
+    testWidgets('reading continues and the microphone reopens', (
+      tester,
+    ) async {
+      device.playbackDelay = Completer<void>();
+      await startVadConversation(tester);
+      await speakAndSend(tester);
+      expect(prompts(), 1);
+      gatewayEvent('message.complete', {'text': 'Answer.'});
+      await tester.pump();
+      await tester.pump();
+      expect(device.calls, contains('speak'));
+      screenOff(tester);
+      await tester.pump();
+      expect(device.calls, isNot(contains('stopPlayback')));
+      device.playbackDelay!.complete();
+      device.playbackDelay = null;
+      await settle(tester);
+      expect(vadStarts(), 2);
+      await speakAndSend(tester);
+      expect(prompts(), 2);
+      await completeReply(tester, 'Answer two.');
+      expect(vadStarts(), 3);
+      screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    });
+
+    testWidgets('a reply that arrives with the screen off is spoken', (
+      tester,
+    ) async {
+      await startVadConversation(tester);
+      await speakAndSend(tester);
+      screenOff(tester);
+      await tester.pump();
+      await completeReply(tester, 'Pocket answer.');
+      expect(device.spoken, 'Pocket answer.');
+      expect(vadStarts(), 2);
+      screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    });
+
+    testWidgets('no speech ends the conversation and releases the hold', (
+      tester,
+    ) async {
+      await startVadConversation(tester);
+      await speakAndSend(tester);
+      screenOff(tester);
+      await completeReply(tester);
+      expect(vadStarts(), 2);
+      await windows(tester, 0.05, 251);
+      expect(device.finishes.last.reason.name, 'noSpeech');
+      expect(background.holds.last, isFalse);
+      expect(device.keepScreenOnCalls.last, isFalse);
+      screenOn(tester);
+      await settle(tester);
+    });
+
+    testWidgets('notification Stop ends the conversation', (tester) async {
+      await startVadConversation(tester);
+      final id = device.recording;
+      screenOff(tester);
+      await tester.pump();
+      background.stop('notification');
+      await settle(tester);
+      expect(device.cancelled, contains(id));
+      expect(background.holds, [true]);
+      expect(device.keepScreenOnCalls.last, isFalse);
+      controller.current!.chat!.status = ProfileTurnStatus.running;
+      await completeReply(tester, 'Late reply.');
+      expect(vadStarts(), 1);
+      screenOn(tester);
+      await settle(tester);
+    });
+
+    testWidgets('a refused hold cancels on pause as before', (tester) async {
+      background.grant = false;
+      await startVadConversation(tester);
+      final id = device.recording;
+      screenOff(tester);
+      await tester.pump();
+      expect(device.cancelled, contains(id));
+      screenOn(tester);
+      await settle(tester);
+    });
+
+    testWidgets('car mode never holds', (tester) async {
+      await vadRoute();
+      await conversationMode(true);
+      await show(tester);
+      await openCarMode(tester);
+      await tapCar(tester);
+      expect(background.holds, isEmpty);
+    });
+  });
 
   testWidgets('car mode case 2: three rounds by tap only, read aloud, then idle with the mic closed', (
     tester,
