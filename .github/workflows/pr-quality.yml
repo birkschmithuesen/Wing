@@ -101,22 +101,12 @@ jobs:
             fi
           fi
           if [ "${{ steps.test.outcome }}" != "success" ]; then
-            # t_3d657c6f debug: GH Actions caps error annotations at 10 per
-            # step, so drop the unrelated flaky administration_retry_test.dart
-            # hits here to leave room for the CTX dump below (revert after diagnosis).
-            grep -E "\[E\]|Expected:|Actual:|Exception|Some tests failed" test_output.txt \
-              | grep -v administration_retry_test | head -15 > /tmp/test_hits.txt || true
+            grep -E "\[E\]|Expected:|Actual:|Exception|Some tests failed" test_output.txt | head -15 > /tmp/test_hits.txt || true
             if [ -s /tmp/test_hits.txt ]; then
               while IFS= read -r line; do printf '::error::TEST: %s\n' "$line"; done < /tmp/test_hits.txt
             else
               tail -n 20 test_output.txt | while IFS= read -r line; do printf '::error::TEST-TAIL: %s\n' "$line"; done
             fi
-            # Dump a window starting at the failing test's first occurrence to find the real error.
-            first=$(grep -n "screen off reading continues" test_output.txt | head -1 | cut -d: -f1) || true
-            if [ -n "${first:-}" ]; then
-              sed -n "$((first + 5)),$((first + 85))p" test_output.txt > /tmp/test_ctx.txt || true
-            fi
-            while IFS= read -r line; do printf '::error::CTX: %s\n' "$line"; done < /tmp/test_ctx.txt
           fi
 
       # ── Step 4: Pass/fail enforcement ────────────────────

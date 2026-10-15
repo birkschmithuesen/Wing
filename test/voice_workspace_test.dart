@@ -964,7 +964,17 @@ void main() {
       expect(prompts(), 2);
       await completeReply(tester, 'Answer two.');
       expect(vadStarts(), 3);
+      print(
+        'Expected: DEBUG_A recording=${device.recording} holds=${background.holds} '
+        'cancelOrStop=${find.text('Cancel recording').evaluate().length}/'
+        '${find.text('Dictate message').evaluate().length}',
+      );
       screenOn(tester);
+      print(
+        'Expected: DEBUG_B recording=${device.recording} holds=${background.holds} '
+        'cancelOrStop=${find.text('Cancel recording').evaluate().length}/'
+        '${find.text('Dictate message').evaluate().length}',
+      );
       await tester.tap(find.text('Cancel recording'));
       await settle(tester);
     });
@@ -977,6 +987,10 @@ void main() {
       screenOff(tester);
       await tester.pump();
       await completeReply(tester, 'Pocket answer.');
+      print(
+        'Expected: DEBUG_C spoken=${device.spoken} holds=${background.holds} '
+        'calls=${device.calls}',
+      );
       expect(device.spoken, 'Pocket answer.');
       expect(vadStarts(), 2);
       screenOn(tester);
