@@ -967,7 +967,9 @@ void main() {
       print(
         'Expected: DEBUG_A recording=${device.recording} holds=${background.holds} '
         'cancelOrStop=${find.text('Cancel recording').evaluate().length}/'
-        '${find.text('Dictate message').evaluate().length}',
+        '${find.text('Dictate message').evaluate().length} calls=${device.calls} '
+        'finishes=${device.finishes.length} cancelled=${device.cancelled} '
+        'composer=${find.text('Listening').evaluate().length}',
       );
       screenOn(tester);
       print(
