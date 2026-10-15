@@ -59,6 +59,7 @@ void main() {
     expect(host.holds, [true]);
     host.next!.complete(true);
     await pumpEventQueue();
+    await voice.settled;
     expect(host.holds, [true, false]);
     expect(voice.held, isFalse);
   });

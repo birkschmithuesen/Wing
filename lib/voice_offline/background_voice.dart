@@ -65,6 +65,9 @@ class BackgroundVoice {
   /// Held while Wing is not in the foreground (screen off, other app).
   bool get screenOff => _held && !_resumed;
 
+  /// Completes when every `sync`/`dispose` queued so far has applied.
+  Future<void> get settled => _queue;
+
   void sync({required bool want}) {
     if (_disposed || want == _want) return;
     _want = want;
