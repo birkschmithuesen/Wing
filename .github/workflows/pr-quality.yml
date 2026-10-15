@@ -107,17 +107,11 @@ jobs:
             else
               tail -n 20 test_output.txt | while IFS= read -r line; do printf '::error::TEST-TAIL: %s\n' "$line"; done
             fi
-            # t_3d657c6f debug: full context around the two screen-off failures,
-            # whose failure detail doesn't match the grep above (revert after diagnosis).
-            : > /tmp/test_ctx.txt
-            for needle in "screen off reading continues" "screen off a reply"; do
-              last=$(grep -n "$needle" test_output.txt | tail -1 | cut -d: -f1) || true
-              if [ -n "${last:-}" ]; then
-                sed -n "$((last > 60 ? last - 60 : 1)),$((last + 2))p" test_output.txt >> /tmp/test_ctx.txt
-                echo "=====" >> /tmp/test_ctx.txt
-              fi
-            done
-            while IFS= read -r line; do printf '::error::CTX: %s\n' "$line"; done < /tmp/test_ctx.txt
+            # t_3d657c6f debug: locate every occurrence of the two screen-off
+            # failure names first (revert after diagnosis).
+            grep -n "screen off reading continues\|screen off a reply" test_output.txt \
+              > /tmp/test_occ.txt || true
+            while IFS= read -r line; do printf '::error::OCC: %s\n' "$line"; done < /tmp/test_occ.txt
           fi
 
       # ── Step 4: Pass/fail enforcement ────────────────────
