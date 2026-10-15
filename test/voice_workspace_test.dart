@@ -964,12 +964,15 @@ void main() {
       expect(prompts(), 2);
       await completeReply(tester, 'Answer two.');
       expect(vadStarts(), 3);
+      print('Expected: DEBUG_EX exception=${tester.takeException()}');
       print(
         'Expected: DEBUG_A recording=${device.recording} holds=${background.holds} '
         'cancelOrStop=${find.text('Cancel recording').evaluate().length}/'
         '${find.text('Dictate message').evaluate().length} calls=${device.calls} '
         'finishes=${device.finishes.length} cancelled=${device.cancelled} '
-        'composer=${find.text('Listening').evaluate().length}',
+        'composer=${find.text('Listening').evaluate().length} '
+        'recordingText=${find.textContaining('Recording ·').evaluate().length}/'
+        '${find.text('Opening microphone…').evaluate().length}',
       );
       screenOn(tester);
       print(
