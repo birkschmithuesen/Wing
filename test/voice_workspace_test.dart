@@ -1038,6 +1038,51 @@ void main() {
       await tapCar(tester);
       expect(background.holds, isEmpty);
     });
+
+    testWidgets('a listen round with the screen off shows in the notification', (
+      tester,
+    ) async {
+      fixture.steerResult = {'status': 'queued', 'text': 'Pocket steer'};
+      await startVadConversation(tester);
+      await listenTurn(true);
+      screenOff(tester);
+      await tester.pump();
+      await speakAndSend(tester);
+      expect(prompts(), 1);
+      expect(vadStarts(), 2);
+      expect(background.listens.last, isTrue);
+      device.vadTranscript = 'Pocket steer';
+      await speakAndSend(tester);
+      expect(
+        fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
+        'Pocket steer',
+      );
+      expect(prompts(), 1);
+      await completeReply(tester, 'Done.');
+      expect(background.listens.first, isTrue);
+      expect(background.listens.last, isFalse);
+      expect(background.holds, [true]);
+      screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    });
+
+    testWidgets('with listening off no listen round opens with the screen off', (
+      tester,
+    ) async {
+      await startVadConversation(tester);
+      screenOff(tester);
+      await tester.pump();
+      await speakAndSend(tester);
+      expect(prompts(), 1);
+      expect(vadStarts(), 1);
+      await completeReply(tester, 'Done.');
+      expect(vadStarts(), 2);
+      expect(background.listens, isEmpty);
+      screenOn(tester);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    });
   });
 
   testWidgets('car mode case 2: three rounds by tap only, read aloud, then idle with the mic closed', (
