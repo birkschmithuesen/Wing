@@ -14,7 +14,14 @@ sets how long a pause ends a message (default 1.8 s), how long Wing waits for yo
 the minimum speech, the lead-in kept before speech and the longest recording (10, 15, 20 or 30 minutes, default 10;
 long dictations are recognized in pieces of up to 30 seconds, cut at pauses). On this route the steering-wheel or
 headset play/pause key ends the current message or starts a new one, and short cue tones mark "listening" and
-"got it". During Conversation mode the screen stays on.
+"got it". During Conversation mode the screen stays on. On the VAD input you can also switch the screen off or
+pocket the phone: the conversation continues, and a "Conversation mode" notification with Stop shows
+it. With "Listen while Hermes works" on, the microphone also stays open while Hermes works with the
+screen off, so you can steer from your pocket; the notification then reads "Microphone is listening."
+Switch that setting off to keep the microphone closed until the reply has been read. Interrupting the
+read-aloud by speaking still needs headphones. Staying silent after a reply (the "Wait for speech"
+time) ends the conversation, as do a phone call, Stop and swiping the notification away. Car mode
+always keeps the screen on.
 
 Hermes speech uses the selected server profile's providers and voice settings. To change those shared profile settings, follow the link from App settings to **Profile → Voice** in Administration.
 
