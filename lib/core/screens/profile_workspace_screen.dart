@@ -791,6 +791,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void initState() {
     super.initState();
+    _bargeIn.addListener(() => _background.listening(_bargeIn.listening));
     _liveWorkspaces++;
     _destination = widget.initialDestination;
     _appIsActive =
