@@ -51,18 +51,16 @@ void main() {
   });
 
   test('a release during a pending hold runs after it', () async {
-    host.next = Completer<bool>();
+    final pending = Completer<bool>();
+    host.next = pending;
     voice.sync(want: true);
     await pumpEventQueue();
-    print('Expected: DEBUG_A holds=${host.holds} held=${voice.held}');
     voice.sync(want: false);
     await pumpEventQueue();
-    print('Expected: DEBUG_B holds=${host.holds} held=${voice.held}');
     expect(host.holds, [true]);
-    host.next!.complete(true);
+    pending.complete(true);
     await pumpEventQueue();
     await voice.settled;
-    print('Expected: DEBUG_C holds=${host.holds} held=${voice.held}');
     expect(host.holds, [true, false]);
     expect(voice.held, isFalse);
   });
