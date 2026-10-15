@@ -24,6 +24,10 @@ class BackgroundVoiceChannel(private val activity: Activity, messenger: BinaryMe
     }
 
     private fun handle(call: MethodCall, result: MethodChannel.Result) {
+        if (call.method == "listening") {
+            BackgroundVoiceService.listening(call.argument<Boolean>("on") == true)
+            return result.success(null)
+        }
         if (call.method != "hold") return result.notImplemented()
         if (call.argument<Boolean>("on") != true) {
             release()

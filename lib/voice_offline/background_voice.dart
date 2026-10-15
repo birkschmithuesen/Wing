@@ -12,6 +12,9 @@ abstract interface class BackgroundVoiceHost {
   /// Reasons the native side ended the hold on its own:
   /// notification, dismissed, call, activityClosed.
   Stream<String> get stopped;
+
+  /// Shows whether a barge-in listen round has the microphone open.
+  Future<void> listening(bool on);
 }
 
 class AndroidBackgroundVoiceHost implements BackgroundVoiceHost {
@@ -37,6 +40,10 @@ class AndroidBackgroundVoiceHost implements BackgroundVoiceHost {
     });
     return result?['held'] == true;
   }
+
+  @override
+  Future<void> listening(bool on) =>
+      _channel.invokeMethod<void>('listening', {'on': on});
 }
 
 /// Holds the microphone service while a vad conversation runs, so a lifecycle
@@ -48,6 +55,7 @@ class BackgroundVoice {
       if (!_held) return;
       _held = false;
       _want = false;
+      _shown = false;
       onStopped();
     });
   }
@@ -59,6 +67,8 @@ class BackgroundVoice {
   bool _want = false;
   bool _resumed = true;
   bool _disposed = false;
+  bool _listening = false;
+  bool _shown = false;
 
   bool get held => _held;
 
@@ -74,6 +84,25 @@ class BackgroundVoice {
     _queue = _queue.then((_) => _apply());
   }
 
+  /// A barge-in listen round opened or closed (spec 2026-10-14 background,
+  /// D2-b). The notification says so while the hold is active.
+  void listening(bool on) {
+    if (_disposed || on == _listening) return;
+    _listening = on;
+    _queue = _queue.then((_) => _show());
+  }
+
+  Future<void> _show() async {
+    final on = _listening && _held;
+    if (on == _shown) return;
+    _shown = on;
+    try {
+      await _host.listening(on);
+    } on Object {
+      // The text is cosmetic; the hold and the Android indicator stay.
+    }
+  }
+
   Future<void> _apply() async {
     final want = _want && !_disposed;
     if (want == _held) return;
@@ -84,6 +113,8 @@ class BackgroundVoice {
       held = false;
     }
     _held = want && held;
+    if (!_held) _shown = false;
+    await _show();
   }
 
   /// A detached engine loses its view: voice ends as before.

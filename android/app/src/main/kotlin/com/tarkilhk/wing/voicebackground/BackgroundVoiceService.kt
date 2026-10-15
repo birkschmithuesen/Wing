@@ -58,6 +58,7 @@ class BackgroundVoiceService : Service() {
                 .apply { setReferenceCounted(false); acquire() }
             watchCalls()
             running = true
+            instance = this
             heldAt = SystemClock.elapsedRealtime()
             Log.i(TAG, "hold on")
             reply(true)
@@ -86,7 +87,7 @@ class BackgroundVoiceService : Service() {
         modeListener = listener
     }
 
-    private fun notification(): Notification {
+    private fun notification(listening: Boolean = false): Notification {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Voice conversation", NotificationManager.IMPORTANCE_LOW).apply {
@@ -107,7 +108,7 @@ class BackgroundVoiceService : Service() {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_monitoring)
             .setContentTitle("Conversation mode")
-            .setContentText("Microphone opens after each reply.")
+            .setContentText(if (listening) "Microphone is listening." else "Microphone opens after each reply.")
             .setContentIntent(open)
             .setDeleteIntent(stopIntent("dismissed", 1))
             .addAction(0, "Stop", stopIntent("notification", 2))
@@ -128,6 +129,7 @@ class BackgroundVoiceService : Service() {
 
     override fun onDestroy() {
         running = false
+        instance = null
         if (stopReason == null) Log.i(TAG, "stop reason=released")
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (modeListener as? AudioManager.OnModeChangedListener)?.let {
@@ -161,6 +163,17 @@ class BackgroundVoiceService : Service() {
 
         /** Forwards a native stop (notification, dismissed, call) to Dart. */
         var onStopped: ((String) -> Unit)? = null
+
+        private var instance: BackgroundVoiceService? = null
+
+        /** Barge-in listen round open or closed: updates the notification text only. */
+        fun listening(on: Boolean) {
+            val service = instance ?: return
+            if (!notificationsAllowed(service)) return
+            Log.i(TAG, if (on) "listening on" else "listening off")
+            service.getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, service.notification(on))
+        }
 
         /** Hook for VoiceChannel.pause(): true keeps the vad round and playback. */
         fun keepsVoice(): Boolean {
