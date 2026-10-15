@@ -75,6 +75,7 @@ import '../../car_mode/car_mode_session.dart';
 import '../../car_mode/car_mode_state.dart';
 import '../../voice_offline/barge_in_coordinator.dart';
 import '../../voice_offline/barge_in_policy.dart';
+import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
 
 enum _AttachmentChoice { camera, photos, files }
@@ -275,9 +276,16 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
 
+  /// Serializes auto-spoken replies: a newer one waits for the one already
+  /// playing instead of cutting it off (spec 2026-10-15 queue). Explicit
+  /// actions (mic tap, stop, manual read-aloud, barge-in) clear it instead of
+  /// going through it.
+  final _autoSpeakQueue = SpeechQueue();
+
   /// Hands-free voice chat: read a finished reply aloud when the user enabled
   /// "Spoken replies" or "Conversation mode", the chat is on screen and nobody
-  /// is dictating. In a conversation the microphone reopens afterwards.
+  /// is dictating. Replies queue behind each other in arrival order; the
+  /// microphone only reopens once the queue drained after the last one.
   void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
     if (!mounted || !_hasWorkspaceFocus || _destination != AppDestination.chats) {
       _conversation = null;
@@ -304,34 +312,38 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceOwner = chat.key;
     final connection = controller.connection;
     final profile = chat.key.workspace.profileName;
-    unawaited(() async {
-      final finished = await _voiceOutput.speak(
+    _autoSpeakQueue.add(
+      () => _voiceOutput.speak(
         (chat.key, 'auto-reply'),
         reply.text,
         settings,
         () => HermesVoice.forConnection(connection, profile),
-      );
-      if (!finished) {
-        // Stop speech, a newer playback or a failure ends the conversation,
-        // unless the user already tapped the microphone again.
-        if (!_voiceInput.active) _conversation = null;
-        return;
-      }
-      if (_conversation == chat.key && chat.busy && _bargeIn.steered) {
-        // The gateway runs a steer that arrived during the final answer as a
-        // follow-up turn; its reply belongs to this conversation.
-        _conversationAwaitingReply = true;
-        _openListen(chat);
-        return;
-      }
-      if (_canContinueConversation(chat)) {
-        await _run(() => _dictate(chat, resume: true));
-      }
-    }());
+      ),
+      (finished) {
+        if (!finished) {
+          // Stop speech, a newer playback or a failure ends the conversation,
+          // unless the user already tapped the microphone again.
+          if (!_voiceInput.active) _conversation = null;
+          return;
+        }
+        if (_conversation == chat.key && chat.busy && _bargeIn.steered) {
+          // The gateway runs a steer that arrived during the final answer as
+          // a follow-up turn; its reply belongs to this conversation.
+          _conversationAwaitingReply = true;
+          _openListen(chat);
+          return;
+        }
+        if (_canContinueConversation(chat)) {
+          unawaited(_run(() => _dictate(chat, resume: true)));
+        }
+      },
+    );
   }
 
   /// The microphone never reopens unasked: only for the conversation's own
-  /// chat, on screen, idle, with nothing waiting for the user's input.
+  /// chat, on screen, idle, with nothing waiting for the user's input, and
+  /// with the auto-speak queue (spec 2026-10-15) fully drained — a reply
+  /// still waiting its turn must finish before the mic opens.
   bool _canContinueConversation(ProfileChat chat) {
     final ok =
         mounted &&
@@ -347,6 +359,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         !_needsUserInput(chat) &&
         !_voiceInput.active &&
         _voiceOutput.owner == null &&
+        _autoSpeakQueue.isEmpty &&
         VoicePreferences.read(controller.preferences).conversation;
     if (!ok) _conversation = null;
     return ok;
@@ -439,6 +452,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   void _cancelVoice() {
     _conversation = null;
     _voiceOwner = null;
+    _autoSpeakQueue.clear();
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
   }
@@ -492,7 +506,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             _listenTarget(chat),
             settings,
             playback: playback,
-            onBarge: _voiceOutput.stop,
+            onBarge: () {
+              _autoSpeakQueue.clear();
+              return _voiceOutput.stop();
+            },
           )
           .catchError((Object _) {}),
     );
@@ -572,6 +589,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// if anything ended the loop in the meantime.
   Future<void> _dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
+    _autoSpeakQueue.clear();
     await _bargeIn.close('dictate');
     _carSend = false;
     if (!mounted ||
@@ -626,6 +644,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     Map<String, dynamic> message,
   ) async {
     _conversation = null;
+    _autoSpeakQueue.clear();
     final owner = (chat.key, answerMessageId(message) ?? message);
     if (_voiceOutput.owner == owner) {
       await _voiceOutput.stop();

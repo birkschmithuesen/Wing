@@ -22,20 +22,40 @@ void main() {
       [1],
       reason: 'the second entry must not start before the first ends',
     );
-    expect(
-      settled,
-      isEmpty,
-      reason: 'nothing has finished yet, so nothing settled',
-    );
+    expect(settled, isEmpty, reason: 'nothing has finished yet');
     first.complete(true);
     await pumpEventQueue();
     expect(started, [1, 2], reason: 'arrival order is speaking order');
     expect(
       settled,
-      [2],
-      reason: 'only the final entry settles; the superseded first stays silent',
+      [1, 2],
+      reason: 'each entry settles with its own result once it ends',
     );
   });
+
+  test(
+    'isEmpty only turns true once the entry settling is the last one left',
+    () async {
+      final queue = SpeechQueue();
+      final first = Completer<bool>();
+      final isEmptyDuringSettle = <bool>[];
+      queue.add(() => first.future, (finished) {
+        isEmptyDuringSettle.add(queue.isEmpty);
+      });
+      queue.add(() async => true, (finished) {
+        isEmptyDuringSettle.add(queue.isEmpty);
+      });
+      first.complete(true);
+      await pumpEventQueue();
+      expect(
+        isEmptyDuringSettle,
+        [false, true],
+        reason:
+            'the first entry settles while the second is already running; '
+            'only the second sees the queue as truly empty',
+      );
+    },
+  );
 
   test('clear drops entries waiting behind the one that is speaking', () async {
     final queue = SpeechQueue();
