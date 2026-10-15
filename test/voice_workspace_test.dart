@@ -411,6 +411,100 @@ void main() {
     await settle(tester);
   });
 
+  testWidgets(
+    'a reply that arrives while one plays queues instead of cutting it off',
+    (tester) async {
+      await conversationMode(true);
+      device.playbackDelay = Completer<void>();
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Question one');
+      expect(starts(), 1);
+      gatewayEvent('message.complete', {'text': 'Answer one.'});
+      await tester.pump();
+      await tester.pump();
+      expect(device.spoken, 'Answer one.');
+      expect(device.calls.where((c) => c == 'speak').length, 1);
+      // A follow-up reply for this chat arrives while the first is still
+      // playing (e.g. the gateway ran a steer as a follow-up turn).
+      controller.current!.chat!.status = ProfileTurnStatus.running;
+      gatewayEvent('message.complete', {'text': 'Answer two.'});
+      await tester.pump();
+      await tester.pump();
+      expect(
+        device.calls.where((c) => c == 'speak').length,
+        1,
+        reason: 'the second reply waits; the first is not cut off',
+      );
+      expect(device.spoken, 'Answer one.');
+      expect(
+        starts(),
+        1,
+        reason: 'the microphone stays closed while the queue is not empty',
+      );
+      // The first reply ends on its own; the queued second one starts.
+      device.playbackDelay!.complete();
+      device.playbackDelay = Completer<void>();
+      await tester.pump();
+      await tester.pump();
+      expect(device.spoken, 'Answer two.');
+      expect(device.calls.where((c) => c == 'speak').length, 2);
+      expect(
+        starts(),
+        1,
+        reason: 'still queued work: the microphone has not reopened yet',
+      );
+      device.playbackDelay!.complete();
+      device.playbackDelay = null;
+      await settle(tester);
+      // Both replies played in full, in arrival order, and neither was cut
+      // off. (Whether the mic reopens afterwards depends on the turn that
+      // produced the second reply also having kept the conversation's own
+      // awaiting-reply flag alive, which a synthetic second completion here
+      // does not model; that half is covered at the unit level by
+      // SpeechQueue.isEmpty and the _autoSpeakQueue.isEmpty guard added to
+      // _canContinueConversation.)
+      expect(device.spoken, 'Answer two.');
+    },
+  );
+
+  testWidgets(
+    'tapping the microphone while a reply plays clears the queued one',
+    (tester) async {
+      await conversationMode(true);
+      device.playbackDelay = Completer<void>();
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Question one');
+      gatewayEvent('message.complete', {'text': 'Answer one.'});
+      await tester.pump();
+      await tester.pump();
+      expect(device.spoken, 'Answer one.');
+      controller.current!.chat!.status = ProfileTurnStatus.running;
+      gatewayEvent('message.complete', {'text': 'Answer two.'});
+      await tester.pump();
+      await tester.pump();
+      expect(
+        device.calls.where((c) => c == 'speak').length,
+        1,
+        reason: 'the second reply is still queued',
+      );
+      // The user taps the microphone while the first reply is still playing.
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      device.playbackDelay!.complete();
+      device.playbackDelay = null;
+      await settle(tester);
+      // The queued second reply must never speak: the tap cleared it.
+      expect(device.calls.where((c) => c == 'speak').length, 1);
+      expect(device.spoken, 'Answer one.');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
   testWidgets('Cancel ends the conversation and the microphone stays closed', (
     tester,
   ) async {
