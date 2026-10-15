@@ -10,6 +10,8 @@ class _Host implements BackgroundVoiceHost {
   Completer<bool>? next;
   bool grant = true;
   Object? error;
+  final listens = <bool>[];
+  Object? listenError;
 
   @override
   Stream<String> get stopped => controller.stream;
@@ -24,6 +26,12 @@ class _Host implements BackgroundVoiceHost {
       return pending.future;
     }
     return on && grant;
+  }
+
+  @override
+  Future<void> listening(bool on) async {
+    listens.add(on);
+    if (listenError != null) throw listenError!;
   }
 }
 
@@ -128,5 +136,49 @@ void main() {
     voice.sync(want: true);
     await pumpEventQueue();
     expect(host.holds, [true, false]);
+  });
+
+  test('listening is forwarded once per change while held', () async {
+    voice.sync(want: true);
+    await pumpEventQueue();
+    voice.listening(true);
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    voice.listening(false);
+    await pumpEventQueue();
+    expect(host.listens, [true, false]);
+  });
+
+  test('listening before a hold is shown once the hold starts', () async {
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, isEmpty);
+    voice.sync(want: true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+  });
+
+  test('a native stop ends the listening state with the hold', () async {
+    voice.sync(want: true);
+    voice.listening(true);
+    await pumpEventQueue();
+    host.controller.add('call');
+    voice.listening(false);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    voice.sync(want: true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+  });
+
+  test('a failing listening update keeps the hold', () async {
+    voice.sync(want: true);
+    await pumpEventQueue();
+    host.listenError = StateError('channel');
+    voice.listening(true);
+    await pumpEventQueue();
+    expect(host.listens, [true]);
+    expect(voice.held, isTrue);
   });
 }
