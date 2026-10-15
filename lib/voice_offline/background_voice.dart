@@ -112,7 +112,7 @@ class BackgroundVoice {
     } on Object {
       held = false;
     }
-    _held = want && held;
+    _held = want || held;
     if (!_held) _shown = false;
     await _show();
   }
