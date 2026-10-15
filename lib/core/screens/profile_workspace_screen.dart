@@ -777,7 +777,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Chat focus for the conversation loop; a held hold also counts when the app is paused (spec 2026-10-14).
   bool get _loopFocus =>
       (_routeIsCurrent || _car.active) && _destination == AppDestination.chats &&
-      (_appIsActive || _background.held);
+      (_appIsActive && _background.held);
 
   @override
   void didChangeDependencies() {
