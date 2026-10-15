@@ -73,6 +73,7 @@ import 'administration/provider_access_navigation.dart';
 import '../../car_mode/car_mode_bridge.dart';
 import '../../car_mode/car_mode_session.dart';
 import '../../car_mode/car_mode_state.dart';
+import '../../voice_offline/background_voice.dart';
 import '../../voice_offline/barge_in_coordinator.dart';
 import '../../voice_offline/barge_in_policy.dart';
 import '../../voice_offline/turn_listener.dart';
@@ -98,6 +99,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
   final Future<void> Function(ProfileSessionKey)? onCapturePhoto;
   final AppDestination initialDestination;
   final VoiceDevice? voiceDevice;
+  final BackgroundVoiceHost? backgroundVoice;
   const ProfileWorkspaceScreen({
     super.key,
     required this.controller,
@@ -114,6 +116,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
     this.onCapturePhoto,
     this.initialDestination = AppDestination.chats,
     this.voiceDevice,
+    this.backgroundVoice,
   });
   @override
   ProfileWorkspaceScreenState createState() => ProfileWorkspaceScreenState();
@@ -179,6 +182,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   );
   late final _voiceOutput = VoiceOutputController(
     widget.voiceDevice ?? AndroidVoice.instance,
+  );
+  late final _background = BackgroundVoice(
+    widget.backgroundVoice ?? AndroidBackgroundVoiceHost.instance,
+    onStopped: _cancelVoice,
   );
 
   /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
@@ -262,6 +269,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       unawaited(_bargeIn.close('conversationEnd').catchError((Object _) {}));
     }
     _conversationKey = value;
+    _background.sync(want: value != null && _vadRoute() == true && !_car.active);
   }
 
   /// True from the conversation's auto-send until its reply arrived. Only
@@ -279,7 +287,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// "Spoken replies" or "Conversation mode", the chat is on screen and nobody
   /// is dictating. In a conversation the microphone reopens afterwards.
   void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
-    if (!mounted || !_hasWorkspaceFocus || _destination != AppDestination.chats) {
+    if (!mounted || !_loopFocus) {
       _conversation = null;
       return;
     }
@@ -336,7 +344,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final ok =
         mounted &&
         _conversation == chat.key &&
-        _hasChatFocus &&
+        _loopFocus &&
         (controller.notificationChat ?? controller.current?.chat) == chat &&
         !controller.switching &&
         !chat.busy &&
@@ -766,6 +774,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   bool get _hasChatFocus =>
       _hasWorkspaceFocus && _destination == AppDestination.chats;
 
+  /// Chat focus for the conversation loop; a held hold also counts when the app is paused (spec 2026-10-14).
+  bool get _loopFocus =>
+      _routeIsCurrent && _destination == AppDestination.chats &&
+      (_appIsActive || _background.held);
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -827,9 +840,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       AppLifecycleState.paused,
       AppLifecycleState.hidden,
       AppLifecycleState.detached,
-    }.contains(state)) {
+    }.contains(state) && !_background.keepsVoice(state)) {
       _cancelVoice();
     }
+    _background.lifecycle(state);
     _appIsActive = state == AppLifecycleState.resumed;
     if (state == AppLifecycleState.resumed) {
       _syncVadRoute();
@@ -873,6 +887,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceInput.removeListener(_voiceInputChanged);
     _voiceInput.dispose();
     _voiceOutput.dispose();
+    _background.dispose();
     _bargeIn.dispose();
     controller.setRouteVisibility(this, false);
     if (_mediaKeysOn) {
