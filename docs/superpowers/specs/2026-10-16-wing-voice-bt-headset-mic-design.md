@@ -147,7 +147,8 @@ address equals the A2DP output's address. If no address matches, take the first 
   possibly LC3-SWB (HFP log EVENT_TYPE_WBS valInt=2, EVENT_TYPE_SWB valInt2=1) - check: dumpsys bluetooth_manager
   while SCO is open (Task 10).` If only CVSD (8 kHz) were negotiated, Android would resample to 16 kHz and recognition
   quality would drop. The WER measurement would show that.
-- **Permissions:** `MODIFY_AUDIO_SETTINGS` (normal, install-time) is declared.
+- **Permissions:** `MODIFY_AUDIO_SETTINGS` (normal, install-time) is **not** declared today (`AndroidManifest.xml`
+  only has `BLUETOOTH_CONNECT` at line 5, checked 16.10.); plan Task 4 adds it.
   `ANNAHME: AudioService checks MODIFY_AUDIO_SETTINGS in setCommunicationDevice - check: harmless either way, normal
   permission; Task 10 confirms setCommunicationDevice returns true.` `BLUETOOTH_CONNECT` is **not** needed to route.
   It is needed only to read the device class (§3). `ANNAHME: setCommunicationDevice works without BLUETOOTH_CONNECT -
