@@ -76,6 +76,19 @@ void main() {
     });
   }
 
+  // Unmocked, AndroidHeadphoneRouteHost.instance's real platform channel
+  // never replies in a widget test and _probe's route read hangs forever.
+  setUp(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel('com.tarkilhk.wing/headphone_route'),
+          (call) async => switch (call.method) {
+            'current' => {'supported': false, 'type': 0},
+            'bluetoothAllowed' => true,
+            _ => null,
+          },
+        );
+  });
   setUp(() => SharedPreferences.setMockInitialValues({}));
   test(
     'independent engines and Android voice settings survive reload',
@@ -422,7 +435,7 @@ void main() {
           child: RepaintBoundary(
             key: frame,
             child: Scaffold(
-              body: Padding(
+              body: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: BargeInSettings(
                   settings: settings,
@@ -484,7 +497,7 @@ void main() {
     expect(route.requests, 0);
   });
 
-  for (final brightness in <Brightness>[]) {
+  for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       for (final allowed in [true, false]) {
         testWidgets(
