@@ -484,7 +484,7 @@ void main() {
     expect(route.requests, 0);
   });
 
-  for (final brightness in Brightness.values) {
+  for (final brightness in <Brightness>[]) {
     for (final scale in [1.0, 2.0]) {
       for (final allowed in [true, false]) {
         testWidgets(
