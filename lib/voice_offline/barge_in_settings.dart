@@ -9,6 +9,7 @@ import '../core/widgets/compact_switch.dart';
 import '../core/widgets/studio_error.dart';
 import '../core/widgets/studio_select.dart';
 import 'barge_in_policy.dart';
+import 'headphone_route.dart';
 import 'turn_listener.dart';
 
 /// Conversation-mode rows for listening while Hermes works, and the debug
@@ -20,12 +21,20 @@ class BargeInSettings extends StatefulWidget {
     required this.device,
     required this.saving,
     required this.onSave,
+    this.route,
+    this.playbackAvailable = bargeInPlaybackAvailable,
   });
 
   final VoicePreferences settings;
   final VoiceDevice device;
   final bool saving;
   final Future<void> Function(String key, String value) onSave;
+
+  /// Native route check; tests pass a fake.
+  final HeadphoneRouteHost? route;
+
+  /// Shows "Interrupt read-aloud by speaking" (the echo gate, Task 7).
+  final bool playbackAvailable;
 
   @override
   State<BargeInSettings> createState() => _BargeInSettingsState();
@@ -35,6 +44,39 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   TurnListener? _listener;
   VoiceOutputController? _output;
   bool _probing = false;
+  bool _bluetoothAllowed = true;
+
+  static const _headphonesOnly =
+      'Only with headphones. On the speaker or in the car, tap to stop.';
+  static const _wiredOnly =
+      'Only with wired headphones. Allow Nearby devices for Bluetooth headphones.';
+
+  HeadphoneRouteHost get _route =>
+      widget.route ?? AndroidHeadphoneRouteHost.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.playbackAvailable) unawaited(_readBluetooth());
+  }
+
+  Future<void> _readBluetooth() async {
+    final allowed = await _route.bluetoothAllowed();
+    if (mounted && allowed != _bluetoothAllowed) {
+      setState(() => _bluetoothAllowed = allowed);
+    }
+  }
+
+  /// Spec §6: saving never waits for the permission dialog; a denial only
+  /// changes the subtitle.
+  Future<void> _togglePlayback(bool on) async {
+    unawaited(
+      widget.onSave(VoicePreferences.bargeInPlaybackKey, on ? 'on' : 'off'),
+    );
+    if (!on) return;
+    final allowed = await _route.requestBluetooth();
+    if (mounted) setState(() => _bluetoothAllowed = allowed);
+  }
 
   @override
   void dispose() {
@@ -48,6 +90,8 @@ class _BargeInSettingsState extends State<BargeInSettings> {
     final output = _output ??= VoiceOutputController(widget.device);
     final settings = widget.settings;
     setState(() => _probing = true);
+    final route = await _route.current();
+    bargeLog(routeLogLine(route, classifyRoute(route, wingCarMode: false)));
     try {
       await listener.probe(settings, () async {
         await output.speak(
@@ -120,19 +164,20 @@ class _BargeInSettingsState extends State<BargeInSettings> {
                   },
           ),
         ],
-        if (bargeInPlaybackAvailable)
+        if (widget.playbackAvailable)
           CompactSwitchListTile(
             key: const ValueKey('voice-barge-in-playback'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Interrupt read-aloud by speaking'),
-            subtitle: bargeInPlaybackHint == null
-                ? null
-                : Text(bargeInPlaybackHint!),
+            subtitle: Text(
+              s.bargeInPlayback && !_bluetoothAllowed
+                  ? _wiredOnly
+                  : _headphonesOnly,
+            ),
             value: s.bargeInPlayback,
             onChanged: widget.saving
                 ? null
-                : (value) =>
-                      _toggle(VoicePreferences.bargeInPlaybackKey, value),
+                : (value) => unawaited(_togglePlayback(value)),
           ),
         if (s.debugRecordings)
           Align(

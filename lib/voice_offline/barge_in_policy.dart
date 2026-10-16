@@ -13,9 +13,6 @@ import '../core/services/voice_preferences.dart';
 /// Offer "Interrupt read-aloud by speaking" (set by the echo gate, Task 7).
 const bool bargeInPlaybackAvailable = false;
 
-/// Subtitle for that switch, e.g. when only headphones passed the gate.
-const String? bargeInPlaybackHint = null;
-
 /// While Wing reads aloud, speech only counts after [bargeGateWindows]
 /// consecutive windows (32 ms each) with p >= [bargeGateThreshold].
 const double bargeGateThreshold = 0.7;
