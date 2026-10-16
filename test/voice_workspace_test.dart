@@ -18,6 +18,7 @@ import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
+import 'package:wing/voice_offline/barge_in_policy.dart';
 import 'package:wing/voice_offline/headphone_route.dart';
 import 'support/background_voice_fixture.dart';
 import 'support/headphone_route_fixture.dart';
@@ -856,6 +857,22 @@ void main() {
     expect(find.text('Listening'), findsOneWidget);
     expect(device.vadOptions!.keepPlayback, isTrue);
     await finishReading(tester);
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  testWidgets('the message after a barge-in carries the interrupted-reply hint', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.headphones);
+    device.vadTranscript = 'Testsatz zwei, stopp';
+    await windows(tester, 0.95, 40);
+    await finishReading(tester);
+    await windows(tester, 0.1, 60);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      withInterruptedReplyHint('Testsatz zwei, stopp'),
+    );
     await tester.tap(find.text('Stop listening'));
     await settle(tester);
   });
