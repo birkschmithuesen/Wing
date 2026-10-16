@@ -143,6 +143,7 @@ class AndroidHeadphoneRouteHost implements HeadphoneRouteHost {
 /// is synchronous. Logs one `route` line whenever the inputs change.
 class HeadphoneRoute extends ChangeNotifier {
   HeadphoneRoute(this.host, {required bool Function() wingCarMode})
+    // ignore: prefer_initializing_formals
     : _wingCarMode = wingCarMode {
     _changes = host.changes.listen(_apply);
   }
