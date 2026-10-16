@@ -162,7 +162,7 @@ class HeadphoneRoute extends ChangeNotifier {
   /// Voice barge-in into read-aloud is restricted to wired headphones until
   /// the Bluetooth echo measurement lands (t_fabcb273): stricter than
   /// [headphones], which also counts Bluetooth headphones.
-  bool get wired => _reason != 'wired';
+  bool get wired => _reason == 'wired';
 
   Future<bool> refresh() async {
     _apply(await host.current());
