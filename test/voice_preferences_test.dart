@@ -11,6 +11,9 @@ import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/core/widgets/voice_preferences_card.dart';
+import 'package:wing/voice_offline/barge_in_policy.dart';
+import 'package:wing/voice_offline/barge_in_settings.dart';
+import 'support/headphone_route_fixture.dart';
 import 'support/voice_fixture.dart';
 
 class _FailingPreferences extends Fake implements SharedPreferences {
@@ -329,7 +332,10 @@ void main() {
     await show(tester, prefs, device);
     await tester.ensureVisible(find.text('Listen while Hermes works'));
     expect(find.text('Speech needed to steer'), findsOneWidget);
-    expect(find.text('Interrupt read-aloud by speaking'), findsNothing);
+    expect(
+      find.text('Interrupt read-aloud by speaking'),
+      bargeInPlaybackAvailable ? findsOneWidget : findsNothing,
+    );
     expect(find.text('Measure speaker echo'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('voice-listen-turn')));
     await tester.pumpAndSettle();
@@ -375,6 +381,138 @@ void main() {
           'barge-settings-${brightness.name}-${(scale * 100).round()}',
         );
       });
+    }
+  }
+
+  const headphonesOnly =
+      'Only with headphones. On the speaker or in the car, tap to stop.';
+  const wiredOnly =
+      'Only with wired headphones. Allow Nearby devices for Bluetooth headphones.';
+  const playbackOff = VoicePreferences(
+    input: VoiceInputRoute.vad,
+    conversation: true,
+  );
+  const playbackOn = VoicePreferences(
+    input: VoiceInputRoute.vad,
+    conversation: true,
+    bargeInPlayback: true,
+  );
+
+  Future<List<(String, String)>> showBargeIn(
+    WidgetTester tester,
+    VoicePreferences settings,
+    HeadphoneRouteFixture route, {
+    Brightness brightness = Brightness.light,
+    double scale = 1,
+  }) async {
+    final saved = <(String, String)>[];
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: wingTheme(brightness),
+        home: MediaQuery(
+          data: MediaQueryData(
+            size: const Size(320, 800),
+            textScaler: TextScaler.linear(scale),
+          ),
+          child: RepaintBoundary(
+            key: frame,
+            child: Scaffold(
+              body: Padding(
+                padding: const EdgeInsets.all(16),
+                child: BargeInSettings(
+                  settings: settings,
+                  device: device,
+                  saving: false,
+                  onSave: (key, value) async => saved.add((key, value)),
+                  route: route,
+                  playbackAvailable: true,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    return saved;
+  }
+
+  testWidgets('read-aloud barge-in states the headphones-only rule', (
+    tester,
+  ) async {
+    final route = HeadphoneRouteFixture();
+    addTearDown(route.close);
+    await showBargeIn(tester, playbackOff, route);
+    expect(find.text('Interrupt read-aloud by speaking'), findsOneWidget);
+    expect(find.text(headphonesOnly), findsOneWidget);
+  });
+
+  testWidgets('switching it on saves and asks for Bluetooth access', (
+    tester,
+  ) async {
+    final route = HeadphoneRouteFixture();
+    addTearDown(route.close);
+    final saved = await showBargeIn(tester, playbackOff, route);
+    await tester.tap(find.byKey(const ValueKey('voice-barge-in-playback')));
+    await tester.pumpAndSettle();
+    expect(saved, [(VoicePreferences.bargeInPlaybackKey, 'on')]);
+    expect(route.requests, 1);
+  });
+
+  testWidgets('without Bluetooth access the row says wired only', (
+    tester,
+  ) async {
+    final route = HeadphoneRouteFixture()..allowed = false;
+    addTearDown(route.close);
+    await showBargeIn(tester, playbackOn, route);
+    expect(find.text(wiredOnly), findsOneWidget);
+    expect(find.text(headphonesOnly), findsNothing);
+  });
+
+  testWidgets('switching it off does not ask for anything', (tester) async {
+    final route = HeadphoneRouteFixture();
+    addTearDown(route.close);
+    final saved = await showBargeIn(tester, playbackOn, route);
+    await tester.tap(find.byKey(const ValueKey('voice-barge-in-playback')));
+    await tester.pumpAndSettle();
+    expect(saved, [(VoicePreferences.bargeInPlaybackKey, 'off')]);
+    expect(route.requests, 0);
+  });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      for (final allowed in [true, false]) {
+        testWidgets(
+          'read-aloud barge-in row renders in $brightness at ${scale}x '
+          '(bluetooth ${allowed ? 'allowed' : 'denied'})',
+          (tester) async {
+            final route = HeadphoneRouteFixture()..allowed = allowed;
+            addTearDown(route.close);
+            await showBargeIn(
+              tester,
+              playbackOn,
+              route,
+              brightness: brightness,
+              scale: scale,
+            );
+            await tester.ensureVisible(
+              find.text('Interrupt read-aloud by speaking'),
+            );
+            await tester.pumpAndSettle();
+            expect(tester.takeException(), isNull);
+            await screenshot(
+              tester,
+              'barge-playback-${allowed ? 'headphones' : 'wired'}-'
+              '${brightness.name}-${(scale * 100).round()}',
+            );
+          },
+        );
+      }
     }
   }
 
