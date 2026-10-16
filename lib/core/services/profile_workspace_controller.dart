@@ -1362,14 +1362,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   void networkUnavailable() {
-    if (_closed || (!initialized && !recovering && notificationChat == null)) {
-      return;
-    }
+    if (_closed) return;
+    // Authoritative and immediate: shown ahead of any reconnect attempt's
+    // own backoff, which can otherwise mask a real outage for up to 31 s.
+    connectionStatus.networkLost();
+    if (!initialized && !recovering && notificationChat == null) return;
     connectionStatus.accessFailed(const SocketException('Network unavailable'));
     for (final resource in _resources.values.where(_needsLiveRecovery)) {
       resource.gateway.disconnect();
       resource.gateway.onConnectionChanged?.call(false);
     }
+  }
+
+  /// The OS reports the device's network is back. A reconnect attempt that
+  /// then succeeds already clears this via [ServerConnectionStatus.accessAvailable];
+  /// this is what lets a stalled attempt restart promptly instead of waiting
+  /// out its own backoff.
+  void networkRestored() {
+    if (_closed) return;
+    connectionStatus.networkRestored();
   }
 
   /// Foreground entry also recovers a workspace that never finished loading.
@@ -5294,10 +5305,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat._attachmentPreparations != 0 ||
         chat.busy ||
         chat.queuedPrompts.isEmpty ||
-        chat.offlineSnapshot) {
+        chat.offlineSnapshot ||
+        !connectionStatus.networkAvailable) {
       // The connection isn't up yet; reconnect() drains the queue itself
-      // once it clears offlineSnapshot. Don't mark queuePaused here, that's
-      // a sticky error state, this is only "not connected yet".
+      // once it clears offlineSnapshot, and only runs once a connect already
+      // proved the network is back (ServerConnectionStatus.accessAvailable
+      // sets networkAvailable before this guard is checked again). Don't
+      // mark queuePaused here, that's a sticky error state, this is only
+      // "not connected yet".
       return;
     }
     if (chat.historyError != null ||

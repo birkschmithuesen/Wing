@@ -2048,6 +2048,42 @@ void main() {
   );
 
   test(
+    'a message queued during a real network outage shows offline at once and sends exactly once on reconnect',
+    () async {
+      final chat = await controller.createChat();
+      await controller.updateDraft(chat, 'Queue me please');
+      // The gateway would throw if a drain were attempted right now; the
+      // queue must not even try while the device has no network.
+      host.promptSubmitFails = true;
+
+      controller.networkUnavailable();
+
+      // No backoff wait: the device's own network loss is authoritative,
+      // unlike the reconnect attempt's own up-to-31s retry budget.
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.disconnected,
+      );
+
+      await controller.queuePrompt(chat, chat.draft);
+
+      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
+      expect(chat.queuePaused, isFalse);
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
+
+      host.promptSubmitFails = false;
+      await controller.reconnect(chat.key.workspace);
+
+      expect(chat.queuedPrompts, isEmpty);
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.connected,
+      );
+    },
+  );
+
+  test(
     'retry leaves browser-only profiles without sockets unchecked',
     () async {
       final background = controller.browserResource('b');
