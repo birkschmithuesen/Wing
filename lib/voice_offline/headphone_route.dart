@@ -153,10 +153,16 @@ class HeadphoneRoute extends ChangeNotifier {
   late final StreamSubscription<OutputRoute> _changes;
   OutputRoute _route = OutputRoute.unknown;
   bool _headphones = false;
+  String _reason = 'unsupported';
   String? _logged;
   bool _disposed = false;
 
   bool get headphones => _headphones;
+
+  /// Voice barge-in into read-aloud is restricted to wired headphones until
+  /// the Bluetooth echo measurement lands (t_fabcb273): stricter than
+  /// [headphones], which also counts Bluetooth headphones.
+  bool get wired => _reason == 'wired';
 
   Future<bool> refresh() async {
     _apply(await host.current());
@@ -175,8 +181,11 @@ class HeadphoneRoute extends ChangeNotifier {
       _logged = line;
       bargeLog(line);
     }
-    if (verdict.headphones == _headphones) return;
+    if (verdict.headphones == _headphones && verdict.reason == _reason) {
+      return;
+    }
     _headphones = verdict.headphones;
+    _reason = verdict.reason;
     notifyListeners();
   }
 

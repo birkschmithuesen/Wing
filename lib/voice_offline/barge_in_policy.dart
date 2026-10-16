@@ -11,7 +11,7 @@ import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
 
 /// Offer "Interrupt read-aloud by speaking" (set by the echo gate, Task 7).
-const bool bargeInPlaybackAvailable = false;
+const bool bargeInPlaybackAvailable = true;
 
 /// While Wing reads aloud, speech only counts after [bargeGateWindows]
 /// consecutive windows (32 ms each) with p >= [bargeGateThreshold].

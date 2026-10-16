@@ -44,38 +44,27 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   TurnListener? _listener;
   VoiceOutputController? _output;
   bool _probing = false;
-  bool _bluetoothAllowed = true;
 
   static const _headphonesOnly =
       'Only with headphones. On the speaker or in the car, tap to stop.';
+
+  /// Bluetooth headphones are not measured yet (t_fabcb273): the row says
+  /// this whenever the switch is on, regardless of Bluetooth permission.
   static const _wiredOnly =
       'Only with wired headphones. Allow Nearby devices for Bluetooth headphones.';
 
   HeadphoneRouteHost get _route =>
       widget.route ?? AndroidHeadphoneRouteHost.instance;
 
-  @override
-  void initState() {
-    super.initState();
-    if (widget.playbackAvailable) unawaited(_readBluetooth());
-  }
-
-  Future<void> _readBluetooth() async {
-    final allowed = await _route.bluetoothAllowed();
-    if (mounted && allowed != _bluetoothAllowed) {
-      setState(() => _bluetoothAllowed = allowed);
-    }
-  }
-
-  /// Spec §6: saving never waits for the permission dialog; a denial only
-  /// changes the subtitle.
+  /// Spec §6: saving never waits for the permission dialog. Still requested
+  /// on switch-on so t_fabcb273 can enable Bluetooth later without
+  /// reinstalling the permission flow; the subtitle no longer depends on it.
   Future<void> _togglePlayback(bool on) async {
     unawaited(
       widget.onSave(VoicePreferences.bargeInPlaybackKey, on ? 'on' : 'off'),
     );
     if (!on) return;
-    final allowed = await _route.requestBluetooth();
-    if (mounted) setState(() => _bluetoothAllowed = allowed);
+    await _route.requestBluetooth();
   }
 
   @override
@@ -169,11 +158,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
             key: const ValueKey('voice-barge-in-playback'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Interrupt read-aloud by speaking'),
-            subtitle: Text(
-              s.bargeInPlayback && !_bluetoothAllowed
-                  ? _wiredOnly
-                  : _headphonesOnly,
-            ),
+            subtitle: Text(s.bargeInPlayback ? _wiredOnly : _headphonesOnly),
             value: s.bargeInPlayback,
             onChanged: widget.saving
                 ? null
