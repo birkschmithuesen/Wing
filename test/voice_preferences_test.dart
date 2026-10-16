@@ -487,6 +487,18 @@ void main() {
     expect(find.text(headphonesOnly), findsNothing);
   });
 
+  testWidgets(
+    'with Bluetooth access the row still says wired only '
+    '(Bluetooth not supported yet)',
+    (tester) async {
+      final route = HeadphoneRouteFixture()..allowed = true;
+      addTearDown(route.close);
+      await showBargeIn(tester, playbackOn, route);
+      expect(find.text(wiredOnly), findsOneWidget);
+      expect(find.text(headphonesOnly), findsNothing);
+    },
+  );
+
   testWidgets('switching it off does not ask for anything', (tester) async {
     final route = HeadphoneRouteFixture();
     addTearDown(route.close);
