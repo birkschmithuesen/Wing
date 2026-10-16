@@ -71,7 +71,7 @@ class PlaybackGate {
     if (_run == 0) _runStart = window;
     _run++;
     if (_run > longestRun) longestRun = _run;
-    if (firedAt == null && _run >= windows) return firedAt = _runStart;
+    if (firedAt == null && _run > windows) return firedAt = _runStart;
     return null;
   }
 }
