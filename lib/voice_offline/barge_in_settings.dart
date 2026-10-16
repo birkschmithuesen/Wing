@@ -90,8 +90,15 @@ class _BargeInSettingsState extends State<BargeInSettings> {
     final output = _output ??= VoiceOutputController(widget.device);
     final settings = widget.settings;
     setState(() => _probing = true);
-    final route = await _route.current();
-    bargeLog(routeLogLine(route, classifyRoute(route, wingCarMode: false)));
+    debugPrint('DEBUGPROBE Exception-marker: before route');
+    try {
+      final route = await _route.current();
+      bargeLog(routeLogLine(route, classifyRoute(route, wingCarMode: false)));
+      debugPrint('DEBUGPROBE Exception-marker: after route $route');
+    } catch (e, st) {
+      debugPrint('DEBUGPROBE Exception-caught: $e');
+      debugPrint('DEBUGPROBE Exception-stack: $st');
+    }
     try {
       await listener.probe(settings, () async {
         await output.speak(
