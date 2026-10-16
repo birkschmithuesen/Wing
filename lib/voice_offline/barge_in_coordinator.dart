@@ -116,7 +116,7 @@ class BargeInCoordinator extends ChangeNotifier {
     }
     // Spec §3.6: a new message that cut off read-aloud says so; a steer
     // never does.
-    final message = barged ? text : withInterruptedReplyHint(text);
+    final message = barged ? withInterruptedReplyHint(text) : text;
     final hint = barged ? 1 : 0;
     switch (decision) {
       case ListenDelivery.drop:
