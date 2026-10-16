@@ -39,6 +39,9 @@ class TurnListener extends ChangeNotifier {
 
   bool get isOpen => phase != ListenPhase.idle;
 
+  /// The round uses the stricter read-aloud gate.
+  bool get playback => _gate != null;
+
   /// Speech confirmed in the current round, or its transcript still pending.
   bool get speechInProgress =>
       phase == ListenPhase.transcribing ||
