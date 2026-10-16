@@ -145,4 +145,14 @@ void main() {
     expect(heard, isEmpty);
     expect(listener.isOpen, isFalse);
   });
+
+  test('playback reports the stricter read-aloud mode', () async {
+    await listener.open(settings, playback: true);
+    expect(listener.playback, isTrue);
+    listener.setPlayback(false);
+    expect(listener.playback, isFalse);
+    listener.setPlayback(true);
+    await listener.close('test');
+    expect(listener.playback, isFalse);
+  });
 }
