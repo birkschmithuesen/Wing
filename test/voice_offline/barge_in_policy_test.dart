@@ -143,4 +143,13 @@ void main() {
     expect(echoProbeText, contains('Messtext'));
     expect(RegExp(r'\d').hasMatch(echoProbeText), isFalse);
   });
+
+  test('the interrupted-reply hint follows the words after a blank line', () {
+    expect(
+      withInterruptedReplyHint('Testsatz zwei, stopp '),
+      'Testsatz zwei, stopp\n\n'
+      '[Hinweis von Wing: Die vorige Antwort wurde beim Vorlesen abgebrochen '
+      'und nicht zu Ende gehört.]',
+    );
+  });
 }

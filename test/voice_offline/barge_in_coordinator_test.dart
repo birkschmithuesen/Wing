@@ -99,4 +99,31 @@ void main() {
     expect(coordinator.listening, isFalse);
     expect(coordinator.chat, isNull);
   });
+
+  Future<void> bargeIn(String text) async {
+    await coordinator.open(
+      'chat-a',
+      target,
+      settings,
+      playback: true,
+      onBarge: () async {},
+    );
+    await utter(text);
+  }
+
+  test('words that cut off read-aloud carry the hint when sent or queued', () async {
+    target.current = ListenChatState.idle;
+    await bargeIn('Testsatz zwei, stopp');
+    target.current = ListenChatState.busy;
+    await bargeIn('Testsatz drei');
+    expect(target.log, [
+      'send:${withInterruptedReplyHint('Testsatz zwei, stopp')}',
+      'queue:${withInterruptedReplyHint('Testsatz drei')}',
+    ]);
+  });
+
+  test('a steer never carries the hint, even after a barge-in', () async {
+    await bargeIn('Testsatz vier');
+    expect(target.log, ['steer:Testsatz vier']);
+  });
 }

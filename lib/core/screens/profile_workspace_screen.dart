@@ -76,6 +76,7 @@ import '../../car_mode/car_mode_state.dart';
 import '../../voice_offline/background_voice.dart';
 import '../../voice_offline/barge_in_coordinator.dart';
 import '../../voice_offline/barge_in_policy.dart';
+import '../../voice_offline/headphone_route.dart';
 import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
 
@@ -101,6 +102,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
   final AppDestination initialDestination;
   final VoiceDevice? voiceDevice;
   final BackgroundVoiceHost? backgroundVoice;
+  final HeadphoneRouteHost? headphoneRoute;
   const ProfileWorkspaceScreen({
     super.key,
     required this.controller,
@@ -118,6 +120,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
     this.initialDestination = AppDestination.chats,
     this.voiceDevice,
     this.backgroundVoice,
+    this.headphoneRoute,
   });
   @override
   ProfileWorkspaceScreenState createState() => ProfileWorkspaceScreenState();
@@ -192,6 +195,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
   late final _bargeIn = BargeInCoordinator(
     TurnListener(device: widget.voiceDevice ?? AndroidVoice.instance),
+  );
+
+  /// Voice barge-in into read-aloud only with wired headphones (spec §3.4.1,
+  /// D2; Bluetooth stays off until the Bluetooth echo measurement, t_fabcb273).
+  late final _headphones = HeadphoneRoute(
+    widget.headphoneRoute ?? AndroidHeadphoneRouteHost.instance,
+    wingCarMode: () => _car.active,
   );
   VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
   StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
@@ -316,7 +326,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       // the utterance becomes the next prompt.
       return;
     }
-    unawaited(_bargeIn.close('turnEnd').catchError((Object _) {}));
+    if (_playbackBargeIn(chat, settings)) {
+      _openListen(chat, playback: true);
+    } else {
+      unawaited(_bargeIn.close('turnEnd').catchError((Object _) {}));
+    }
     _voiceOwner = chat.key;
     final connection = controller.connection;
     final profile = chat.key.workspace.profileName;
@@ -330,8 +344,16 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       (finished) {
         if (!finished) {
           // Stop speech, a newer playback or a failure ends the conversation,
-          // unless the user already tapped the microphone again.
-          if (!_voiceInput.active) _conversation = null;
+          // unless the user already tapped the microphone again or a barge-in
+          // stopped the reply (its listen round keeps the conversation).
+          if (!_voiceInput.active && !_bargeIn.listening) _conversation = null;
+          return;
+        }
+        if (_bargeIn.listening && _bargeIn.chat == chat.key) {
+          // Read-aloud ended: the open round replaces the reopened dictation
+          // and uses the normal rules once no other reply waits to be read.
+          if (_autoSpeakQueue.isEmpty) _bargeIn.setPlayback(false);
+          if (chat.busy) _conversationAwaitingReply = true;
           return;
         }
         if (_conversation == chat.key && chat.busy && _bargeIn.steered) {
@@ -446,6 +468,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _car.logDelivery(CarDelivery.send);
     _conversationAwaitingReply = true;
     _bargeIn.beginTurn();
+    // Fresh route verdict for when this turn's reply is read aloud.
+    unawaited(_headphones.refresh());
     await _performComposerAction(
       chat,
       ComposerAction.send,
@@ -521,6 +545,42 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           )
           .catchError((Object _) {}),
     );
+  }
+
+  /// Voice barge-in into read-aloud (spec §3.4, D2): setting on, echo gate
+  /// passed, the conversation's chat, output on wired headphones (Bluetooth
+  /// headphones are not measured yet, t_fabcb273).
+  bool _playbackBargeIn(ProfileChat chat, VoicePreferences settings) =>
+      bargeInPlaybackAvailable &&
+      settings.bargeInPlayback &&
+      _conversation == chat.key &&
+      _headphones.wired;
+
+  /// The output route changed while Wing reads aloud (spec §3.4.2): wired
+  /// headphones gone closes a playback round, wired headphones back opens one.
+  void _headphoneRouteChanged() {
+    final chat = controller.notificationChat ?? controller.current?.chat;
+    if (!mounted ||
+        chat == null ||
+        _conversation != chat.key ||
+        _voiceOutput.owner == null) {
+      return;
+    }
+    if (!_headphones.wired) {
+      if (_bargeIn.listener.playback) {
+        unawaited(_bargeIn.close('route').catchError((Object _) {}));
+      }
+      return;
+    }
+    final VoicePreferences settings;
+    try {
+      settings = VoicePreferences.read(controller.preferences);
+    } on FormatException {
+      return;
+    }
+    if (!_bargeIn.listening && _playbackBargeIn(chat, settings)) {
+      _openListen(chat, playback: true);
+    }
   }
 
   /// Route vad: preload the phone model. Media keys are captured only while
@@ -821,6 +881,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceInput.addListener(_voiceInputChanged);
     _voiceDeviceEvents = _voiceDevice.events.listen(_voiceDeviceEvent);
     _car.addListener(_carActiveChanged);
+    _car.addListener(_headphones.carModeChanged);
+    _headphones.addListener(_headphoneRouteChanged);
     _syncVadRoute();
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
@@ -897,6 +959,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void dispose() {
     _car.removeListener(_carActiveChanged);
+    _car.removeListener(_headphones.carModeChanged);
     _car.dispose();
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
@@ -909,6 +972,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceOutput.dispose();
     _background.dispose();
     _bargeIn.dispose();
+    _headphones.dispose();
     controller.setRouteVisibility(this, false);
     if (_mediaKeysOn) {
       _mediaKeysOn = false;

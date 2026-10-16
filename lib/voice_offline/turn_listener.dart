@@ -28,6 +28,10 @@ class TurnListener extends ChangeNotifier {
   void Function(String text)? onUtterance;
   Future<void> Function()? onBarge;
 
+  /// True only while [onUtterance] runs for an utterance whose round fired
+  /// the playback gate (a voice barge-in into read-aloud).
+  bool utteranceBarged = false;
+
   VoicePreferences? _settings;
   String? _id;
   VadEndpointer? _endpointer;
@@ -36,8 +40,12 @@ class TurnListener extends ChangeNotifier {
   PlaybackGate? _probeGate;
   DateTime? _roundStart;
   bool _disposed = false;
+  bool _barged = false;
 
   bool get isOpen => phase != ListenPhase.idle;
+
+  /// The round uses the stricter read-aloud gate.
+  bool get playback => _gate != null;
 
   /// Speech confirmed in the current round, or its transcript still pending.
   bool get speechInProgress =>
@@ -72,6 +80,7 @@ class TurnListener extends ChangeNotifier {
     _id = id;
     _endpointer = VadEndpointer(listenConfig(settings));
     _gate = playback ? PlaybackGate() : null;
+    _barged = false;
     _roundStart = null;
     phase = ListenPhase.listening;
     _notify();
@@ -118,7 +127,10 @@ class TurnListener extends ChangeNotifier {
         continue;
       }
       final onset = _gate?.feed(window, p);
-      if (onset != null) unawaited(_barge(onset));
+      if (onset != null) {
+        _barged = true;
+        unawaited(_barge(onset));
+      }
       final decision = endpointer.feed(p);
       if (decision != null) {
         unawaited(_decided(decision));
@@ -150,6 +162,7 @@ class TurnListener extends ChangeNotifier {
     final id = _id;
     final endpointer = _endpointer;
     if (id == null || endpointer == null) return;
+    final barged = _barged;
     final gate = _gate;
     if (!decision.hasSpeech) {
       bargeLog('listen restart reason=${decision.reason.name}');
@@ -188,7 +201,12 @@ class TurnListener extends ChangeNotifier {
       'textLen=${text.trim().length}',
     );
     await _startRound(playback: false);
-    onUtterance?.call(text);
+    utteranceBarged = barged;
+    try {
+      onUtterance?.call(text);
+    } finally {
+      utteranceBarged = false;
+    }
   }
 
   /// Ends round [id] without recognition and starts the next one.

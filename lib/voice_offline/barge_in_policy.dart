@@ -11,7 +11,7 @@ import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
 
 /// Offer "Interrupt read-aloud by speaking" (set by the echo gate, Task 7).
-const bool bargeInPlaybackAvailable = false;
+const bool bargeInPlaybackAvailable = true;
 
 /// While Wing reads aloud, speech only counts after [bargeGateWindows]
 /// consecutive windows (32 ms each) with p >= [bargeGateThreshold].
@@ -149,3 +149,14 @@ ListenDelivery decideDelivery(
     ListenChatState.idle => ListenDelivery.send,
   };
 }
+
+/// Appended to a message that cut off read-aloud by voice (spec §3.6). The
+/// profile's Wing platform hint asks Hermes to fold the unheard points of
+/// the previous reply into the next one. No percentage: Wing has no
+/// sentence-level read-aloud progress.
+const String interruptedReplyHint =
+    '[Hinweis von Wing: Die vorige Antwort wurde beim Vorlesen abgebrochen '
+    'und nicht zu Ende gehört.]';
+
+String withInterruptedReplyHint(String text) =>
+    '${text.trimRight()}\n\n$interruptedReplyHint';

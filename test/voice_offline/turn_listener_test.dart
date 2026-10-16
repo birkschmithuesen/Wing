@@ -145,4 +145,26 @@ void main() {
     expect(heard, isEmpty);
     expect(listener.isOpen, isFalse);
   });
+
+  test('playback reports the stricter read-aloud mode', () async {
+    await listener.open(settings, playback: true);
+    expect(listener.playback, isTrue);
+    listener.setPlayback(false);
+    expect(listener.playback, isFalse);
+    listener.setPlayback(true);
+    await listener.close('test');
+    expect(listener.playback, isFalse);
+  });
+
+  test('only an utterance that fired the playback gate counts as barged', () async {
+    final barged = <bool>[];
+    listener.onUtterance = (_) => barged.add(listener.utteranceBarged);
+    await listener.open(settings, playback: true);
+    await say(0.9, 30);
+    await say(0.1, 60);
+    await say(0.9, 20);
+    await say(0.1, 60);
+    expect(barged, [true, false]);
+    expect(listener.utteranceBarged, isFalse);
+  });
 }

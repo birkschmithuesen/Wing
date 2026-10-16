@@ -93,12 +93,17 @@ class BargeInCoordinator extends ChangeNotifier {
   void _utterance(String text) {
     final target = _target;
     if (target == null) return;
+    final barged = listener.utteranceBarged;
     _deliveries = _deliveries
-        .then((_) => _deliver(target, text))
+        .then((_) => _deliver(target, text, barged: barged))
         .catchError((Object _) => bargeLog('deliver failed'));
   }
 
-  Future<void> _deliver(ListenTarget target, String text) async {
+  Future<void> _deliver(
+    ListenTarget target,
+    String text, {
+    required bool barged,
+  }) async {
     var decision = decideDelivery(target.state, text);
     if (decision == ListenDelivery.steer) {
       if (await target.steer(text)) {
@@ -109,17 +114,21 @@ class BargeInCoordinator extends ChangeNotifier {
       bargeLog('deliver kind=steer result=rejected');
       decision = decideDelivery(target.state, text, steerRejected: true);
     }
+    // Spec §3.6: a new message that cut off read-aloud says so; a steer
+    // never does.
+    final message = barged ? withInterruptedReplyHint(text) : text;
+    final hint = barged ? 1 : 0;
     switch (decision) {
       case ListenDelivery.drop:
         bargeLog(
           'deliver kind=drop result=${text.trim().isEmpty ? 'empty' : 'filler'}',
         );
       case ListenDelivery.queue:
-        await target.queue(text);
-        bargeLog('deliver kind=queue result=ok');
+        await target.queue(message);
+        bargeLog('deliver kind=queue result=ok hint=$hint');
       case ListenDelivery.send:
-        await target.send(text);
-        bargeLog('deliver kind=send result=ok');
+        await target.send(message);
+        bargeLog('deliver kind=send result=ok hint=$hint');
       case ListenDelivery.steer:
         // Unreachable: a rejected steer is re-decided with steerRejected.
         break;

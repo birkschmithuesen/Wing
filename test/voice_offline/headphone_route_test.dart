@@ -100,5 +100,17 @@ void main() {
       route.carModeChanged();
       expect(route.headphones, isFalse);
     });
+
+    test('wired is true only for the wired reason, unlike headphones', () async {
+      host.route = HeadphoneRouteFixture.headphones;
+      await route.refresh();
+      expect(route.headphones, isTrue);
+      expect(route.wired, isTrue);
+      host.change(
+        const OutputRoute(supported: true, type: 8, bluetoothClass: 0x0418),
+      );
+      expect(route.headphones, isTrue);
+      expect(route.wired, isFalse);
+    });
   });
 }

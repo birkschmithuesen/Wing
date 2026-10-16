@@ -18,7 +18,10 @@ import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
+import 'package:wing/voice_offline/barge_in_policy.dart';
+import 'package:wing/voice_offline/headphone_route.dart';
 import 'support/background_voice_fixture.dart';
+import 'support/headphone_route_fixture.dart';
 import 'support/profile_browser_fixture.dart';
 import 'support/voice_fixture.dart';
 
@@ -51,6 +54,7 @@ void main() {
   late ProfileWorkspaceController controller;
   late VoiceDeviceFixture device;
   late BackgroundVoiceFixture background;
+  late HeadphoneRouteFixture route;
   const capture = bool.fromEnvironment('VOICE_REVIEW');
   const frame = Key('voice-frame');
   setUpAll(() async {
@@ -76,6 +80,7 @@ void main() {
     fixture = _Fixture();
     device = VoiceDeviceFixture();
     background = BackgroundVoiceFixture();
+    route = HeadphoneRouteFixture();
     controller = ProfileWorkspaceController(
       connection: SavedConnection(
         id: 'voice-fixture',
@@ -97,6 +102,7 @@ void main() {
     controller.dispose();
     await device.stream.close();
     await background.close();
+    await route.close();
   });
   Future<void> show(
     WidgetTester tester, {
@@ -121,6 +127,7 @@ void main() {
               controller: controller,
               voiceDevice: device,
               backgroundVoice: background,
+              headphoneRoute: route,
               initialDestination: destination,
             ),
           ),
@@ -722,6 +729,149 @@ void main() {
     expect(
       fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
       'Testsatz drei',
+    );
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  Future<void> bargeInPlayback(bool on) => controller.preferences.setString(
+    VoicePreferences.bargeInPlaybackKey,
+    on ? 'on' : 'off',
+  );
+  int playbackStops() => device.calls.where((c) => c == 'stopPlayback').length;
+
+  /// A conversation turn whose reply is being read aloud (playback held).
+  Future<void> readingAloud(WidgetTester tester, OutputRoute output) async {
+    route.route = output;
+    await bargeInPlayback(true);
+    device.playbackDelay = Completer<void>();
+    await vadConversationTurn(tester);
+    await completeReply(tester, 'Lange Antwort.');
+    expect(device.spoken, 'Lange Antwort.');
+  }
+
+  Future<void> finishReading(WidgetTester tester) async {
+    device.playbackDelay!.complete();
+    device.playbackDelay = null;
+    await settle(tester);
+  }
+
+  testWidgets('with headphones, speaking during read-aloud stops it and sends', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.headphones);
+    expect(find.text('Listening'), findsOneWidget);
+    final stopsBefore = playbackStops();
+    device.vadTranscript = 'Testsatz zwei, stopp';
+    await windows(tester, 0.95, 40);
+    expect(playbackStops(), greaterThan(stopsBefore));
+    await finishReading(tester);
+    await windows(tester, 0.1, 60);
+    expect(prompts(), 2);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      startsWith('Testsatz zwei, stopp'),
+    );
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  testWidgets('with headphones, a cough during read-aloud changes nothing', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.headphones);
+    final stopsBefore = playbackStops();
+    await windows(tester, 0.8, 14);
+    await windows(tester, 0.1, 60);
+    expect(playbackStops(), stopsBefore);
+    expect(prompts(), 1);
+    await finishReading(tester);
+    // Read-aloud ended normally: the open round now listens for the next prompt.
+    expect(find.text('Listening'), findsOneWidget);
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  testWidgets(
+    'with headphones, Birk\'s on-device cough run (p=0.5, 18 windows) '
+    'changes nothing',
+    (tester) async {
+      // Anlass: Birk measured wouldTrigger=1 at p>=0.5 over run50=18 on a
+      // probe profile build. The actual gate only counts a window at
+      // p >= bargeGateThreshold (0.7), so p=0.5 never advances the run.
+      await readingAloud(tester, HeadphoneRouteFixture.headphones);
+      final stopsBefore = playbackStops();
+      await windows(tester, 0.5, 18);
+      await windows(tester, 0.1, 60);
+      expect(playbackStops(), stopsBefore);
+      expect(prompts(), 1);
+      await finishReading(tester);
+      expect(find.text('Listening'), findsOneWidget);
+      await tester.tap(find.text('Stop listening'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets('over the speaker, speaking during read-aloud does not stop it', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.speaker);
+    expect(find.text('Listening'), findsNothing);
+    final starts = vadStarts();
+    final stopsBefore = playbackStops();
+    await windows(tester, 0.95, 40);
+    await windows(tester, 0.1, 60);
+    expect(playbackStops(), stopsBefore);
+    expect(vadStarts(), starts);
+    expect(prompts(), 1);
+    await finishReading(tester);
+    expect(find.textContaining('Recording ·'), findsOneWidget);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('unplugging headphones during read-aloud closes the round', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.headphones);
+    expect(find.text('Listening'), findsOneWidget);
+    route.change(HeadphoneRouteFixture.speaker);
+    await settle(tester);
+    expect(find.text('Listening'), findsNothing);
+    final stopsBefore = playbackStops();
+    await windows(tester, 0.95, 40);
+    expect(playbackStops(), stopsBefore);
+    await finishReading(tester);
+    expect(find.textContaining('Recording ·'), findsOneWidget);
+    await tester.tap(find.text('Cancel recording'));
+    await settle(tester);
+  });
+
+  testWidgets('plugging headphones in during read-aloud opens the round', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.speaker);
+    expect(find.text('Listening'), findsNothing);
+    route.change(HeadphoneRouteFixture.headphones);
+    await settle(tester);
+    expect(find.text('Listening'), findsOneWidget);
+    expect(device.vadOptions!.keepPlayback, isTrue);
+    await finishReading(tester);
+    await tester.tap(find.text('Stop listening'));
+    await settle(tester);
+  });
+
+  testWidgets('the message after a barge-in carries the interrupted-reply hint', (
+    tester,
+  ) async {
+    await readingAloud(tester, HeadphoneRouteFixture.headphones);
+    device.vadTranscript = 'Testsatz zwei, stopp';
+    await windows(tester, 0.95, 40);
+    await finishReading(tester);
+    await windows(tester, 0.1, 60);
+    expect(
+      fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+      withInterruptedReplyHint('Testsatz zwei, stopp'),
     );
     await tester.tap(find.text('Stop listening'));
     await settle(tester);
