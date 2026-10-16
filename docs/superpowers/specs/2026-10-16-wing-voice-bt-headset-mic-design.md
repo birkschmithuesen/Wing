@@ -204,7 +204,7 @@ the gap from `WingMic acquire` to the first non-silent frame.
 | `VadCapture.kt` | hook | `Options.mic` (`"auto"`/`"phone"`). `start` becomes asynchronous: acquire, then begin (cue, VAD, `AudioRecord` with `setPreferredDevice`), then the callback. Release in `stopReading`. Debug JSON `mic` object. |
 | `VoiceChannel.kt` | hook | creates/closes `HeadsetMicRoute`. For `startVad`: optional permission step, then `vad.start(…) { result }`. Forwards `7316` in `permissionResult`. New method `setPhoneMicOnly`. |
 | `AndroidManifest.xml` | hook | `MODIFY_AUDIO_SETTINGS` |
-| `HeadphoneRouteChannel.kt` | hook | `current()` gets the key `bluetoothAllowed` (F2) |
+| `HeadphoneRouteChannel.kt` | hook | `current()` gets the key `bluetoothAllowed` (F2). `refresh()` pushes the route after a grant through the dictation path. |
 | `lib/voice_offline/headphone_route.dart` | change | `OutputRoute.bluetoothAllowed`, reason `bluetoothNoPermission`, log field `perm=` |
 | `lib/core/services/android_voice.dart` | hook | `VadMic {auto, phone}`, `VadCaptureOptions.mic` (default `auto`, map key `mic`), `VoiceDevice.setPhoneMicOnly`, `VoiceSwitchHolders.phoneMic` |
 | `lib/voice_offline/turn_listener.dart` | hook | listen rounds pass `mic: VadMic.phone` (D1 = A) |
