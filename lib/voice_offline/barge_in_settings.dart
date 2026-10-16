@@ -170,7 +170,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
             contentPadding: EdgeInsets.zero,
             title: const Text('Interrupt read-aloud by speaking'),
             subtitle: Text(
-              s.bargeInPlayback && !_bluetoothAllowed
+              s.bargeInPlayback && _bluetoothAllowed
                   ? _wiredOnly
                   : _headphonesOnly,
             ),
