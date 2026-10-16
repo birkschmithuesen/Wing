@@ -86,6 +86,7 @@ class ProfileWorkspaceRegistry extends ChangeNotifier {
   void recoverConnections() {
     if (_closed) return;
     for (final owner in _controllers.values) {
+      owner.networkRestored();
       if (owner.initialized ||
           owner.recovering ||
           owner.notificationChat != null) {
