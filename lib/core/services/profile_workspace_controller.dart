@@ -6725,6 +6725,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_closed || resource.retry != null || resource.reconnecting) {
       return;
     }
+    if (!connectionStatus.networkAvailable) {
+      // The device itself has no network (ServerConnectionStatus.networkLost):
+      // a backoff attempt now would only race the authoritative outage signal.
+      // reconnect() (via ProfileWorkspaceRegistry.recoverConnections() or
+      // resumeConnection()) retries explicitly once networkRestored() fires.
+      return;
+    }
     if (resource.reconnectAttempt >= _maxRecoveryRetries) {
       // A restored transport is not proof the conversation was restored.
       resource.recovering = true;

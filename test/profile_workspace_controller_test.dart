@@ -2042,6 +2042,11 @@ void main() {
       expect(host.disconnectCalls, before + 2);
       expect(controller.connectionStatus.liveAvailable('a'), isFalse);
       expect(controller.connectionStatus.liveAvailable('b'), isFalse);
+      // Only an explicit networkRestored() lifts the device-level outage
+      // flag (see ServerConnectionStatus.networkLost); a plain resume
+      // attempt proving the socket works is not itself proof of the OS's
+      // own network state.
+      controller.networkRestored();
       await controller.resumeConnection();
       expect(controller.connectionStatus.description, 'Connected');
     },
@@ -2072,6 +2077,10 @@ void main() {
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
 
       host.promptSubmitFails = false;
+      // This chat never had a turn submitted, so the resumed session reports
+      // idle, not running (unlike the sent-prompt scenarios other tests here
+      // exercise with the fixture's default `running: true`).
+      host.running = false;
       // Mirrors ProfileWorkspaceRegistry.recoverConnections(), which always
       // marks the network restored before asking a controller to reconnect.
       controller.networkRestored();
