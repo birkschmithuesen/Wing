@@ -19,6 +19,13 @@
 - Headset mic only for explicit rounds (`mic: auto`). Listen rounds and the echo probe use `mic: phone` (E1 = A).
 - Car: phone mic (E2 = 1). Detection: Wing car mode holder, Android car mode, or a non-headset Bluetooth class.
 - Headset classes: `0x0404` (WEARABLE_HEADSET) and `0x0418` (HEADPHONES). Unknown class means phone mic.
+- Routing source: AOSP `frameworks/av/services/audiopolicy/enginedefault/src/Engine.cpp` (main),
+  `getDeviceForInputSource()`. The SCO headset mic is used for `MIC`/`VOICE_RECOGNITION`/`VOICE_COMMUNICATION`
+  only while the PHONE strategy's preferred device is SCO (`setCommunicationDevice`). Otherwise the order is
+  `WIRED_HEADSET` > `USB_HEADSET` > `USB_DEVICE` > `BLUETOOTH_BLE` > `BUILTIN_MIC`. Wing therefore requests only
+  classic SCO and never touches wired, USB or LE Audio. Task 15 confirms the LineageOS build is unmodified.
+- Not evidence: the `adev_open_input_stream … devices(0x80000008)` lines at 11:34:12 on 16.10. (profile probing on
+  connect). Proof that the Sony mic delivers audio to Wing comes only from Tasks 14B and 10.
 - No `setMode(MODE_IN_COMMUNICATION)`. That stays true unless Task 10 proves it is needed (then Task 13).
   `BackgroundVoiceService.watchCalls` would end Wing's own conversation on that mode.
 - Link timeout `2500 ms`, then fall back to the phone mic.
@@ -58,10 +65,15 @@ the merge.
 ## Task order
 
 ```
-0 → 1 → 2 → 3 → 4 → 5 → 7 → 8 [WORKER] → 10 [WORKER + Birk] → 11 → (13 only if Task 10 "mic proof" fails) → 12 [WORKER + Birk]
+15 (LineageOS engine check, no code) ─┐
+14A [WORKER] routing before (1.1.3) ──┴→ 0 → 1 → 2 → 3 → 4 → 5 → 7 → 8 [WORKER] → 14B [WORKER] → 10 [WORKER + Birk] → 11 → (13 only if 14B / Task 10 "mic proof" fails) → 12 [WORKER + Birk]
 6 (wer.py) — any time; needed by 9 and 10
 9 [WORKER + Birk] baseline — any time after 6, runs on the installed 1.1.3
 ```
+
+- Tasks 15 and 14A run **now**, before any code. If Task 15 finds a modified engine or a configurable engine with a
+  different input rule, or 14A shows something other than `AUDIO_DEVICE_IN_BUILTIN_MIC`: stop and report to Birk.
+  The design rests on the Engine.cpp rule.
 
 ## Decision impact (spec §9; the plan implements the recommendations A, 1, a)
 
@@ -100,6 +112,8 @@ the merge.
 
 **Files:** none.
 
+- [ ] **Step 0: Premise checks done.** The card comments of Task 15 ("Engine.cpp rule holds: yes") and Task 14 step A
+  (active input `AUDIO_DEVICE_IN_BUILTIN_MIC`) exist. Otherwise stop and report.
 - [ ] **Step 1: Sibling merged.** Run: `git log --oneline -30 voice-offline`
   Expected: a merge line naming `t_98e8c3c2`. If it is missing: stop and report "waiting for t_98e8c3c2". Only Task 6
   may run in the meantime.
@@ -514,9 +528,9 @@ class HeadsetMicRoute(private val activity: Activity) {
         val output = if (Build.VERSION.SDK_INT >= 33) {
             try { audio.getAudioDevicesForAttributes(media).firstOrNull() } catch (_: Exception) { null }
         } else null
-        val links = audio.availableCommunicationDevices.filter {
-            it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO || it.type == AudioDeviceInfo.TYPE_BLE_HEADSET
-        }
+        // Classic SCO only: the default engine routes wired, USB and LE Audio mics by itself, but takes the SCO
+        // mic only while the communication device is SCO (Engine::getDeviceForInputSource, spec §1).
+        val links = audio.availableCommunicationDevices.filter { it.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO }
         val link = links.firstOrNull { output != null && it.address == output.address } ?: links.firstOrNull()
         val allowed = bluetoothAllowed()
         val deviceClass = link?.let { bluetoothClass(it) }
@@ -1072,7 +1086,9 @@ Build from Task 8. Sony WH-1000XM4 connected, Wing in the foreground.
   Expected: `adev_open_input_stream … devices(0x80000008) … source(7)` between `WingMic ready` and `WingMic release`.
   During the round: `hadb shell dumpsys audio | grep -iE "communication device|BtSco|mode"`. Expected: the preferred
   or active communication device is `bt_sco`, and the audio mode is NORMAL (ANNAHME 3). Repeat once with the setting
-  "Recognition" (`source(6)`). If `0x80000004` appears instead of `0x80000008`: go to Task 13.
+  "Recognition" (`source(6)`). Task 14 step B captures the matching `dumpsys media.audio_policy` active input. A
+  short `adev_open_input_stream` burst right after connecting the Sony is profile probing, not proof (spec §1); only
+  lines inside a Wing round count. If `0x80000004` appears instead of `0x80000008`: go to Task 13.
 - [ ] **Step 3: Codec.** During a round: `hadb shell dumpsys bluetooth_manager | grep -iE "sco|wbs|swb|msbc|lc3|codec"`.
   Record the lines (ANNAHME 4).
 - [ ] **Step 4: Latency.** Five dictations. From each `WingMic` block, record `readyMs` and `firstSoundMs`. From
@@ -1187,6 +1203,80 @@ no `stop reason=call`.
 
 ---
 
+### Task 14 [WORKER]: Input routing facts during a Wing recording (A before the build, B after)
+
+Proves which input device Wing's recording really uses. The `dumpsys media.audio_policy` file contains device
+addresses and names, so it stays in `build/voice-measure/`. Post only device types, sources and the active flag, and
+delete the file afterwards.
+
+- [ ] **Step A1 (before; installed 1.1.3; Sony connected, A2DP output):** `mkdir -p build/voice-measure`, then
+  `hadb shell dumpsys package com.tarkilhk.wing.voice | grep userId=`. Note Wing's uid.
+- [ ] **Step A2:** `hadb logcat -c`. Birk starts a dictation and keeps talking for about 15 s. During that time, run:
+  `hadb shell dumpsys media.audio_policy > build/voice-measure/policy-before.txt`
+  then, still during the round:
+  `hadb shell dumpsys audio > build/voice-measure/audio-before.txt`
+- [ ] **Step A3: Read it.** Run: `grep -n -A30 "Inputs dump" build/voice-measure/policy-before.txt`
+  and `grep -nE "AUDIO_SOURCE_|[Aa]ctive|uid" build/voice-measure/policy-before.txt`
+  Expected: one active input whose client uid is Wing's, with source `AUDIO_SOURCE_VOICE_COMMUNICATION` (or
+  `VOICE_RECOGNITION` with that setting) on `AUDIO_DEVICE_IN_BUILTIN_MIC`. `ANNAHME: the dump section names
+  ("Inputs dump", client lines with uid/source/active) match Android 16 - check: if the greps find nothing, run
+  grep -n "AUDIO_DEVICE_IN_" on the file and report the surrounding section header names.`
+  Also: `grep -iE "communication device|BtSco" build/voice-measure/audio-before.txt`. Expected:
+  `Preferred communication device: null`.
+- [ ] **Step A4:** `hadb logcat -d -v threadtime | grep adev_open_input_stream`. Expected: `devices(0x80000004)` with
+  `source(7)` inside the round. Ignore any burst within seconds of a Bluetooth connect (profile probing, spec §1).
+- [ ] **Step A5:** Post the device type and source lines (no addresses, no names) in the card. Then
+  `rm -r build/voice-measure`. If the active input is **not** `AUDIO_DEVICE_IN_BUILTIN_MIC`: stop and report. The
+  premise of the spec would be wrong.
+- [ ] **Step B (after Task 8, permission granted in Task 10 Step 1 or by `hadb shell pm grant com.tarkilhk.wing.voice android.permission.BLUETOOTH_CONNECT`):**
+  repeat A1-A5 with the file names `policy-after.txt` / `audio-after.txt`. Expected: active Wing input on
+  `AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET`; `adev_open_input_stream … devices(0x80000008) source(7)` between
+  `WingMic ready` and `WingMic release` (`hadb logcat -d -v threadtime | grep -E "WingMic|adev_open_input_stream"`);
+  communication device `bt_sco` during the round; mode NORMAL. After the round,
+  `hadb shell dumpsys audio | grep -iE "communication device"` shows no preference from Wing. If the input stays on
+  `AUDIO_DEVICE_IN_BUILTIN_MIC` while `WingMic ready` was logged: go to Task 13.
+
+---
+
+### Task 15 (no code; device steps [WORKER]): LineageOS engine check for pdx224
+
+The design rests on AOSP `Engine::getDeviceForInputSource` (spec §1). This task checks that Birk's build runs it
+unmodified. Run it before Task 0.
+
+- [ ] **Step 1: Build identity [WORKER].** Run each:
+  `hadb shell getprop ro.product.device` → expected `pdx224`
+  `hadb shell getprop ro.lineage.build.version` → e.g. `23.0`, giving the branch `lineage-23.0`
+  `hadb shell getprop ro.build.id` → the AOSP build id (maps to the AOSP tag `android-16.0.0_r<n>`)
+  `hadb shell getprop ro.build.version.security_patch`
+- [ ] **Step 2: Which engine is loaded [WORKER].** Run:
+  `hadb shell 'su -c "pidof audioserver"'` → `<pid>`, then
+  `hadb shell 'su -c "grep -o libaudiopolicyengine[a-z]*.so /proc/<pid>/maps"'`
+  Expected: `libaudiopolicyenginedefault.so`. If it shows `libaudiopolicyengineconfigurable.so`, the input rule comes
+  from the Parameter Framework config instead of Engine.cpp. Report that and stop.
+- [ ] **Step 3: Engine config files [WORKER].** Run: `hadb shell ls /vendor/etc /vendor/etc/audio`, then for each
+  `audio_policy_configuration*.xml` found:
+  `hadb shell grep -n -iE "engine_library|call_screen_mode_supported" /vendor/etc/<file>`
+  Expected: no `engine_library="configurable"`. Note any `audio_policy_engine_*.xml`: product strategies only, no
+  input rule.
+- [ ] **Step 4: Source diff (any agent, read-only).** Compare the blob of Engine.cpp on the Lineage branch with AOSP:
+  `gh api "repos/LineageOS/android_frameworks_av/contents/services/audiopolicy/enginedefault/src/Engine.cpp?ref=lineage-23.0" --jq .sha`
+  `gh api "repos/aosp-mirror/platform_frameworks_av/contents/services/audiopolicy/enginedefault/src/Engine.cpp?ref=android-16.0.0_r<n>" --jq .sha`
+  Equal SHAs mean the file is unchanged. Otherwise list the Lineage commits on the file:
+  `gh api "repos/LineageOS/android_frameworks_av/commits?sha=lineage-23.0&path=services/audiopolicy/enginedefault/src/Engine.cpp" --jq ".[].commit.message"`
+  and check whether any of them touches `getDeviceForInputSource`. `ANNAHME: the GitHub mirror
+  aosp-mirror/platform_frameworks_av carries the matching tag - check: if the second call returns 404, use the
+  android.googlesource.com tag page for the same path, or compare against the merge base on the Lineage branch.`
+- [ ] **Step 5: Device trees (any agent, read-only).**
+  `gh api "repos/LineageOS/android_device_sony_sm8450-common/contents/audio?ref=lineage-23.0" --jq ".[].name"`
+  `gh api "repos/LineageOS/android_device_sony_pdx224/contents?ref=lineage-23.0" --jq ".[].name"`
+  Look for `audio_policy_configuration.xml`, any `engine_library` attribute, and any overlay or patch of
+  `frameworks/av`. `ANNAHME: the common tree is android_device_sony_sm8450-common with an audio/ folder - check: if 404,
+  list the repo root and search for audio_policy files.` The on-device files from Step 3 win over the tree, because
+  Sony vendor blobs may ship their own config.
+- [ ] **Step 6: Record** in the card comment: device, Lineage branch, AOSP tag, loaded engine library, config
+  findings, the Engine.cpp SHA comparison, and the verdict "Engine.cpp rule holds: yes/no". If no: stop the plan and
+  report to Birk.
+
 ## Follow-up device card t_fabcb273 (echo S2 with Sony), not part of this plan
 
 With E1 = A, read-aloud barge-in listens through the phone mic while the Sony plays A2DP. That is exactly what the
@@ -1200,6 +1290,9 @@ series with SCO open (the HFP path with the headset's own echo cancellation) is 
 - Spec coverage: §3 F1 → Tasks 4/5. F2 → Task 1. §4.1-4.3 → Tasks 4/5. Matrix rows "listen" → Task 2, "car" →
   Tasks 3/4. §4.4 exit paths → Task 5 Steps 5/11. Disconnect → Task 10 Step 6. §5 latency/cue → Task 5 Step 2 (cue
   after link), Task 10 Step 4. §7 car → Task 3. §10/§11 measurements → Tasks 6/9/10/11. Mode fallback → Task 13.
+- Revision 16.10. (Birk/Robo correction): the 11:34:12 SCO lines are retracted as evidence. The routing rule is now
+  sourced from AOSP Engine.cpp. `decide()` requests classic SCO only (no LE). Tasks 14 (audio_policy before/after)
+  and 15 (LineageOS engine check) were added.
 - `HeadphoneRouteChannel.refresh()` (Task 1) is listed in spec §6. It pushes a new route to Dart after a grant
   through the dictation path.
 - Type names used across tasks: `VadMic.auto/phone`, map key `mic`, `setPhoneMicOnly {'on'}`, `HeadsetMicRoute.Decision`,

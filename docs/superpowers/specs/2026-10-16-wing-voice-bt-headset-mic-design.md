@@ -4,7 +4,7 @@ Card t_3954f61f · 2026-10-16 · branch `voice-offline` at `0d9cd8fb` · status:
 
 ## Kurzfassung (Deutsch)
 
-- Birks Annahme stimmt für die **Ausgabe** (verbundene BT-Kopfhörer werden Standard, A2DP/LDAC), aber **nicht fürs Mikro**: Android nimmt weiter mit dem Handy-Mikro auf, solange keine App die Kommunikationsroute (SCO/HFP) anfordert.
+- Birks Annahme stimmt für die **Ausgabe** (verbundene BT-Kopfhörer werden Standard, A2DP/LDAC), aber **nicht fürs Mikro**. Laut AOSP `Engine.cpp` nimmt Android ein klassisches BT-Headset-Mikro (SCO/HFP) nur, wenn eine App es per `setCommunicationDevice` anfordert. Kabel-, USB- und LE-Audio-Mikros nimmt Android automatisch. Ob das Sony-Mikro in Wing wirklich Ton liefert, ist erst nach der Gerätemessung belegt.
 - Neue Regel (ersetzt die Regel vom 13.10.): **„Mikro des verbundenen Headsets, wenn vorhanden, sonst Handy.“**
 - Wing fordert das Headset-Mikro nur für eine echte Aufnahme an (Diktat, Gesprächszug). Dazu nutzt es `AudioManager.setCommunicationDevice` (API 31+), danach `clearCommunicationDevice`. Während des Vorlesens und beim Mithören, während Hermes arbeitet, bleibt das Handy-Mikro aktiv. So klingt das Vorlesen weiter in A2DP-Qualität.
 - Freisprechanlage im Auto: vorerst Handy-Mikro (Entscheidung 2).
@@ -26,7 +26,33 @@ Birk (16.10.): „Sobald ich die Bluetooth-Kopfhoerer verbinde, werden diese auf
 | Part | Verdict | Evidence (Xperia 5 IV, Android 16 / SDK 36, Wing 1.1.3, `hadb`, 16.10. ~11:45) |
 |---|---|---|
 | Output | **true** | `dumpsys audio`: `Active communication device: … type:bt_a2dp … name:WH-1000XM4`. Media goes to A2DP with LDAC 96 kHz. |
-| Microphone | **false** | `mBtScoOnByApp=false`, `Preferred communication device: null`. Capture stays on the built-in mic (`0x80000004`) unless an app asks for the communication route. At 11:34:12 another app opened `adev_open_input_stream … devices(0x80000008) source(1) 48 kHz`. That shows the Sony mic (`0x80000008` = BT SCO headset mic) works, but only on request. |
+| Microphone | **false** | `mBtScoOnByApp=false`, `Preferred communication device: null`. With no communication device set, the AOSP policy engine never picks the BT SCO headset mic (`0x80000008`) for app capture (source below), so capture stays on the built-in mic (`0x80000004`). |
+
+Retracted (correction Birk/Robo, 16.10.): an earlier draft cited four `adev_open_input_stream … devices(0x80000008)`
+lines at 11:34:12 as "another app used the Sony mic". Those lines come 2 s after `HeadsetService setActiveDevice`
+(11:34:10). All four fall within 36 ms and use four different channel masks, so they are very likely the audio
+policy probing the device profiles on connect, not an app. They are **not** evidence that the Sony mic delivers audio.
+`ANNAHME: the WH-1000XM4 mic delivers usable audio to Wing over SCO once Wing requests the communication device -
+check: during a Wing recording with SCO requested, dumpsys media.audio_policy (active inputs: device
+AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET) plus logcat adev_open_input_stream … devices(0x80000008), and non-silent PCM
+(firstSoundMs, WER) - plan Tasks 14 and 10.`
+
+**Source for the routing rule.** AOSP `frameworks/av/services/audiopolicy/enginedefault/src/Engine.cpp` (main),
+`Engine::getDeviceForInputSource()`. For the sources `MIC`, `VOICE_RECOGNITION` and `VOICE_COMMUNICATION`,
+`AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET` is chosen **only** if `audio_is_bluetooth_out_sco_device(commDeviceType)`.
+`commDeviceType` is the preferred device of strategy PHONE, which is set through `setCommunicationDevice` (or by
+Telecom during calls). Otherwise the order is `WIRED_HEADSET` > `USB_HEADSET` > `USB_DEVICE` > `BLUETOOTH_BLE` >
+`BUILTIN_MIC`. Consequences:
+- A classic BT headset (HFP) is **never** taken automatically as the mic. Wing must request it.
+- LE Audio headsets, wired headsets and USB headsets **are** taken automatically.
+- The WH-1000XM4 has no LE (`LE:N` in `dumpsys bluetooth_manager`, profile policy `LE_AUDIO=-1`). Only the HFP/SCO
+  path through `setCommunicationDevice` remains.
+
+`ANNAHME: LineageOS on Birk's Xperia 5 IV (pdx224) uses the default engine and does not change
+getDeviceForInputSource - check: plan Task 15 (device: which libaudiopolicyengine*.so is loaded; source:
+LineageOS/android_frameworks_av at the build's branch, diff of Engine.cpp against AOSP; device trees
+LineageOS/android_device_sony_pdx224 and android_device_sony_sm8450-common for audio_policy_configuration.xml and an
+audio_policy_engine_*.xml engine config).`
 
 Consequence: Birk's decision of 13.10. ("Mikro = was Android routet, keine eigene SCO-Aktivierung, kein Mikro-Schalter
 in der App") assumed that Android's default mic is the headset mic once a headset is connected. That assumption is
@@ -95,26 +121,28 @@ The WH-1000XM4 reports class `0x240404`, so device class `0x0404` = `AUDIO_VIDEO
 
 | Option | Verdict |
 |---|---|
-| `AudioManager.setCommunicationDevice(AudioDeviceInfo)` / `clearCommunicationDevice()` (API 31+) | **Chosen.** Replaces the deprecated SCO APIs. You pass a sink from `getAvailableCommunicationDevices()`. The platform picks the matching source and brings up the SCO link (or the LE Audio link). The request lasts while the process lives or until it is cleared. Confirmation comes through `OnCommunicationDeviceChangedListener`. |
+| `AudioManager.setCommunicationDevice(AudioDeviceInfo)` / `clearCommunicationDevice()` (API 31+) | **Chosen.** Replaces the deprecated SCO APIs. You pass a sink from `getAvailableCommunicationDevices()`. The platform picks the matching source and brings up the SCO link. Per `Engine.cpp` (§1), this is the only way to get the SCO mic for `MIC`/`VOICE_RECOGNITION`/`VOICE_COMMUNICATION` capture. The request lasts while the process lives or until it is cleared. Confirmation comes through `OnCommunicationDeviceChangedListener`. |
 | `startBluetoothSco()` / `stopBluetoothSco()` | Deprecated since API 31. Not used (minSdk is irrelevant: Birk's phone is SDK 36, and below 31 Wing keeps the phone mic). |
 | `AudioRecord.setPreferredDevice(scoInput)` | **Used in addition** to pin the record to the SCO input (`TYPE_BLUETOOTH_SCO`, `isSource`) once the link is up. `ANNAHME: setPreferredDevice alone does not bring up the SCO link - check: not needed for the design; the link is always requested through setCommunicationDevice first.` |
 
-Device selection: in `getAvailableCommunicationDevices()`, take the first entry of type `TYPE_BLUETOOTH_SCO` or
-`TYPE_BLE_HEADSET` whose address equals the A2DP output's address. If no address matches, take the first entry of
-those types. A matching input is a `getDevices(GET_DEVICES_INPUTS)` entry of the same type and address.
+Device selection: in `getAvailableCommunicationDevices()`, take the first entry of type `TYPE_BLUETOOTH_SCO` whose
+address equals the A2DP output's address. If no address matches, take the first SCO entry. LE Audio
+(`TYPE_BLE_HEADSET`) is never requested: the engine already routes its mic (§1). A matching input is a `getDevices(GET_DEVICES_INPUTS)` entry of the same type and address.
 
 ### 4.2 Audio mode, capture source, permissions, focus
 
-- **No `setMode(MODE_IN_COMMUNICATION)`.** `ANNAHME: since Android 12, AudioDeviceBroker starts SCO for a
-  communication-device client in virtual-call mode regardless of the audio mode, and the policy engine routes
-  VOICE_COMMUNICATION and VOICE_RECOGNITION capture to the SCO headset mic while the communication device is SCO -
-  check: Task 10 step "mic proof". logcat must show adev_open_input_stream … devices(0x80000008) source(7) and
-  source(6) while dumpsys audio shows mode NORMAL.` If the check fails, conditional plan Task 13 sets
+- **No `setMode(MODE_IN_COMMUNICATION)`.** Input selection follows the communication device and does not depend
+  on the mode (Engine.cpp, §1). `ANNAHME: since Android 12, AudioDeviceBroker brings up SCO for a
+  communication-device client (virtual-call SCO) without the app changing the audio mode, and the PHONE strategy's
+  preferred device becomes bt_sco - check: Task 14 step B and Task 10 step "mic proof": dumpsys media.audio_policy
+  shows an active input on AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET, logcat shows adev_open_input_stream …
+  devices(0x80000008) source(7) and source(6) during the Wing round, and dumpsys audio shows mode NORMAL.` If the
+  check fails, conditional plan Task 13 sets
   `MODE_IN_COMMUNICATION` only for the round. It then marks the mode as Wing-owned so that
   `BackgroundVoiceService.watchCalls` ignores it.
-- **Capture source:** unchanged, from the user setting. Default `VOICE_COMMUNICATION` (7) is the source the
-  communication route is designed for and is expected to work. `VOICE_RECOGNITION` (6) is expected to follow the
-  communication device too (assumption above). The setting stays. Task 10 measures both.
+- **Capture source:** unchanged, from the user setting. Engine.cpp treats `VOICE_COMMUNICATION` (7, the default)
+  and `VOICE_RECOGNITION` (6) the same way: both take the SCO mic when the communication device is SCO. The setting
+  stays. Task 10 checks both on the device.
 - **Sample rate:** 16 kHz mono, as today. That equals mSBC wideband. `ANNAHME: the Sony negotiates mSBC (WBS) and
   possibly LC3-SWB (HFP log EVENT_TYPE_WBS valInt=2, EVENT_TYPE_SWB valInt2=1) - check: dumpsys bluetooth_manager
   while SCO is open (Task 10).` If only CVSD (8 kHz) were negotiated, Android would resample to 16 kHz and recognition
@@ -139,8 +167,8 @@ the round starts.
 | BT headphones with HFP (WH-1000XM4) | output A2DP, SCO in communication devices, class `0x0404`/`0x0418` | **headset (SCO `0x80000008`)** | phone (D1 = A) | A2DP/LDAC. During the round, A2DP is suspended (§5), and it returns after release. |
 | BT headphones, class unknown (no permission) | A2DP + SCO, class null | phone, and F1 asks once | phone | A2DP |
 | BT A2DP only (no mic / HFP off) | A2DP, no SCO | phone | phone | A2DP |
-| LE Audio headset | `TYPE_BLE_HEADSET` in communication devices, headset class | headset (same API), **untested: no device** | phone | LE Audio. Not an option for the Sony (`LE_AUDIO=-1`). |
-| Wired headset with mic | `TYPE_WIRED_HEADSET` / `TYPE_USB_HEADSET` | headset mic; Android routes it automatically, Wing does nothing | same | wired |
+| LE Audio headset | `TYPE_BLE_HEADSET` input present | headset mic, routed **automatically** by the engine (`BLUETOOTH_BLE` ranks above `BUILTIN_MIC`). Wing does nothing. **Untested: no device.** | the same LE mic. Wing does not pin listen rounds to the phone; LE keeps its own bidirectional quality. | LE Audio. Not an option for the Sony (`LE:N`, `LE_AUDIO=-1`). |
+| Wired headset with mic | `TYPE_WIRED_HEADSET` / `TYPE_USB_HEADSET` (or a USB audio device) | headset mic, routed **automatically** (`WIRED_HEADSET` > `USB_HEADSET` > `USB_DEVICE`). Wing does nothing. | same | wired |
 | Wired headphones without mic | `TYPE_WIRED_HEADPHONES` | phone | phone | wired |
 | Car hands-free (BT HFP) | class `0x0408`/`0x0420` or other non-headset class, or Android car mode, or Wing car mode | **phone** (D2) | phone | A2DP to the car |
 
@@ -148,12 +176,13 @@ Order of checks in `decide`:
 1. SDK < 31 → phone.
 2. Wing car mode holder on → phone.
 3. Android car mode → phone.
-4. No SCO/LE device in the communication devices → phone.
+4. No SCO device in the communication devices → phone (also covers wired, USB and LE, which the engine routes itself).
 5. Class unreadable → phone (reason `noPermission` or `classUnknown`).
 6. Class not in {`0x0404`, `0x0418`} → phone (`notHeadset`).
 7. Otherwise → headset.
 
-Wired is not in the table logic because Android already routes it.
+Wired, USB and LE Audio are not in the decision logic because the engine already routes them (§1). `mic: phone`
+does not override them: only classic SCO is avoided for listen rounds.
 
 ### 4.4 Exit paths (release on every one)
 
@@ -279,6 +308,11 @@ Coder card (this plan, Tasks 1-8): F1/F2, `HeadsetMicRoute`, the VadCapture/Voic
 the car holder, `wer.py`, and docs.
 
 Device cards:
+- **Input routing facts (Task 14 [WORKER], step A before the build, step B after):** `dumpsys media.audio_policy`
+  (active inputs and their device) plus `adev_open_input_stream` lines during a Wing recording. Before: expected
+  `AUDIO_DEVICE_IN_BUILTIN_MIC` with the Sony connected. After: expected `AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET`.
+- **LineageOS engine check (Task 15, no code):** verifies that pdx224 runs the default engine with an unmodified
+  `getDeviceForInputSource`. The source above only holds if this check passes.
 - **Before (Task 9 [WORKER + Birk], can run now on 1.1.3):** phone-mic baseline in the cafe. WER on the reference
   sentences, with the Sony connected (A2DP output) and without it. Plus a probe pair that separates cafe noise from
   Sony leakage (§11).
@@ -310,8 +344,10 @@ Device cards:
 
 1. Android 14+ anonymises BT `AudioDeviceInfo` addresses without `BLUETOOTH_CONNECT`. Check: `perm=` field (Task 10).
 2. `setPreferredDevice` alone does not bring up SCO. Check: not needed (the design always calls setCommunicationDevice).
-3. No `MODE_IN_COMMUNICATION` is needed, and sources 7 and 6 follow the SCO communication device. Check: Task 10
-   "mic proof" (`devices(0x80000008) source(7)` and `source(6)`, `dumpsys audio` mode NORMAL).
+3. SCO comes up for Wing's communication-device request without a mode change (input selection itself is sourced
+   from Engine.cpp, §1). Check: Task 14 step B and Task 10 "mic proof" (`dumpsys media.audio_policy` active input on
+   `AUDIO_DEVICE_IN_BLUETOOTH_SCO_HEADSET`, `devices(0x80000008) source(7)` and `source(6)`, `dumpsys audio` mode
+   NORMAL).
 4. The Sony negotiates mSBC, possibly LC3-SWB. Check: `dumpsys bluetooth_manager` while SCO is open (Task 10).
 5. `setCommunicationDevice` checks `MODIFY_AUDIO_SETTINGS`. Check: harmless; Task 10 confirms `result=true`.
 6. `setCommunicationDevice` works without `BLUETOOTH_CONNECT`. Check: only relevant for E3 = b; `result=true` log.
@@ -323,3 +359,13 @@ Device cards:
 11. The start cue (`ToneGenerator`, `STREAM_MUSIC`) is audible in the Sony while SCO is open. Check: Task 10 "cue".
 12. The sibling t_98e8c3c2 adds `HeadphoneRoute.wired` and keeps the barge-in subtitle "wired only" (from its test
     diff at `e6880010`). Check: Task 0 reads the merged state before editing `headphone_route.dart`.
+13. The WH-1000XM4 mic delivers usable audio to Wing over SCO. (The 11:34:12 `adev_open_input_stream` lines are
+    retracted as evidence: very likely profile probing on connect.) Check: `dumpsys media.audio_policy` active inputs
+    plus `adev_open_input_stream … devices(0x80000008)` during a Wing recording with SCO requested, and non-silent
+    audio (`firstSoundMs`, WER). Plan Tasks 14B and 10.
+14. LineageOS for pdx224 uses the AOSP default engine and leaves `Engine::getDeviceForInputSource` unchanged. Check:
+    plan Task 15 (loaded `libaudiopolicyengine*.so`, engine config files in `/vendor/etc`, the diff of
+    `services/audiopolicy/enginedefault/src/Engine.cpp` in `LineageOS/android_frameworks_av` against AOSP for the
+    build's branch, and the device trees `LineageOS/android_device_sony_pdx224` / `android_device_sony_sm8450-common`).
+15. Before the build, a Wing recording with the Sony connected uses `AUDIO_DEVICE_IN_BUILTIN_MIC`. This follows
+    from Engine.cpp but has not been observed. Check: plan Task 14 step A.
