@@ -1329,6 +1329,43 @@ void main() {
     await swipeOut(tester);
   });
 
+  testWidgets(
+    'car mode: a real network outage shows offline at once; the recording waits and sends once after reconnect',
+    (tester) async {
+      await vadRoute();
+      await show(tester);
+      await openCarMode(tester);
+      await tapCar(tester);
+      controller.networkUnavailable();
+      await settle(tester);
+      // Authoritative at once: not masked by the reconnect attempt's own
+      // backoff (which this harness never even lets run, by design).
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.disconnected,
+      );
+      expect(find.text('Offline'), findsOneWidget);
+      await windows(tester, 0.9, 30); // recording goes on offline
+      await tapCar(tester);
+      expect(prompts(), 0);
+      expect(find.text('Waiting for connection'), findsOneWidget);
+      expect(controller.current!.chat!.draft, 'Hello from the phone'); // kept on the device
+      controller.networkRestored();
+      await tester.runAsync(
+        () => controller.resumeConnection(networkChanged: true),
+      );
+      await settle(tester);
+      expect(prompts(), 1);
+      expect(
+        fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
+        'Hello from the phone',
+      );
+      await completeReply(tester, 'Got it.');
+      expect(device.spoken, 'Got it.');
+      await swipeOut(tester);
+    },
+  );
+
   testWidgets('car mode: a pending approval shows on screen and the tap does nothing', (tester) async {
     await show(tester);
     await openCarMode(tester);
