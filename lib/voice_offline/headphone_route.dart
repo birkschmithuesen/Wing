@@ -41,7 +41,7 @@ typedef RouteVerdict = ({bool headphones, String reason});
 const _wired = {3, 4, 22}; // WIRED_HEADSET, WIRED_HEADPHONES, USB_HEADSET
 const _bluetooth = {8, 26}; // BLUETOOTH_A2DP, BLE_HEADSET
 const _speaker = 2; // BUILTIN_SPEAKER
-const _headphoneClasses = {0x0404, 0x0418}; // WEARABLE_HEADSET, HEADPHONES
+const _headphoneClasses = {0x0404}; // WEARABLE_HEADSET, HEADPHONES
 
 /// Spec §3.4.1 (D2): voice barge-in into read-aloud only with headphones.
 /// Conservative: a car kit, a hands-free unit or an unreadable Bluetooth
