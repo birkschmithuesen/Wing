@@ -1374,10 +1374,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
-  /// The OS reports the device's network is back. A reconnect attempt that
-  /// then succeeds already clears this via [ServerConnectionStatus.accessAvailable];
-  /// this is what lets a stalled attempt restart promptly instead of waiting
-  /// out its own backoff.
+  /// The OS reports the device's network is back. Nothing else clears
+  /// [ServerConnectionStatus.networkLost]; call this before asking for a
+  /// reconnect so a stalled attempt restarts promptly instead of waiting out
+  /// its own backoff (see [ProfileWorkspaceRegistry.recoverConnections]).
   void networkRestored() {
     if (_closed) return;
     connectionStatus.networkRestored();
@@ -5308,11 +5308,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat.offlineSnapshot ||
         !connectionStatus.networkAvailable) {
       // The connection isn't up yet; reconnect() drains the queue itself
-      // once it clears offlineSnapshot, and only runs once a connect already
-      // proved the network is back (ServerConnectionStatus.accessAvailable
-      // sets networkAvailable before this guard is checked again). Don't
-      // mark queuePaused here, that's a sticky error state, this is only
-      // "not connected yet".
+      // once it clears offlineSnapshot, and ProfileWorkspaceRegistry always
+      // marks the network restored before it ever asks for a reconnect, so
+      // a legitimate drain never trips this. Don't mark queuePaused here,
+      // that's a sticky error state, this is only "not connected yet".
       return;
     }
     if (chat.historyError != null ||

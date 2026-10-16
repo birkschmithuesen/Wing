@@ -110,14 +110,16 @@ class ServerConnectionStatus extends ChangeNotifier {
     if (_closed) return;
     access = ConnectionAvailability.available;
     _accessProblem = null;
-    // A successful call is itself proof of network, ahead of any OS notice.
-    _networkAvailable = true;
     lastConnected = DateTime.now();
     _changed();
   }
 
   /// The OS reports the device has no network at all (e.g. airplane mode).
-  /// Call [networkRestored] once it reports the network back.
+  /// Deliberately not cleared by [accessAvailable]: a reconnect attempt can
+  /// succeed against a transport the OS itself has not vouched for (a stale
+  /// socket, a route the radio state doesn't actually govern), which is the
+  /// exact failure this guards against. Only an explicit [networkRestored]
+  /// call, from the same OS notice, lifts it.
   void networkLost() {
     if (_closed) return;
     _networkAvailable = false;
