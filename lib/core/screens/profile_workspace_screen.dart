@@ -403,6 +403,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final text = chat.draft.trim();
     // Car mode: offline, the draft waits on the device (spec §4.4).
     if (_conversation == chat.key && text.isNotEmpty && _car.holdForConnection()) {
+      _car.logDelivery(CarDelivery.queue);
       return;
     }
     // Car mode: speech while Hermes works steers the running turn (spec §6.4).

@@ -1362,14 +1362,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   void networkUnavailable() {
-    if (_closed || (!initialized && !recovering && notificationChat == null)) {
-      return;
-    }
+    if (_closed) return;
+    // Authoritative and immediate: shown ahead of any reconnect attempt's
+    // own backoff, which can otherwise mask a real outage for up to 31 s.
+    connectionStatus.networkLost();
+    if (!initialized && !recovering && notificationChat == null) return;
     connectionStatus.accessFailed(const SocketException('Network unavailable'));
     for (final resource in _resources.values.where(_needsLiveRecovery)) {
       resource.gateway.disconnect();
       resource.gateway.onConnectionChanged?.call(false);
     }
+  }
+
+  /// The OS reports the device's network is back. Nothing else clears
+  /// [ServerConnectionStatus.networkLost]; call this before asking for a
+  /// reconnect so a stalled attempt restarts promptly instead of waiting out
+  /// its own backoff (see [ProfileWorkspaceRegistry.recoverConnections]).
+  void networkRestored() {
+    if (_closed) return;
+    connectionStatus.networkRestored();
   }
 
   /// Foreground entry also recovers a workspace that never finished loading.
@@ -5294,10 +5305,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat._attachmentPreparations != 0 ||
         chat.busy ||
         chat.queuedPrompts.isEmpty ||
-        chat.offlineSnapshot) {
+        chat.offlineSnapshot ||
+        !connectionStatus.networkAvailable) {
       // The connection isn't up yet; reconnect() drains the queue itself
-      // once it clears offlineSnapshot. Don't mark queuePaused here, that's
-      // a sticky error state, this is only "not connected yet".
+      // once it clears offlineSnapshot, and ProfileWorkspaceRegistry always
+      // marks the network restored before it ever asks for a reconnect, so
+      // a legitimate drain never trips this. Don't mark queuePaused here,
+      // that's a sticky error state, this is only "not connected yet".
       return;
     }
     if (chat.historyError != null ||
@@ -6709,6 +6723,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   void _scheduleReconnect(ProfileWorkspaceData resource) {
     if (_closed || resource.retry != null || resource.reconnecting) {
+      return;
+    }
+    if (!connectionStatus.networkAvailable) {
+      // The device itself has no network (ServerConnectionStatus.networkLost):
+      // a backoff attempt now would only race the authoritative outage signal.
+      // reconnect() (via ProfileWorkspaceRegistry.recoverConnections() or
+      // resumeConnection()) retries explicitly once networkRestored() fires.
       return;
     }
     if (resource.reconnectAttempt >= _maxRecoveryRetries) {

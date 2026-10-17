@@ -181,6 +181,17 @@ void main() {
   );
 
   test(
+    'recoverConnections clears the device network flag before any reconnect attempt',
+    () async {
+      final owner = await registry.forConnection(identityTestConnection());
+      registry.networkUnavailable();
+      expect(owner.connectionStatus.networkAvailable, isFalse);
+      registry.recoverConnections();
+      expect(owner.connectionStatus.networkAvailable, isTrue);
+    },
+  );
+
+  test(
     'closing registry during identity resolution cannot leak a controller',
     () async {
       final pending = registry.forConnection(identityTestConnection());
