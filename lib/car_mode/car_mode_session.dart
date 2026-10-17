@@ -30,6 +30,7 @@ class CarModeSession extends ChangeNotifier {
   final _pulses = <Timer>[];
   bool _active = false;
   bool _held = false;
+  bool _loopOn = false;
   bool _lostSignalled = false;
   Object? _chatKey;
   CarConnection _connection = CarConnection.ok;
@@ -38,6 +39,11 @@ class CarModeSession extends ChangeNotifier {
   Timer? _retry;
 
   bool get active => _active;
+
+  /// The in-session conversation-mode switch (hands-free, automatic end of
+  /// turn). Session-local only; never reads or changes the saved
+  /// [VoicePreferences.conversation].
+  bool get loopOn => _loopOn;
 
   /// A finished recording waits in the chat draft for the connection.
   bool get held => _held;
@@ -50,6 +56,7 @@ class CarModeSession extends ChangeNotifier {
     // Active before the push: the workspace below keeps its focus.
     _active = true;
     _held = false;
+    _loopOn = false;
     _lostSignalled = false;
     _chatKey = snap.chatKey;
     _connection = snap.connection;
@@ -90,6 +97,7 @@ class CarModeSession extends ChangeNotifier {
     if (!_active) return;
     _active = false;
     _held = false;
+    _loopOn = false;
     _retry?.cancel();
     _retry = null;
     for (final pulse in _pulses) {
@@ -214,9 +222,19 @@ class CarModeSession extends ChangeNotifier {
     }
   }
 
-  /// Case 2 (Conversation mode off): rounds end by tap only (spec §4.2).
+  /// Case 2 (loop switch off): rounds end by tap only (spec §4.2). Reads the
+  /// session-local switch, never the saved [VoicePreferences.conversation].
   VoicePreferences roundSettings(VoicePreferences settings) =>
-      _active && !settings.conversation ? carTapOnlySettings(settings) : settings;
+      _active && !_loopOn ? carTapOnlySettings(settings) : settings;
+
+  /// The status-row switch (spec: top row, outside the tap area). Session-
+  /// local only; leaving car mode resets it (see [_end]).
+  void setLoop(bool on) {
+    if (!_active || _loopOn == on) return;
+    _loopOn = on;
+    _log('WingCar loop=${on ? 'on' : 'off'} source=toggle');
+    notifyListeners();
+  }
 
   /// Called by the workspace when a car-mode utterance is delivered.
   void logDelivery(CarDelivery delivery) {
@@ -238,13 +256,7 @@ class CarModeSession extends ChangeNotifier {
     }
   }
 
-  String _loopName() {
-    try {
-      return VoicePreferences.read(bridge.preferences).conversation ? 'on' : 'off';
-    } on FormatException {
-      return 'unknown';
-    }
-  }
+  String _loopName() => _loopOn ? 'on' : 'off';
 
   @override
   void dispose() {

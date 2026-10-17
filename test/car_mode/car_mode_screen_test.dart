@@ -171,6 +171,33 @@ void main() {
     await close(tester);
   });
 
+  testWidgets('the status row carries a Conversation switch that never counts as a tap', (tester) async {
+    await show(tester);
+    final loopSwitch = find.byKey(const ValueKey('car-loop-switch'));
+    expect(loopSwitch, findsOneWidget);
+    expect(tester.widget<Switch>(loopSwitch).value, isFalse);
+    await tester.tap(loopSwitch);
+    await tester.pump();
+    expect(session.loopOn, isTrue);
+    expect(tester.widget<Switch>(loopSwitch).value, isTrue);
+    // Flipping the switch must never be mistaken for a tap on the big button.
+    expect(world.calls, isEmpty);
+    expect(logs, contains('WingCar loop=on source=toggle'));
+    await tester.tap(loopSwitch);
+    await tester.pump();
+    expect(session.loopOn, isFalse);
+    expect(logs, contains('WingCar loop=off source=toggle'));
+    await close(tester);
+  });
+
+  testWidgets('a reachable tap target: the switch is at least 44x44', (tester) async {
+    await show(tester);
+    final rect = tester.getRect(find.byKey(const ValueKey('car-loop-switch')));
+    expect(rect.width, greaterThanOrEqualTo(44));
+    expect(rect.height, greaterThanOrEqualTo(44));
+    await close(tester);
+  });
+
   testWidgets('a swipe exits and never starts a round', (tester) async {
     await show(tester);
     await tester.drag(button(), const Offset(-200, 0));

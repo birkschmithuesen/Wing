@@ -228,13 +228,54 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('roundSettings: tap-only only in car mode with conversation mode off', (tester) async {
+  testWidgets('roundSettings: tap-only while the loop switch is off, no matter the saved setting', (tester) async {
     const off = VoicePreferences();
     const on = VoicePreferences(conversation: true);
     expect(identical(session.roundSettings(off), off), isTrue); // not in car mode
     await open(tester);
     expect(session.roundSettings(off).vad.pause, off.vad.maxDuration);
-    expect(identical(session.roundSettings(on), on), isTrue);
+    // Mutation guard: a saved conversation=on must not leak into the loop.
+    // If roundSettings reads settings.conversation again instead of the
+    // session-local switch, this assertion goes red.
+    expect(session.roundSettings(on).vad.pause, on.vad.maxDuration);
+    session.setLoop(true);
+    expect(identical(session.roundSettings(on), on), isTrue); // loop on: settings pass through
+    session.exit('test');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a saved conversation=on still enters with loop=off (spec: never starts hands-free)', (tester) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(VoicePreferences.conversationKey, 'on');
+    await open(tester);
+    expect(logs.first, 'WingCar enter route=local loop=off');
+    expect(session.loopOn, isFalse);
+    const saved = VoicePreferences(conversation: true);
+    // Tap-only: the vad pause can never end the round before the limit.
+    expect(session.roundSettings(saved).vad.pause, saved.vad.maxDuration);
+    session.exit('test');
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the loop switch only affects the running session and resets on leave', (tester) async {
+    await open(tester);
+    expect(session.loopOn, isFalse);
+    session.setLoop(true);
+    expect(session.loopOn, isTrue);
+    expect(logs.last, 'WingCar loop=on source=toggle');
+    const saved = VoicePreferences();
+    expect(identical(session.roundSettings(saved), saved), isTrue); // loop on: pass through
+    session.setLoop(false);
+    expect(logs.last, 'WingCar loop=off source=toggle');
+    expect(session.roundSettings(saved).vad.pause, saved.vad.maxDuration); // loop off: tap-only again
+    // The saved VoicePreferences.conversation flag never changes.
+    final prefs = await SharedPreferences.getInstance();
+    expect(prefs.getString(VoicePreferences.conversationKey), isNull);
+    session.exit('test');
+    await tester.pumpAndSettle();
+    await open(tester); // re-enter: back to off
+    expect(session.loopOn, isFalse);
+    expect(logs.last, 'WingCar enter route=local loop=off');
     session.exit('test');
     await tester.pumpAndSettle();
   });

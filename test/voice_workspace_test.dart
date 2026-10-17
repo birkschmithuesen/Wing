@@ -1125,6 +1125,12 @@ void main() {
     await settle(tester);
   }
 
+  // The status-row switch for the running car-mode session only (t_ce610125).
+  Future<void> toggleCarLoop(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('car-loop-switch')));
+    await tester.pump();
+  }
+
   Future<void> swipeOut(WidgetTester tester) async {
     await tester.drag(carButton(), const Offset(-250, 0));
     await settle(tester);
@@ -1362,8 +1368,8 @@ void main() {
     expect(device.keepScreenOnCalls.last, isFalse);
   });
 
-  testWidgets('car mode case 1: the loop runs; a tap while listening sends at once', (tester) async {
-    await conversationMode(true); // local route (default)
+  testWidgets('car mode: the loop switch, once turned on, reopens the microphone after the answer', (tester) async {
+    await conversationMode(true); // saved preference; car mode ignores it and starts with the loop off (t_ce610125)
     await show(tester);
     await openCarMode(tester);
     await tapCar(tester);
@@ -1375,8 +1381,22 @@ void main() {
     expect(prompts(), 1);
     await completeReply(tester, 'Answer.');
     expect(device.spoken, 'Answer.');
-    expect(starts(), 2); // the saved loop reopened the microphone
+    expect(starts(), 1, reason: 'the loop switch starts off; the saved preference is ignored');
+    expect(find.text('Tap to talk'), findsOneWidget);
+
+    await toggleCarLoop(tester); // flips the session-local switch on
+    await tapCar(tester);
+    expect(starts(), 2);
+    final id2 = device.recording;
+    await tapCar(tester); // end of speech not detected: the tap sends now
+    device.stream.add({'id': id2, 'text': 'Question two', 'final': true});
+    await settle(tester);
+    expect(prompts(), 2);
+    await completeReply(tester, 'Answer two.');
+    expect(device.spoken, 'Answer two.');
+    expect(starts(), 3, reason: 'the loop switch, once on, reopened the microphone');
     expect(find.text('Listening'), findsOneWidget);
+
     await swipeOut(tester);
     expect(device.recording, isNull);
   });
