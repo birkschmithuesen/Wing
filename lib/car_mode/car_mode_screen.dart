@@ -339,7 +339,7 @@ class _LoopSwitch extends StatelessWidget {
     child: Switch(
       key: const ValueKey('car-loop-switch'),
       value: session.loopOn,
-      activeColor: colors.label,
+      activeThumbColor: colors.label,
       onChanged: session.setLoop,
     ),
   );
