@@ -184,6 +184,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
         ),
       ),
     );
+    final loopSwitch = _LoopSwitch(session: widget.session, colors: colors);
     if (landscape) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -197,6 +198,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
                 Expanded(child: statusLine),
                 const SizedBox(width: 16),
                 ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: title),
+                loopSwitch,
               ],
             ),
           ),
@@ -210,7 +212,9 @@ class _CarModeScreenState extends State<CarModeScreen> {
       children: [
         SizedBox(
           height: 56,
-          child: Row(children: [badge, const SizedBox(width: 12), Expanded(child: title)]),
+          child: Row(
+            children: [badge, const SizedBox(width: 12), Expanded(child: title), loopSwitch],
+          ),
         ),
         const SizedBox(height: 28),
         SizedBox(height: 48, child: statusLine),
@@ -318,6 +322,27 @@ class _Badge extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Session-local conversation-mode switch, docked at the status row's edge
+/// so a normal tap on the big button never reaches it (spec §4). Its own
+/// gesture recognizer wins the arena before the big GestureDetector's.
+class _LoopSwitch extends StatelessWidget {
+  const _LoopSwitch({required this.session, required this.colors});
+  final CarModeSession session;
+  final CarColors colors;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Conversation mode for this session',
+    toggled: session.loopOn,
+    child: Switch(
+      key: const ValueKey('car-loop-switch'),
+      value: session.loopOn,
+      activeColor: colors.label,
+      onChanged: session.setLoop,
+    ),
+  );
 }
 
 /// "Microphone is live" ring; exists only while listening. Static with

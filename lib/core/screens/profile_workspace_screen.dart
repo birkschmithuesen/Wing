@@ -310,7 +310,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       return;
     }
     final settings = VoicePreferences.read(controller.preferences);
-    if (!settings.conversation) _conversation = null;
+    // Car mode's own loop switch overrides the saved setting while active.
+    final conversationLoopOn = _car.active ? _car.loopOn : settings.conversation;
+    if (!conversationLoopOn) _conversation = null;
     if (!(settings.autoSpeak || settings.conversation || _car.active) ||
         _voiceInput.active) {
       return;
@@ -390,7 +392,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         !_voiceInput.active &&
         _voiceOutput.owner == null &&
         _autoSpeakQueue.isEmpty &&
-        VoicePreferences.read(controller.preferences).conversation;
+        (_car.active
+            ? _car.loopOn
+            : VoicePreferences.read(controller.preferences).conversation);
     if (!ok) _conversation = null;
     return ok;
   }

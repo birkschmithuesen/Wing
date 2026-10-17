@@ -1125,6 +1125,12 @@ void main() {
     await settle(tester);
   }
 
+  // The status-row switch for the running car-mode session only (t_ce610125).
+  Future<void> toggleCarLoop(WidgetTester tester) async {
+    await tester.tap(find.byKey(const ValueKey('car-loop-switch')));
+    await tester.pump();
+  }
+
   Future<void> swipeOut(WidgetTester tester) async {
     await tester.drag(carButton(), const Offset(-250, 0));
     await settle(tester);
