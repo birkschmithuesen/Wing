@@ -383,12 +383,15 @@ void main() {
       fixture.promptSubmitFailures = 1;
       await tester.runAsync(() => controller.reconnect(chat.key.workspace));
       await settle(tester);
-      // Old (buggy) behavior: chat.status flips to failed, which ends the
-      // hands-free conversation (_voiceWorkspaceChanged) and sticks the
-      // queue paused for good.
-      expect(chat.queuePaused, isFalse);
+      // The flaky send leaves an uncertain ack, same as the non-conversation
+      // case: it pauses rather than guessing. Crucially chat.status stays
+      // "reconnecting", not "failed" - the conversation keeps running.
+      expect(chat.queuePaused, isTrue);
       expect(chat.queuedPrompts, isNotEmpty);
       expect(prompts(), 1);
+      // Old (buggy) behavior: nothing short of a manual resume (not
+      // available in conversation mode) ever drains this again, and the
+      // conversation already ended when chat.status flipped to failed.
       await tester.runAsync(() => controller.reconnect(chat.key.workspace));
       await settle(tester);
       expect(chat.queuedPrompts, isEmpty);

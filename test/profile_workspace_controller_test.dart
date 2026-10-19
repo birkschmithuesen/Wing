@@ -2105,7 +2105,7 @@ void main() {
   );
 
   test(
-    'a flaky send right after reconnect retries with backoff instead of sticking the queue paused',
+    'a flaky send right after reconnect resolves on the next reconnect instead of sticking forever',
     () async {
       final chat = await controller.createChat();
       await controller.updateDraft(chat, 'first');
@@ -2123,14 +2123,15 @@ void main() {
       controller.networkRestored();
       await controller.reconnect(chat.key.workspace);
 
-      // Old (buggy) behavior: the first failed send pauses the queue for
-      // good, and nothing short of a manual resume ever sends either prompt.
-      expect(chat.queuePaused, isFalse);
+      // The flaky send leaves an uncertain ack, same as before: it pauses
+      // the queue rather than guessing whether the server already has it.
+      expect(chat.queuePaused, isTrue);
+      expect(chat.draftSubmissionUncertain, isTrue);
       expect(chat.queuedPrompts.map((p) => p.text), ['first', 'second']);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
 
-      // The scheduled retry (backoff) firing again, simulated here by a
-      // second reconnect once the connection has actually settled.
+      // Old (buggy) behavior: nothing short of a manual resume ever drains
+      // this again. The next reconnect must resolve it by itself instead.
       await controller.reconnect(chat.key.workspace);
 
       expect(chat.queuedPrompts, isEmpty);
@@ -2153,7 +2154,7 @@ void main() {
 
       expect(chat.queuedPrompts.map((p) => p.text), ['Already there']);
       expect(chat.draftSubmissionUncertain, isTrue);
-      expect(chat.queuePaused, isFalse);
+      expect(chat.queuePaused, isTrue);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
 
       // The server actually received the first attempt; only the ack was lost.
