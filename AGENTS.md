@@ -38,3 +38,15 @@ and critique process within Studio's established visual language.
    size, then enlarged text in both themes. Check hierarchy and density as well
    as selection, loading, errors and action reachability. Revise what looks or
    feels wrong; passing widget tests alone does not establish design quality.
+
+# Fork changelog
+
+This repo is the fork `birkschmithuesen/Wing`, tracked separately from
+upstream `tarkilhk/Wing` in [`CHANGELOG.fork.md`](CHANGELOG.fork.md) and the
+"Wing Voice (fork)" block at the top of [`README.md`](README.md).
+
+Every feat/fix change on `voice-offline` must, in the same commit, add an
+entry to `CHANGELOG.fork.md` (What, Why, merge commit hash, card number) and,
+if it is a new user-visible feature, a line in the README feature list
+linking to its docs file. This is checked at review/merge time; a card
+without both is not done.
