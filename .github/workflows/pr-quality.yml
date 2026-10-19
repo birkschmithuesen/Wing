@@ -2,6 +2,11 @@ name: PR Quality Checks
 
 on:
   workflow_dispatch:
+    inputs:
+      tests:
+        description: Test path(s) for flutter test (default the whole suite)
+        type: string
+        default: 'test/'
   pull_request:
     branches: [main]
   push:
@@ -60,7 +65,7 @@ jobs:
         id: test
         continue-on-error: true
         run: |
-          flutter test --no-pub --reporter=expanded test/ 2>&1 | tee test_output.txt
+          flutter test --no-pub --reporter=expanded ${{ inputs.tests || 'test/' }} 2>&1 | tee test_output.txt
           exit ${PIPESTATUS[0]}
 
       # ── Step 3: Summary & failure report ─────────────────

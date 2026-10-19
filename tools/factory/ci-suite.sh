@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Full Wing suite (flutter analyze + flutter test) on GitHub Actions.
+# Wing suite (flutter analyze + flutter test [path]) on GitHub Actions.
 # The vServer has no Flutter SDK (egress blocks Google storage), so the
 # factory's test command pushes HEAD to a throwaway ci/<sha> branch, dispatches
 # pr-quality.yml there and waits for its result. Exit code = suite result.
@@ -9,7 +9,11 @@ sha=$(git rev-parse HEAD)
 br="ci/${sha:0:12}"
 git push -q -f origin "HEAD:refs/heads/$br"
 trap 'git push -q origin --delete "$br" >/dev/null 2>&1 || true' EXIT
-gh workflow run pr-quality.yml -R "$repo" --ref "$br" >/dev/null
+if [ $# -gt 0 ]; then
+  gh workflow run pr-quality.yml -R "$repo" --ref "$br" -f tests="$*" >/dev/null
+else
+  gh workflow run pr-quality.yml -R "$repo" --ref "$br" >/dev/null
+fi
 id=""
 for _ in $(seq 1 30); do
   id=$(gh run list -R "$repo" --workflow pr-quality.yml --branch "$br" \
