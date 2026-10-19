@@ -169,6 +169,7 @@ class TurnListener extends ChangeNotifier {
     final gate = _gate;
     if (!decision.hasSpeech) {
       bargeLog('listen restart reason=${decision.reason.name}');
+      if (barged) bargeLog('falseTrigger=1');
       await _replace(id, playback: gate != null);
       return;
     }
@@ -203,6 +204,8 @@ class TurnListener extends ChangeNotifier {
       'utterance segmentMs=${decision.segment.inMilliseconds} '
       'textLen=${text.trim().length}',
     );
+    // Echo misfire: the gate fired but nothing sendable followed it.
+    if (barged && !isSendableTranscript(text)) bargeLog('falseTrigger=1');
     await _startRound(playback: false);
     utteranceBarged = barged;
     try {

@@ -51,9 +51,23 @@ const _headphoneClasses = {0x0404, 0x0418}; // WEARABLE_HEADSET, HEADPHONES
 /// Spec §3.4.1 (D2): voice barge-in into read-aloud only with headphones.
 /// Conservative: a car kit, a hands-free unit or an unreadable Bluetooth
 /// class is not headphones, and car mode always closes the gate.
-RouteVerdict classifyRoute(OutputRoute route, {required bool wingCarMode}) {
+///
+/// [bargeInOverride] is the session-local "Interrupt by speaking" switch on
+/// the Wing car mode screen (CarModeSession.bargeInOn): while on, it lifts
+/// the Wing car mode lock for the running session only, even over a route
+/// that is not headphones at all (a car speaker). It never touches
+/// [OutputRoute.androidCarMode], a separate, device-level signal.
+RouteVerdict classifyRoute(
+  OutputRoute route, {
+  required bool wingCarMode,
+  bool bargeInOverride = false,
+}) {
   if (!route.supported) return (headphones: false, reason: 'unsupported');
-  if (wingCarMode) return (headphones: false, reason: 'carMode');
+  if (wingCarMode) {
+    return bargeInOverride
+        ? (headphones: true, reason: 'carModeOverride')
+        : (headphones: false, reason: 'carMode');
+  }
   if (route.androidCarMode) {
     return (headphones: false, reason: 'androidCarMode');
   }
@@ -153,14 +167,20 @@ class AndroidHeadphoneRouteHost implements HeadphoneRouteHost {
 /// Cached headphone verdict: the playback decision in the workspace screen
 /// is synchronous. Logs one `route` line whenever the inputs change.
 class HeadphoneRoute extends ChangeNotifier {
-  HeadphoneRoute(this.host, {required bool Function() wingCarMode})
-    // ignore: prefer_initializing_formals
-    : _wingCarMode = wingCarMode {
+  HeadphoneRoute(
+    this.host, {
+    required bool Function() wingCarMode,
+    bool Function() bargeInOverride = _never,
+  }) : _wingCarMode = wingCarMode,
+       _bargeInOverride = bargeInOverride {
     _changes = host.changes.listen(_apply);
   }
 
+  static bool _never() => false;
+
   final HeadphoneRouteHost host;
   final bool Function() _wingCarMode;
+  final bool Function() _bargeInOverride;
   late final StreamSubscription<OutputRoute> _changes;
   OutputRoute _route = OutputRoute.unknown;
   bool _headphones = false;
@@ -175,18 +195,33 @@ class HeadphoneRoute extends ChangeNotifier {
   /// [headphones], which also counts Bluetooth headphones.
   bool get wired => _reason == 'wired';
 
+  /// True when the session-local "Interrupt by speaking" switch lifted the
+  /// Wing car mode lock for this route check (CarModeSession.bargeInOn).
+  bool get carModeOverridden => _reason == 'carModeOverride';
+
+  /// The last computed `route ...` line (no I/O): for logging context
+  /// around a barge-in trigger, in addition to the dedup'd log this class
+  /// already writes on every route change.
+  String get logLine =>
+      routeLogLine(_route, (headphones: _headphones, reason: _reason));
+
   Future<bool> refresh() async {
     _apply(await host.current());
     return _headphones;
   }
 
-  /// Wing car mode switched on or off; re-evaluate the last route.
+  /// Wing car mode, or the "Interrupt by speaking" switch, changed; re-
+  /// evaluate the last route.
   void carModeChanged() => _apply(_route);
 
   void _apply(OutputRoute route) {
     if (_disposed) return;
     _route = route;
-    final verdict = classifyRoute(route, wingCarMode: _wingCarMode());
+    final verdict = classifyRoute(
+      route,
+      wingCarMode: _wingCarMode(),
+      bargeInOverride: _bargeInOverride(),
+    );
     final line = routeLogLine(route, verdict);
     if (line != _logged) {
       _logged = line;

@@ -31,6 +31,7 @@ class CarModeSession extends ChangeNotifier {
   bool _active = false;
   bool _held = false;
   bool _loopOn = false;
+  bool _bargeInOn = false;
   bool _lostSignalled = false;
   Object? _chatKey;
   CarConnection _connection = CarConnection.ok;
@@ -45,6 +46,12 @@ class CarModeSession extends ChangeNotifier {
   /// [VoicePreferences.conversation].
   bool get loopOn => _loopOn;
 
+  /// The in-session "Interrupt by speaking" switch. Session-local only;
+  /// while on, it lifts the Wing car mode barge-in lock for this session
+  /// (see classifyRoute's bargeInOverride and HeadphoneRoute.bargeInOverride
+  /// in headphone_route.dart). The echo gate (PlaybackGate) stays unchanged.
+  bool get bargeInOn => _bargeInOn;
+
   /// A finished recording waits in the chat draft for the connection.
   bool get held => _held;
   CarSnapshot get snapshot => bridge.read();
@@ -57,6 +64,7 @@ class CarModeSession extends ChangeNotifier {
     _active = true;
     _held = false;
     _loopOn = false;
+    _bargeInOn = false;
     _lostSignalled = false;
     _chatKey = snap.chatKey;
     _connection = snap.connection;
@@ -98,6 +106,7 @@ class CarModeSession extends ChangeNotifier {
     _active = false;
     _held = false;
     _loopOn = false;
+    _bargeInOn = false;
     _retry?.cancel();
     _retry = null;
     for (final pulse in _pulses) {
@@ -233,6 +242,17 @@ class CarModeSession extends ChangeNotifier {
     if (!_active || _loopOn == on) return;
     _loopOn = on;
     _log('WingCar loop=${on ? 'on' : 'off'} source=toggle');
+    notifyListeners();
+  }
+
+  /// The second status-row switch, next to the conversation-mode switch.
+  /// Session-local only; leaving car mode resets it (see [_end]). The
+  /// workspace screen reads [bargeInOn] to lift the carMode barge-in lock
+  /// for the running session (classifyRoute's bargeInOverride).
+  void setBargeIn(bool on) {
+    if (!_active || _bargeInOn == on) return;
+    _bargeInOn = on;
+    _log('WingCar bargeIn=${on ? 'on' : 'off'} source=toggle');
     notifyListeners();
   }
 
