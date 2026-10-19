@@ -1,3 +1,21 @@
+## Wing Voice (fork)
+
+This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/tarkilhk/Wing) (app id `com.tarkilhk.wing.voice`) that adds fully offline, hands-free voice interaction on top of upstream Wing.
+
+- [Offline speech input (Silero VAD + Parakeet)](docs/VOICE.md)
+- [Conversation mode](docs/VOICE.md)
+- [Conversation mode with the screen off](docs/VOICE.md)
+- [Auto mode (full-screen talk button for driving)](docs/CAR_MODE.md)
+- [Barge-in and steering while Hermes works and while being read to](docs/VOICE_BARGE_IN.md)
+- [German/English read-aloud per sentence](docs/VOICE_LANGUAGE.md)
+- [Read-aloud queue](CHANGELOG.fork.md#read-aloud-queue-a-new-reply-waits-its-turn)
+- [Bluetooth and car microphone](docs/VAD_INPUT.md#microphone-route)
+- [Offline behaviour](docs/CAR_MODE.md)
+
+All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
+
+---
+
 <p align="center">
   <img src="docs/design/images/wing-readme-hero-tagline.png" alt="Wing — Your agent, with you" width="1000">
 </p>
