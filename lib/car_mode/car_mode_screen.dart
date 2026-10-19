@@ -180,7 +180,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
         // Enlarged text scales down instead of overflowing the button.
         child: FittedBox(
           fit: BoxFit.scaleDown,
-          child: _centre(phase, colors, text, landscape, box.maxWidth),
+          child: _centre(phase, snap, colors, text, landscape, box.maxWidth),
         ),
       ),
     );
@@ -234,7 +234,14 @@ class _CarModeScreenState extends State<CarModeScreen> {
     ),
   );
 
-  Widget _centre(CarPhase phase, CarColors colors, CarText text, bool landscape, double maxWidth) {
+  Widget _centre(
+    CarPhase phase,
+    CarSnapshot snap,
+    CarColors colors,
+    CarText text,
+    bool landscape,
+    double maxWidth,
+  ) {
     final iconSize = landscape ? 112.0 : 120.0;
     final icon = SizedBox.square(
       dimension: iconSize,
@@ -242,6 +249,10 @@ class _CarModeScreenState extends State<CarModeScreen> {
         alignment: Alignment.center,
         children: [
           if (phase == CarPhase.listening) _Pulse(color: colors.label),
+          // A barge-in listen round while thinking: calm until speech starts,
+          // this is shown while driving (spec: not grabby).
+          if (phase == CarPhase.thinking && snap.listenOpen)
+            _Pulse(color: colors.label, calm: !snap.speechInProgress),
           Icon(carIconFor(phase), size: iconSize * .8, color: colors.label),
         ],
       ),
@@ -348,8 +359,12 @@ class _LoopSwitch extends StatelessWidget {
 /// "Microphone is live" ring; exists only while listening. Static with
 /// reduced motion.
 class _Pulse extends StatefulWidget {
-  const _Pulse({required this.color});
+  const _Pulse({required this.color, this.calm = false});
   final Color color;
+
+  /// Thinner, lower-contrast ring for passive listening while thinking
+  /// (before any speech starts); not grabby while driving.
+  final bool calm;
 
   @override
   State<_Pulse> createState() => _PulseState();
@@ -384,12 +399,14 @@ class _PulseState extends State<_Pulse> with SingleTickerProviderStateMixin {
     animation: _controller,
     builder: (context, _) {
       final t = _controller.value;
+      final width = widget.calm ? 3.0 : 6.0;
+      final maxAlpha = widget.calm ? .32 : .55;
       return Transform.scale(
         scale: .7 + .55 * t,
         child: DecoratedBox(
           decoration: BoxDecoration(
             shape: BoxShape.circle,
-            border: Border.all(color: widget.color.withValues(alpha: .55 * (1 - t)), width: 6),
+            border: Border.all(color: widget.color.withValues(alpha: maxAlpha * (1 - t)), width: width),
           ),
           child: const SizedBox.expand(),
         ),

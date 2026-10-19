@@ -19,12 +19,16 @@ class CarModeSession extends ChangeNotifier {
     void Function(String line)? log,
     this.retryEvery = const Duration(seconds: 20),
     this.signalGap = const Duration(milliseconds: 250),
+    this.deliveryFor = const Duration(seconds: 3),
   }) : _log = log ?? debugPrint;
 
   final VoiceDevice device;
   final CarModeBridge bridge;
   final Duration retryEvery;
   final Duration signalGap;
+
+  /// How long the "added to the running turn" confirmation stays up.
+  final Duration deliveryFor;
   final void Function(String line) _log;
   final _gate = CarTapGate();
   final _pulses = <Timer>[];
@@ -37,6 +41,8 @@ class CarModeSession extends ChangeNotifier {
   NavigatorState? _navigator;
   Route<void>? _route;
   Timer? _retry;
+  CarDelivery? _delivery;
+  Timer? _deliveryTimer;
 
   bool get active => _active;
 
@@ -47,7 +53,11 @@ class CarModeSession extends ChangeNotifier {
 
   /// A finished recording waits in the chat draft for the connection.
   bool get held => _held;
-  CarSnapshot get snapshot => bridge.read();
+  CarSnapshot get snapshot {
+    final snap = bridge.read();
+    return _delivery == null ? snap : snap.withDelivery(_delivery);
+  }
+
   CarPhase get phase => carPhaseOf(snapshot, held: _held);
 
   Future<void> enter(BuildContext context) async {
@@ -100,6 +110,9 @@ class CarModeSession extends ChangeNotifier {
     _loopOn = false;
     _retry?.cancel();
     _retry = null;
+    _deliveryTimer?.cancel();
+    _deliveryTimer = null;
+    _delivery = null;
     for (final pulse in _pulses) {
       pulse.cancel();
     }
@@ -236,9 +249,20 @@ class CarModeSession extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Called by the workspace when a car-mode utterance is delivered.
+  /// Called by the workspace when a car-mode utterance is delivered. A steer
+  /// or queue was added to the running turn: show the confirmation for
+  /// [deliveryFor], then fall back to whichever hint currently applies.
   void logDelivery(CarDelivery delivery) {
-    if (_active) _log('WingCar deliver kind=${delivery.name}');
+    if (!_active) return;
+    _log('WingCar deliver kind=${delivery.name}');
+    if (delivery != CarDelivery.steer && delivery != CarDelivery.queue) return;
+    _delivery = delivery;
+    _deliveryTimer?.cancel();
+    _deliveryTimer = Timer(deliveryFor, () {
+      _delivery = null;
+      notifyListeners();
+    });
+    notifyListeners();
   }
 
   /// The screen reports a finished horizontal drag (spec §4.8).

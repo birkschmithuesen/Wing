@@ -56,6 +56,25 @@ void main() {
     expect(carTextFor(CarPhase.waiting, idle).hint, 'Sends when back online');
   });
 
+  test('thinking hint: delivery confirmation > speech in progress > listen open > default', () {
+    const base = CarSnapshot(chatKey: 'c', working: true);
+    expect(carTextFor(CarPhase.thinking, base).hint, 'Tap to add something');
+    const listening = CarSnapshot(chatKey: 'c', working: true, listenOpen: true);
+    expect(carTextFor(CarPhase.thinking, listening).hint, 'Listening - just talk');
+    const hearing = CarSnapshot(chatKey: 'c', working: true, listenOpen: true, speechInProgress: true);
+    expect(carTextFor(CarPhase.thinking, hearing).hint, 'Hearing you...');
+    const delivered = CarSnapshot(
+      chatKey: 'c',
+      working: true,
+      listenOpen: true,
+      speechInProgress: true,
+      delivery: CarDelivery.steer,
+    );
+    expect(carTextFor(CarPhase.thinking, delivered).hint, contains('Added to the running turn'));
+    // The label never changes while thinking, only the hint.
+    expect(carTextFor(CarPhase.thinking, delivered).label, 'Hermes is working');
+  });
+
   test('status line: kind or tool name only, generic Working left to the thinking label', () {
     const terminal = CarSnapshot(chatKey: 'c', working: true, activity: 'Terminal');
     const working = CarSnapshot(chatKey: 'c', working: true, activity: carWorking);

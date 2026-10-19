@@ -212,8 +212,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   late final _car = CarModeSession(
     device: _voiceDevice,
     bridge: CarModeBridge(
-      changes: Listenable.merge([controller, controller.connectionStatus, _voiceInput, _voiceOutput]),
-      read: () => carSnapshotOf(controller, _voiceInput, _voiceOutput),
+      changes: Listenable.merge([
+        controller,
+        controller.connectionStatus,
+        _voiceInput,
+        _voiceOutput,
+        _bargeIn,
+      ]),
+      read: () => carSnapshotOf(controller, _voiceInput, _voiceOutput, bargeIn: _bargeIn),
       preferences: controller.preferences,
       talk: () async {
         final chat = controller.notificationChat ?? controller.current?.chat;

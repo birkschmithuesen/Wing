@@ -239,6 +239,49 @@ void main() {
     expect(world.calls, ['leave']);
   });
 
+  testWidgets(
+    'thinking + an open listen round shows "Listening - just talk"; speech strengthens it to '
+    '"Hearing you..."; a delivered steer confirms, then reverts after its timeout',
+    (tester) async {
+      world.snapshot = const CarSnapshot(
+        chatKey: 'chat',
+        title: 'Weekend trip',
+        working: true,
+        listenOpen: true,
+      );
+      await show(tester);
+      expect(find.text('Listening - just talk'), findsOneWidget);
+
+      world.set(const CarSnapshot(
+        chatKey: 'chat',
+        title: 'Weekend trip',
+        working: true,
+        listenOpen: true,
+        speechInProgress: true,
+      ));
+      await tester.pump();
+      expect(find.text('Hearing you...'), findsOneWidget);
+
+      session.logDelivery(CarDelivery.steer);
+      await tester.pump();
+      expect(find.textContaining('Added to the running turn'), findsOneWidget);
+      expect(find.text('Hearing you...'), findsNothing);
+
+      await tester.pump(const Duration(milliseconds: 3100));
+      expect(find.text('Hearing you...'), findsOneWidget);
+      expect(find.textContaining('Added to the running turn'), findsNothing);
+
+      await close(tester);
+    },
+  );
+
+  testWidgets('conversation mode off leaves the thinking hint unchanged', (tester) async {
+    world.snapshot = const CarSnapshot(chatKey: 'chat', title: 'Weekend trip', working: true);
+    await show(tester);
+    expect(find.text('Tap to add something'), findsOneWidget);
+    await close(tester);
+  });
+
   testWidgets('the swipe hint shows for 6 s, the title stays', (tester) async {
     await show(tester);
     expect(find.byKey(const ValueKey('car-swipe-hint')), findsOneWidget);
