@@ -64,8 +64,8 @@ RouteVerdict classifyRoute(OutputRoute route, {required bool wingCarMode}) {
       return (
         headphones: false,
         reason: route.bluetoothAllowed
-            ? 'bluetoothClassUnknown'
-            : 'bluetoothNoPermission',
+            ? 'bluetoothNoPermission'
+            : 'bluetoothClassUnknown',
       );
     }
     return _headphoneClasses.contains(deviceClass)
