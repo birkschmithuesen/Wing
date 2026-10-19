@@ -365,6 +365,45 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a flaky send right after reconnect does not end the conversation; the mic reopens once it drains',
+    (tester) async {
+      await conversationMode(true);
+      await show(tester);
+      final chat = controller.current!.chat!;
+      chat.offlineSnapshot = true;
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Queue me please');
+      expect(prompts(), 0);
+      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
+      chat.offlineSnapshot = false;
+      // Card t_8c76c35a observation 2026-10-19: the connection is still
+      // flaky right after reconnect; the first drain attempt hits that.
+      fixture.promptSubmitFailures = 1;
+      await tester.runAsync(() => controller.reconnect(chat.key.workspace));
+      await settle(tester);
+      // The flaky send leaves an uncertain ack, same as the non-conversation
+      // case: it pauses rather than guessing. Crucially chat.status stays
+      // "reconnecting", not "failed" - the conversation keeps running.
+      expect(chat.queuePaused, isTrue);
+      expect(chat.queuedPrompts, isNotEmpty);
+      expect(prompts(), 1);
+      // Old (buggy) behavior: nothing short of a manual resume (not
+      // available in conversation mode) ever drains this again, and the
+      // conversation already ended when chat.status flipped to failed.
+      await tester.runAsync(() => controller.reconnect(chat.key.workspace));
+      await settle(tester);
+      expect(chat.queuedPrompts, isEmpty);
+      expect(prompts(), 2);
+      await completeReply(tester, 'Queued answer.');
+      expect(device.spoken, 'Queued answer.');
+      expect(starts(), 2, reason: 'the mic reopened after the queued reply');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
   testWidgets('without conversation mode a final dictation is never sent', (
     tester,
   ) async {

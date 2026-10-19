@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profiles_repository.dart';
+import 'package:wing/core/services/ws_client.dart';
 
 /// Authored UI data, never used by the production application or a live server.
 class ProfileBrowserFixture {
@@ -16,6 +17,7 @@ class ProfileBrowserFixture {
   bool failHistory = false;
   String? historySessionIdOverride;
   bool failSearch = false;
+  int promptSubmitFailures = 0;
   Map<String, dynamic> steerResult = {'status': 'queued'};
   final historyDelays = <(String, int), Completer<void>>{};
   final searchDelays = <String, Completer<void>>{};
@@ -248,6 +250,10 @@ class ProfileBrowserFixture {
         };
       }
       if (method == 'session.steer') return steerResult;
+      if (method == 'prompt.submit' && promptSubmitFailures > 0) {
+        promptSubmitFailures--;
+        throw JsonRpcError(method, 'Connection closed', reason: 'connection_closed');
+      }
       return {};
     },
   );

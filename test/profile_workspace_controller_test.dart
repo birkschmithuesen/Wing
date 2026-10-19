@@ -52,6 +52,7 @@ class Host {
   List<String> profiles = ['a', 'b'];
   bool running = true;
   bool promptSubmitFails = false;
+  int promptSubmitFailures = 0;
   bool fileAttachFails = false;
   Map<String, dynamic> imageAttachResult = {
     'attached': true,
@@ -164,6 +165,14 @@ class Host {
         }
         if (method == 'prompt.submit' && promptSubmitFails) {
           throw TimeoutException('Prompt acknowledgement was lost');
+        }
+        if (method == 'prompt.submit' && promptSubmitFailures > 0) {
+          promptSubmitFailures--;
+          throw JsonRpcError(
+            method,
+            'Connection closed',
+            reason: 'connection_closed',
+          );
         }
         if (method == 'approval.pending') {
           final pending = pendingApprovals
@@ -2092,6 +2101,96 @@ void main() {
         controller.connectionStatus.phase,
         ServerConnectionPhase.connected,
       );
+    },
+  );
+
+  test(
+    'a flaky send right after reconnect resolves on the next reconnect instead of sticking forever',
+    () async {
+      final chat = await controller.createChat();
+      await controller.updateDraft(chat, 'first');
+      controller.networkUnavailable();
+      await controller.queuePrompt(chat, chat.draft);
+      await controller.updateDraft(chat, 'second');
+      await controller.queuePrompt(chat, chat.draft);
+      expect(chat.queuedPrompts.map((p) => p.text), ['first', 'second']);
+
+      host.running = false;
+      // Card t_8c76c35a observation 2026-10-19: dozens of ws reconnects each
+      // 1005 right after the phone regains signal. The first drain attempt
+      // after reconnect still hits that flaky window.
+      host.promptSubmitFailures = 1;
+      controller.networkRestored();
+      await controller.reconnect(chat.key.workspace);
+
+      // The flaky send leaves an uncertain ack, same as before: it pauses
+      // the queue rather than guessing whether the server already has it.
+      expect(chat.queuePaused, isTrue);
+      expect(chat.draftSubmissionUncertain, isTrue);
+      expect(chat.queuedPrompts.map((p) => p.text), ['first', 'second']);
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
+
+      // Old (buggy) behavior: nothing short of a manual resume ever drains
+      // this again. The next reconnect must resolve it by itself instead.
+      await controller.reconnect(chat.key.workspace);
+
+      // "first" was never actually delivered, so it's resent; "second"
+      // waits its turn until that resend's own turn finishes.
+      expect(chat.queuePaused, isFalse);
+      expect(chat.queuedPrompts.map((p) => p.text), ['second']);
+      expect(
+        host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
+        ['first', 'first'],
+      );
+
+      final drained = Completer<void>();
+      void observeDrain() {
+        if (chat.queuedPrompts.isEmpty && !drained.isCompleted) {
+          drained.complete();
+        }
+      }
+
+      controller.addListener(observeDrain);
+      host.event('a', 'message.complete');
+      await drained.future;
+      controller.removeListener(observeDrain);
+
+      expect(chat.queuePaused, isFalse);
+      expect(
+        host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
+        ['first', 'first', 'second'],
+      );
+    },
+  );
+
+  test(
+    'an uncertain delivery whose head already reached the server is dropped, not resent',
+    () async {
+      final chat = await controller.createChat();
+      await controller.updateDraft(chat, 'Already there');
+      host.promptSubmitFails = true;
+
+      await controller.queuePrompt(chat, chat.draft);
+
+      expect(chat.queuedPrompts.map((p) => p.text), ['Already there']);
+      expect(chat.draftSubmissionUncertain, isTrue);
+      expect(chat.queuePaused, isTrue);
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
+
+      // The server actually received the first attempt; only the ack was lost.
+      host.promptSubmitFails = false;
+      host.historyMessages = [
+        {'id': 1, 'role': 'user', 'content': 'Already there'},
+        {'id': 2, 'role': 'assistant', 'content': 'Got it.'},
+      ];
+      host.running = false;
+      await controller.reconnect(chat.key.workspace);
+
+      expect(chat.queuedPrompts, isEmpty);
+      expect(chat.queuePaused, isFalse);
+      expect(chat.draftSubmissionUncertain, isFalse);
+      // No second prompt.submit call: the head was recognized as delivered.
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
     },
   );
 
