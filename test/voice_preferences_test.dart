@@ -288,6 +288,31 @@ void main() {
     ]));
   });
 
+  test('mic route: defaults to automatic, persists and rejects unknown values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.auto);
+    expect(VoicePreferences.keys, contains(VoicePreferences.micRouteKey));
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'auto'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'phone'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'bluetooth'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'wired'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'usb'), isFalse);
+    await saveDevicePreference(prefs, VoicePreferences.micRouteKey, 'bluetooth');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.bluetooth);
+    await saveDevicePreference(prefs, VoicePreferences.micRouteKey, 'wired');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.wired);
+  });
+
+  test('an unknown stored mic route falls back to automatic', () async {
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.micRouteKey: 'usb',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.auto);
+  });
+
   Future<void> show(
     WidgetTester tester,
     SharedPreferences prefs,

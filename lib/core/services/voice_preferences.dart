@@ -11,6 +11,13 @@ enum VoiceInputRoute { local, hermes, vad }
 /// communication = platform noise/echo processing; recognition = raw-ish.
 enum VadAudioSource { communication, recognition }
 
+/// Which microphone a vad round (dictation and the conversation loop's
+/// re-opened rounds) records through. [auto] keeps HeadsetMicRoute's existing
+/// rule: a connected headset's mic if there is one, else the phone. A manual
+/// choice that is not currently available falls back to [auto] on the native
+/// side and is reported once so the UI can show a hint (spec 2026-10-18).
+enum VoiceMicRoute { auto, phone, bluetooth, wired }
+
 /// Device-owned choices. Hermes voice/provider configuration stays on its profile.
 class VoicePreferences {
   static const inputKey = 'voice.input';
@@ -31,6 +38,7 @@ class VoicePreferences {
   static const listenTurnKey = 'voice.listen_turn';
   static const listenMinSpeechKey = 'voice.listen_min_speech_ms';
   static const bargeInPlaybackKey = 'voice.barge_in_playback';
+  static const micRouteKey = 'voice.mic_route';
   static const keys = {
     inputKey,
     outputKey,
@@ -50,6 +58,7 @@ class VoicePreferences {
     listenTurnKey,
     listenMinSpeechKey,
     bargeInPlaybackKey,
+    micRouteKey,
   };
   static const vadPauseChoices = [
     '1000',
@@ -84,6 +93,11 @@ class VoicePreferences {
     vadNoSpeechKey => vadNoSpeechChoices.contains(value),
     vadSourceKey => value == 'communication' || value == 'recognition',
     listenMinSpeechKey => listenMinSpeechChoices.contains(value),
+    micRouteKey =>
+      value == 'auto' ||
+          value == 'phone' ||
+          value == 'bluetooth' ||
+          value == 'wired',
     _ => false,
   };
 
@@ -120,6 +134,9 @@ class VoicePreferences {
   /// Speaking during read-aloud stops it (offered after the echo gate).
   final bool bargeInPlayback;
 
+  /// Microphone for vad rounds (dictation, conversation loop re-opens).
+  final VoiceMicRoute micRoute;
+
   const VoicePreferences({
     this.input = VoiceInputRoute.local,
     this.output = VoiceProcessing.local,
@@ -135,6 +152,7 @@ class VoicePreferences {
     this.listenTurn = true,
     this.listenMinSpeech = const Duration(milliseconds: 400),
     this.bargeInPlayback = false,
+    this.micRoute = VoiceMicRoute.auto,
   });
 
   factory VoicePreferences.read(SharedPreferences preferences) {
@@ -189,6 +207,12 @@ class VoicePreferences {
         milliseconds: choice(listenMinSpeechKey, listenMinSpeechChoices, 400),
       ),
       bargeInPlayback: preferences.getString(bargeInPlaybackKey) == 'on',
+      micRoute: switch (preferences.getString(micRouteKey)) {
+        'phone' => VoiceMicRoute.phone,
+        'bluetooth' => VoiceMicRoute.bluetooth,
+        'wired' => VoiceMicRoute.wired,
+        _ => VoiceMicRoute.auto,
+      },
     );
   }
 
