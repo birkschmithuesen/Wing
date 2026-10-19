@@ -27,4 +27,22 @@ void main() {
     expect(options.toMap(), containsPair('keepPlayback', true));
     expect(options.toMap(), containsPair('cues', true));
   });
+
+  test('explicit rounds let Android pick the headset mic; mic can be pinned to the phone', () {
+    const explicit = VadCaptureOptions(
+      cues: true,
+      debug: false,
+      source: VadAudioSource.communication,
+      maxDuration: Duration(seconds: 600),
+    );
+    expect(explicit.toMap(), containsPair('mic', 'auto'));
+    const listen = VadCaptureOptions(
+      cues: true,
+      debug: false,
+      source: VadAudioSource.communication,
+      maxDuration: Duration(seconds: 600),
+      mic: VadMic.phone,
+    );
+    expect(listen.toMap(), containsPair('mic', 'phone'));
+  });
 }
