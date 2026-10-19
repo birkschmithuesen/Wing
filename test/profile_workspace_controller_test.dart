@@ -2134,7 +2134,27 @@ void main() {
       // this again. The next reconnect must resolve it by itself instead.
       await controller.reconnect(chat.key.workspace);
 
-      expect(chat.queuedPrompts, isEmpty);
+      // "first" was never actually delivered, so it's resent; "second"
+      // waits its turn until that resend's own turn finishes.
+      expect(chat.queuePaused, isFalse);
+      expect(chat.queuedPrompts.map((p) => p.text), ['second']);
+      expect(
+        host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
+        ['first', 'first'],
+      );
+
+      final drained = Completer<void>();
+      void observeDrain() {
+        if (chat.queuedPrompts.isEmpty && !drained.isCompleted) {
+          drained.complete();
+        }
+      }
+
+      controller.addListener(observeDrain);
+      host.event('a', 'message.complete');
+      await drained.future;
+      controller.removeListener(observeDrain);
+
       expect(chat.queuePaused, isFalse);
       expect(
         host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
