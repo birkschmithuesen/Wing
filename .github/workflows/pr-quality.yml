@@ -101,7 +101,7 @@ jobs:
             fi
           fi
           if [ "${{ steps.test.outcome }}" != "success" ]; then
-            grep -E "\[E\]|Expected:|Actual:|Exception|Some tests failed" test_output.txt | head -15 > /tmp/test_hits.txt || true
+            grep -A 25 "renders its label, icon and connection \[E\]" test_output.txt | head -90 > /tmp/test_hits.txt || true
             if [ -s /tmp/test_hits.txt ]; then
               while IFS= read -r line; do printf '::error::TEST: %s\n' "$line"; done < /tmp/test_hits.txt
             else

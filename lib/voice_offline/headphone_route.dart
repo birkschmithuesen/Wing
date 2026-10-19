@@ -174,7 +174,8 @@ class HeadphoneRoute extends ChangeNotifier {
     this.host, {
     required bool Function() wingCarMode,
     bool Function() bargeInOverride = _never,
-  }) : // ignore: prefer_initializing_formals
+  }) :
+       // ignore: prefer_initializing_formals
        _wingCarMode = wingCarMode,
        // ignore: prefer_initializing_formals
        _bargeInOverride = bargeInOverride {
