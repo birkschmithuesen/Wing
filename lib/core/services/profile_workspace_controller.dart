@@ -4768,6 +4768,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     String? display,
     bool preserveComposer = false,
     List<AttachmentDraft>? attachmentOverride,
+    bool quietTransientFailure = false,
   }) async {
     final resource = _owned(chat);
     if (chat._replacingExpiredRuntime) return false;
@@ -4902,17 +4903,24 @@ class ProfileWorkspaceController extends ChangeNotifier {
       );
       if (attachmentOverride == null) await attachments.removeAll(files);
     } catch (e) {
-      if (submitted && !preserveComposer) {
+      // A transient network failure caught before submission is just as
+      // recoverable as an uncertain delivery after it: card t_8c76c35a
+      // observation 2026-10-19, a flaky reconnect window must not look like
+      // a real failure to the queue or the hands-free conversation loop.
+      final retryable =
+          submitted ||
+          (quietTransientFailure && isTemporaryWorkspaceFailure(e));
+      if (submitted) {
         chat.draftSubmissionUncertain = true;
         await _persistDraft(chat);
       }
       chat.error = submitted
           ? 'Delivery or completion is uncertain. Reconnect to check history. The prompt will not be resent.'
-          : e.toString();
-      chat.status = submitted
+          : (retryable ? null : e.toString());
+      chat.status = retryable
           ? ProfileTurnStatus.reconnecting
           : ProfileTurnStatus.failed;
-      if (submitted) _scheduleReconnect(resource);
+      if (retryable) _scheduleReconnect(resource);
     } finally {
       chat._submissionInFlight = false;
       _changed();
@@ -5315,7 +5323,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
       return;
     }
     if (chat.historyError != null ||
-        chat.draftSubmissionUncertain ||
         chat.status == ProfileTurnStatus.failed ||
         chat.status == ProfileTurnStatus.cancelled) {
       chat.queuePaused = true;
@@ -5329,6 +5336,26 @@ class ProfileWorkspaceController extends ChangeNotifier {
           !chat.busy &&
           chat.queuedPrompts.isNotEmpty) {
         final queued = chat.queuedPrompts.first;
+        if (chat.draftSubmissionUncertain) {
+          // card t_8c76c35a observation 2026-10-19: the previous attempt's
+          // ack was lost to a flaky reconnect, not necessarily the send
+          // itself. Check the server's own history before ever resending.
+          final delivered = await _queuedHeadDelivered(chat, queued);
+          if (delivered == null) {
+            chat.queuePaused = true;
+            chat.error =
+                'A message may be stuck mid-delivery. Check this chat before resuming.';
+            break;
+          }
+          chat.draftSubmissionUncertain = false;
+          chat.error = null;
+          if (delivered) {
+            chat.queuedPrompts.removeAt(0);
+            await _persistDraft(chat);
+            await attachments.removeAll(queued.attachments);
+            continue;
+          }
+        }
         // A restart between sending and acknowledgement must never resend this head.
         await _persistDraft(chat);
         final accepted = await _sendPrompt(
@@ -5336,9 +5363,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
           prompt: queued.text,
           preserveComposer: true,
           attachmentOverride: queued.attachments,
+          quietTransientFailure: true,
         );
         if (!accepted) {
-          chat.queuePaused = true;
+          // Reconnecting covers both an uncertain ack and a plain transient
+          // failure (see _sendPrompt): neither sticks the queue paused, a
+          // later reconnect's redrain or the next drain call retries it.
+          if (chat.status != ProfileTurnStatus.reconnecting) {
+            chat.queuePaused = true;
+          }
           break;
         }
         if (!identical(chat.queuedPrompts.first, queued)) {
@@ -5365,6 +5398,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat.error = 'Queue paused. Unsent messages could not be saved.';
       }
       _changed();
+    }
+  }
+
+  /// Returns null when the server's own history can't be read right now
+  /// (undecidable: the caller must pause and ask the user, never guess).
+  Future<bool?> _queuedHeadDelivered(
+    ProfileChat chat,
+    QueuedPromptDraft queued,
+  ) async {
+    try {
+      final page = await _owned(chat).gateway.history(
+        chat.key.sessionId,
+        runtimeId: chat.runtimeId,
+      );
+      return page.rows.any(
+        (row) => row['role'] == 'user' && row['content'] == queued.text,
+      );
+    } catch (_) {
+      return null;
     }
   }
 
