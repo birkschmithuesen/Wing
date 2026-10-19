@@ -144,9 +144,9 @@ void main() {
     expect(device.removals, 1);
   });
 
-  testWidgets('cues and pause detection settings persist; no microphone choice', (tester) async {
+  testWidgets('cues and pause detection settings persist', (tester) async {
     await show(tester);
-    expect(find.text('Microphone'), findsNothing);
+    expect(find.text('Microphone'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('vad-cues')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Pause detection'));
