@@ -15,6 +15,7 @@ class OutputRoute {
     required this.type,
     this.bluetoothClass,
     this.androidCarMode = false,
+    this.bluetoothAllowed = true,
   });
 
   factory OutputRoute.fromMap(Map<Object?, Object?> map) => OutputRoute(
@@ -22,6 +23,7 @@ class OutputRoute {
     type: (map['type'] as num?)?.toInt() ?? 0,
     bluetoothClass: (map['bluetoothClass'] as num?)?.toInt(),
     androidCarMode: map['androidCarMode'] == true,
+    bluetoothAllowed: map['bluetoothAllowed'] != false,
   );
 
   /// Android 12 or older, or the query failed.
@@ -34,6 +36,9 @@ class OutputRoute {
   /// anonymised address, Bluetooth off) or the device is not Bluetooth.
   final int? bluetoothClass;
   final bool androidCarMode;
+
+  /// Wing holds Nearby devices access (always true below Android 12).
+  final bool bluetoothAllowed;
 }
 
 typedef RouteVerdict = ({bool headphones, String reason});
@@ -56,7 +61,12 @@ RouteVerdict classifyRoute(OutputRoute route, {required bool wingCarMode}) {
   if (_bluetooth.contains(route.type)) {
     final deviceClass = route.bluetoothClass;
     if (deviceClass == null) {
-      return (headphones: false, reason: 'bluetoothClassUnknown');
+      return (
+        headphones: false,
+        reason: route.bluetoothAllowed
+            ? 'bluetoothClassUnknown'
+            : 'bluetoothNoPermission',
+      );
     }
     return _headphoneClasses.contains(deviceClass)
         ? (headphones: true, reason: 'bluetoothHeadphones')
@@ -76,7 +86,8 @@ String routeLogLine(OutputRoute route, RouteVerdict verdict) {
       : '0x${deviceClass.toRadixString(16).padLeft(4, '0')}';
   return 'route headphones=${verdict.headphones ? 1 : 0} '
       'reason=${verdict.reason} type=${route.type} btClass=$btClass '
-      'androidCarMode=${route.androidCarMode ? 1 : 0}';
+      'androidCarMode=${route.androidCarMode ? 1 : 0} '
+      'perm=${route.bluetoothAllowed ? 1 : 0}';
 }
 
 /// Native side of the route check (HeadphoneRouteChannel.kt).
