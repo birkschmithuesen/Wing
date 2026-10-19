@@ -34,6 +34,9 @@ class CarSnapshot {
     this.needsInput = false,
     this.connection = CarConnection.ok,
     this.error,
+    this.listenOpen = false,
+    this.speechInProgress = false,
+    this.delivery,
   });
 
   /// Identity of the chat on screen; a change ends car mode.
@@ -58,6 +61,33 @@ class CarSnapshot {
 
   /// Short voice or turn error text; shown on screen, never logged.
   final String? error;
+
+  /// A barge-in listen round is open for this chat (`BargeInCoordinator.listening`).
+  final bool listenOpen;
+
+  /// Speech confirmed in that round, or its transcript still pending
+  /// (`TurnListener.speechInProgress`).
+  final bool speechInProgress;
+
+  /// Set by the session for a few seconds after a steer or queue delivery,
+  /// so the UI can show a transient "added" confirmation.
+  final CarDelivery? delivery;
+
+  /// Copies every field, replacing [delivery].
+  CarSnapshot withDelivery(CarDelivery? delivery) => CarSnapshot(
+    chatKey: chatKey,
+    title: title,
+    input: input,
+    speaking: speaking,
+    working: working,
+    activity: activity,
+    needsInput: needsInput,
+    connection: connection,
+    error: error,
+    listenOpen: listenOpen,
+    speechInProgress: speechInProgress,
+    delivery: delivery,
+  );
 }
 
 /// [held]: a finished recording waits for the connection (spec §4.4).
@@ -95,7 +125,7 @@ CarText carTextFor(CarPhase phase, CarSnapshot s) => switch (phase) {
   CarPhase.idle => (label: 'Tap to talk', hint: null, detail: null),
   CarPhase.listening => (label: 'Listening', hint: 'Tap to send', detail: null),
   CarPhase.transcribing => (label: 'Got it', hint: 'Transcribing…', detail: null),
-  CarPhase.thinking => (label: 'Hermes is working', hint: 'Tap to add something', detail: null),
+  CarPhase.thinking => (label: 'Hermes is working', hint: _thinkingHint(s), detail: null),
   CarPhase.speaking => (label: 'Reading aloud', hint: 'Tap to interrupt', detail: null),
   CarPhase.waiting => (label: 'Waiting for connection', hint: 'Sends when back online', detail: null),
   CarPhase.attention => (
@@ -105,6 +135,15 @@ CarText carTextFor(CarPhase phase, CarSnapshot s) => switch (phase) {
   ),
   CarPhase.error => (label: "Didn't work", hint: 'Tap to try again', detail: s.error),
 };
+
+/// Priority while thinking: a just-delivered steer or queue confirms first,
+/// then speech already heard, then an open listen round, then the default.
+String _thinkingHint(CarSnapshot s) {
+  if (s.delivery != null) return 'Added to the running turn ✓';
+  if (s.speechInProgress) return 'Hearing you...';
+  if (s.listenOpen) return 'Listening - just talk';
+  return 'Tap to add something';
+}
 
 IconData carIconFor(CarPhase phase) => switch (phase) {
   CarPhase.idle => Icons.mic,

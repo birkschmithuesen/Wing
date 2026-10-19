@@ -8,6 +8,7 @@ import '../core/services/profile_workspace_controller.dart';
 import '../core/services/server_connection_status.dart';
 import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
+import '../voice_offline/barge_in_coordinator.dart';
 import 'car_mode_state.dart';
 
 /// What car mode may do in the chat workspace. The workspace builds it from
@@ -84,9 +85,12 @@ CarConnection carConnectionOf(ServerConnectionPhase phase, {required bool sendBl
 CarSnapshot carSnapshotOf(
   ProfileWorkspaceController controller,
   VoiceInputController input,
-  VoiceOutputController output,
-) {
+  VoiceOutputController output, {
+  BargeInCoordinator? bargeIn,
+}) {
   final chat = controller.notificationChat ?? controller.current?.chat;
+  final listenOpen =
+      bargeIn != null && chat != null && bargeIn.chat == chat.key && bargeIn.listening;
   return CarSnapshot(
     chatKey: chat?.key,
     title: chat?.title,
@@ -106,6 +110,8 @@ CarSnapshot carSnapshotOf(
         input.error ??
         output.error ??
         (chat?.status == ProfileTurnStatus.failed ? 'Hermes could not finish this reply.' : null),
+    listenOpen: listenOpen,
+    speechInProgress: listenOpen && bargeIn.listener.speechInProgress,
   );
 }
 
