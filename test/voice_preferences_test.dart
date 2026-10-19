@@ -288,6 +288,31 @@ void main() {
     ]));
   });
 
+  test('mic route: defaults to automatic, persists and rejects unknown values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.auto);
+    expect(VoicePreferences.keys, contains(VoicePreferences.micRouteKey));
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'auto'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'phone'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'bluetooth'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'wired'), isTrue);
+    expect(VoicePreferences.accepts(VoicePreferences.micRouteKey, 'usb'), isFalse);
+    await saveDevicePreference(prefs, VoicePreferences.micRouteKey, 'bluetooth');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.bluetooth);
+    await saveDevicePreference(prefs, VoicePreferences.micRouteKey, 'wired');
+    await prefs.reload();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.wired);
+  });
+
+  test('an unknown stored mic route falls back to automatic', () async {
+    SharedPreferences.setMockInitialValues({
+      VoicePreferences.micRouteKey: 'usb',
+    });
+    final prefs = await SharedPreferences.getInstance();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.auto);
+  });
+
   Future<void> show(
     WidgetTester tester,
     SharedPreferences prefs,
@@ -331,6 +356,35 @@ void main() {
     });
     return SharedPreferences.getInstance();
   }
+
+  testWidgets('microphone choice appears only with the on-phone route and saves', (
+    tester,
+  ) async {
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    SharedPreferences.setMockInitialValues({});
+    await show(tester, await SharedPreferences.getInstance(), device);
+    expect(find.text('Microphone'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    final prefs = await vadConversation();
+    await show(tester, prefs, device);
+    final mic = tester
+        .widgetList<StudioSelect<String>>(find.byType(StudioSelect<String>))
+        .firstWhere((w) => w.label == 'Microphone');
+    expect(mic.value, 'auto');
+    mic.onChanged!('bluetooth');
+    await tester.pumpAndSettle();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.bluetooth);
+    await tester.pumpWidget(const SizedBox());
+    await show(tester, prefs, device);
+    expect(
+      tester
+          .widgetList<StudioSelect<String>>(find.byType(StudioSelect<String>))
+          .firstWhere((w) => w.label == 'Microphone')
+          .value,
+      'bluetooth',
+    );
+  });
 
   testWidgets('listen-while-working settings appear only with vad conversation', (
     tester,

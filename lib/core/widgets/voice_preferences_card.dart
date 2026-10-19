@@ -278,6 +278,31 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
         }),
         if (_preferences.input == VoiceInputRoute.vad) ...[
           const SizedBox(height: 12),
+          StudioSelect<String>(
+            key: ValueKey('voice-mic-route-${_preferences.micRoute.name}'),
+            label: 'Microphone',
+            value: _preferences.micRoute.name,
+            options: const [
+              (value: 'auto', label: 'Automatic'),
+              (value: 'phone', label: 'Phone mic'),
+              (value: 'bluetooth', label: 'Bluetooth device'),
+              (value: 'wired', label: 'Wired headset'),
+            ],
+            onChanged: _saving
+                ? null
+                : (value) {
+                    if (value != null) {
+                      _save(VoicePreferences.micRouteKey, value);
+                    }
+                  },
+          ),
+          const SizedBox(height: 12),
+          Text(
+            _preferences.micRoute == VoiceMicRoute.auto
+                ? 'Prefers a connected Bluetooth or wired headset mic, otherwise the phone.'
+                : 'If this microphone is not connected when recording starts, Wing uses Automatic instead.',
+          ),
+          const SizedBox(height: 12),
           VadSettingsSection(
             settings: _preferences,
             device: widget.device ?? AndroidVoice.instance,

@@ -41,7 +41,7 @@ void main() {
       debug: false,
       source: VadAudioSource.communication,
       maxDuration: Duration(seconds: 600),
-      mic: VadMic.phone,
+      mic: VoiceMicRoute.phone,
     );
     expect(listen.toMap(), containsPair('mic', 'phone'));
   });

@@ -56,6 +56,63 @@ void main() {
     expect(recorder.vad, isTrue);
   });
 
+  test('the saved microphone preference reaches the native capture call, not just auto', () async {
+    for (final route in VoiceMicRoute.values) {
+      device = VoiceDeviceFixture();
+      recorder = VoiceInputController(
+        device: device,
+        createRemote: () => throw StateError('vad never uses Hermes'),
+      );
+      await recorder.start(
+        VoicePreferences(
+          input: VoiceInputRoute.vad,
+          micRoute: route,
+          vad: settings.vad,
+        ),
+        const TextEditingValue(text: ''),
+        (value) => result = value,
+      );
+      expect(device.vadOptions!.mic, route, reason: route.name);
+    }
+  });
+
+  test('a chosen device that is not connected falls back to automatic and hints once', () async {
+    device.micFallback = true;
+    await recorder.start(
+      const VoicePreferences(
+        input: VoiceInputRoute.vad,
+        micRoute: VoiceMicRoute.bluetooth,
+        vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
+      ),
+      const TextEditingValue(text: ''),
+      (value) => result = value,
+    );
+    expect(device.vadOptions!.mic, VoiceMicRoute.bluetooth);
+    expect(recorder.micFallbackHint, isNotNull);
+    expect(recorder.error, isNull, reason: 'a fallback is not a failure');
+    expect(recorder.phase, VoiceInputPhase.recording);
+  });
+
+  test('the hint is a one-shot: a later round without a fallback clears it', () async {
+    device.micFallback = true;
+    await recorder.start(
+      const VoicePreferences(
+        input: VoiceInputRoute.vad,
+        micRoute: VoiceMicRoute.wired,
+        vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
+      ),
+      const TextEditingValue(text: ''),
+      (value) => result = value,
+    );
+    expect(recorder.micFallbackHint, isNotNull);
+    device.emitWindows(_p(0.9, 20));
+    await recorder.stop();
+    await pumpEventQueue();
+    device.micFallback = false;
+    await start();
+    expect(recorder.micFallbackHint, isNull);
+  });
+
   test('a pause ends the round by itself and inserts the phone transcript', () async {
     await start();
     device.emitWindows(_p(0.05, 40));
