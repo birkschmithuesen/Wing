@@ -357,6 +357,35 @@ void main() {
     return SharedPreferences.getInstance();
   }
 
+  testWidgets('microphone choice appears only with the on-phone route and saves', (
+    tester,
+  ) async {
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    SharedPreferences.setMockInitialValues({});
+    await show(tester, await SharedPreferences.getInstance(), device);
+    expect(find.text('Microphone'), findsNothing);
+    await tester.pumpWidget(const SizedBox());
+    final prefs = await vadConversation();
+    await show(tester, prefs, device);
+    final mic = tester
+        .widgetList<StudioSelect<String>>(find.byType(StudioSelect<String>))
+        .firstWhere((w) => w.label == 'Microphone');
+    expect(mic.value, 'auto');
+    mic.onChanged!('bluetooth');
+    await tester.pumpAndSettle();
+    expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.bluetooth);
+    await tester.pumpWidget(const SizedBox());
+    await show(tester, prefs, device);
+    expect(
+      tester
+          .widgetList<StudioSelect<String>>(find.byType(StudioSelect<String>))
+          .firstWhere((w) => w.label == 'Microphone')
+          .value,
+      'bluetooth',
+    );
+  });
+
   testWidgets('listen-while-working settings appear only with vad conversation', (
     tester,
   ) async {
