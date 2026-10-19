@@ -21,6 +21,7 @@ class VoiceDeviceFixture implements VoiceDevice {
   Duration? lastStopTimeout;
   int vadStarts = 0;
   VadCaptureOptions? vadOptions;
+  bool micFallback = false;
   final finishes = <VadDecision>[];
   final finishChunks = <List<VadChunk>>[];
   String vadTranscript = 'Hello from the phone';
@@ -57,7 +58,7 @@ class VoiceDeviceFixture implements VoiceDevice {
   }
 
   @override
-  Future<void> startVad(String id, VadCaptureOptions options) async {
+  Future<bool> startVad(String id, VadCaptureOptions options) async {
     calls.add('startVad');
     vadStarts++;
     recording = id;
@@ -66,6 +67,7 @@ class VoiceDeviceFixture implements VoiceDevice {
     _firstWindow = 0;
     if (startError != null) throw startError!;
     await startDelay?.future;
+    return micFallback;
   }
 
   @override

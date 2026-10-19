@@ -48,7 +48,7 @@ void main() {
     await listener.open(settings);
     expect(device.vadOptions!.keepPlayback, isTrue);
     expect(device.vadOptions!.startCue, isFalse);
-    expect(device.vadOptions!.mic, VadMic.phone);
+    expect(device.vadOptions!.mic, VoiceMicRoute.phone);
     expect(listener.phase, ListenPhase.listening);
     await say(0.9, 20);
     expect(listener.speechInProgress, isTrue);

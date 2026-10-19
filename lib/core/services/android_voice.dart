@@ -45,7 +45,9 @@ abstract interface class VoiceDevice {
   Future<void> stopPlayback(String id);
 
   /// Route vad: own capture; probabilities arrive as `{id, first, windows}` events.
-  Future<void> startVad(String id, VadCaptureOptions options);
+  /// Answers true when a manual [VadCaptureOptions.mic] choice was not available and
+  /// the native side fell back to automatic routing for this round.
+  Future<bool> startVad(String id, VadCaptureOptions options);
 
   /// Ends the vad round and returns the on-device transcript of the decided windows,
   /// recognised piece by piece along [chunks] (same window indexing as [decision]).
@@ -125,8 +127,12 @@ class AndroidVoice implements VoiceDevice {
       channel.invokeMethod('stopPlayback', {'id': id});
 
   @override
-  Future<void> startVad(String id, VadCaptureOptions options) =>
-      channel.invokeMethod('startVad', {'id': id, ...options.toMap()});
+  Future<bool> startVad(String id, VadCaptureOptions options) async =>
+      await channel.invokeMethod<bool>('startVad', {
+        'id': id,
+        ...options.toMap(),
+      }) ??
+      false;
   @override
   Future<String> finishVad(
     String id,
@@ -170,11 +176,6 @@ class AndroidVoice implements VoiceDevice {
       await channel.invokeMethod<int>('deleteVadDebugRecordings') ?? 0;
 }
 
-/// Which microphone a vad round may use (spec 2026-10-16 bt-headset-mic §4.3).
-/// [auto]: the connected headset's mic if there is one, otherwise the phone.
-/// [phone]: always the phone mic (listen rounds while Hermes works or reads).
-enum VadMic { auto, phone }
-
 class VadCaptureOptions {
   const VadCaptureOptions({
     required this.cues,
@@ -183,7 +184,7 @@ class VadCaptureOptions {
     required this.maxDuration,
     this.startCue,
     this.keepPlayback = false,
-    this.mic = VadMic.auto,
+    this.mic = VoiceMicRoute.auto,
   });
   final bool cues;
   final bool debug;
@@ -197,8 +198,9 @@ class VadCaptureOptions {
   /// Start capture without stopping read-aloud (barge-in listen rounds).
   final bool keepPlayback;
 
-  /// Native side decides the headset only for [VadMic.auto].
-  final VadMic mic;
+  /// Native side decides the headset only for [VoiceMicRoute.auto]; any other
+  /// value skips the decision (spec 2026-10-18 manual mic).
+  final VoiceMicRoute mic;
 
   Map<String, Object> toMap() => {
     'cues': cues,
