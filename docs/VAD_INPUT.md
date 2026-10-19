@@ -172,3 +172,22 @@ python3 -I tools/voice/vad_offline_check.py --model <silero_vad.onnx> --wav <rou
 changes the wait for speech start. Change the defaults in the app only with numbers from such a run.
 
 Render review 2026-10-13: none. Light and dark, 320 dp at 100% and 200% text (voice-review-bin run 38453228316): the speech-model row sits under the route select with a single action per state (Download / Cancel with progress / Retry with error), no clipped text at 200%, switch rows share the trailing column, dark contrast is fine, no permanent success text. Minor: the debug-audio-source field sits close under the debug switch row; left as is.
+
+## Microphone route
+
+Rule (Birk, 16.10.2026, supersedes 13.10.): the connected headset's microphone if there is one, otherwise the
+phone. Spec: `docs/superpowers/specs/2026-10-16-wing-voice-bt-headset-mic-design.md`. Birk's E2 = 2 decision
+(t_3954f61f, card t_4450aa3b): a car hands-free kit's microphone counts the same as a headset's, so there is no
+separate car-mode-only phone-mic rule.
+
+- Explicit rounds (dictation, conversation turn: `mic: auto`) ask `HeadsetMicRoute` at start. For a Bluetooth
+  device with HFP and class 0x0404/0x0408/0x0418/0x0420 (wearable headset, hands-free, headphones, car audio),
+  Wing requests the link with `setCommunicationDevice`, waits up to 2.5 s, then plays the start cue and records
+  from the SCO input. The link is cleared on every exit, before recognition.
+- Listen rounds and the echo probe (`mic: phone`) never take the headset mic. Read-aloud stays in A2DP quality.
+- Phone mic: no Bluetooth SCO link at all, no Nearby devices access, an unreadable Bluetooth class, or a
+  Bluetooth class outside the four above. Wired headsets with a mic are routed by Android without Wing doing
+  anything.
+- Nearby devices access is asked once, at the first explicit recording while Bluetooth audio is connected.
+- Logcat: `adb logcat -d | grep WingMic` → `decide`, `acquire`, `ready readyMs=`, `first firstSoundMs=`, `release`.
+  Proof of the headset mic: `adev_open_input_stream … devices(0x80000008)`; the phone mic is `0x80000004`.
