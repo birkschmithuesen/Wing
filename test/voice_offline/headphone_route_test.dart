@@ -16,6 +16,7 @@ void main() {
       ('uncategorized A2DP', OutputRoute(supported: true, type: 8, bluetoothClass: 0x0400), false, false, 'bluetoothOther'),
       ('A2DP class unknown', OutputRoute(supported: true, type: 8), false, false, 'bluetoothClassUnknown'),
       ('LE headset class unknown', OutputRoute(supported: true, type: 26), false, false, 'bluetoothClassUnknown'),
+      ('A2DP without Nearby devices', OutputRoute(supported: true, type: 8, bluetoothAllowed: false), false, false, 'bluetoothNoPermission'),
       ('phone speaker', OutputRoute(supported: true, type: 2), false, false, 'speaker'),
       ('Bluetooth SCO', OutputRoute(supported: true, type: 7), false, false, 'other'),
       ('BLE speaker', OutputRoute(supported: true, type: 27), false, false, 'other'),
@@ -36,12 +37,12 @@ void main() {
     const bluetooth = OutputRoute(supported: true, type: 8, bluetoothClass: 0x0418);
     expect(
       routeLogLine(bluetooth, classifyRoute(bluetooth, wingCarMode: false)),
-      'route headphones=1 reason=bluetoothHeadphones type=8 btClass=0x0418 androidCarMode=0',
+      'route headphones=1 reason=bluetoothHeadphones type=8 btClass=0x0418 androidCarMode=0 perm=1',
     );
     const speaker = OutputRoute(supported: true, type: 2);
     expect(
       routeLogLine(speaker, classifyRoute(speaker, wingCarMode: false)),
-      'route headphones=0 reason=speaker type=2 btClass=none androidCarMode=0',
+      'route headphones=0 reason=speaker type=2 btClass=none androidCarMode=0 perm=1',
     );
   });
 
@@ -56,6 +57,11 @@ void main() {
     expect(route.type, 8);
     expect(route.bluetoothClass, 0x0418);
     expect(OutputRoute.fromMap({}).supported, isFalse);
+    expect(route.bluetoothAllowed, isTrue);
+    expect(
+      OutputRoute.fromMap({'supported': true, 'type': 8, 'bluetoothAllowed': false}).bluetoothAllowed,
+      isFalse,
+    );
   });
 
   group('HeadphoneRoute', () {
