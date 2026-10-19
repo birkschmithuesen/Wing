@@ -162,7 +162,7 @@ lib/porter_wake/
   porter_wake_module.dart         PorterWakeModule: probe gate, registration, revocation
   porter_wake_background.dart     @pragma('vm:entry-point') porterWakeBackgroundMain
   porter_wake_settings.dart       PorterWakeSettings + QuietHoursPanel („Nachtruhe“)
-  porter_wake_snooze_sheet.dart   „in 2 Stunden“ / „morgen“ chooser (Task 11, gated)
+  porter_wake_snooze_sheet.dart   „in 2 Stunden“ / „morgen“ chooser (Task 11)
 test/porter_wake/
   porter_wake_fixtures.dart       Examples A/B/C (contract §4.1-4.3) as raw JSON strings
   porter_wake_fake_server.dart    MockClient-backed fake dashboard + porter routes
@@ -215,7 +215,12 @@ docs/PORTER_WAKE.md                               User-facing feature doc (READM
 
 **Why first:** without this change, `ci-suite.sh` runs only `test/car_mode/car_mode_screen_test.dart`, so no porter test would ever run in CI.
 
-> **ANNAHME T0:** the hard-coded path and the "Diagnostic stack extraction" step in `pr-quality.yml` belong to card t_db672361. This task replaces only the test command and leaves the diagnostic steps alone. **Check** `git log -3 -- .github/workflows/pr-quality.yml` before editing. If a newer commit has already restored `flutter test`, keep that and add only the input.
+> **ANNAHME T0:** the hard-coded path was an accidental diagnostic narrowing by card t_db672361 (commit `91730873`; the card is done). Restoring the full suite is approved ("Decisions taken", decision 2). A separate fix card is restoring it now.
+> - **Check** `git log -3 -- .github/workflows/pr-quality.yml` before editing.
+> - If that fix has already landed when the build card starts Task 0, Task 0 only adds the `tests` input (Step 1, with the step's test command using `${{ inputs.tests || 'test/' }}`) and the argument forwarding (Step 3).
+> - Leave the diagnostic steps alone either way.
+>
+> Restoring the full suite may surface failures in unrelated tests that crept in while only one file ran. Those are **not** the build card's job: report them on the card, with test names and run URL, and do not fix them inside this plan. The porter tests are judged by their targeted runs (`ci-suite.sh test/porter_wake/…`).
 
 **Files:**
 - Modify: `.github/workflows/pr-quality.yml` (the `workflow_dispatch:` trigger, and step "Run tests", `:59-64`)
@@ -3315,11 +3320,11 @@ git commit -m "feat(porter_wake): wire the module into connections, settings and
 
 ---
 
-### Task 11: Specific snooze times („in 2 Stunden“, „morgen“) [GATED]
+### Task 11: Specific snooze times („in 2 Stunden“, „morgen“)
 
-**Gate:** do not start this task until Birk has answered **FRAGE 1**. Contract §6.4 allows either "expanded view" or "in-app sheet via long-press", but §8.2 requires live = 1 button and trial = 4 buttons. Extra snooze buttons in the expanded view would break those counts. So the contract-consistent option is an in-app sheet, and Wing has no "notice view" for it to live in yet.
+**Why a sheet:** contract §6.4 allows either the expanded view or an in-app sheet reached by long-press. Contract §8.2 fixes live = 1 button and trial = 4 buttons, so extra snooze buttons in the expanded notification would break those counts. The in-app sheet is therefore the only contract-consistent option (see "Decisions taken", decision 1).
 
-**Recommended design (default if Birk confirms):** after „Öffnen“, Wing opens the Pforte chat (Task 10) and shows a compact modal bottom sheet `PorterNoticeSheet` above it, but only for `kind == items`. The sheet contains:
+**Design:** after „Öffnen“, Wing opens the Pforte chat (Task 10) and shows a compact modal bottom sheet `PorterNoticeSheet` above it, but only for `kind == items`. The sheet contains:
 - `title`;
 - one row per item: `line`, with `why` and `snooze_label` as muted subtitle;
 - tap on a row: opens that item's session (`profile`, `session_id`, as contract §6.6 allows);
@@ -3862,14 +3867,19 @@ Then amend the message to `revert: restore behaviour after the mutation check`. 
 
 ---
 
-## Open questions for Birk
+## Decisions taken
 
-- **FRAGE 1 (Task 11, UX):** where should „in 2 Stunden“ and „morgen“ live?
-  - Contract §8.2 fixes the notification at live = 1 button and trial = 4. Extra snooze buttons in the expanded notification would break that.
-  - Recommended: an in-app sheet over the Pforte chat after „Öffnen“, which lists the items (tap opens the item's chat; long-press shows Später / in 2 Stunden / morgen).
-  - Alternative: drop the specific times from v1 (only „Später“ = morning bundle).
-  - Task 11 is gated on this answer. Tasks 0–10 and 12–14 do not depend on it.
-- **FRAGE 2 (CI, Task 0):** `pr-quality.yml` currently tests only `test/car_mode/car_mode_screen_test.dart`, a leftover of diagnosis card t_db672361. Task 0 makes the default the whole `test/` directory. Is it OK to change this while t_db672361 may still be open?
+The architect answered both open questions on 2026-10-19:
+
+1. **Where „in 2 Stunden“ and „morgen“ live (Task 11):** "use the in-app sheet exactly as you recommended. Remove the [GATED] marker; Task 11 is a normal task."
+   - Contract §6.4 names the in-app sheet as an option.
+   - Contract §8.2 (4 + tap / 1 + tap) rules out extra notification buttons.
+   - Card t_7737d2c2, Birk's decision of 2026-10-19, reads: "Später" (snooze; default = morning bundle, long-press/choice for "in 2 Stunden"/"morgen"). So dropping the specific times from v1 is **not** an option.
+   - Contract §6.6 foresees a notice view in Wing.
+2. **Restoring the full test directory in `pr-quality.yml` (Task 0):** "yes, restore it. The premise 't_db672361 may still be open' is wrong."
+   - t_db672361 completed on 2026-10-19 12:07, and its merge card t_e80e1e0a is done (merge `0155102f` on voice-offline).
+   - Commit `91730873` narrowed `flutter test --no-pub --reporter=expanded` to `test/car_mode/car_mode_screen_test.dart`. That diagnostic change was merged by accident; before it, the whole suite ran.
+   - A separate fix card is restoring the full suite now. Task 0 handles the case where that fix has already landed.
 
 ## ANNAHME index (to check during the build)
 
@@ -3882,7 +3892,7 @@ Then amend the message to `revert: restore behaviour after the mutation check`. 
 | B2 | The headless `FlutterEngine` auto-registers `shared_preferences` + `flutter_secure_storage` | Handoff 2c | 8/13 |
 | B3 | `ConnectionManager.create` is UI-free | `connection_manager.dart:285-335` | 8 |
 | D1 | `FlutterSecureCredentialStore(storage:)` honours a separate namespace, outside backups | `connection_manager.dart:33-80`, `config_backup_service.dart` | 4 |
-| T0 | The `pr-quality.yml` hard-coded test path is a leftover of t_db672361 | `git log` of the file | 0 |
+| T0 | Whether the separate fix card already restored the full suite in `pr-quality.yml` (narrowed by accident in `91730873`) | `git log` of the file | 0 |
 | S1 | `CompactSwitchListTile` is findable as `SwitchListTile` | `compact_switch.dart:38` | 9 |
 | W1 | `HomeScreen` is constructed in `WingAppState.build` | `grep -n "HomeScreen(" lib/main.dart` | 10 |
 | W2 | `ProfileWorkspaceData.scope` / `.sessions` exist with these names | `profile_workspace_controller.dart:270-310` | 10 |
@@ -3903,7 +3913,7 @@ Then amend the message to `revert: restore behaviour after the mutation check`. 
   - §5.1 → Tasks 7 and 8.
   - §5.2 → Task 1.
   - §6.1–6.3 → Tasks 5, 6 and 8.
-  - §6.4 → Task 11 (gated).
+  - §6.4 → Task 11.
   - §6.5 → Task 6.
   - §6.6 → Tasks 6 and 10.
   - §6.7 → Tasks 5 and 6.
