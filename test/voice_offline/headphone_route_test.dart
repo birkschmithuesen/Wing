@@ -33,6 +33,29 @@ void main() {
     }
   });
 
+  group('classifyRoute bargeInOverride (session-local "Interrupt by speaking")', () {
+    test('off: Wing car mode still locks barge-in, even over a non-headphone route', () {
+      const route = OutputRoute(supported: true, type: 2); // car speaker
+      final verdict = classifyRoute(route, wingCarMode: true);
+      expect(verdict.headphones, isFalse);
+      expect(verdict.reason, 'carMode');
+    });
+
+    test('on: lifts the carMode lock, even over a non-headphone route (car speakers)', () {
+      const route = OutputRoute(supported: true, type: 2); // car speaker
+      final verdict = classifyRoute(route, wingCarMode: true, bargeInOverride: true);
+      expect(verdict.headphones, isTrue);
+      expect(verdict.reason, 'carModeOverride');
+    });
+
+    test('the override does nothing outside Wing car mode', () {
+      const route = OutputRoute(supported: true, type: 2);
+      final verdict = classifyRoute(route, wingCarMode: false, bargeInOverride: true);
+      expect(verdict.headphones, isFalse);
+      expect(verdict.reason, 'speaker');
+    });
+  });
+
   test('the route log line carries numbers only', () {
     const bluetooth = OutputRoute(supported: true, type: 8, bluetoothClass: 0x0418);
     expect(
@@ -117,6 +140,53 @@ void main() {
       );
       expect(route.headphones, isTrue);
       expect(route.wired, isFalse);
+    });
+
+    test('logLine reflects the last computed verdict without another query', () async {
+      host.route = HeadphoneRouteFixture.speaker;
+      await route.refresh();
+      expect(route.logLine, routeLogLine(HeadphoneRouteFixture.speaker, classifyRoute(HeadphoneRouteFixture.speaker, wingCarMode: false)));
+    });
+  });
+
+  group('HeadphoneRoute bargeInOverride', () {
+    late HeadphoneRouteFixture host;
+    late HeadphoneRoute route;
+    var carMode = false;
+    var bargeInOn = false;
+
+    setUp(() {
+      host = HeadphoneRouteFixture();
+      carMode = false;
+      bargeInOn = false;
+      route = HeadphoneRoute(
+        host,
+        wingCarMode: () => carMode,
+        bargeInOverride: () => bargeInOn,
+      );
+    });
+    tearDown(() async {
+      route.dispose();
+      await host.close();
+    });
+
+    test('off (default): Wing car mode still closes the verdict over a car speaker', () async {
+      host.route = HeadphoneRouteFixture.speaker;
+      await route.refresh();
+      carMode = true;
+      route.carModeChanged();
+      expect(route.headphones, isFalse);
+      expect(route.carModeOverridden, isFalse);
+    });
+
+    test('on: lifts the Wing car mode lock for this session, over a car speaker', () async {
+      host.route = HeadphoneRouteFixture.speaker;
+      await route.refresh();
+      carMode = true;
+      bargeInOn = true;
+      route.carModeChanged();
+      expect(route.headphones, isTrue);
+      expect(route.carModeOverridden, isTrue);
     });
   });
 }
