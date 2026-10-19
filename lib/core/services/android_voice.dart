@@ -183,7 +183,7 @@ class VadCaptureOptions {
     required this.maxDuration,
     this.startCue,
     this.keepPlayback = false,
-    this.mic = VadMic.auto,
+    this.mic = VadMic.phone,
   });
   final bool cues;
   final bool debug;
