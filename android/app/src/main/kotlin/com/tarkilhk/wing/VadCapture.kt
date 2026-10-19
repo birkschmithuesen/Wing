@@ -8,28 +8,32 @@ import android.media.MediaRecorder
 import android.media.ToneGenerator
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import com.k2fsa.sherpa.onnx.SileroVadModelConfig
 import com.k2fsa.sherpa.onnx.Vad
 import com.k2fsa.sherpa.onnx.VadModelConfig
+import com.tarkilhk.wing.voiceoffline.HeadsetMicRoute
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
+import java.util.concurrent.CancellationException
 import kotlin.concurrent.thread
 
 /** Route vad: 16 kHz mono capture, one Silero probability per 32 ms window
  *  (sent to Dart in batches of 4), cut + on-phone recognition on request.
  *  The end-of-utterance decision lives in Dart (vad_endpoint.dart).
- *  Records from whatever input Android routes; never changes audio routing. */
+ *  Explicit rounds (mic "auto") may take the headset mic through HeadsetMicRoute (spec 2026-10-16). */
 class VadCapture(
     private val activity: Activity,
     private val models: SpeechModelStore,
     private val speech: OfflineSpeech,
     private val debug: VoiceDebugStore,
+    private val mic: HeadsetMicRoute,
     private val emit: (Map<String, Any>) -> Unit,
 ) {
     data class Options(val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int,
-                       val startCue: Boolean = cues)
+                       val startCue: Boolean = cues, val mic: String = "auto")
 
     private class Round(val id: String, val options: Options, val startedAt: Long, capacity: Int) {
         val pcm = ShortArray(capacity)
@@ -42,32 +46,50 @@ class VadCapture(
         var vad: Vad? = null
         var sourceName = ""
         var inputDevice = "unknown"
+        var micInput: android.media.AudioDeviceInfo? = null
+        var micReason = "listen"
+        var firstSoundMs = -1L
     }
 
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var round: Round? = null
 
-    fun start(id: String, options: Options) {
+    /** Answers [started] once: null when capture runs, otherwise the failure. An explicit round first waits
+     *  for the headset link; the start cue plays only once the chosen mic is live (spec §5). */
+    fun start(id: String, options: Options, started: (Exception?) -> Unit) {
         cancelCurrent()
         models.verifyManifest()?.let { error(it) }
         val r = Round(id, options, System.currentTimeMillis(), (options.maxMs + 5_000) * 16)
         round = r
-        try {
-            if (options.startCue) cue(ToneGenerator.TONE_PROP_BEEP, wait = true)
-            r.vad = Vad(
-                assetManager = activity.assets,
-                config = VadModelConfig(
-                    sileroVadModelConfig = SileroVadModelConfig(model = "silero_vad.onnx", windowSize = 512),
-                    sampleRate = 16000,
-                    numThreads = 1,
-                ),
-            )
-            r.record = openRecord(r)
-            r.record!!.startRecording()
-            // Read-only diagnosis: which input Android routed this recording to.
-            r.inputDevice = r.record!!.routedDevice?.let { "${it.productName} (type ${it.type})" } ?: "unknown"
-            r.reader = thread(name = "WingVad") { read(r) }
-        } catch (error: Exception) { release(r); round = null; throw error }
+        val decision = if (options.mic == "auto") mic.decide() else HeadsetMicRoute.Decision(false, "listen", null)
+        r.micReason = decision.reason
+        mic.acquire(decision) { input ->
+            if (round !== r || r.stopped) { started(CancellationException("Recording cancelled.")); return@acquire }
+            r.micInput = input
+            try {
+                begin(r)
+                started(null)
+            } catch (error: Exception) {
+                release(r); round = null; mic.release(); started(error)
+            }
+        }
+    }
+
+    private fun begin(r: Round) {
+        if (r.options.startCue) cue(ToneGenerator.TONE_PROP_BEEP, wait = true)
+        r.vad = Vad(
+            assetManager = activity.assets,
+            config = VadModelConfig(
+                sileroVadModelConfig = SileroVadModelConfig(model = "silero_vad.onnx", windowSize = 512),
+                sampleRate = 16000,
+                numThreads = 1,
+            ),
+        )
+        r.record = openRecord(r)
+        r.record!!.startRecording()
+        // Read-only diagnosis: which input Android routed this recording to.
+        r.inputDevice = r.record!!.routedDevice?.let { "${it.productName} (type ${it.type})" } ?: "unknown"
+        r.reader = thread(name = "WingVad") { read(r) }
     }
 
     /** [wait] keeps the "listening" cue out of the recording (about 250 ms before capture starts). */
@@ -89,6 +111,7 @@ class VadCapture(
         for (source in sources) {
             val record = AudioRecord(source, 16000, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT, maxOf(minimum, 16000))
             if (record.state == AudioRecord.STATE_INITIALIZED) {
+                r.micInput?.let { record.setPreferredDevice(it) }
                 r.sourceName = if (source == MediaRecorder.AudioSource.VOICE_COMMUNICATION) "VOICE_COMMUNICATION" else "VOICE_RECOGNITION"
                 return record
             }
@@ -129,6 +152,10 @@ class VadCapture(
             }
             System.arraycopy(frame, 0, r.pcm, r.length, 512)
             r.length += 512
+            if (r.firstSoundMs < 0 && frame.any { it.toInt() != 0 }) {
+                r.firstSoundMs = System.currentTimeMillis() - r.startedAt
+                if (r.options.mic == "auto") Log.i(HeadsetMicRoute.TAG, "first firstSoundMs=${r.firstSoundMs} headset=${if (r.micInput != null) 1 else 0}")
+            }
             for (k in 0 until 512) window[k] = frame[k] / 32768f
             val raw = vad.compute(window)
             val p = if (raw < 0f) { r.computeErrors++; 0f } else raw
@@ -185,6 +212,8 @@ class VadCapture(
         try { r.record?.stop() } catch (_: Exception) {}
         // Never release here: the reader releases its own resources when it exits (see read).
         try { r.reader?.join(500) } catch (_: InterruptedException) {}
+        // finish, cancel, fail and pause all pass here: A2DP returns before recognition starts.
+        mic.release()
     }
 
     private fun release(r: Round) {
@@ -198,6 +227,7 @@ class VadCapture(
             .put("version", 1).put("roundId", r.id).put("startedAt", Instant.ofEpochMilli(r.startedAt).toString())
             .put("sampleRate", 16000).put("windowSamples", 512).put("windowMs", 32)
             .put("source", r.sourceName).put("inputDevice", r.inputDevice)
+            .put("mic", JSONObject().put("headset", r.micInput != null).put("reason", r.micReason).put("firstSoundMs", r.firstSoundMs))
             .put("config", JSONObject(config)).put("probabilities", probabilities)
             .put("computeErrors", r.computeErrors).put("decision", decision).put("recognition", recognition))
     }

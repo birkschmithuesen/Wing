@@ -7,9 +7,11 @@ import android.view.WindowManager
 import com.tarkilhk.wing.voicebackground.BackgroundVoiceChannel
 import com.tarkilhk.wing.voicebackground.BackgroundVoiceService
 import com.tarkilhk.wing.voiceoffline.HeadphoneRouteChannel
+import com.tarkilhk.wing.voiceoffline.HeadsetMicRoute
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import java.util.concurrent.CancellationException
 
 class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     companion object { const val PERMISSION_REQUEST = 7314 }
@@ -19,7 +21,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     private val models = SpeechModelStore(activity, ::emit)
     private val speech = OfflineSpeech(models)
     private val debugStore = VoiceDebugStore(activity)
-    private val vad = VadCapture(activity, models, speech, debugStore, ::emit)
+    private val micRoute = HeadsetMicRoute(activity)
+    private val vad = VadCapture(activity, models, speech, debugStore, micRoute, ::emit)
     private val mediaKeys = VoiceMediaKeys(activity, ::emit)
     private val background = BackgroundVoiceChannel(activity, messenger)
     private val route = HeadphoneRouteChannel(activity, messenger)
@@ -98,23 +101,38 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         // Barge-in listen rounds record while Wing reads aloud.
         if (call.argument<Boolean>("keepPlayback") != true) playback.stop()
         val id = call.argument<String>("id")!!
-        if (call.method == "startVad") {
-            capture.cancel(id)
-            val cues = call.argument<Boolean>("cues") != false
-            vad.start(id, VadCapture.Options(
-                cues = cues,
-                debug = call.argument<Boolean>("debug") == true,
-                source = call.argument<String>("source") ?: "communication",
-                maxMs = call.argument<Int>("maxMs") ?: 600_000,
-                startCue = call.argument<Boolean>("startCue") ?: cues,
-            ))
-        } else {
+        if (call.method != "startVad") {
             vad.cancel(id)
             capture.start(id, call.argument<Boolean>("local") == true, call.argument<String>("language").orEmpty())
+            result.success(null)
+            return
         }
-        result.success(null)
+        capture.cancel(id)
+        val cues = call.argument<Boolean>("cues") != false
+        val options = VadCapture.Options(
+            cues = cues,
+            debug = call.argument<Boolean>("debug") == true,
+            source = call.argument<String>("source") ?: "communication",
+            maxMs = call.argument<Int>("maxMs") ?: 600_000,
+            startCue = call.argument<Boolean>("startCue") ?: cues,
+            mic = call.argument<String>("mic") ?: "auto",
+        )
+        val begin = {
+            try {
+                vad.start(id, options) { failure ->
+                    when (failure) {
+                        null -> result.success(null)
+                        is CancellationException -> result.error("cancelled", "Recording cancelled.", null)
+                        else -> result.error("voice_unavailable", failure.message ?: "Voice is unavailable.", null)
+                    }
+                }
+            } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
+        }
+        // Spec §3 F1: the first explicit recording with Bluetooth audio asks for Nearby devices once.
+        if (options.mic == "auto" && micRoute.needsPermission()) micRoute.requestOnce(begin) else begin()
     }
     fun permissionResult(requestCode: Int, grants: IntArray): Boolean {
+        if (requestCode == HeadsetMicRoute.PERMISSION_REQUEST) { micRoute.permissionResult(grants); route.refresh(); return true }
         if (requestCode == HeadphoneRouteChannel.PERMISSION_REQUEST) { route.permissionResult(grants); return true }
         if (requestCode != PERMISSION_REQUEST) return false
         val request = pending; pending = null
@@ -137,6 +155,6 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         route.close()
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
         mediaKeys.close(); activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        capture.close(); playback.close(); vad.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
+        capture.close(); playback.close(); vad.close(); micRoute.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
     }
 }
