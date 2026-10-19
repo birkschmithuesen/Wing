@@ -10,6 +10,7 @@ import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
 import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/barge_in_coordinator.dart';
+import 'package:wing/voice_offline/barge_in_policy.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
 import '../support/profile_browser_fixture.dart';
 import '../support/voice_fixture.dart';

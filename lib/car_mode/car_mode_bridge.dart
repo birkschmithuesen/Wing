@@ -111,7 +111,7 @@ CarSnapshot carSnapshotOf(
         output.error ??
         (chat?.status == ProfileTurnStatus.failed ? 'Hermes could not finish this reply.' : null),
     listenOpen: listenOpen,
-    speechInProgress: listenOpen && bargeIn!.listener.speechInProgress,
+    speechInProgress: listenOpen && (bargeIn?.listener.speechInProgress ?? false),
   );
 }
 
