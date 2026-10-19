@@ -138,9 +138,14 @@ class _CarModeScreenState extends State<CarModeScreen> {
     double width,
   ) {
     final tokens = WingTokens.of(context);
-    final badge = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: landscape ? 260 : width * .6),
-      child: _Badge(connection: snap.connection, colors: carBadgeColorsFor(snap.connection, tokens)),
+    // Flexible, not a bare ConstrainedBox: two status-row switches leave less
+    // room than one did, and the badge (already shrink-safe via its own
+    // FittedBox) must yield before the row overflows.
+    final badge = Flexible(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: landscape ? 260 : width * .6),
+        child: _Badge(connection: snap.connection, colors: carBadgeColorsFor(snap.connection, tokens)),
+      ),
     );
     final title = Text(
       snap.title ?? '',
@@ -184,7 +189,13 @@ class _CarModeScreenState extends State<CarModeScreen> {
         ),
       ),
     );
-    final loopSwitch = _LoopSwitch(session: widget.session, colors: colors);
+    final switches = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _BargeInSwitch(session: widget.session, colors: colors),
+        _LoopSwitch(session: widget.session, colors: colors),
+      ],
+    );
     if (landscape) {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -198,7 +209,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
                 Expanded(child: statusLine),
                 const SizedBox(width: 16),
                 ConstrainedBox(constraints: const BoxConstraints(maxWidth: 220), child: title),
-                loopSwitch,
+                switches,
               ],
             ),
           ),
@@ -213,7 +224,7 @@ class _CarModeScreenState extends State<CarModeScreen> {
         SizedBox(
           height: 56,
           child: Row(
-            children: [badge, const SizedBox(width: 12), Expanded(child: title), loopSwitch],
+            children: [badge, const SizedBox(width: 12), Expanded(child: title), switches],
           ),
         ),
         const SizedBox(height: 28),
@@ -352,6 +363,28 @@ class _LoopSwitch extends StatelessWidget {
       value: session.loopOn,
       activeThumbColor: colors.label,
       onChanged: session.setLoop,
+    ),
+  );
+}
+
+/// Session-local "Interrupt by speaking" switch, docked at the status row's
+/// edge next to [_LoopSwitch] so a normal tap on the big button never
+/// reaches it. While on, it lifts the Wing car mode barge-in lock for this
+/// session only (CarModeSession.setBargeIn); the echo gate stays unchanged.
+class _BargeInSwitch extends StatelessWidget {
+  const _BargeInSwitch({required this.session, required this.colors});
+  final CarModeSession session;
+  final CarColors colors;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+    label: 'Interrupt by speaking',
+    toggled: session.bargeInOn,
+    child: Switch(
+      key: const ValueKey('car-bargein-switch'),
+      value: session.bargeInOn,
+      activeThumbColor: colors.label,
+      onChanged: session.setBargeIn,
     ),
   );
 }

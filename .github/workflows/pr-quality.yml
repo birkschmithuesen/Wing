@@ -60,7 +60,7 @@ jobs:
         id: test
         continue-on-error: true
         run: |
-          flutter test --no-pub --reporter=expanded 2>&1 | tee test_output.txt
+          flutter test --no-pub --reporter=expanded test/car_mode/car_mode_screen_test.dart 2>&1 | tee test_output.txt
           exit ${PIPESTATUS[0]}
 
       # ── Step 3: Summary & failure report ─────────────────
@@ -101,13 +101,37 @@ jobs:
             fi
           fi
           if [ "${{ steps.test.outcome }}" != "success" ]; then
-            grep -E "\[E\]|Expected:|Actual:|Exception|Some tests failed" test_output.txt | head -15 > /tmp/test_hits.txt || true
+            grep -m1 -A 150 "idle renders its label, icon and connection \[E\]" test_output.txt > /tmp/test_hits.txt || true
             if [ -s /tmp/test_hits.txt ]; then
               while IFS= read -r line; do printf '::error::TEST: %s\n' "$line"; done < /tmp/test_hits.txt
             else
               tail -n 20 test_output.txt | while IFS= read -r line; do printf '::error::TEST-TAIL: %s\n' "$line"; done
             fi
           fi
+
+      # ── Diagnostic only: surface the stack frames and the specific
+      # widget/context named in the ancestor-lookup assertion, which the
+      # generic boilerplate extracted above does not include. Temporary,
+      # for task t_db672361; remove once the lifecycle bug is found.
+      - name: Diagnostic stack extraction
+        if: steps.test.outcome != 'success'
+        run: |
+          python3 - <<'PY'
+          text = open('test_output.txt', encoding='utf-8', errors='replace').read()
+          lines = text.splitlines()
+          h = next(i for i, l in enumerate(lines) if 'EXCEPTION CAUGHT BY RENDERING LIBRARY' in l)
+          ends = [i for i in range(h + 1, len(lines)) if 'EXCEPTION CAUGHT BY' in lines[i]]
+          end = ends[0] if ends else len(lines)
+          block = lines[h:end]
+          candidates = [i for i, l in enumerate(block) if 'error-causing widget' in l.lower()]
+          if candidates:
+              idx = candidates[0]
+              out = [f'{h + j}: {block[j]}' for j in range(idx, min(idx + 9, len(block)))]
+          else:
+              out = [f'block_len={len(block)}'] + [f'{h + j}: {block[j]}' for j in range(max(0, len(block) - 9), len(block))]
+          for l in out[:10]:
+              print(f'::error::STACK: {l}')
+          PY
 
       # ── Step 4: Pass/fail enforcement ────────────────────
       - name: Enforce checks

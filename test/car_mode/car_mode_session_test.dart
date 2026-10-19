@@ -280,6 +280,23 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('the Interrupt-by-speaking switch only affects the running session and resets on leave', (tester) async {
+    await open(tester);
+    expect(session.bargeInOn, isFalse);
+    session.setBargeIn(true);
+    expect(session.bargeInOn, isTrue);
+    expect(logs.last, 'WingCar bargeIn=on source=toggle');
+    session.setBargeIn(false);
+    expect(session.bargeInOn, isFalse);
+    expect(logs.last, 'WingCar bargeIn=off source=toggle');
+    session.exit('test');
+    await tester.pumpAndSettle();
+    await open(tester); // re-enter: back to off
+    expect(session.bargeInOn, isFalse);
+    session.exit('test');
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('logs never contain title, error, activity or held text', (tester) async {
     await open(tester);
     world.set(const CarSnapshot(

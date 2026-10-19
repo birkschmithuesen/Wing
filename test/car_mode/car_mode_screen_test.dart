@@ -12,6 +12,7 @@ import 'package:wing/car_mode/car_mode_session.dart';
 import 'package:wing/car_mode/car_mode_state.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/voice_offline/headphone_route.dart';
 import '../support/voice_fixture.dart';
 
 class _World extends ChangeNotifier {
@@ -197,6 +198,71 @@ void main() {
     expect(rect.height, greaterThanOrEqualTo(44));
     await close(tester);
   });
+
+  testWidgets('the status row carries an Interrupt-by-speaking switch that never counts as a tap', (tester) async {
+    await show(tester);
+    final bargeInSwitch = find.byKey(const ValueKey('car-bargein-switch'));
+    expect(bargeInSwitch, findsOneWidget);
+    expect(tester.widget<Switch>(bargeInSwitch).value, isFalse);
+    await tester.tap(bargeInSwitch);
+    await tester.pump();
+    expect(session.bargeInOn, isTrue);
+    expect(tester.widget<Switch>(bargeInSwitch).value, isTrue);
+    // Flipping the switch must never be mistaken for a tap on the big button.
+    expect(world.calls, isEmpty);
+    expect(logs, contains('WingCar bargeIn=on source=toggle'));
+    await tester.tap(bargeInSwitch);
+    await tester.pump();
+    expect(session.bargeInOn, isFalse);
+    expect(logs, contains('WingCar bargeIn=off source=toggle'));
+    await close(tester);
+  });
+
+  testWidgets('a reachable tap target: the Interrupt-by-speaking switch is at least 44x44', (tester) async {
+    await show(tester);
+    final rect = tester.getRect(find.byKey(const ValueKey('car-bargein-switch')));
+    expect(rect.width, greaterThanOrEqualTo(44));
+    expect(rect.height, greaterThanOrEqualTo(44));
+    await close(tester);
+  });
+
+  testWidgets(
+    'acceptance: switch off keeps the carMode barge-in lock; switch on lifts it for this '
+    'session, even over car speakers; leaving and re-entering resets it to off',
+    (tester) async {
+      await show(tester);
+      final bargeInSwitch = find.byKey(const ValueKey('car-bargein-switch'));
+      const carSpeaker = OutputRoute(supported: true, type: 2); // BUILTIN_SPEAKER
+
+      // Switch off (default, unchanged behaviour): the carMode lock blocks
+      // barge-in, even though "car mode" (wingCarMode: true) is active here.
+      expect(
+        classifyRoute(carSpeaker, wingCarMode: true, bargeInOverride: session.bargeInOn).headphones,
+        isFalse,
+      );
+
+      await tester.tap(bargeInSwitch);
+      await tester.pump();
+      // Switch on: the lock lifts for this session, even over a car speaker
+      // (not a wired headphone route).
+      // Mutation guard: if the implementation still returns the carMode
+      // lock despite the switch being on, this assertion goes red.
+      expect(
+        classifyRoute(carSpeaker, wingCarMode: true, bargeInOverride: session.bargeInOn).headphones,
+        isTrue,
+      );
+      expect(session.bargeInOn, isTrue);
+
+      await close(tester);
+      await show(tester); // re-enter: back to off, never persisted
+      expect(session.bargeInOn, isFalse);
+      expect(
+        classifyRoute(carSpeaker, wingCarMode: true, bargeInOverride: session.bargeInOn).headphones,
+        isFalse,
+      );
+      await close(tester);
+    },
+  );
 
   testWidgets('a swipe exits and never starts a round', (tester) async {
     await show(tester);

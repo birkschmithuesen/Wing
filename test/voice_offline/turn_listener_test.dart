@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
 import 'package:wing/core/services/voice_preferences.dart';
@@ -155,6 +156,34 @@ void main() {
     listener.setPlayback(true);
     await listener.close('test');
     expect(listener.playback, isFalse);
+  });
+
+  List<String> captureBargeLogs() {
+    final prints = <String>[];
+    final original = debugPrint;
+    debugPrint = (String? message, {int? wrapWidth}) => prints.add(message ?? '');
+    addTearDown(() => debugPrint = original);
+    return prints;
+  }
+
+  test('a barge not followed by sendable text logs a false trigger (echo misfire)', () async {
+    final prints = captureBargeLogs();
+    device.vadTranscript = 'ähm'; // filler only: not a sendable utterance
+    await listener.open(settings, playback: true);
+    await say(0.9, 30); // fires the playback gate
+    await say(0.1, 60); // pause ends the round
+    expect(barges, 1);
+    expect(prints, contains('WingBargeIn falseTrigger=1'));
+  });
+
+  test('a barge followed by sendable text does not log a false trigger', () async {
+    final prints = captureBargeLogs();
+    await listener.open(settings, playback: true);
+    await say(0.9, 30);
+    await say(0.1, 60);
+    expect(barges, 1);
+    expect(heard, ['Hello from the phone']);
+    expect(prints, isNot(contains('WingBargeIn falseTrigger=1')));
   });
 
   test('only an utterance that fired the playback gate counts as barged', () async {

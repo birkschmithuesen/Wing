@@ -199,9 +199,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   /// Voice barge-in into read-aloud only with wired headphones (spec §3.4.1,
   /// D2; Bluetooth stays off until the Bluetooth echo measurement, t_fabcb273).
+  /// The car mode screen's "Interrupt by speaking" switch lifts the Wing car
+  /// mode lock for the running session only (see [_playbackBargeIn]).
   late final _headphones = HeadphoneRoute(
     widget.headphoneRoute ?? AndroidHeadphoneRouteHost.instance,
     wingCarMode: () => _car.active,
+    bargeInOverride: () => _car.bargeInOn,
   );
   VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
   StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
@@ -551,6 +554,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             playback: playback,
             onBarge: () {
               _autoSpeakQueue.clear();
+              bargeLog(_headphones.logLine);
               return _voiceOutput.stop();
             },
           )
@@ -560,12 +564,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   /// Voice barge-in into read-aloud (spec §3.4, D2): setting on, echo gate
   /// passed, the conversation's chat, output on wired headphones (Bluetooth
-  /// headphones are not measured yet, t_fabcb273).
+  /// headphones are not measured yet, t_fabcb273) — or the car mode screen's
+  /// "Interrupt by speaking" switch lifted the carMode lock for this session.
   bool _playbackBargeIn(ProfileChat chat, VoicePreferences settings) =>
       bargeInPlaybackAvailable &&
       settings.bargeInPlayback &&
       _conversation == chat.key &&
-      _headphones.wired;
+      (_headphones.wired || _headphones.carModeOverridden);
 
   /// The output route changed while Wing reads aloud (spec §3.4.2): wired
   /// headphones gone closes a playback round, wired headphones back opens one.
@@ -577,7 +582,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         _voiceOutput.owner == null) {
       return;
     }
-    if (!_headphones.wired) {
+    if (!_headphones.wired && !_headphones.carModeOverridden) {
       if (_bargeIn.listener.playback) {
         unawaited(_bargeIn.close('route').catchError((Object _) {}));
       }
