@@ -51,6 +51,9 @@ class HeadphoneRouteChannel(private val activity: Activity, messenger: BinaryMes
 
     private fun changed() { channel.invokeMethod("changed", current()) }
 
+    /** Nearby devices access changed elsewhere (HeadsetMicRoute): push the route again. */
+    fun refresh() = changed()
+
     private fun current(): Map<String, Any?> {
         val unsupported = mapOf<String, Any?>("supported" to false, "type" to 0)
         if (Build.VERSION.SDK_INT < 33) return unsupported
@@ -62,6 +65,7 @@ class HeadphoneRouteChannel(private val activity: Activity, messenger: BinaryMes
             "type" to device.type,
             "bluetoothClass" to bluetoothClass(device),
             "androidCarMode" to (ui?.currentModeType == Configuration.UI_MODE_TYPE_CAR),
+            "bluetoothAllowed" to bluetoothAllowed(),
         )
     }
 

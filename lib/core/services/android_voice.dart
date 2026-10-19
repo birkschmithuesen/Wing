@@ -170,6 +170,11 @@ class AndroidVoice implements VoiceDevice {
       await channel.invokeMethod<int>('deleteVadDebugRecordings') ?? 0;
 }
 
+/// Which microphone a vad round may use (spec 2026-10-16 bt-headset-mic §4.3).
+/// [auto]: the connected headset's mic if there is one, otherwise the phone.
+/// [phone]: always the phone mic (listen rounds while Hermes works or reads).
+enum VadMic { auto, phone }
+
 class VadCaptureOptions {
   const VadCaptureOptions({
     required this.cues,
@@ -178,6 +183,7 @@ class VadCaptureOptions {
     required this.maxDuration,
     this.startCue,
     this.keepPlayback = false,
+    this.mic = VadMic.auto,
   });
   final bool cues;
   final bool debug;
@@ -191,6 +197,9 @@ class VadCaptureOptions {
   /// Start capture without stopping read-aloud (barge-in listen rounds).
   final bool keepPlayback;
 
+  /// Native side decides the headset only for [VadMic.auto].
+  final VadMic mic;
+
   Map<String, Object> toMap() => {
     'cues': cues,
     'debug': debug,
@@ -198,6 +207,7 @@ class VadCaptureOptions {
     'maxMs': maxDuration.inMilliseconds,
     'startCue': startCue ?? cues,
     'keepPlayback': keepPlayback,
+    'mic': mic.name,
   };
 }
 
