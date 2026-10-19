@@ -710,6 +710,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         }),
       );
     });
+    final micHint = _voiceInput.micFallbackHint;
+    if (micHint != null && mounted) {
+      _voiceInput.micFallbackHint = null;
+      showStudioError(context, micHint);
+    }
   }
 
   Future<void> _readAloud(

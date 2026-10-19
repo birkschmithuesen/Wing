@@ -93,7 +93,7 @@ class TurnListener extends ChangeNotifier {
           keepPlayback: true,
           // Spec 2026-10-16 E1 = A: listening never holds the headset link,
           // so read-aloud stays in A2DP quality.
-          mic: VadMic.phone,
+          mic: VoiceMicRoute.phone,
           debug: settings.debugRecordings,
           source: settings.audioSource,
           maxDuration: settings.vad.maxDuration,

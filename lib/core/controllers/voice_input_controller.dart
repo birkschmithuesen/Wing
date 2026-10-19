@@ -33,6 +33,11 @@ class VoiceInputController extends ChangeNotifier {
   String? error;
   int seconds = 0;
 
+  /// Set once, right after [start], when a manual [VoicePreferences.micRoute]
+  /// choice was not available and this round fell back to Automatic. The
+  /// caller shows it once (e.g. a snackbar) and clears it.
+  String? micFallbackHint;
+
   /// Whether the last transcript arrived because the recognizer ended the
   /// utterance itself (end of speech), not because the user pressed Stop or
   /// the recording limit was reached. Set before the result callback runs.
@@ -71,6 +76,7 @@ class VoiceInputController extends ChangeNotifier {
     _draft = draft;
     _onResult = onResult;
     error = null;
+    micFallbackHint = null;
     partial = '';
     seconds = 0;
     finishedOnItsOwn = false;
@@ -81,15 +87,17 @@ class VoiceInputController extends ChangeNotifier {
       if (settings.input == VoiceInputRoute.vad) {
         _endpointer = VadEndpointer(settings.vad);
         maxSeconds = settings.vad.maxDuration.inSeconds;
-        await device.startVad(
+        final fellBack = await device.startVad(
           id,
           VadCaptureOptions(
             cues: settings.cues,
             debug: settings.debugRecordings,
             source: settings.audioSource,
             maxDuration: settings.vad.maxDuration,
+            mic: settings.micRoute,
           ),
         );
+        if (fellBack) micFallbackHint = micFallbackMessage(settings.micRoute);
       } else {
         maxSeconds = maxRecordingSeconds;
         if (settings.input == VoiceInputRoute.hermes) _remote = createRemote();
@@ -302,6 +310,14 @@ TextEditingValue insertVoiceTranscript(TextEditingValue draft, String text) {
     ),
   );
 }
+
+String micFallbackMessage(VoiceMicRoute chosen) => switch (chosen) {
+  VoiceMicRoute.bluetooth =>
+    'Bluetooth microphone not found. Used the automatic microphone for this recording.',
+  VoiceMicRoute.wired =>
+    'Wired microphone not found. Used the automatic microphone for this recording.',
+  _ => 'Chosen microphone not available. Used the automatic microphone for this recording.',
+};
 
 String voiceFailureMessage(Object failure) => switch (failure) {
   PlatformException error => error.message ?? 'Android voice is unavailable.',
