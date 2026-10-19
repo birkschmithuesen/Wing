@@ -138,9 +138,14 @@ class _CarModeScreenState extends State<CarModeScreen> {
     double width,
   ) {
     final tokens = WingTokens.of(context);
-    final badge = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: landscape ? 260 : width * .6),
-      child: _Badge(connection: snap.connection, colors: carBadgeColorsFor(snap.connection, tokens)),
+    // Flexible, not a bare ConstrainedBox: two status-row switches leave less
+    // room than one did, and the badge (already shrink-safe via its own
+    // FittedBox) must yield before the row overflows.
+    final badge = Flexible(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: landscape ? 260 : width * .6),
+        child: _Badge(connection: snap.connection, colors: carBadgeColorsFor(snap.connection, tokens)),
+      ),
     );
     final title = Text(
       snap.title ?? '',
