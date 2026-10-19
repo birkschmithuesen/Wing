@@ -167,11 +167,16 @@ class AndroidHeadphoneRouteHost implements HeadphoneRouteHost {
 /// Cached headphone verdict: the playback decision in the workspace screen
 /// is synchronous. Logs one `route` line whenever the inputs change.
 class HeadphoneRoute extends ChangeNotifier {
+  // The field names carry the leading underscore the external parameter
+  // names must not (callers keep using wingCarMode:/bargeInOverride:), so
+  // an initializing formal (`this._wingCarMode`) cannot apply here.
   HeadphoneRoute(
     this.host, {
     required bool Function() wingCarMode,
     bool Function() bargeInOverride = _never,
-  }) : _wingCarMode = wingCarMode,
+  }) : // ignore: prefer_initializing_formals
+       _wingCarMode = wingCarMode,
+       // ignore: prefer_initializing_formals
        _bargeInOverride = bargeInOverride {
     _changes = host.changes.listen(_apply);
   }
