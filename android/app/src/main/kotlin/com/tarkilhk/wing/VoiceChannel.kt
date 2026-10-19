@@ -119,9 +119,9 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         )
         val begin = {
             try {
-                vad.start(id, options) { failure ->
+                vad.start(id, options) { failure, fallback ->
                     when (failure) {
-                        null -> result.success(null)
+                        null -> result.success(fallback)
                         is CancellationException -> result.error("cancelled", "Recording cancelled.", null)
                         else -> result.error("voice_unavailable", failure.message ?: "Voice is unavailable.", null)
                     }
@@ -129,7 +129,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
             } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
         }
         // Spec §3 F1: the first explicit recording with Bluetooth audio asks for Nearby devices once.
-        if (options.mic == "auto" && micRoute.needsPermission()) micRoute.requestOnce(begin) else begin()
+        // "bluetooth" is a manual preference for that same link, so it asks too; "phone" and "wired" never need it.
+        if ((options.mic == "auto" || options.mic == "bluetooth") && micRoute.needsPermission()) micRoute.requestOnce(begin) else begin()
     }
     fun permissionResult(requestCode: Int, grants: IntArray): Boolean {
         if (requestCode == HeadsetMicRoute.PERMISSION_REQUEST) { micRoute.permissionResult(grants); route.refresh(); return true }

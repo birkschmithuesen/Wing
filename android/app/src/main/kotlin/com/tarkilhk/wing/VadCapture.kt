@@ -54,23 +54,25 @@ class VadCapture(
     private val handler = Handler(Looper.getMainLooper())
     @Volatile private var round: Round? = null
 
-    /** Answers [started] once: null when capture runs, otherwise the failure. An explicit round first waits
-     *  for the headset link; the start cue plays only once the chosen mic is live (spec §5). */
-    fun start(id: String, options: Options, started: (Exception?) -> Unit) {
+    /** Answers [started] once: null when capture runs, otherwise the failure; [fallback] is true only when
+     *  a manual mic preference could not be honored and this round fell back to automatic routing. An
+     *  explicit round first waits for the headset link; the start cue plays only once the chosen mic is
+     *  live (spec §5). */
+    fun start(id: String, options: Options, started: (failure: Exception?, fallback: Boolean) -> Unit) {
         cancelCurrent()
         models.verifyManifest()?.let { error(it) }
         val r = Round(id, options, System.currentTimeMillis(), (options.maxMs + 5_000) * 16)
         round = r
-        val decision = if (options.mic == "auto") mic.decide() else HeadsetMicRoute.Decision(false, "listen", null)
+        val decision = mic.decide(options.mic)
         r.micReason = decision.reason
         mic.acquire(decision) { input ->
-            if (round !== r || r.stopped) { started(CancellationException("Recording cancelled.")); return@acquire }
+            if (round !== r || r.stopped) { started(CancellationException("Recording cancelled."), false); return@acquire }
             r.micInput = input
             try {
                 begin(r)
-                started(null)
+                started(null, decision.fallback)
             } catch (error: Exception) {
-                release(r); round = null; mic.release(); started(error)
+                release(r); round = null; mic.release(); started(error, false)
             }
         }
     }
@@ -154,7 +156,7 @@ class VadCapture(
             r.length += 512
             if (r.firstSoundMs < 0 && frame.any { it.toInt() != 0 }) {
                 r.firstSoundMs = System.currentTimeMillis() - r.startedAt
-                if (r.options.mic == "auto") Log.i(HeadsetMicRoute.TAG, "first firstSoundMs=${r.firstSoundMs} headset=${if (r.micInput != null) 1 else 0}")
+                if (r.options.mic == "auto" || r.options.mic == "bluetooth") Log.i(HeadsetMicRoute.TAG, "first firstSoundMs=${r.firstSoundMs} headset=${if (r.micInput != null) 1 else 0}")
             }
             for (k in 0 until 512) window[k] = frame[k] / 32768f
             val raw = vad.compute(window)

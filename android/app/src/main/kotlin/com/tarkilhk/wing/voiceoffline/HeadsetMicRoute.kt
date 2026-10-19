@@ -39,8 +39,10 @@ class HeadsetMicRoute(private val activity: Activity) {
         )
     }
 
-    /** [link] is the communication sink to request; the phone mic when [headset] is false. */
-    class Decision(val headset: Boolean, val reason: String, val link: AudioDeviceInfo?)
+    /** [link] is the communication sink to request; the phone mic when [headset] is false.
+     *  [fallback] is true only when a manual preference could not be honored and this
+     *  decision fell back to the automatic rule (spec 2026-10-18 manual mic). */
+    class Decision(val headset: Boolean, val reason: String, val link: AudioDeviceInfo?, val fallback: Boolean = false)
 
     private val audio = activity.getSystemService(AudioManager::class.java)
     private val handler = Handler(Looper.getMainLooper())
@@ -59,7 +61,31 @@ class HeadsetMicRoute(private val activity: Activity) {
     fun bluetoothAllowed() = Build.VERSION.SDK_INT < 31 ||
         activity.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
 
-    fun decide(): Decision {
+    /** [preference] is the saved [com.tarkilhk.wing.VadCapture.Options.mic] string: "auto" keeps this
+     *  method's own BT-vs-phone rule unchanged; "phone" and "wired" never attempt the BT link; "bluetooth"
+     *  takes the automatic rule's own BT branch and, if it found no headset mic, falls back to that same
+     *  automatic result with [Decision.fallback] set so the caller can tell the user once. */
+    fun decide(preference: String = "auto"): Decision {
+        if (preference == "phone") {
+            Log.i(TAG, "decide mic=phone reason=manualPhone")
+            return Decision(false, "manualPhone", null)
+        }
+        if (preference == "wired") {
+            // HeadsetMicRoute only ever drives the classic-SCO link (see the class doc): skipping it
+            // entirely lets the default engine route a wired, USB or LE Audio mic by itself, or the
+            // phone mic if none is plugged in - there is no separate wired detection to duplicate here.
+            Log.i(TAG, "decide mic=phone reason=manualWired")
+            return Decision(false, "manualWired", null)
+        }
+        val automatic = automaticDecision()
+        if (preference == "bluetooth" && !automatic.headset) {
+            Log.i(TAG, "decide mic=phone reason=${automatic.reason} fallback=1")
+            return Decision(false, automatic.reason, null, fallback = true)
+        }
+        return automatic
+    }
+
+    private fun automaticDecision(): Decision {
         if (Build.VERSION.SDK_INT < 31) return Decision(false, "sdk", null)
         val output = if (Build.VERSION.SDK_INT >= 33) {
             try { audio.getAudioDevicesForAttributes(media).firstOrNull() } catch (_: Exception) { null }
