@@ -4768,6 +4768,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     String? display,
     bool preserveComposer = false,
     List<AttachmentDraft>? attachmentOverride,
+    bool quietTransientFailure = false,
   }) async {
     final resource = _owned(chat);
     if (chat._replacingExpiredRuntime) return false;
@@ -4902,17 +4903,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
       );
       if (attachmentOverride == null) await attachments.removeAll(files);
     } catch (e) {
-      if (submitted && !preserveComposer) {
+      // A transient failure caught before any submission has nothing to
+      // disambiguate later: it's simply "try again once reconnected", same
+      // as an uncertain ack, just without the history check that one needs
+      // (card t_8c76c35a observation 2026-10-19).
+      final quietTransient =
+          !submitted &&
+          quietTransientFailure &&
+          isTemporaryWorkspaceFailure(e);
+      if (submitted) {
         chat.draftSubmissionUncertain = true;
         await _persistDraft(chat);
       }
       chat.error = submitted
           ? 'Delivery or completion is uncertain. Reconnect to check history. The prompt will not be resent.'
-          : e.toString();
-      chat.status = submitted
+          : (quietTransient ? null : e.toString());
+      chat.status = submitted || quietTransient
           ? ProfileTurnStatus.reconnecting
           : ProfileTurnStatus.failed;
-      if (submitted) _scheduleReconnect(resource);
+      if (submitted || quietTransient) _scheduleReconnect(resource);
     } finally {
       chat._submissionInFlight = false;
       _changed();
@@ -5336,8 +5345,18 @@ class ProfileWorkspaceController extends ChangeNotifier {
           prompt: queued.text,
           preserveComposer: true,
           attachmentOverride: queued.attachments,
+          quietTransientFailure: true,
         );
         if (!accepted) {
+          // A plain transient failure before anything reached the server
+          // (see _sendPrompt) isn't stuck: the next drain, right after the
+          // next reconnect, just tries again. An uncertain ack still pauses
+          // sticky, same as before, until its head is resolved against
+          // history (see _performReconnect).
+          if (!chat.draftSubmissionUncertain &&
+              chat.status == ProfileTurnStatus.reconnecting) {
+            break;
+          }
           chat.queuePaused = true;
           break;
         }
@@ -5365,6 +5384,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat.error = 'Queue paused. Unsent messages could not be saved.';
       }
       _changed();
+    }
+  }
+
+  /// Returns null when the server's own history can't be read right now
+  /// (undecidable: the caller must pause and ask the user, never guess).
+  Future<bool?> _queuedHeadDelivered(
+    ProfileChat chat,
+    QueuedPromptDraft queued,
+  ) async {
+    try {
+      final page = await _owned(chat).gateway.history(
+        chat.key.sessionId,
+        runtimeId: chat.runtimeId,
+      );
+      return page.rows.any(
+        (row) => row['role'] == 'user' && row['content'] == queued.text,
+      );
+    } catch (_) {
+      return null;
     }
   }
 
@@ -6801,6 +6839,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat.offlineSnapshot = false;
         if (wasBusy && !chat.busy) {
           _notifyRecoveredResult(chat);
+        }
+        if (chat.queuePaused &&
+            chat.draftSubmissionUncertain &&
+            chat.queuedPrompts.isNotEmpty) {
+          // card t_8c76c35a observation 2026-10-19: a reconnect is exactly
+          // the moment to resolve an uncertain head against the server's
+          // own history, instead of leaving it for Birk to check by hand.
+          final queued = chat.queuedPrompts.first;
+          final delivered = await _queuedHeadDelivered(chat, queued);
+          if (delivered != null) {
+            chat.draftSubmissionUncertain = false;
+            chat.queuePaused = false;
+            chat.error = null;
+            if (delivered) {
+              chat.queuedPrompts.removeAt(0);
+              await attachments.removeAll(queued.attachments);
+            }
+            await _persistDraft(chat);
+          }
         }
         if (result != null) await _drainQueuedPrompts(chat);
       }
