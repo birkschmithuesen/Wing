@@ -134,7 +134,7 @@ object ChatNotifications {
     }
     fun hasLiveEngine() = ready && channel != null && MonitoringRuntime.engine != null
 
-    private fun createChannels(context: Context) {
+    fun createChannels(context: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(turnChannel, "Replies and updates", NotificationManager.IMPORTANCE_DEFAULT))

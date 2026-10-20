@@ -21,6 +21,13 @@
         <receiver android:name=".NotificationDismissReceiver" android:exported="false" />
         <activity android:name=".NotificationActionActivity" android:exported="false"
             android:excludeFromRecents="true" android:theme="@style/NotificationActionTheme" />
+        <service android:name=".porterwake.PorterPushService" android:exported="false">
+            <intent-filter>
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
+            </intent-filter>
+        </service>
+        <activity android:name=".porterwake.PorterActionActivity" android:exported="false"
+            android:excludeFromRecents="true" android:theme="@style/NotificationActionTheme" />
         <service
             android:name=".BackgroundMonitoringService"
             android:exported="false"

@@ -72,6 +72,7 @@ class MainActivity : FlutterActivity() {
         super.configureFlutterEngine(flutterEngine)
         engineAttached = true
         MonitoringRuntime.attach(this, flutterEngine)
+        com.tarkilhk.wing.porterwake.PorterWakeNative.attach(this, flutterEngine)
         hermesCloud?.close()
         hermesCloud = HermesCloudChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         voiceChannel?.close()
@@ -298,6 +299,7 @@ class MainActivity : FlutterActivity() {
         voiceChannel?.resume()
         if (!getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
             ChatNotifications.handleMainIntent(this, intent)
+            com.tarkilhk.wing.porterwake.PorterWakeNative.handleMainIntent(this, intent)
         }
         MonitoringRuntime.activityVisible = true
         intakeExecutor.execute {
@@ -326,6 +328,7 @@ class MainActivity : FlutterActivity() {
         setIntent(intent)
         if (activityResumed && !getSystemService(android.app.KeyguardManager::class.java).isKeyguardLocked) {
             ChatNotifications.handleMainIntent(this, intent)
+            com.tarkilhk.wing.porterwake.PorterWakeNative.handleMainIntent(this, intent)
         }
         launchActionFor(intent)?.let { action ->
             launchChannel?.invokeMethod("launchAction", action)

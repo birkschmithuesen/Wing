@@ -125,6 +125,7 @@ object MonitoringRuntime {
                 channel?.setMethodCallHandler(null)
                 channel = null
                 ChatNotifications.detach()
+                com.tarkilhk.wing.porterwake.PorterWakeNative.detach()
                 engine?.destroy()
                 engine = null
             }

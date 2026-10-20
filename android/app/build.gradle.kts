@@ -249,4 +249,5 @@ dependencies {
    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
    implementation(files("libs/sherpa-onnx-1.13.8.aar"))
    implementation("org.apache.commons:commons-compress:1.27.1")
+   implementation("org.unifiedpush.android:connector:3.0.10") // ANNAHME C1: unverified, see PorterPushService.kt
 }
