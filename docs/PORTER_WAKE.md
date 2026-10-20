@@ -36,8 +36,9 @@ answers 200. On 404 or 503 Wing does not register an endpoint, shows no
 - Wing registers its UnifiedPush endpoint with a random per-install device id
   stored in secure storage. It is not backed up (`allowBackup=false`).
 - The registration is revoked when the connection is removed (including config
-  restore or import), when the distributor unregisters, and when credentials are
-  edited (Wing re-probes the server).
+  restore or import), when the distributor unregisters, and when the distributor unregisters. When credentials are
+  edited, Wing re-probes the server and registers again with the new connection;
+  the old server's registration is not deleted.
 
 ## Scope exception
 
@@ -47,6 +48,11 @@ an exception to the AGENTS.md "Hermes deployment constraint", approved by Birk o
 `android/app/src/main/kotlin/com/tarkilhk/wing/porterwake/`.
 
 ## Known limits
+
+Delivery while Wing is closed (the headless engine) is not yet verified on a
+device. The connector's WebPush code runs on tink-android 1.23 (runtime
+unverified). The connector API and plain-JSON delivery are compile-verified
+only and stay unverified until the device handoff.
 
 Go-live assumptions not yet verified on a device: plain JSON reaching the
 connector's `onMessage`, network access under Doze, and an `http://` ntfy server
