@@ -1,0 +1,115 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wing/core/services/connection_manager.dart';
+import 'package:wing/porter_wake/porter_wake_api.dart';
+import 'package:wing/porter_wake/porter_wake_bridge.dart';
+import 'package:wing/porter_wake/porter_wake_device_id.dart';
+import 'package:wing/porter_wake/porter_wake_ledger.dart';
+import 'package:wing/porter_wake/porter_wake_module.dart';
+
+import 'fake_porter_bridge.dart';
+import 'porter_wake_device_id_test.dart' show MemoryCredentialStore;
+import 'porter_wake_fake_server.dart';
+
+SavedConnection conn(String id) => SavedConnection(
+  id: id, label: 'Home', host: 'hermes.test', port: 8642, apiKey: '');
+
+void main() {
+  late FakePorterServer server;
+  late RecordingPorterWakeBridge bridge;
+  late PorterWakeModule module;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    server = FakePorterServer();
+    bridge = RecordingPorterWakeBridge();
+    module = PorterWakeModule(
+      bridge: bridge,
+      deviceIds: PorterDeviceIdStore(store: MemoryCredentialStore()),
+      ledger: PorterNoticeLedger(await SharedPreferences.getInstance()),
+      apiFactory: (_) => PorterWakeApi(server.client()),
+    );
+    await module.start();
+  });
+
+  test('a 200 probe activates the connection and registers its instance', () async {
+    await module.sync([conn('c1')]);
+    expect(module.activeConnections.map((c) => c.id), ['c1']);
+    expect(bridge.registered, ['c1']);
+  });
+
+  test('a 404 probe registers nothing and calls no other porter route', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 404;
+    await module.sync([conn('c1')]);
+    await module.sync([conn('c1')]);
+    expect(module.activeConnections, isEmpty);
+    expect(bridge.registered, isEmpty);
+    expect(bridge.unregistered, ['c1']);
+    expect(server.porterRequests().map((r) => '${r.method} ${r.url.path}'),
+        ['GET ${FakePorterServer.base}/settings/quiet-hours']);
+  });
+
+  test('a 503 probe is treated like 404', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 503;
+    await module.sync([conn('c1')]);
+    expect(bridge.registered, isEmpty);
+    expect(module.activeConnections, isEmpty);
+  });
+
+  test('a network failure leaves the connection unprobed for a later retry', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
+    await module.sync([conn('c1')]);
+    expect(bridge.registered, isEmpty);
+    server.statusFor.clear();
+    await module.sync([conn('c1')]);
+    expect(bridge.registered, ['c1']);
+  });
+
+  test('a new endpoint is posted with the stable device id and label', () async {
+    await module.sync([conn('c1')]);
+    await bridge.emit(const PorterEndpointEvent('c1', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
+    await bridge.emit(const PorterEndpointEvent('c1', 'http://100.75.24.33:2586/upZZZ999zzz?up=1'));
+    final posts = server.porterRequests().where((r) => r.method == 'POST').toList();
+    expect(posts, hasLength(2));
+    final first = jsonDecode(posts[0].body) as Map;
+    final second = jsonDecode(posts[1].body) as Map;
+    expect(first['device_id'], second['device_id']);
+    expect(first['label'], 'Pixel 7');
+    expect(second['endpoint'], 'http://100.75.24.33:2586/upZZZ999zzz?up=1');
+  });
+
+  test('an endpoint for an inactive connection is ignored', () async {
+    await bridge.emit(const PorterEndpointEvent('c9', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
+    expect(server.porterRequests(), isEmpty);
+  });
+
+  test('forget deletes the device and unregisters', () async {
+    await module.sync([conn('c1')]);
+    await module.forget(conn('c1'));
+    final delete = server.porterRequests().last;
+    expect(delete.method, 'DELETE');
+    expect(delete.url.path, startsWith('${FakePorterServer.base}/push/devices/wing-'));
+    expect(bridge.unregistered, ['c1']);
+    expect(module.activeConnections, isEmpty);
+  });
+
+  test('distributor unregistration deletes the device on the server', () async {
+    await module.sync([conn('c1')]);
+    await bridge.emit(const PorterUnregisteredEvent('c1'));
+    expect(server.porterRequests().last.method, 'DELETE');
+  });
+
+  test('refresh re-probes and registers again', () async {
+    await module.sync([conn('c1')]);
+    await module.refresh(conn('c1'));
+    expect(bridge.registered, ['c1', 'c1']);
+  });
+
+  test('a vanished connection is dropped from the active set', () async {
+    await module.sync([conn('c1')]);
+    await module.sync([]);
+    expect(module.activeConnections, isEmpty);
+  });
+}
