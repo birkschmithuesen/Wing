@@ -208,14 +208,17 @@ a consistently better mic. Headphones keep the old per-round behaviour unchanged
   `isCarKitClass` restricts this to the two car-kit classes.
 - Wired into `VoiceInputController` (first dictation while Conversation mode or Wing's own car mode is on) and
   `TurnListener` (every listening-in and read-aloud round), and closed from `profile_workspace_screen.dart` when
-  the hands-free conversation ends or the car kit disconnects.
+  the hands-free conversation ends or the car kit disconnects. Both open it with `reason=conversation`; a
+  separate `reason=carMode` open on *entering* car mode before any dictation (spec's other trigger) is not
+  wired yet — a known gap, not implemented in this change.
 - Native (`HeadsetMicRoute.openLink`/`closeLink`/`heldInput`, `VadCapture`'s `holdMic` option) only executes
   what Dart decided: a held round skips the per-round `acquire`/`release` and records from the already-open
   link instead.
 - SCO not ready within ~1.5 s: that one round falls back to the phone mic (`WingMic sco=fail fallback=phone`);
   the conversation loop keeps running and may try again on the next round.
-- Logcat: `WingMic sco=open reason=<conversation|carMode>` / `sco=close reason=<end|idle|disconnect>` (Dart-side,
-  `car_mic_session.dart`'s `micLog`), alongside the existing native `WingMic acquire`/`release` lines.
+- Logcat: `WingMic sco=open reason=conversation` / `sco=close reason=<end|idle|disconnect>` (Dart-side, logged
+  by `CarMicSession` itself in `car_mic_session.dart`), alongside the existing native `WingMic
+  acquire`/`release` lines.
 - **Quality consequence to flag, not hide:** with the link held, read-aloud also goes out over the voice
   channel (mono, narrowband mSBC or CVSD), not A2DP — that is the trade-off Birk accepted. Which codec is
   actually active (`btfm_bt_sco… rate` in logcat) could not be measured in this run: there is no car kit and no
