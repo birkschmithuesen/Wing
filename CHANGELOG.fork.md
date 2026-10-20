@@ -11,6 +11,15 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-10-20
+
+### Pforte notifications via UnifiedPush, with Nachtruhe
+- **What:** Optional porter wake module (`lib/porter_wake/`): Wing registers a UnifiedPush endpoint (ntfy as distributor, no FCM) with a Hermes server that offers the porter wake plugin, fetches each content-free-pushed notice and shows it on the attention channel with Öffnen, Später and, in trial mode, three ratings. A „Nachtruhe“ block in the Notifications settings reads and writes the server's quiet hours.
+- **Why:** Pforte must reach Birk without polling and without Google services; quiet hours stay a single server-side truth.
+- **Exception:** This module calls a custom plugin endpoint (`/api/plugins/porter_wake`), an exception to the AGENTS.md "Hermes deployment constraint" approved by Birk on 2026-10-19 for this module only. It is inert on stock Hermes (404/503 probe).
+- **Docs:** [PORTER_WAKE.md](docs/PORTER_WAKE.md)
+- **Merge:** pending ([Merge] card) · **Card:** t_92a40e12 (plan t_7737d2c2)
+
 ## 2026-10-19
 
 ### Auto mode shows a "Listening — just talk" hint

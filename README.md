@@ -11,6 +11,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Read-aloud queue](CHANGELOG.fork.md#read-aloud-queue-a-new-reply-waits-its-turn)
 - [Bluetooth and car microphone](docs/VAD_INPUT.md#microphone-route)
 - [Offline behaviour](docs/CAR_MODE.md)
+- [Pforte notifications and Nachtruhe](docs/PORTER_WAKE.md)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 
