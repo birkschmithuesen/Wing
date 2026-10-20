@@ -76,6 +76,7 @@ import '../../car_mode/car_mode_state.dart';
 import '../../voice_offline/background_voice.dart';
 import '../../voice_offline/barge_in_coordinator.dart';
 import '../../voice_offline/barge_in_policy.dart';
+import '../../voice_offline/car_mic_session.dart';
 import '../../voice_offline/headphone_route.dart';
 import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
@@ -177,12 +178,23 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   int _findRequestGeneration = 0;
   bool _launchingCamera = false;
   ProfileSessionKey? _voiceOwner;
+
+  /// Keeps a connected car kit's SCO link open for a whole hands-free
+  /// conversation - dictation, listening-in and read-aloud barge-in -
+  /// instead of per round (spec Birk decision 2026-10-19).
+  late final _carMic = CarMicSession(widget.voiceDevice ?? AndroidVoice.instance);
+
+  bool _carKitConnected() => isCarKitClass(_headphones.bluetoothClass);
+
   late final _voiceInput = VoiceInputController(
     device: widget.voiceDevice ?? AndroidVoice.instance,
     createRemote: () => HermesVoice.forConnection(
       controller.connection,
       _voiceOwner!.workspace.profileName,
     ),
+    carMicSession: _carMic,
+    carKitConnected: _carKitConnected,
+    carModeActive: () => _car.active,
   );
   late final _voiceOutput = VoiceOutputController(
     widget.voiceDevice ?? AndroidVoice.instance,
@@ -194,7 +206,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
   late final _bargeIn = BargeInCoordinator(
-    TurnListener(device: widget.voiceDevice ?? AndroidVoice.instance),
+    TurnListener(
+      device: widget.voiceDevice ?? AndroidVoice.instance,
+      carMicSession: _carMic,
+      carKitConnected: _carKitConnected,
+    ),
   );
 
   /// Voice barge-in into read-aloud only with wired headphones (spec §3.4.1,
@@ -287,6 +303,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     if (value != _conversationKey) {
       unawaited(_bargeIn.close('conversationEnd').catchError((Object _) {}));
+      if (value == null) unawaited(_carMic.end('end').catchError((Object _) {}));
     }
     _conversationKey = value;
     _background.sync(want: value != null && _vadRoute() == true && !_car.active);
@@ -575,6 +592,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// The output route changed while Wing reads aloud (spec §3.4.2): wired
   /// headphones gone closes a playback round, wired headphones back opens one.
   void _headphoneRouteChanged() {
+    // Spec Birk decision 2026-10-19: the car kit itself is gone, so the held
+    // SCO link means nothing any more - close it (reason=disconnect) instead
+    // of waiting out the idle timeout.
+    if (_carMic.isOpen && !_carKitConnected()) {
+      unawaited(_carMic.end('disconnect').catchError((Object _) {}));
+    }
     final chat = controller.notificationChat ?? controller.current?.chat;
     if (!mounted ||
         chat == null ||
@@ -982,6 +1005,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _car.removeListener(_carActiveChanged);
     _car.removeListener(_headphones.carModeChanged);
     _car.dispose();
+    _carMic.dispose();
     controller.removeListener(_voiceWorkspaceChanged);
     unawaited(_autoSpeak?.cancel());
     unawaited(_voiceDeviceEvents?.cancel());

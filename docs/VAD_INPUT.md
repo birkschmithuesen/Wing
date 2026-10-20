@@ -183,11 +183,41 @@ separate car-mode-only phone-mic rule.
 - Explicit rounds (dictation, conversation turn: `mic: auto`) ask `HeadsetMicRoute` at start. For a Bluetooth
   device with HFP and class 0x0404/0x0408/0x0418/0x0420 (wearable headset, hands-free, headphones, car audio),
   Wing requests the link with `setCommunicationDevice`, waits up to 2.5 s, then plays the start cue and records
-  from the SCO input. The link is cleared on every exit, before recognition.
-- Listen rounds and the echo probe (`mic: phone`) never take the headset mic. Read-aloud stays in A2DP quality.
+  from the SCO input. The link is cleared on every exit, before recognition — unless a car-kit SCO hold (below)
+  is keeping it open across the whole conversation.
+- Listen rounds and the echo probe (`mic: phone`) never take the headset mic, and read-aloud stays in A2DP
+  quality — unless a car-kit SCO hold is active (below), in which case they take that same held mic.
 - Phone mic: no Bluetooth SCO link at all, no Nearby devices access, an unreadable Bluetooth class, or a
   Bluetooth class outside the four above. Wired headsets with a mic are routed by Android without Wing doing
   anything.
 - Nearby devices access is asked once, at the first explicit recording while Bluetooth audio is connected.
 - Logcat: `adb logcat -d | grep WingMic` → `decide`, `acquire`, `ready readyMs=`, `first firstSoundMs=`, `release`.
   Proof of the headset mic: `adev_open_input_stream … devices(0x80000008)`; the phone mic is `0x80000004`.
+
+### Car-kit SCO hold (conversation-wide, Birk decision 2026-10-19)
+
+A car's hands-free kit (class 0x0408/0x0420 only, not a headphone class) is noticeably better over its own
+microphone than the phone's, but closing and reopening the SCO link after every dictation round also dropped
+back to the phone mic for listening-in (Mithören/`TurnListener`) and read-aloud barge-in (Reinreden) — see the
+17:58 logcat evidence in the card. Birk, in the car after a successful test (card t_a19f7e1c): a connected car
+kit should keep its SCO link open for the *whole* conversation, trading the "Music fades a moment" A2DP cost for
+a consistently better mic. Headphones keep the old per-round behaviour unchanged.
+
+- Owned by `CarMicSession` (`lib/voice_offline/car_mic_session.dart`): `beginRound(reason)` opens the link once
+  per conversation (idempotent while already open) and resets a 120 s idle timer; `end(reason)` closes it.
+  `isCarKitClass` restricts this to the two car-kit classes.
+- Wired into `VoiceInputController` (first dictation while Conversation mode or Wing's own car mode is on) and
+  `TurnListener` (every listening-in and read-aloud round), and closed from `profile_workspace_screen.dart` when
+  the hands-free conversation ends or the car kit disconnects.
+- Native (`HeadsetMicRoute.openLink`/`closeLink`/`heldInput`, `VadCapture`'s `holdMic` option) only executes
+  what Dart decided: a held round skips the per-round `acquire`/`release` and records from the already-open
+  link instead.
+- SCO not ready within ~1.5 s: that one round falls back to the phone mic (`WingMic sco=fail fallback=phone`);
+  the conversation loop keeps running and may try again on the next round.
+- Logcat: `WingMic sco=open reason=<conversation|carMode>` / `sco=close reason=<end|idle|disconnect>` (Dart-side,
+  `car_mic_session.dart`'s `micLog`), alongside the existing native `WingMic acquire`/`release` lines.
+- **Quality consequence to flag, not hide:** with the link held, read-aloud also goes out over the voice
+  channel (mono, narrowband mSBC or CVSD), not A2DP — that is the trade-off Birk accepted. Which codec is
+  actually active (`btfm_bt_sco… rate` in logcat) could not be measured in this run: there is no car kit and no
+  device logcat available here, and the codec is negotiated by the Bluetooth stack, not read anywhere in Wing's
+  own code or logs. This needs an on-device check during Birk's manual acceptance pass, not a guess.

@@ -33,7 +33,7 @@ class VadCapture(
     private val emit: (Map<String, Any>) -> Unit,
 ) {
     data class Options(val cues: Boolean, val debug: Boolean, val source: String, val maxMs: Int,
-                       val startCue: Boolean = cues, val mic: String = "auto")
+                       val startCue: Boolean = cues, val mic: String = "auto", val holdMic: Boolean = false)
 
     private class Round(val id: String, val options: Options, val startedAt: Long, capacity: Int) {
         val pcm = ShortArray(capacity)
@@ -63,6 +63,19 @@ class VadCapture(
         models.verifyManifest()?.let { error(it) }
         val r = Round(id, options, System.currentTimeMillis(), (options.maxMs + 5_000) * 16)
         round = r
+        // A CarMicSession (car_mic_session.dart) already holds the link open for the whole
+        // conversation: skip the per-round decide/acquire and just use that held device.
+        if (options.holdMic) {
+            r.micReason = "held"
+            r.micInput = mic.heldInput()
+            try {
+                begin(r)
+                started(null, false)
+            } catch (error: Exception) {
+                release(r); round = null; started(error, false)
+            }
+            return
+        }
         val decision = mic.decide(options.mic)
         r.micReason = decision.reason
         mic.acquire(decision) { input ->
@@ -215,7 +228,8 @@ class VadCapture(
         // Never release here: the reader releases its own resources when it exits (see read).
         try { r.reader?.join(500) } catch (_: InterruptedException) {}
         // finish, cancel, fail and pause all pass here: A2DP returns before recognition starts.
-        mic.release()
+        // A held car-kit session (see start()) owns the link across rounds; leave it alone.
+        if (!r.options.holdMic) mic.release()
     }
 
     private fun release(r: Round) {

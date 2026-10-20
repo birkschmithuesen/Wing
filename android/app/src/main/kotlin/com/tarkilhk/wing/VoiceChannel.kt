@@ -87,6 +87,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                 "removeVadModel" -> { speech.release(); models.remove(); result.success(null) }
                 "prepareVad" -> { if (models.verifyManifest() == null) speech.prepare(); result.success(null) }
                 "releaseVad" -> { speech.release(); result.success(null) }
+                "openMicLink" -> micRoute.openLink { ready -> result.success(ready) }
+                "closeMicLink" -> { micRoute.closeLink(); result.success(null) }
                 "setMediaKeys" -> { mediaKeys.enable(call.argument<Boolean>("on") == true); result.success(null) }
                 "keepScreenOn" -> {
                     if (call.argument<Boolean>("on") == true) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)

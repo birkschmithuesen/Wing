@@ -37,6 +37,9 @@ class VoiceDeviceFixture implements VoiceDevice {
   int removals = 0;
   int debugDeletes = 0;
   int _firstWindow = 0;
+  final micLinkOpens = <String>[];
+  final micLinkCloses = <String>[];
+  bool micLinkReady = true;
 
   /// Sends one probability batch for the running vad round.
   void emitWindows(List<double> windows) {
@@ -173,6 +176,17 @@ class VoiceDeviceFixture implements VoiceDevice {
   Future<void> stopPlayback(String id) async {
     calls.add('stopPlayback');
     if (playing == id) playing = null;
+  }
+
+  @override
+  Future<bool> openMicLink(String reason) async {
+    micLinkOpens.add(reason);
+    return micLinkReady;
+  }
+
+  @override
+  Future<void> closeMicLink(String reason) async {
+    micLinkCloses.add(reason);
   }
 }
 

@@ -6,6 +6,7 @@ import '../services/android_voice.dart';
 import '../services/hermes_voice.dart';
 import '../services/vad_endpoint.dart';
 import '../services/voice_preferences.dart';
+import '../../voice_offline/car_mic_session.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
 
@@ -27,6 +28,18 @@ class VoiceInputController extends ChangeNotifier {
 
   final VoiceDevice device;
   final RemoteVoice Function() createRemote;
+
+  /// Holds a connected car kit's SCO link open for the whole hands-free
+  /// conversation, starting with the first dictation round (spec Birk
+  /// decision 2026-10-19). Null keeps today's per-round behaviour (e.g.
+  /// headphone routes never pass one in, see [_carKitConnected]).
+  final CarMicSession? carMicSession;
+  final bool Function() _carKitConnected;
+
+  /// True while Wing's own car-mode screen is the current route (spec: SCO
+  /// also opens on entering car mode with a car connected, not only on the
+  /// first dictation of Conversation mode).
+  final bool Function() _carModeActive;
   late final StreamSubscription<Map<String, dynamic>> _events;
   VoiceInputPhase phase = VoiceInputPhase.idle;
   String partial = '';
@@ -57,9 +70,18 @@ class VoiceInputController extends ChangeNotifier {
   TextEditingValue? _draft;
   void Function(TextEditingValue)? _onResult;
 
-  VoiceInputController({required this.device, required this.createRemote}) {
+  VoiceInputController({
+    required this.device,
+    required this.createRemote,
+    this.carMicSession,
+    bool Function()? carKitConnected,
+    bool Function()? carModeActive,
+  }) : _carKitConnected = carKitConnected ?? _never,
+       _carModeActive = carModeActive ?? _never {
     _events = device.events.listen(_event);
   }
+
+  static bool _never() => false;
   bool get active => phase != VoiceInputPhase.idle;
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -87,6 +109,22 @@ class VoiceInputController extends ChangeNotifier {
       if (settings.input == VoiceInputRoute.vad) {
         _endpointer = VadEndpointer(settings.vad);
         maxSeconds = settings.vad.maxDuration.inSeconds;
+        // Spec Birk decision 2026-10-19: the first dictation of a hands-free
+        // conversation (or any dictation while Wing's own car mode is on,
+        // with a car connected) opens the car kit's SCO link for the whole
+        // conversation instead of just this round. A manual phone/wired mic
+        // choice is left alone - it already skips the Bluetooth path.
+        var mic = settings.micRoute;
+        var holdMic = false;
+        final session = carMicSession;
+        if (session != null &&
+            _carKitConnected() &&
+            (settings.conversation || _carModeActive()) &&
+            (mic == VoiceMicRoute.auto || mic == VoiceMicRoute.bluetooth)) {
+          holdMic = await session.beginRound('conversation');
+          if (holdMic) mic = VoiceMicRoute.bluetooth;
+        }
+        if (_id != id || _disposed) return;
         final fellBack = await device.startVad(
           id,
           VadCaptureOptions(
@@ -94,7 +132,8 @@ class VoiceInputController extends ChangeNotifier {
             debug: settings.debugRecordings,
             source: settings.audioSource,
             maxDuration: settings.vad.maxDuration,
-            mic: settings.micRoute,
+            mic: mic,
+            holdMic: holdMic,
           ),
         );
         if (fellBack) micFallbackHint = micFallbackMessage(settings.micRoute);
