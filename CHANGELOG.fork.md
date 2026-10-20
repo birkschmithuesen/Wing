@@ -11,6 +11,19 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-10-20
+
+### Barge-in into read-aloud also opens for Bluetooth headphones
+- **What:** Voice barge-in into read-aloud (`voice.barge_in_playback`) now also opens on Bluetooth
+  headphones (`classifyRoute` reason `bluetoothHeadphones`), not only wired headphones. Speaker,
+  car (without the car-mode override), `bluetoothOther` and `bluetoothClassUnknown` stay locked
+  out.
+- **Why:** Birk uses a Sony WH-1000XM4 over Bluetooth and found the barge-in gate stayed closed
+  even though the route was already recognised as headphones; owner decision 2026-10-20 lifted
+  the Bluetooth lock without waiting for an echo probe (t_fabcb273 closed as "not needed").
+- **Commit:** `ff20a7b0` (pending merge) · **Card:** t_aad98b8c
+- **Docs:** [VOICE_BARGE_IN.md — Barge-in during read-aloud](docs/VOICE_BARGE_IN.md#what-it-does)
+
 ## 2026-10-19
 
 ### Auto mode shows a "Listening — just talk" hint
