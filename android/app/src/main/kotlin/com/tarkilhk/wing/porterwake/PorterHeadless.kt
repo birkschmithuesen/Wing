@@ -85,6 +85,13 @@ class PorterHeadless(
     /** Dart's `finished`: tear down once no direct event is still in flight. */
     fun requestFinish() {
         finishRequested = true
+        if (!initialized) {
+            // Dart gave up before `initialize`: nothing will consume the queue,
+            // so drop it (destroy completes the waiting callbacks) and tear down.
+            queue.clear()
+            PorterWakeNative.finishHeadless(this)
+            return
+        }
         finishIfIdle()
     }
 

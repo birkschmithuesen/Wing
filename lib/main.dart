@@ -51,6 +51,10 @@ import 'porter_wake/porter_wake_ledger.dart';
 import 'porter_wake/porter_wake_module.dart';
 import 'porter_wake/porter_wake_settings.dart';
 import 'porter_wake/porter_wake_snooze_sheet.dart';
+// Keeps the native headless entry point reachable from main so the AOT
+// snapshot contains it (@pragma('vm:entry-point') alone does not pull in an
+// otherwise unimported library).
+export 'porter_wake/porter_wake_background.dart' show porterWakeBackgroundMain;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
