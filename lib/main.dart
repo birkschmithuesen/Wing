@@ -450,7 +450,9 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
             await _porter.start();
             await _syncPorter();
           })
-          .catchError((Object _) {}),
+          .catchError((Object error) {
+            debugPrint('porter_wake: start failed (${error.runtimeType})');
+          }),
     );
   }
 
@@ -747,7 +749,10 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
         enableProfileNotifications: enableProfileNotifications,
         connManager: widget.connManager,
         onPreferencesChanged: refreshPreferences,
-        onConfigurationChanged: () => unawaited(_syncBackgroundMonitoring()),
+        onConfigurationChanged: () {
+          unawaited(_syncBackgroundMonitoring());
+          unawaited(_syncPorter());
+        },
         backgroundMonitoringState: _backgroundMonitoring.state,
         openMonitoringBatterySettings:
             _backgroundMonitoring.openBatterySettings,

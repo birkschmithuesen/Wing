@@ -52,6 +52,7 @@ class PorterWakeModule extends ChangeNotifier {
   final _active = <String, ({SavedConnection connection, PorterWakeApi api})>{};
   final _inert = <String>{};
   final _probing = <String>{};
+  final _seen = <String>{};
   final _generation = <String, int>{};
 
   List<SavedConnection> get activeConnections =>
@@ -66,11 +67,13 @@ class PorterWakeModule extends ChangeNotifier {
     for (final id in _probing.where((id) => !ids.contains(id)).toList()) {
       _invalidate(id);
     }
-    final vanished = _active.keys.where((id) => !ids.contains(id)).toList();
-    for (final id in vanished) {
-      _active.remove(id)?.api.close();
-    }
-    if (vanished.isNotEmpty) notifyListeners();
+    final vanished = {
+      ..._active.keys,
+      ..._inert,
+      ..._seen,
+    }.where((id) => !ids.contains(id)).toList();
+    _seen.addAll(ids);
+    await Future.wait([for (final id in vanished) _release(id)]);
     await Future.wait([
       for (final c in connections)
         if (!_active.containsKey(c.id) && !_inert.contains(c.id) && _probing.add(c.id))
@@ -124,9 +127,17 @@ class PorterWakeModule extends ChangeNotifier {
   }
 
   Future<void> forget(SavedConnection connection) async {
-    _invalidate(connection.id);
-    final entry = _active.remove(connection.id);
-    _inert.remove(connection.id);
+    await _release(connection.id);
+  }
+
+  /// Revokes everything held for [id]: drops the entry first (so the native
+  /// unregister event sends no second DELETE), removes the server device
+  /// best-effort with the credentials still held, then unregisters natively.
+  Future<void> _release(String id) async {
+    _invalidate(id);
+    _seen.remove(id);
+    final entry = _active.remove(id);
+    _inert.remove(id);
     if (entry != null) {
       notifyListeners();
       try {
@@ -137,7 +148,7 @@ class PorterWakeModule extends ChangeNotifier {
         debugPrint('porter_wake: device removal failed (${error.runtimeType})');
       }
     }
-    await bridge.unregister(connection.id);
+    await bridge.unregister(id);
     entry?.api.close();
   }
 

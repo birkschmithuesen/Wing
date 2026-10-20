@@ -124,6 +124,30 @@ void main() {
     expect(module.activeConnections, isEmpty);
   });
 
+  test('a connection that vanishes from sync is revoked like forget', () async {
+    await module.sync([conn('c1')]);
+    await module.sync([]);
+    final requests = server.porterRequests();
+    expect(requests.where((r) => r.method == 'DELETE'), hasLength(1));
+    expect(requests.last.url.path, startsWith('${FakePorterServer.base}/push/devices/wing-'));
+    expect(bridge.unregistered, ['c1']);
+    final count = requests.length;
+    await module.sync([]);
+    expect(server.porterRequests(), hasLength(count));
+    expect(bridge.unregistered, ['c1']);
+  });
+
+  test('an inert or unknown vanished id is unregistered without a DELETE', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 404;
+    await module.sync([conn('c1')]);
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
+    await module.sync([conn('c1'), conn('c2')]);
+    bridge.unregistered.clear();
+    await module.sync([]);
+    expect(bridge.unregistered.toSet(), {'c1', 'c2'});
+    expect(server.porterRequests().where((r) => r.method == 'DELETE'), isEmpty);
+  });
+
   test('forget on an inactive connection still unregisters without a DELETE', () async {
     server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
     await module.sync([conn('c1')]);
