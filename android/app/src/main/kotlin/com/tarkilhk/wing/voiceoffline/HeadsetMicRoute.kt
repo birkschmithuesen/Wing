@@ -30,6 +30,10 @@ class HeadsetMicRoute(private val activity: Activity) {
         const val PERMISSION_REQUEST = 7316
         const val TAG = "WingMic"
         private const val READY_TIMEOUT_MS = 2500L
+        // Spec Birk decision 2026-10-19: a car-kit session falls back to the phone mic for
+        // one round if the SCO link is not ready within ~1.5 s; per-round acquires (dictation,
+        // headphones included) keep the longer READY_TIMEOUT_MS above, unchanged.
+        private const val SESSION_READY_TIMEOUT_MS = 1500L
         private const val ASKED_KEY = "bt_connect_asked"
         // Mirrors _headphoneClasses in lib/voice_offline/headphone_route.dart, widened for E2 = 2
         // (t_4450aa3b): hands-free/car-kit classes also count as a mic source.
@@ -119,7 +123,7 @@ class HeadsetMicRoute(private val activity: Activity) {
         } catch (_: Exception) { null }
     }
 
-    fun acquire(decision: Decision, ready: (AudioDeviceInfo?) -> Unit) {
+    fun acquire(decision: Decision, readyTimeoutMs: Long = READY_TIMEOUT_MS, ready: (AudioDeviceInfo?) -> Unit) {
         release()
         val link = decision.link
         if (!decision.headset || link == null || Build.VERSION.SDK_INT < 31) { ready(null); return }
@@ -137,7 +141,7 @@ class HeadsetMicRoute(private val activity: Activity) {
         }
         held = link
         timeout = Runnable { Log.i(TAG, "fallback reason=timeout"); release() }
-            .also { handler.postDelayed(it, READY_TIMEOUT_MS) }
+            .also { handler.postDelayed(it, readyTimeoutMs) }
         if (audio.communicationDevice?.id == link.id) changed(link, link)
     }
 
@@ -156,6 +160,22 @@ class HeadsetMicRoute(private val activity: Activity) {
             Log.i(TAG, "lost")
         }
     }
+
+    /** Spec Birk decision 2026-10-19 (car-kit SCO hold): opens the classic-SCO link for a
+     *  whole conversation instead of one vad round, and keeps it there until [closeLink].
+     *  Dart drives this explicitly (car_mic_session.dart); the per-round [acquire]/[release]
+     *  calls made while [holdMic] told VadCapture to skip them never touch this hold. */
+    fun openLink(ready: (Boolean) -> Unit) {
+        val decision = automaticDecision()
+        acquire(decision, SESSION_READY_TIMEOUT_MS) { input -> ready(input != null) }
+    }
+
+    fun closeLink() = release()
+
+    /** The device a vad round should record from while [openLink] holds the link; null once
+     *  nothing is held (the caller then records from the default input, same as a round that
+     *  never requested a headset mic). */
+    fun heldInput(): AudioDeviceInfo? = held?.let { inputFor(it) }
 
     private fun inputFor(link: AudioDeviceInfo): AudioDeviceInfo? =
         audio.getDevices(AudioManager.GET_DEVICES_INPUTS)

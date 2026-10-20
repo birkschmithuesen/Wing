@@ -11,6 +11,20 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-10-20
+
+### Car kit stays on the voice channel for the whole conversation
+- **What:** A connected car hands-free kit (not a headphone) now keeps its Bluetooth voice channel (SCO) open
+  for the entire conversation — dictation, listening-in (Mithören) and read-aloud barge-in (Reinreden) — instead
+  of opening and closing it per round. Headphones keep the previous per-round behaviour unchanged. A round whose
+  SCO link is not ready within ~1.5 s falls back to the phone mic for that round only.
+- **Why:** Birk, in the car, 2026-10-19 ~18:00, after a successful test: the car kit's mic is audibly better
+  than the phone's, but it dropped back to the phone mic for listening and read-aloud after every dictation
+  round closed the link; keeping it open for the whole conversation is worth the trade-off that read-aloud then
+  also plays in telephone quality instead of A2DP.
+- **Merge:** pending (branch `wt/t_a19f7e1c`, not yet merged to `voice-offline`) · **Card:** t_a19f7e1c
+- **Docs:** [VAD_INPUT.md — Car-kit SCO hold](docs/VAD_INPUT.md#car-kit-sco-hold-conversation-wide-birk-decision-2026-10-19)
+
 ## 2026-10-19
 
 ### Auto mode shows a "Listening — just talk" hint

@@ -7,6 +7,7 @@ import '../core/services/android_voice.dart';
 import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
 import 'barge_in_policy.dart';
+import 'car_mic_session.dart';
 
 enum ListenPhase { idle, listening, transcribing }
 
@@ -15,12 +16,27 @@ enum ListenPhase { idle, listening, transcribing }
 /// silently. Knows nothing about chats: [onUtterance] hands every transcript
 /// to the caller, [onBarge] asks it to stop read-aloud now.
 class TurnListener extends ChangeNotifier {
-  TurnListener({required this.device, DateTime Function()? clock})
-    : _clock = clock ?? DateTime.now {
+  TurnListener({
+    required this.device,
+    this.carMicSession,
+    bool Function()? carKitConnected,
+    DateTime Function()? clock,
+  }) : _carKitConnected = carKitConnected ?? _never,
+       _clock = clock ?? DateTime.now {
     _events = device.events.listen(_event);
   }
 
+  static bool _never() => false;
+
   final VoiceDevice device;
+
+  /// Holds a connected car kit's SCO link open across this listener's own
+  /// rounds too (Mithören, Reinreden), instead of the phone mic every round
+  /// used until now (spec Birk decision 2026-10-19). Null keeps that
+  /// unchanged behaviour for callers that never pass one in (e.g. headphone
+  /// routes, see [_carKitConnected]).
+  final CarMicSession? carMicSession;
+  final bool Function() _carKitConnected;
   final DateTime Function() _clock;
   late final StreamSubscription<Map<String, dynamic>> _events;
 
@@ -84,6 +100,20 @@ class TurnListener extends ChangeNotifier {
     _roundStart = null;
     phase = ListenPhase.listening;
     _notify();
+    // Spec 2026-10-16 E1 = A: listening never holds the headset link, so
+    // read-aloud stays in A2DP quality - unchanged for headphones. A
+    // connected car kit is the exception (spec Birk decision 2026-10-19):
+    // its SCO link already stays open for the whole conversation, so
+    // listening and read-aloud barge-in take that same mic instead of the
+    // phone's, in telephone quality (mono, mSBC/CVSD) rather than A2DP.
+    var mic = VoiceMicRoute.phone;
+    var holdMic = false;
+    final session = carMicSession;
+    if (session != null && _carKitConnected()) {
+      holdMic = await session.beginRound('conversation');
+      if (holdMic) mic = VoiceMicRoute.bluetooth;
+    }
+    if (_id != id || _disposed) return;
     try {
       await device.startVad(
         id,
@@ -91,9 +121,8 @@ class TurnListener extends ChangeNotifier {
           cues: cues && settings.cues,
           startCue: false,
           keepPlayback: true,
-          // Spec 2026-10-16 E1 = A: listening never holds the headset link,
-          // so read-aloud stays in A2DP quality.
-          mic: VoiceMicRoute.phone,
+          mic: mic,
+          holdMic: holdMic,
           debug: settings.debugRecordings,
           source: settings.audioSource,
           maxDuration: settings.vad.maxDuration,

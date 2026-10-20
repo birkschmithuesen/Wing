@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
 import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/car_mic_session.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
 import '../support/voice_fixture.dart';
 
@@ -196,5 +197,62 @@ void main() {
     await say(0.1, 60);
     expect(barged, [true, false]);
     expect(listener.utteranceBarged, isFalse);
+  });
+
+  group('car-kit SCO hold (spec Birk decision 2026-10-19, device filter)', () {
+    test('headphones keep the old per-round phone mic unchanged', () async {
+      final session = CarMicSession(device, log: (_) {});
+      addTearDown(session.dispose);
+      listener = TurnListener(
+        device: device,
+        carMicSession: session,
+        carKitConnected: () => false, // e.g. a headphone bluetoothClass
+      );
+      listener.onUtterance = heard.add;
+      await listener.open(settings, playback: true);
+      expect(device.vadOptions!.mic, VoiceMicRoute.phone);
+      expect(device.vadOptions!.holdMic, isFalse);
+      expect(device.micLinkOpens, isEmpty);
+    });
+
+    test('a connected car kit keeps the Bluetooth link held across rounds', () async {
+      final session = CarMicSession(device, log: (_) {});
+      addTearDown(session.dispose);
+      listener = TurnListener(
+        device: device,
+        carMicSession: session,
+        carKitConnected: () => true,
+      );
+      listener.onUtterance = heard.add;
+      await listener.open(settings, playback: true); // Reinreden round
+      expect(device.vadOptions!.mic, VoiceMicRoute.bluetooth);
+      expect(device.vadOptions!.holdMic, isTrue);
+      expect(device.micLinkOpens, ['conversation']);
+      await say(0.9, 30);
+      await say(0.1, 60); // the round restarts (Mithören continues)
+      expect(device.vadOptions!.mic, VoiceMicRoute.bluetooth);
+      // Still just the one open: the link stays held, not reopened.
+      expect(device.micLinkOpens, ['conversation']);
+      expect(device.micLinkCloses, isEmpty);
+    });
+
+    test('a ready timeout falls back to the phone mic without aborting the round', () async {
+      final session = CarMicSession(device, log: (_) {});
+      addTearDown(session.dispose);
+      device.micLinkReady = false;
+      listener = TurnListener(
+        device: device,
+        carMicSession: session,
+        carKitConnected: () => true,
+      );
+      listener.onUtterance = heard.add;
+      await listener.open(settings);
+      expect(device.vadOptions!.mic, VoiceMicRoute.phone);
+      expect(device.vadOptions!.holdMic, isFalse);
+      expect(listener.phase, ListenPhase.listening);
+      await say(0.9, 20);
+      await say(0.1, 60);
+      expect(heard, ['Hello from the phone']);
+    });
   });
 }
