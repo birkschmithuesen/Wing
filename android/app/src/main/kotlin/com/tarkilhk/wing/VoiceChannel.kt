@@ -118,6 +118,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
             maxMs = call.argument<Int>("maxMs") ?: 600_000,
             startCue = call.argument<Boolean>("startCue") ?: cues,
             mic = call.argument<String>("mic") ?: "auto",
+            holdMic = call.argument<Boolean>("holdMic") == true,
         )
         val begin = {
             try {

@@ -214,6 +214,13 @@ a consistently better mic. Headphones keep the old per-round behaviour unchanged
 - Native (`HeadsetMicRoute.openLink`/`closeLink`/`heldInput`, `VadCapture`'s `holdMic` option) only executes
   what Dart decided: a held round skips the per-round `acquire`/`release` and records from the already-open
   link instead.
+- `VoiceChannel.kt`'s `startVad` handler reads `holdMic` from the MethodChannel call and passes it into
+  `VadCapture.Options` (fixed 2026-10-20, t_714bfc82 — it was missing entirely, so every real call silently
+  got `holdMic=false` regardless of what Dart sent). There is no automated Kotlin test for this wiring (the
+  repo has no Kotlin test harness, `find android -iname "*Test*"` is empty) and the Flutter tests only cover
+  the Dart side in isolation — they never exercise the real MethodChannel call into Kotlin. Birk's manual
+  in-car acceptance pass (logcat `devices(0x80000008)` continuous, exactly one `sco=open`/`sco=close` across
+  the whole conversation) is the only check that actually proves this path works on a real device.
 - SCO not ready within ~1.5 s: that one round falls back to the phone mic (`WingMic sco=fail fallback=phone`);
   the conversation loop keeps running and may try again on the next round.
 - Logcat: `WingMic sco=open reason=conversation` / `sco=close reason=<end|idle|disconnect>` (Dart-side, logged
