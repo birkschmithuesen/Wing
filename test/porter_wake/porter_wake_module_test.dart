@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -91,7 +92,43 @@ void main() {
     expect(second['endpoint'], 'http://100.75.24.33:2586/upZZZ999zzz?up=1');
   });
 
-  test('an endpoint for an inactive connection is ignored', () async {
+  test('an endpoint queued before the probe is posted once the probe succeeds', () async {
+    await bridge.emit(const PorterEndpointEvent('c1', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
+    expect(server.porterRequests(), isEmpty);
+    await module.sync([conn('c1')]);
+    final posts = server.porterRequests().where((r) => r.method == 'POST').toList();
+    expect(posts, hasLength(1));
+    expect((jsonDecode(posts.single.body) as Map)['endpoint'],
+        'http://100.75.24.33:2586/upAbC123xyz?up=1');
+  });
+
+  test('an unregistration queued before the probe deletes the device once the probe succeeds', () async {
+    await bridge.emit(const PorterUnregisteredEvent('c1'));
+    await module.sync([conn('c1')]);
+    expect(server.porterRequests().where((r) => r.method == 'DELETE'), hasLength(1));
+  });
+
+  test('events queued for a connection that probes inert are dropped', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 404;
+    await bridge.emit(const PorterEndpointEvent('c1', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
+    await module.sync([conn('c1')]);
+    expect(server.porterRequests().where((r) => r.method != 'GET'), isEmpty);
+  });
+
+  test('a push after a failed startup probe re-probes and shows the full notice', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
+    await module.sync([conn('c1')]);
+    expect(module.activeConnections, isEmpty);
+    server.statusFor.clear();
+    final bytes = Uint8List.fromList(
+        utf8.encode(jsonEncode({'v': 1, 'type': 'porter_wake', 'notice_id': 'n-3f2a9c1b7d4e'})));
+    await bridge.emit(PorterPushEvent('c1', bytes));
+    expect(module.activeConnections.map((c) => c.id), ['c1']);
+    expect(bridge.shown.single.neutral, isFalse);
+  });
+
+  test('an endpoint for an unknown connection after the first sync is ignored', () async {
+    await module.sync([conn('c1')]);
     await bridge.emit(const PorterEndpointEvent('c9', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
     expect(server.porterRequests(), isEmpty);
   });

@@ -41,7 +41,7 @@ class PorterWakeModule extends ChangeNotifier {
     handler = PorterWakeHandler(
       bridge: bridge,
       ledger: ledger,
-      apiFor: (id) async => _active[id]?.api,
+      apiFor: _resolveApi,
       openProfile: openProfile,
       showNotice: showNotice,
     );
@@ -56,6 +56,13 @@ class PorterWakeModule extends ChangeNotifier {
   final _probing = <String>{};
   final _seen = <String>{};
   final _generation = <String, int>{};
+  final _known = <String, SavedConnection>{};
+  final _inflight = <String, Future<void>>{};
+  bool _synced = false;
+
+  /// Endpoint/unregistration events whose connection has not been probed yet
+  /// (native events replayed at startup arrive before the first sync).
+  final _held = <String, List<PorterBridgeEvent>>{};
 
   List<SavedConnection> get activeConnections =>
       [for (final entry in _active.values) entry.connection];
@@ -65,6 +72,7 @@ class PorterWakeModule extends ChangeNotifier {
   Future<void> start() => bridge.start(_onEvent, background: false);
 
   Future<void> sync(List<SavedConnection> connections) async {
+    _synced = true;
     final ids = {for (final c in connections) c.id};
     for (final id in _probing.where((id) => !ids.contains(id)).toList()) {
       _invalidate(id);
@@ -75,13 +83,16 @@ class PorterWakeModule extends ChangeNotifier {
       ..._seen,
     }.where((id) => !ids.contains(id)).toList();
     _seen.addAll(ids);
+    for (final c in connections) {
+      _known[c.id] = c;
+    }
     // Start the probes before awaiting revocations so a call that does not
     // revoke anything keeps its synchronous probe start.
     final revocations = [for (final id in vanished) _release(id)];
     final probes = [
       for (final c in connections)
         if (!_active.containsKey(c.id) && !_inert.contains(c.id) && _probing.add(c.id))
-          _probe(c),
+          _startProbe(c),
     ];
     await Future.wait([...revocations, ...probes]);
   }
@@ -90,6 +101,35 @@ class PorterWakeModule extends ChangeNotifier {
   void _invalidate(String id) {
     _generation[id] = (_generation[id] ?? 0) + 1;
     _probing.remove(id);
+  }
+
+  Future<void> _startProbe(SavedConnection connection) {
+    late final Future<void> future;
+    future = _probe(connection).whenComplete(() {
+      if (identical(_inflight[connection.id], future)) _inflight.remove(connection.id);
+    });
+    _inflight[connection.id] = future;
+    return future;
+  }
+
+  /// The API for [id]; re-probes a known connection whose startup probe failed
+  /// transiently (neither active nor inert), awaiting a probe already running.
+  Future<PorterWakeApi?> _resolveApi(String id) async {
+    if (!_active.containsKey(id) && !_inert.contains(id)) {
+      final known = _known[id];
+      if (known != null) {
+        try {
+          if (_probing.add(id)) {
+            await _startProbe(known);
+          } else {
+            await _inflight[id];
+          }
+        } on Object catch (error) {
+          debugPrint('porter_wake: re-probe failed (${error.runtimeType})');
+        }
+      }
+    }
+    return _active[id]?.api;
   }
 
   Future<void> _probe(SavedConnection connection) async {
@@ -111,12 +151,21 @@ class PorterWakeModule extends ChangeNotifier {
       case PorterProbe.active:
         _active[connection.id] = (connection: connection, api: api);
         notifyListeners();
+        final held = _held.remove(connection.id) ?? const <PorterBridgeEvent>[];
+        for (final event in held) {
+          try {
+            await _onEvent(event);
+          } on Object catch (error) {
+            debugPrint('porter_wake: held event failed (${error.runtimeType})');
+          }
+        }
         if (!await bridge.register(connection.id)) {
           debugPrint('porter_wake: no UnifiedPush distributor installed');
         }
       case PorterProbe.absent:
         api.close();
         _inert.add(connection.id);
+        _held.remove(connection.id);
         await bridge.unregister(connection.id);
       case PorterProbe.unknown:
         api.close();
@@ -141,6 +190,8 @@ class PorterWakeModule extends ChangeNotifier {
   Future<void> _release(String id) async {
     _invalidate(id);
     _seen.remove(id);
+    _known.remove(id);
+    _held.remove(id);
     final entry = _active.remove(id);
     _inert.remove(id);
     if (entry != null) {
@@ -157,6 +208,17 @@ class PorterWakeModule extends ChangeNotifier {
     entry?.api.close();
   }
 
+  /// Keeps an event for a connection whose probe has not resolved; inert
+  /// connections drop it. A newer endpoint supersedes an older one.
+  bool _hold(PorterBridgeEvent event) {
+    final id = event.connectionId;
+    if (_inert.contains(id) || (_synced && !_known.containsKey(id))) return false;
+    final list = _held.putIfAbsent(id, () => []);
+    if (event is PorterEndpointEvent) list.removeWhere((e) => e is PorterEndpointEvent);
+    list.add(event);
+    return true;
+  }
+
   Future<bool> _onEvent(PorterBridgeEvent event) async {
     final api = _active[event.connectionId]?.api;
     switch (event) {
@@ -166,7 +228,7 @@ class PorterWakeModule extends ChangeNotifier {
       case PorterInteractionEvent():
         return handler.onInteraction(event);
       case PorterEndpointEvent(:final url):
-        if (api == null) return false;
+        if (api == null) return _hold(event);
         await api.registerDevice(
           deviceId: await deviceIds.read(),
           endpoint: url,
@@ -174,7 +236,7 @@ class PorterWakeModule extends ChangeNotifier {
         );
         return true;
       case PorterUnregisteredEvent():
-        if (api == null) return false;
+        if (api == null) return _hold(event);
         await api.removeDevice(await deviceIds.read());
         return true;
       case PorterRegistrationFailedEvent():
