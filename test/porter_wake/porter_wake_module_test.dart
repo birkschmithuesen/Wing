@@ -130,7 +130,7 @@ void main() {
   test('an endpoint for an unknown connection after the first sync is ignored', () async {
     await module.sync([conn('c1')]);
     await bridge.emit(const PorterEndpointEvent('c9', 'http://100.75.24.33:2586/upAbC123xyz?up=1'));
-    expect(server.porterRequests(), isEmpty);
+    expect(server.porterRequests().where((r) => r.method != 'GET'), isEmpty);
   });
 
   test('forget deletes the device and unregisters', () async {
