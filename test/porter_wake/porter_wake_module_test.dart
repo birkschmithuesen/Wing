@@ -155,6 +155,19 @@ void main() {
     expect(bridge.registered, ['c1', 'c1']);
   });
 
+  test('refreshing one connection keeps another connection whose probe failed', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
+    await module.sync([conn('c1'), conn('c2')]);
+    await module.refresh(conn('c1'));
+    expect(bridge.unregistered, isEmpty);
+    server.statusFor.clear();
+    final bytes = Uint8List.fromList(
+        utf8.encode(jsonEncode({'v': 1, 'type': 'porter_wake', 'notice_id': 'n-3f2a9c1b7d4e'})));
+    await bridge.emit(PorterPushEvent('c2', bytes));
+    expect(module.activeConnections.map((c) => c.id), contains('c2'));
+    expect(bridge.unregistered, isEmpty);
+  });
+
   test('a vanished connection is dropped from the active set', () async {
     await module.sync([conn('c1')]);
     await module.sync([]);
