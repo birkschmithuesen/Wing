@@ -1,0 +1,55 @@
+name: Porter QA APK (debug, isolated package)
+
+# Debug APK of integration_test/porter_wake_device.dart under package
+# com.tarkilhk.wing.notificationqa (fake loopback dashboard). Never distributed.
+# Output goes to branch porter-qa-apk-bin (git transport; see voice-apk.yml).
+on:
+  push:
+    branches: ['ci-porter-qa-apk/**', 'ci-porter-qa-apk-publish/**']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Set up Flutter
+        uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.44.0'
+          channel: 'stable'
+          cache: true
+      - run: flutter pub get
+      - name: Build QA APK
+        run: |
+          set +e
+          ORG_GRADLE_PROJECT_notificationQa=true flutter build apk --debug --target-platform android-arm64 \
+            -t integration_test/porter_wake_device.dart 2>&1 | tee /tmp/build.log
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" != 0 ]; then
+            grep -E "^e: |error:|FAILED|What went wrong|Execution failed|Caused by" -A3 /tmp/build.log | head -60 | while IFS= read -r l; do echo "::error::${l:0:900}"; done
+          fi
+          exit "$rc"
+      - name: Publish to porter-qa-apk-bin
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/out
+          cp build/app/outputs/flutter-apk/app-debug.apk /tmp/out/porter-qa.apk
+          echo "${GITHUB_SHA}" > /tmp/out/SOURCE_COMMIT
+          (cd /tmp/out && sha256sum porter-qa.apk > SHA256SUMS)
+          cd /tmp/out
+          git init -q -b porter-qa-apk-bin
+          git config user.name "ci"; git config user.email "ci@localhost"
+          git add -A && git commit -q -m "porter qa ${GITHUB_SHA}"
+          git push -f "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" porter-qa-apk-bin
