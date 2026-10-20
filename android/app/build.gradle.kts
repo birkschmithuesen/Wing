@@ -252,8 +252,10 @@ dependencies {
    implementation("org.unifiedpush.android:connector:3.0.10") // ANNAHME C1: unverified, see PorterPushService.kt
 }
 
-// tink and tink-android ship the same classes; the connector and another
-// dependency pull one each, which fails checkReleaseDuplicateClasses.
+// Duplicate-class failure (CI runs 39348066235, 39348729429): JVM tink 1.17.0
+// (the UnifiedPush connector's webpush crypto) and tink-android 1.23.0 (the
+// app's secure-storage chain) ship the same classes. Keep tink-android, which
+// secure storage has always used, and drop the JVM artifact.
 configurations.configureEach {
-   exclude(group = "com.google.crypto.tink", module = "tink-android")
+   exclude(group = "com.google.crypto.tink", module = "tink")
 }

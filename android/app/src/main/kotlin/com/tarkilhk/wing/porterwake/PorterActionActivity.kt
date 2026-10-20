@@ -33,7 +33,7 @@ class PorterActionActivity : Activity() {
         if (!resumed || sent || getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
         sent = true
         val raw = intent.getStringExtra(PorterWakeNative.extra) ?: return finish()
-        val value = JSONObject(raw)
+        val value = try { JSONObject(raw) } catch (_: Exception) { return finish() }
         if (value.optString("action") == "open") return openMain()
         val event = PorterWakeNative.asMap(value)
         // Stay resumed until Dart replied: a resumed activity keeps network access.

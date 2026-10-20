@@ -17,13 +17,13 @@ import java.lang.ref.WeakReference
 object PorterWakeNative {
     const val channelName = "com.tarkilhk.wing/porter_wake"
     const val extra = "porter_wake_interaction"
+    private const val interactTimeoutMs = 30_000L
     private val main = Handler(Looper.getMainLooper())
     private var mainEngine: FlutterEngine? = null
     private var mainChannel: MethodChannel? = null
     private var mainReady = false
     private var activity = WeakReference<Activity>(null)
     private var headless: PorterHeadless? = null
-    private val headlessQueue = mutableListOf<Map<String, Any?>>()
     private val pendingInteractions = mutableListOf<Map<String, Any?>>()
     private fun prefs(context: Context) =
         context.getSharedPreferences("porter_wake_native", Context.MODE_PRIVATE)
@@ -43,14 +43,19 @@ object PorterWakeNative {
         mainReady = false
     }
 
-    internal fun channel(context: Context, engine: FlutterEngine, background: Boolean): MethodChannel =
+    internal fun channel(
+        context: Context,
+        engine: FlutterEngine,
+        background: Boolean,
+        owner: PorterHeadless? = null,
+    ): MethodChannel =
         MethodChannel(engine.dartExecutor.binaryMessenger, channelName).apply {
             setMethodCallHandler { call, result ->
                 try {
                     when (call.method) {
                         "initialize" -> {
                             if (background) {
-                                result.success(headlessQueue.toList().also { headlessQueue.clear() })
+                                result.success(owner?.initialize() ?: emptyList<Map<String, Any?>>())
                             } else {
                                 mainReady = true
                                 result.success(drainMain(context) + pendingInteractions.toList().also { pendingInteractions.clear() })
@@ -61,7 +66,7 @@ object PorterWakeNative {
                         "show" -> { PorterNotifications.show(context, call.arguments as Map<*, *>); result.success(null) }
                         "cancel" -> { PorterNotifications.cancel(context); result.success(null) }
                         "deviceLabel" -> result.success(Build.MODEL.take(40))
-                        "finished" -> { result.success(null); if (background) main.post { finishHeadless() } }
+                        "finished" -> { result.success(null); if (background) main.post { owner?.requestFinish() } }
                         else -> result.notImplemented()
                     }
                 } catch (_: Exception) {
@@ -80,13 +85,13 @@ object PorterWakeNative {
     }
 
     /** Registration events belong to the app engine; persist them across process death. */
-    fun queueForMain(context: Context, event: Map<String, Any?>) = main.post {
+    fun queueForMain(context: Context, event: Map<String, Any?>) { main.post {
         val channel = mainChannel
         if (mainReady && channel != null) { channel.invokeMethod("event", event); return@post }
         val queue = JSONArray(prefs(context).getString("pending", "[]"))
         queue.put(JSONObject(event))
         prefs(context).edit().putString("pending", queue.toString()).commit()
-    }
+    } }
 
     private fun drainMain(context: Context): List<Map<String, Any?>> {
         val queue = JSONArray(prefs(context).getString("pending", "[]"))
@@ -100,47 +105,57 @@ object PorterWakeNative {
         if (item == JSONObject.NULL) null else item
     }
 
-    fun deliverPush(context: Context, instance: String, bytes: ByteArray) = main.post {
+    fun deliverPush(context: Context, instance: String, bytes: ByteArray) { main.post {
         val event = mapOf("type" to "push", "connection" to instance, "bytes" to bytes)
         val channel = mainChannel
         if (mainReady && channel != null) channel.invokeMethod("event", event)
         else runHeadless(context, event, null)
-    }
+    } }
 
     /** From PorterActionActivity: rate/snooze stay in the background; open goes to the app. */
     fun interact(context: Context, event: Map<String, Any?>, completed: () -> Unit) {
         val channel = mainChannel
         if (mainReady && channel != null) {
+            // Fire at most once; the timeout ends the activity if Dart never answers.
+            var done = false
+            val finish = {
+                if (!done) { done = true; completed() }
+            }
+            val expire = Runnable { finish() }
+            main.postDelayed(expire, interactTimeoutMs)
+            val answered = { main.removeCallbacks(expire); finish() }
             channel.invokeMethod("event", event, object : MethodChannel.Result {
-                override fun success(result: Any?) = completed()
-                override fun error(code: String, message: String?, details: Any?) = completed()
-                override fun notImplemented() = completed()
+                override fun success(result: Any?) = answered()
+                override fun error(code: String, message: String?, details: Any?) = answered()
+                override fun notImplemented() = answered()
             })
-        } else runHeadless(context, event, completed)
+        } else main.post { runHeadless(context, event, completed) }
     }
 
     fun handleMainIntent(context: Context, intent: Intent?) {
         val raw = intent?.getStringExtra(extra) ?: return
         intent.removeExtra(extra)
-        val event = asMap(JSONObject(raw))
+        val event = try { asMap(JSONObject(raw)) } catch (_: Exception) { return }
         val channel = mainChannel
         if (mainReady && channel != null) channel.invokeMethod("event", event)
         else pendingInteractions.add(event)
     }
 
     private fun runHeadless(context: Context, event: Map<String, Any?>, completed: (() -> Unit)?) {
-        headlessQueue.add(event)
-        val current = headless
-        if (current != null) { completed?.let(current::onFinished); return }
-        headless = PorterHeadless(context.applicationContext, channelFactory = { engine ->
-            channel(context.applicationContext, engine, background = true)
-        }).also { started -> completed?.let(started::onFinished) }
+        val current = headless ?: try {
+            PorterHeadless(context.applicationContext) { engine, owner ->
+                channel(context.applicationContext, engine, background = true, owner = owner)
+            }.also { headless = it }
+        } catch (_: Throwable) {
+            headless = null
+            completed?.invoke()
+            return
+        }
+        current.deliver(event, completed)
     }
 
-    private fun finishHeadless() {
-        headless?.destroy()
-        headless = null
+    internal fun finishHeadless(target: PorterHeadless) {
+        if (headless === target) headless = null
+        target.destroy()
     }
-
-    internal fun headlessTimedOut() = finishHeadless()
 }
