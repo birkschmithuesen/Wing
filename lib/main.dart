@@ -45,6 +45,11 @@ import 'core/widgets/wing_welcome.dart';
 import 'core/screens/app_settings_content.dart';
 import 'core/widgets/config_backup_card.dart';
 import 'core/widgets/config_backup_actions.dart';
+import 'porter_wake/porter_wake_bridge.dart';
+import 'porter_wake/porter_wake_device_id.dart';
+import 'porter_wake/porter_wake_ledger.dart';
+import 'porter_wake/porter_wake_module.dart';
+import 'porter_wake/porter_wake_settings.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -140,6 +145,40 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
   bool _disposed = false;
   ProfileWorkspaceController? _openingNotificationController;
   final _networkAvailability = NetworkAvailability();
+  late final PorterWakeModule _porter;
+
+  Future<void> _syncPorter() async {
+    try {
+      await _porter.sync(await widget.connManager.loadConnectionsWithSecrets());
+    } on Object catch (error) {
+      debugPrint('porter_wake: sync failed (${error.runtimeType})');
+    }
+  }
+
+  /// "Öffnen": the most recent chat of [profile] on that connection, else its
+  /// chat list.
+  Future<void> openPorterProfile(String connectionId, String profile) async {
+    final connection = (await widget.connManager.loadConnectionsWithSecrets())
+        .where((c) => c.id == connectionId)
+        .firstOrNull;
+    if (connection == null) return _showNotificationOpenError();
+    final controller = await _profileControllers.forConnection(connection);
+    final switched = await controller.switchProfile(profile);
+    final data = controller.current;
+    final session = !switched || data == null || data.scope.profileName != profile
+        ? null
+        : mostRecentSessionId(data.sessions);
+    if (data == null || session == null) {
+      await _homeKey.currentState?.selectWorkspaceConnection(
+        connection,
+        AppDestination.chats,
+      );
+      return;
+    }
+    await openProfileNotification(
+      jsonEncode(ProfileSessionKey(data.scope, session).toJson()),
+    );
+  }
 
   Future<ProfileWorkspaceController> profileController(
     SavedConnection connection,
@@ -291,6 +330,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
             );
           },
           onPreferencesChanged: refreshPreferences,
+          settingsExtras: () => [PorterWakeSettings(module: _porter)],
         ),
       );
       _notificationRoutes[controller] = (route: route, screenKey: screenKey);
@@ -397,6 +437,20 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     _networkAvailability.start(
       _profileControllers.recoverConnections,
       _profileControllers.networkUnavailable,
+    );
+    _porter = PorterWakeModule(
+      bridge: MethodChannelPorterWakeBridge(),
+      deviceIds: PorterDeviceIdStore(),
+      ledger: PorterNoticeLedger(widget.connManager.prefs),
+      openProfile: openPorterProfile,
+    );
+    unawaited(
+      _notificationsReady
+          .then((_) async {
+            await _porter.start();
+            await _syncPorter();
+          })
+          .catchError((Object _) {}),
     );
   }
 
@@ -701,6 +755,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
         launchIntents: widget.launchIntents,
         startupExternalNavigationReady: _notificationsReady,
         deferredShareId: _deferredShareId,
+        porter: _porter,
       ),
     );
   }
@@ -708,6 +763,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
   @override
   void dispose() {
     _disposed = true;
+    _porter.dispose();
     WidgetsBinding.instance.removeObserver(this);
     _networkAvailability.dispose();
     _profileControllers.removeListener(_monitoringActivityChanged);
@@ -732,6 +788,7 @@ class HomeScreen extends StatefulWidget {
   final AndroidLaunchIntentService? launchIntents;
   final Future<void>? startupExternalNavigationReady;
   final String? deferredShareId;
+  final PorterWakeModule? porter;
   final Future<String> Function(String passphrase)? exportBackup;
   final Future<String?> Function(String contents)? deliverBackup;
   final Future<String?> Function()? pickBackupFile;
@@ -754,6 +811,7 @@ class HomeScreen extends StatefulWidget {
     this.launchIntents,
     this.startupExternalNavigationReady,
     this.deferredShareId,
+    this.porter,
     this.exportBackup,
     this.deliverBackup,
     this.pickBackupFile,
@@ -1236,6 +1294,9 @@ class HomeScreenState extends State<HomeScreen> {
             Navigator.of(context).popUntil((route) => route.isFirst);
           },
           onPreferencesChanged: widget.onPreferencesChanged,
+          settingsExtras: widget.porter == null
+              ? null
+              : () => [PorterWakeSettings(module: widget.porter!)],
           initialQuickChat: initialQuickChat,
           initialSearchChats: launchAction == AndroidLaunchAction.searchChats,
         ),
@@ -1248,6 +1309,20 @@ class HomeScreenState extends State<HomeScreen> {
 
   void _editConnection(SavedConnection connection) {
     _setupConnection(existing: connection);
+  }
+
+  /// Re-probes [saved] with its stored credentials (new or edited connection).
+  Future<void> _refreshPorter(SavedConnection saved) async {
+    final porter = widget.porter;
+    if (porter == null) return;
+    try {
+      final full = (await widget.connManager.loadConnectionsWithSecrets())
+          .where((c) => c.id == saved.id)
+          .firstOrNull;
+      if (full != null) await porter.refresh(full);
+    } on Object catch (error) {
+      debugPrint('porter_wake: refresh failed (${error.runtimeType})');
+    }
   }
 
   Future<void> _setupConnection({SavedConnection? existing}) async {
@@ -1311,6 +1386,7 @@ class HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     if (saved != null) {
       _autoNavigated = true;
+      unawaited(_refreshPorter(saved));
       _refresh();
       if (existing == null && widget.profileController != null) {
         await _navigateToWorkspace(saved);
@@ -1373,6 +1449,12 @@ class HomeScreenState extends State<HomeScreen> {
           onSelected: (v) async {
             if (v == 'delete') {
               try {
+                // The device DELETE needs the credentials, so forget first.
+                final full =
+                    (await widget.connManager.loadConnectionsWithSecrets())
+                        .where((c) => c.id == conn.id)
+                        .firstOrNull;
+                if (full != null) await widget.porter?.forget(full);
                 await widget.connManager.deleteConnection(conn.id);
                 if (mounted) _refresh();
               } on CredentialStorageException {
@@ -1471,6 +1553,10 @@ class HomeScreenState extends State<HomeScreen> {
             ? AppSettingsContent(
                 key: ValueKey(_settingsRevision),
                 preferences: widget.connManager.prefs,
+                notificationExtras: [
+                  if (widget.porter != null)
+                    PorterWakeSettings(module: widget.porter!),
+                ],
                 enableNotifications: widget.enableProfileNotifications,
                 backgroundMonitoringState: widget.backgroundMonitoringState,
                 openMonitoringBatterySettings:

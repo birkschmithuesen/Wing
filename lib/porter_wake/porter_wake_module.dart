@@ -12,6 +12,21 @@ import 'porter_wake_ledger.dart';
 
 typedef PorterApiFactory = PorterWakeApi Function(SavedConnection connection);
 
+/// The most recent session row (contract §6.6; Wing has no pinned chats).
+String? mostRecentSessionId(List<Map<String, dynamic>> rows) {
+  String? best;
+  num bestTime = double.negativeInfinity;
+  for (final row in rows) {
+    final id = row['id'];
+    final time = row['last_active'];
+    if (id is String && time is num && time > bestTime) {
+      best = id;
+      bestTime = time;
+    }
+  }
+  return best;
+}
+
 /// The optional porter wake module. A connection is active only after the
 /// quiet-hours probe answered 200; 404/503 keep it inert for this session.
 class PorterWakeModule extends ChangeNotifier {

@@ -98,6 +98,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
   final Future<void> Function(SavedConnection, AppDestination)?
   onSelectConnection;
   final VoidCallback? onPreferencesChanged;
+  final List<Widget> Function()? settingsExtras;
   final Future<void> Function(ProfileSessionKey)? onCapturePhoto;
   final AppDestination initialDestination;
   final VoiceDevice? voiceDevice;
@@ -116,6 +117,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
     this.savedConnections,
     this.onSelectConnection,
     this.onPreferencesChanged,
+    this.settingsExtras,
     this.onCapturePhoto,
     this.initialDestination = AppDestination.chats,
     this.voiceDevice,
@@ -3093,6 +3095,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 hermesVoiceProfileLabel: controller.current?.scope.profileName,
                 openHermesVoiceSettings: _hermesSpeechSettingsLink(context),
                 enableNotifications: widget.enableNotifications,
+                notificationExtras: widget.settingsExtras?.call() ?? const [],
                 backgroundMonitoringState: widget.backgroundMonitoringState,
                 openMonitoringBatterySettings:
                     widget.openMonitoringBatterySettings,
