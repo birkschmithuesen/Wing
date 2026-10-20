@@ -48,9 +48,13 @@ jobs:
           ls -l build/app/outputs/flutter-apk/ || true
           apk=$(ls build/app/outputs/flutter-apk/*debug.apk | head -n 1)
           echo "::notice::publishing ${apk}"
+          ls -l "${apk}"
           cp "${apk}" /tmp/out/porter-qa.apk
           echo "${GITHUB_SHA}" > /tmp/out/SOURCE_COMMIT
           (cd /tmp/out && sha256sum porter-qa.apk > SHA256SUMS)
+          # A debug APK can exceed GitHub's 100 MB push limit: ship it as
+          # 40 MB parts (cat porter-qa.apk.part-* > porter-qa.apk).
+          (cd /tmp/out && split -b 40M -d porter-qa.apk porter-qa.apk.part- && rm porter-qa.apk)
           cd /tmp/out
           git init -q -b porter-qa-apk-bin
           git config user.name "ci"; git config user.email "ci@localhost"
