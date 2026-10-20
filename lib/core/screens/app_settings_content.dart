@@ -29,6 +29,7 @@ class AppSettingsContent extends StatefulWidget {
     this.openMonitoringBatterySettings,
     this.openHermesVoiceSettings,
     this.hermesVoiceProfileLabel,
+    this.notificationExtras = const [],
   });
 
   final SharedPreferences preferences;
@@ -38,6 +39,7 @@ class AppSettingsContent extends StatefulWidget {
   final Future<void> Function()? openMonitoringBatterySettings;
   final VoidCallback? openHermesVoiceSettings;
   final String? hermesVoiceProfileLabel;
+  final List<Widget> notificationExtras;
 
   @override
   State<AppSettingsContent> createState() => _AppSettingsContentState();
@@ -267,6 +269,10 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                                 : (value) =>
                                       _save(notificationPreviewsKey, value),
                           ),
+                          for (final extra in widget.notificationExtras) ...[
+                            const Divider(height: 1),
+                            extra,
+                          ],
                           if (widget.backgroundMonitoringState != null) ...[
                             ValueListenableBuilder<BackgroundMonitoringState>(
                               valueListenable:
