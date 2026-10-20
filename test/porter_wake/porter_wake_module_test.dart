@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -15,6 +16,16 @@ import 'porter_wake_fake_server.dart';
 
 SavedConnection conn(String id) => SavedConnection(
   id: id, label: 'Home', host: 'hermes.test', port: 8642, apiKey: '');
+
+class _GatedApi extends PorterWakeApi {
+  _GatedApi(super.client, this.gate);
+  final Future<void> gate;
+  @override
+  Future<PorterProbe> probe() async {
+    await gate;
+    return super.probe();
+  }
+}
 
 void main() {
   late FakePorterServer server;
@@ -111,5 +122,57 @@ void main() {
     await module.sync([conn('c1')]);
     await module.sync([]);
     expect(module.activeConnections, isEmpty);
+  });
+
+  test('forget on an inactive connection still unregisters without a DELETE', () async {
+    server.statusFor['GET ${FakePorterServer.base}/settings/quiet-hours'] = 500;
+    await module.sync([conn('c1')]);
+    await module.forget(conn('c1'));
+    expect(bridge.unregistered, ['c1']);
+    expect(server.porterRequests().where((r) => r.method == 'DELETE'), isEmpty);
+  });
+
+  test('refresh during an in-flight probe discards it and probes the new connection', () async {
+    final gate = Completer<void>();
+    final seen = <SavedConnection>[];
+    final gated = PorterWakeModule(
+      bridge: bridge,
+      deviceIds: PorterDeviceIdStore(store: MemoryCredentialStore()),
+      ledger: PorterNoticeLedger(await SharedPreferences.getInstance()),
+      apiFactory: (c) {
+        seen.add(c);
+        return seen.length == 1
+            ? _GatedApi(server.client(), gate.future)
+            : PorterWakeApi(server.client());
+      },
+    );
+    final first = gated.sync([conn('c1')]);
+    final edited = SavedConnection(
+        id: 'c1', label: 'Edited', host: 'hermes.test', port: 8642, apiKey: '');
+    final refreshed = gated.refresh(edited);
+    await refreshed;
+    expect(gated.activeConnections.single.label, 'Edited');
+    gate.complete();
+    await first;
+    await refreshed;
+    expect(gated.activeConnections.single.label, 'Edited');
+    expect(seen.map((c) => c.label), ['Home', 'Edited']);
+    expect(bridge.registered, ['c1']);
+  });
+
+  test('forget during an in-flight probe never activates or registers it', () async {
+    final gate = Completer<void>();
+    final gated = PorterWakeModule(
+      bridge: bridge,
+      deviceIds: PorterDeviceIdStore(store: MemoryCredentialStore()),
+      ledger: PorterNoticeLedger(await SharedPreferences.getInstance()),
+      apiFactory: (_) => _GatedApi(server.client(), gate.future),
+    );
+    final probing = gated.sync([conn('c1')]);
+    await gated.forget(conn('c1'));
+    gate.complete();
+    await probing;
+    expect(gated.activeConnections, isEmpty);
+    expect(bridge.registered, isEmpty);
   });
 }

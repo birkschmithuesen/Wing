@@ -37,6 +37,7 @@ class PorterWakeModule extends ChangeNotifier {
   final _active = <String, ({SavedConnection connection, PorterWakeApi api})>{};
   final _inert = <String>{};
   final _probing = <String>{};
+  final _generation = <String, int>{};
 
   List<SavedConnection> get activeConnections =>
       [for (final entry in _active.values) entry.connection];
@@ -47,6 +48,9 @@ class PorterWakeModule extends ChangeNotifier {
 
   Future<void> sync(List<SavedConnection> connections) async {
     final ids = {for (final c in connections) c.id};
+    for (final id in _probing.where((id) => !ids.contains(id)).toList()) {
+      _invalidate(id);
+    }
     final vanished = _active.keys.where((id) => !ids.contains(id)).toList();
     for (final id in vanished) {
       _active.remove(id)?.api.close();
@@ -55,13 +59,32 @@ class PorterWakeModule extends ChangeNotifier {
     await Future.wait([
       for (final c in connections)
         if (!_active.containsKey(c.id) && !_inert.contains(c.id) && _probing.add(c.id))
-          _probe(c).whenComplete(() => _probing.remove(c.id)),
+          _probe(c),
     ]);
   }
 
+  /// Marks any in-flight probe for [id] stale so its result is discarded.
+  void _invalidate(String id) {
+    _generation[id] = (_generation[id] ?? 0) + 1;
+    _probing.remove(id);
+  }
+
   Future<void> _probe(SavedConnection connection) async {
+    final generation = _generation[connection.id] ?? 0;
     final api = _apiFactory(connection);
-    switch (await api.probe()) {
+    final PorterProbe result;
+    try {
+      result = await api.probe();
+    } finally {
+      if ((_generation[connection.id] ?? 0) == generation) {
+        _probing.remove(connection.id);
+      }
+    }
+    if ((_generation[connection.id] ?? 0) != generation) {
+      api.close();
+      return;
+    }
+    switch (result) {
       case PorterProbe.active:
         _active[connection.id] = (connection: connection, api: api);
         notifyListeners();
@@ -78,6 +101,7 @@ class PorterWakeModule extends ChangeNotifier {
   }
 
   Future<void> refresh(SavedConnection connection) async {
+    _invalidate(connection.id);
     _active.remove(connection.id)?.api.close();
     _inert.remove(connection.id);
     notifyListeners();
@@ -85,19 +109,21 @@ class PorterWakeModule extends ChangeNotifier {
   }
 
   Future<void> forget(SavedConnection connection) async {
+    _invalidate(connection.id);
     final entry = _active.remove(connection.id);
     _inert.remove(connection.id);
-    if (entry == null) return;
-    notifyListeners();
-    try {
-      await entry.api
-          .removeDevice(await deviceIds.read())
-          .timeout(const Duration(seconds: 5));
-    } on Object catch (error) {
-      debugPrint('porter_wake: device removal failed (${error.runtimeType})');
+    if (entry != null) {
+      notifyListeners();
+      try {
+        await entry.api
+            .removeDevice(await deviceIds.read())
+            .timeout(const Duration(seconds: 5));
+      } on Object catch (error) {
+        debugPrint('porter_wake: device removal failed (${error.runtimeType})');
+      }
     }
     await bridge.unregister(connection.id);
-    entry.api.close();
+    entry?.api.close();
   }
 
   Future<bool> _onEvent(PorterBridgeEvent event) async {
