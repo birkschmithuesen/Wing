@@ -145,14 +145,14 @@ class _QuietHoursPanelState extends State<QuietHoursPanel> {
         ListTile(
           minTileHeight: 48,
           title: const Text('von'),
-          trailing: Text(shown.from),
+          trailing: Text(shown.from, style: Theme.of(context).textTheme.bodyLarge),
           enabled: !_saving,
           onTap: () => _pick(shown.from, (v) => shown.copyWith(from: v)),
         ),
         ListTile(
           minTileHeight: 48,
           title: const Text('bis'),
-          trailing: Text(shown.to),
+          trailing: Text(shown.to, style: Theme.of(context).textTheme.bodyLarge),
           enabled: !_saving,
           onTap: () => _pick(shown.to, (v) => shown.copyWith(to: v)),
         ),
