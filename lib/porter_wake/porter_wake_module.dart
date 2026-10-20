@@ -1,0 +1,128 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart';
+
+import '../core/services/connection_manager.dart';
+import 'porter_wake_api.dart';
+import 'porter_wake_bridge.dart';
+import 'porter_wake_dashboard.dart';
+import 'porter_wake_device_id.dart';
+import 'porter_wake_handler.dart';
+import 'porter_wake_ledger.dart';
+
+typedef PorterApiFactory = PorterWakeApi Function(SavedConnection connection);
+
+/// The optional porter wake module. A connection is active only after the
+/// quiet-hours probe answered 200; 404/503 keep it inert for this session.
+class PorterWakeModule extends ChangeNotifier {
+  PorterWakeModule({
+    required this.bridge,
+    required this.deviceIds,
+    required PorterNoticeLedger ledger,
+    PorterApiFactory? apiFactory,
+    PorterOpenProfile? openProfile,
+  }) : _apiFactory = apiFactory ?? ((c) => PorterWakeApi(porterDashboardFor(c))) {
+    handler = PorterWakeHandler(
+      bridge: bridge,
+      ledger: ledger,
+      apiFor: (id) async => _active[id]?.api,
+      openProfile: openProfile,
+    );
+  }
+
+  final PorterWakeBridge bridge;
+  final PorterDeviceIdStore deviceIds;
+  final PorterApiFactory _apiFactory;
+  late final PorterWakeHandler handler;
+  final _active = <String, ({SavedConnection connection, PorterWakeApi api})>{};
+  final _inert = <String>{};
+  final _probing = <String>{};
+
+  List<SavedConnection> get activeConnections =>
+      [for (final entry in _active.values) entry.connection];
+
+  PorterWakeApi? apiFor(String connectionId) => _active[connectionId]?.api;
+
+  Future<void> start() => bridge.start(_onEvent, background: false);
+
+  Future<void> sync(List<SavedConnection> connections) async {
+    final ids = {for (final c in connections) c.id};
+    final vanished = _active.keys.where((id) => !ids.contains(id)).toList();
+    for (final id in vanished) {
+      _active.remove(id)?.api.close();
+    }
+    if (vanished.isNotEmpty) notifyListeners();
+    await Future.wait([
+      for (final c in connections)
+        if (!_active.containsKey(c.id) && !_inert.contains(c.id) && _probing.add(c.id))
+          _probe(c).whenComplete(() => _probing.remove(c.id)),
+    ]);
+  }
+
+  Future<void> _probe(SavedConnection connection) async {
+    final api = _apiFactory(connection);
+    switch (await api.probe()) {
+      case PorterProbe.active:
+        _active[connection.id] = (connection: connection, api: api);
+        notifyListeners();
+        if (!await bridge.register(connection.id)) {
+          debugPrint('porter_wake: no UnifiedPush distributor installed');
+        }
+      case PorterProbe.absent:
+        api.close();
+        _inert.add(connection.id);
+        await bridge.unregister(connection.id);
+      case PorterProbe.unknown:
+        api.close();
+    }
+  }
+
+  Future<void> refresh(SavedConnection connection) async {
+    _active.remove(connection.id)?.api.close();
+    _inert.remove(connection.id);
+    notifyListeners();
+    await sync([...activeConnections, connection]);
+  }
+
+  Future<void> forget(SavedConnection connection) async {
+    final entry = _active.remove(connection.id);
+    _inert.remove(connection.id);
+    if (entry == null) return;
+    notifyListeners();
+    try {
+      await entry.api
+          .removeDevice(await deviceIds.read())
+          .timeout(const Duration(seconds: 5));
+    } on Object catch (error) {
+      debugPrint('porter_wake: device removal failed (${error.runtimeType})');
+    }
+    await bridge.unregister(connection.id);
+    entry.api.close();
+  }
+
+  Future<bool> _onEvent(PorterBridgeEvent event) async {
+    final api = _active[event.connectionId]?.api;
+    switch (event) {
+      case PorterPushEvent(:final bytes):
+        await handler.onPush(event.connectionId, bytes);
+        return true;
+      case PorterInteractionEvent():
+        return handler.onInteraction(event);
+      case PorterEndpointEvent(:final url):
+        if (api == null) return false;
+        await api.registerDevice(
+          deviceId: await deviceIds.read(),
+          endpoint: url,
+          label: await bridge.deviceLabel(),
+        );
+        return true;
+      case PorterUnregisteredEvent():
+        if (api == null) return false;
+        await api.removeDevice(await deviceIds.read());
+        return true;
+      case PorterRegistrationFailedEvent():
+        debugPrint('porter_wake: registration failed');
+        return true;
+    }
+  }
+}
