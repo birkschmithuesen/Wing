@@ -45,7 +45,10 @@ jobs:
           TOKEN: ${{ github.token }}
         run: |
           mkdir -p /tmp/out
-          cp build/app/outputs/flutter-apk/app-debug.apk /tmp/out/porter-qa.apk
+          ls -l build/app/outputs/flutter-apk/ || true
+          apk=$(ls build/app/outputs/flutter-apk/*debug.apk | head -n 1)
+          echo "::notice::publishing ${apk}"
+          cp "${apk}" /tmp/out/porter-qa.apk
           echo "${GITHUB_SHA}" > /tmp/out/SOURCE_COMMIT
           (cd /tmp/out && sha256sum porter-qa.apk > SHA256SUMS)
           cd /tmp/out
