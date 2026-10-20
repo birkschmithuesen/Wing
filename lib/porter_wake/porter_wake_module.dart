@@ -73,12 +73,15 @@ class PorterWakeModule extends ChangeNotifier {
       ..._seen,
     }.where((id) => !ids.contains(id)).toList();
     _seen.addAll(ids);
-    await Future.wait([for (final id in vanished) _release(id)]);
-    await Future.wait([
+    // Start the probes before awaiting revocations so a call that does not
+    // revoke anything keeps its synchronous probe start.
+    final revocations = [for (final id in vanished) _release(id)];
+    final probes = [
       for (final c in connections)
         if (!_active.containsKey(c.id) && !_inert.contains(c.id) && _probing.add(c.id))
           _probe(c),
-    ]);
+    ];
+    await Future.wait([...revocations, ...probes]);
   }
 
   /// Marks any in-flight probe for [id] stale so its result is discarded.
