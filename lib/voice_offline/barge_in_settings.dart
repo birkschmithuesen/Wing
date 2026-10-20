@@ -48,17 +48,18 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   static const _headphonesOnly =
       'Only with headphones. On the speaker or in the car, tap to stop.';
 
-  /// Bluetooth headphones are not measured yet (t_fabcb273): the row says
-  /// this whenever the switch is on, regardless of Bluetooth permission.
-  static const _wiredOnly =
-      'Only with wired headphones. Allow Nearby devices for Bluetooth headphones.';
+  /// Owner lifted the Bluetooth lock 2026-10-20 without an echo measurement
+  /// (t_fabcb273): the row says this whenever the switch is on.
+  static const _headphonesWiredOrBluetooth =
+      'Only with headphones (wired or Bluetooth). On the speaker or in the car, tap to stop.';
 
   HeadphoneRouteHost get _route =>
       widget.route ?? AndroidHeadphoneRouteHost.instance;
 
   /// Spec §6: saving never waits for the permission dialog. Still requested
-  /// on switch-on so t_fabcb273 can enable Bluetooth later without
-  /// reinstalling the permission flow; the subtitle no longer depends on it.
+  /// on switch-on so a Bluetooth headphone route is recognised without the
+  /// user reinstalling the permission flow; the subtitle no longer depends
+  /// on it.
   Future<void> _togglePlayback(bool on) async {
     unawaited(
       widget.onSave(VoicePreferences.bargeInPlaybackKey, on ? 'on' : 'off'),
@@ -158,7 +159,9 @@ class _BargeInSettingsState extends State<BargeInSettings> {
             key: const ValueKey('voice-barge-in-playback'),
             contentPadding: EdgeInsets.zero,
             title: const Text('Interrupt read-aloud by speaking'),
-            subtitle: Text(s.bargeInPlayback ? _wiredOnly : _headphonesOnly),
+            subtitle: Text(
+              s.bargeInPlayback ? _headphonesWiredOrBluetooth : _headphonesOnly,
+            ),
             value: s.bargeInPlayback,
             onChanged: widget.saving
                 ? null
