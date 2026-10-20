@@ -36,12 +36,14 @@ class PorterWakeModule extends ChangeNotifier {
     required PorterNoticeLedger ledger,
     PorterApiFactory? apiFactory,
     PorterOpenProfile? openProfile,
+    PorterShowNotice? showNotice,
   }) : _apiFactory = apiFactory ?? ((c) => PorterWakeApi(porterDashboardFor(c))) {
     handler = PorterWakeHandler(
       bridge: bridge,
       ledger: ledger,
       apiFor: (id) async => _active[id]?.api,
       openProfile: openProfile,
+      showNotice: showNotice,
     );
   }
 

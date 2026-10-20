@@ -3,11 +3,13 @@ import 'package:flutter/foundation.dart';
 import 'porter_wake_api.dart';
 import 'porter_wake_bridge.dart';
 import 'porter_wake_ledger.dart';
+import 'porter_wake_notice.dart';
 import 'porter_wake_payload.dart';
 import 'porter_wake_presentation.dart';
 
 typedef PorterApiFor = Future<PorterWakeApi?> Function(String connectionId);
 typedef PorterOpenProfile = Future<void> Function(String connectionId, String profile);
+typedef PorterShowNotice = Future<void> Function(String connectionId, PorterNotice notice);
 
 /// Push → fetch → show, and notification taps → feedback (contract §6).
 class PorterWakeHandler {
@@ -16,12 +18,14 @@ class PorterWakeHandler {
     required this.ledger,
     required this.apiFor,
     this.openProfile,
+    this.showNotice,
   });
 
   final PorterWakeBridge bridge;
   final PorterNoticeLedger ledger;
   final PorterApiFor apiFor;
   final PorterOpenProfile? openProfile;
+  final PorterShowNotice? showNotice;
 
   Future<void> onPush(String connectionId, List<int> bytes) async {
     final payload = PorterWakePayload.parse(bytes);
@@ -54,9 +58,15 @@ class PorterWakeHandler {
     final api = await apiFor(event.connectionId);
     if (event.action == 'open') {
       var profile = event.openProfile;
+      PorterNotice? notice;
       if (api != null) {
         try {
-          if (event.neutral) profile = (await api.notice(event.noticeId)).openProfile;
+          notice = await api.notice(event.noticeId);
+          profile = notice.openProfile;
+        } on Object catch (error) {
+          debugPrint('porter_wake: notice fetch on open failed (${error.runtimeType})');
+        }
+        try {
           await api.feedback(event.noticeId, const {'action': 'open'});
         } on Object catch (error) {
           debugPrint('porter_wake: open feedback failed (${error.runtimeType})');
@@ -64,6 +74,7 @@ class PorterWakeHandler {
       }
       await bridge.cancel();
       await openProfile?.call(event.connectionId, profile);
+      if (notice != null) await showNotice?.call(event.connectionId, notice);
       return true;
     }
     final value = event.value;

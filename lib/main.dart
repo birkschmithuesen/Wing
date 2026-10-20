@@ -50,6 +50,7 @@ import 'porter_wake/porter_wake_device_id.dart';
 import 'porter_wake/porter_wake_ledger.dart';
 import 'porter_wake/porter_wake_module.dart';
 import 'porter_wake/porter_wake_settings.dart';
+import 'porter_wake/porter_wake_snooze_sheet.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -177,6 +178,31 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     }
     await openProfileNotification(
       jsonEncode(ProfileSessionKey(data.scope, session).toJson()),
+    );
+  }
+
+  /// A notice item: [profile] on that connection with the item's own session.
+  Future<void> openPorterSession(
+    String connectionId,
+    String profile,
+    String sessionId,
+  ) async {
+    final connection = (await widget.connManager.loadConnectionsWithSecrets())
+        .where((c) => c.id == connectionId)
+        .firstOrNull;
+    if (connection == null) return _showNotificationOpenError();
+    final controller = await _profileControllers.forConnection(connection);
+    final switched = await controller.switchProfile(profile);
+    final data = controller.current;
+    if (!switched || data == null || data.scope.profileName != profile) {
+      await _homeKey.currentState?.selectWorkspaceConnection(
+        connection,
+        AppDestination.chats,
+      );
+      return;
+    }
+    await openProfileNotification(
+      jsonEncode(ProfileSessionKey(data.scope, sessionId).toJson()),
     );
   }
 
@@ -443,6 +469,23 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
       deviceIds: PorterDeviceIdStore(),
       ledger: PorterNoticeLedger(widget.connManager.prefs),
       openProfile: openPorterProfile,
+      showNotice: (connectionId, notice) async {
+        final context = _navigatorKey.currentContext;
+        final api = _porter.apiFor(connectionId);
+        if (context == null ||
+            !context.mounted ||
+            api == null ||
+            notice.kind != 'items') {
+          return;
+        }
+        await showPorterNoticeSheet(
+          context,
+          notice: notice,
+          feedback: (body) => api.feedback(notice.noticeId, body),
+          openItem: (profile, session) =>
+              openPorterSession(connectionId, profile, session),
+        );
+      },
     );
     unawaited(
       _notificationsReady
