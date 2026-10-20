@@ -36,7 +36,7 @@ answers 200. On 404 or 503 Wing does not register an endpoint, shows no
 - Wing registers its UnifiedPush endpoint with a random per-install device id
   stored in secure storage. It is not backed up (`allowBackup=false`).
 - The registration is revoked when the connection is removed (including config
-  restore or import), when the distributor unregisters, and when the distributor unregisters. When credentials are
+  restore or import) and when the distributor unregisters. When credentials are
   edited, Wing re-probes the server and registers again with the new connection;
   the old server's registration is not deleted.
 
