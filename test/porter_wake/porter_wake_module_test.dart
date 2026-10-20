@@ -175,4 +175,14 @@ void main() {
     expect(gated.activeConnections, isEmpty);
     expect(bridge.registered, isEmpty);
   });
+
+  test('the most recent pforte session wins', () {
+    expect(mostRecentSessionId([
+      {'id': 'old', 'last_active': 10},
+      {'id': 'new', 'last_active': 30},
+      {'id': 'mid', 'last_active': 20},
+      {'id': 'broken'},
+    ]), 'new');
+    expect(mostRecentSessionId(const []), isNull);
+  });
 }
