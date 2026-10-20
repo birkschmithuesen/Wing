@@ -186,7 +186,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   bool _carKitConnected() => isCarKitClass(_headphones.bluetoothClass);
 
-  late final _voiceInput = VoiceInputController(
+  late final VoiceInputController _voiceInput = VoiceInputController(
     device: widget.voiceDevice ?? AndroidVoice.instance,
     createRemote: () => HermesVoice.forConnection(
       controller.connection,
@@ -228,7 +228,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Car mode (docs/CAR_MODE.md). [_carSend] makes the next transcript count
   /// as hands-free, so the big button sends on every input route.
   bool _carSend = false;
-  late final _car = CarModeSession(
+  late final CarModeSession _car = CarModeSession(
     device: _voiceDevice,
     bridge: CarModeBridge(
       changes: Listenable.merge([
