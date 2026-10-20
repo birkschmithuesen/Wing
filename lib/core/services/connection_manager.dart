@@ -1692,6 +1692,26 @@ class DashboardClient {
     return _decodeMapResponse(res);
   }
 
+  /// Sends an authenticated API request and returns the response for any
+  /// status after one re-login on 401. Callers own status and body handling.
+  Future<http.Response> apiSend(
+    String method,
+    String endpoint, {
+    Map<String, dynamic>? body,
+    bool retried = false,
+  }) async {
+    final headers = await _authHeaders();
+    final request = http.Request(method, Uri.parse('$_baseUrl/api/$endpoint'))
+      ..headers.addAll(headers);
+    if (body != null) request.body = jsonEncode(body);
+    final res = await http.Response.fromStream(await _http.send(request));
+    if (res.statusCode == 401 && !retried) {
+      _resetAuth(headers);
+      return apiSend(method, endpoint, body: body, retried: true);
+    }
+    return res;
+  }
+
   Future<Map<String, dynamic>> getModelInfo() => apiGet('model/info');
   Future<Map<String, dynamic>> getModelOptions() => apiGet('model/options');
   Future<List<Map<String, dynamic>>> getSkills() async {
