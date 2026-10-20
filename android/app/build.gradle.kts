@@ -249,9 +249,11 @@ dependencies {
    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
    implementation(files("libs/sherpa-onnx-1.13.8.aar"))
    implementation("org.apache.commons:commons-compress:1.27.1")
-   implementation("org.unifiedpush.android:connector:3.0.10") { // ANNAHME C1: unverified, see PorterPushService.kt
-       // The connector pulls tink-android; another dependency already ships tink 1.17.0
-       // (same classes), which makes checkReleaseDuplicateClasses fail.
-       exclude(group = "com.google.crypto.tink", module = "tink-android")
-   }
+   implementation("org.unifiedpush.android:connector:3.0.10") // ANNAHME C1: unverified, see PorterPushService.kt
+}
+
+// tink and tink-android ship the same classes; the connector and another
+// dependency pull one each, which fails checkReleaseDuplicateClasses.
+configurations.configureEach {
+   exclude(group = "com.google.crypto.tink", module = "tink-android")
 }
