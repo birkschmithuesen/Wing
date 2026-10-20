@@ -6,6 +6,21 @@ class HeadphoneRouteFixture implements HeadphoneRouteHost {
   static const speaker = OutputRoute(supported: true, type: 2);
   static const headphones = OutputRoute(supported: true, type: 4);
 
+  /// A2DP device, class `AUDIO_VIDEO_HEADPHONES` (e.g. a Sony WH-1000XM4).
+  static const bluetoothHeadphones = OutputRoute(
+    supported: true,
+    type: 8,
+    bluetoothClass: 0x0418,
+  );
+
+  /// A2DP device whose class is not a recognised headphone/headset
+  /// (e.g. a car kit).
+  static const bluetoothOther = OutputRoute(
+    supported: true,
+    type: 8,
+    bluetoothClass: 0x0408,
+  );
+
   OutputRoute route = speaker;
   bool allowed = true;
   bool grant = true;

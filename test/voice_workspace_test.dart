@@ -851,6 +851,41 @@ void main() {
     },
   );
 
+  testWidgets(
+    'with Bluetooth headphones, speaking during read-aloud stops it and sends',
+    (tester) async {
+      await readingAloud(tester, HeadphoneRouteFixture.bluetoothHeadphones);
+      expect(find.text('Listening'), findsOneWidget);
+      final stopsBefore = playbackStops();
+      device.vadTranscript = 'Testsatz zwei, stopp';
+      await windows(tester, 0.95, 40);
+      expect(playbackStops(), greaterThan(stopsBefore));
+      await finishReading(tester);
+      await windows(tester, 0.1, 60);
+      expect(prompts(), 2);
+      await tester.tap(find.text('Stop listening'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'with a non-headphone Bluetooth device, speaking during read-aloud does '
+    'not stop it',
+    (tester) async {
+      await readingAloud(tester, HeadphoneRouteFixture.bluetoothOther);
+      expect(find.text('Listening'), findsNothing);
+      final stopsBefore = playbackStops();
+      await windows(tester, 0.95, 40);
+      await windows(tester, 0.1, 60);
+      expect(playbackStops(), stopsBefore);
+      expect(prompts(), 1);
+      await finishReading(tester);
+      expect(find.textContaining('Recording ·'), findsOneWidget);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
   testWidgets('over the speaker, speaking during read-aloud does not stop it', (
     tester,
   ) async {
