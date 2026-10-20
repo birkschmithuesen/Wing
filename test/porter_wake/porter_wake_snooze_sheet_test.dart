@@ -172,7 +172,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('morgen'));
     await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
+    await tester.pump(const Duration(milliseconds: 500));
     expect(find.byType(LinearProgressIndicator), findsOneWidget);
     await screenshot(tester, 'porter-sheet-pending-light');
     await tester.tap(find.text('Zugangsdaten im Klartext in Notiz gefunden: löschen?'));
