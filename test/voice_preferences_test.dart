@@ -453,8 +453,8 @@ void main() {
 
   const headphonesOnly =
       'Only with headphones. On the speaker or in the car, tap to stop.';
-  const wiredOnly =
-      'Only with wired headphones. Allow Nearby devices for Bluetooth headphones.';
+  const headphonesWiredOrBluetooth =
+      'Only with headphones (wired or Bluetooth). On the speaker or in the car, tap to stop.';
   const playbackOff = VoicePreferences(
     input: VoiceInputRoute.vad,
     conversation: true,
@@ -531,27 +531,25 @@ void main() {
     expect(route.requests, 1);
   });
 
-  testWidgets('without Bluetooth access the row says wired only', (
+  testWidgets('without Bluetooth access the row mentions wired or Bluetooth', (
     tester,
   ) async {
     final route = HeadphoneRouteFixture()..allowed = false;
     addTearDown(route.close);
     await showBargeIn(tester, playbackOn, route);
-    expect(find.text(wiredOnly), findsOneWidget);
+    expect(find.text(headphonesWiredOrBluetooth), findsOneWidget);
     expect(find.text(headphonesOnly), findsNothing);
   });
 
-  testWidgets(
-    'with Bluetooth access the row still says wired only '
-    '(Bluetooth not supported yet)',
-    (tester) async {
-      final route = HeadphoneRouteFixture()..allowed = true;
-      addTearDown(route.close);
-      await showBargeIn(tester, playbackOn, route);
-      expect(find.text(wiredOnly), findsOneWidget);
-      expect(find.text(headphonesOnly), findsNothing);
-    },
-  );
+  testWidgets('with Bluetooth access the row still mentions wired or Bluetooth', (
+    tester,
+  ) async {
+    final route = HeadphoneRouteFixture()..allowed = true;
+    addTearDown(route.close);
+    await showBargeIn(tester, playbackOn, route);
+    expect(find.text(headphonesWiredOrBluetooth), findsOneWidget);
+    expect(find.text(headphonesOnly), findsNothing);
+  });
 
   testWidgets('switching it off does not ask for anything', (tester) async {
     final route = HeadphoneRouteFixture();

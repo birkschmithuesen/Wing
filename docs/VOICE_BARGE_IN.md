@@ -15,13 +15,17 @@ normal prompt once the turn has ended. The round restarts silently at `maxDurati
 said, and closes with the conversation (approval, clarify, sensitive prompt, chat switch, Stop,
 Cancel, media key without speech).
 
-**(b) Barge-in during read-aloud — built, wired headphones only.** `bargeInPlaybackAvailable` is
-`true` since Task 7 (S2 pass, see "Echo measurement" below). `voice.barge_in_playback` (off by
-default) interrupts read-aloud only while the routed output device is **wired** headphones
-(`classifyRoute` reason `'wired'`). Bluetooth headphones are already detected as headphones, but
-the feature stays off for them until the Bluetooth echo measurement runs — tracked separately as
-**t_fabcb273**. Over the phone speaker, in the car, or with Bluetooth, only the steering-wheel /
-headset media key interrupts read-aloud.
+**(b) Barge-in during read-aloud — built, wired or Bluetooth headphones.** `bargeInPlaybackAvailable`
+is `true` since Task 7 (S2 pass, see "Echo measurement" below). `voice.barge_in_playback` (off by
+default) interrupts read-aloud while the routed output device is headphones — wired
+(`classifyRoute` reason `'wired'`) or Bluetooth (`'bluetoothHeadphones'`); see "Bluetooth" below.
+Over the phone speaker, in the car, or with any other Bluetooth device (`bluetoothOther`,
+`bluetoothClassUnknown`), only the steering-wheel / headset media key interrupts read-aloud.
+
+**Bluetooth:** enabled by owner decision 2026-10-20 (Birk, Sony WH-1000XM4,
+`bluetoothHeadphones` route) without an echo probe — tracked as **t_fabcb273**, which is now
+closed as "not needed". The echo gate itself (p ≥ 0.7, 16 windows, see "Echo measurement" below)
+is unchanged.
 
 ## Decisions (Birk 14.10.)
 
@@ -51,12 +55,11 @@ The row's subtitle states the current restriction:
 | State | Subtitle |
 |---|---|
 | switch off | "Only with headphones. On the speaker or in the car, tap to stop." |
-| switch on | "Only with wired headphones. Allow Nearby devices for Bluetooth headphones." |
+| switch on | "Only with headphones (wired or Bluetooth). On the speaker or in the car, tap to stop." |
 
-The wired-only subtitle shows whenever the switch is on, regardless of whether the Bluetooth
-"Nearby devices" permission was granted — Bluetooth is categorically not supported yet, not just
-blocked by a missing permission. Switching the row on still requests `BLUETOOTH_CONNECT` so
-t_fabcb273 can enable Bluetooth later without reinstalling the permission flow.
+The on-state subtitle shows whenever the switch is on, regardless of whether the Bluetooth
+"Nearby devices" permission was granted. Switching the row on still requests `BLUETOOTH_CONNECT`
+so a Bluetooth headphone route is recognised without the user reinstalling the permission flow.
 
 Debug only (with "Keep voice recordings" on): text button "Measure speaker echo" — plays a fixed
 synthetic German text through the normal TTS path while a listen round records, and logs one
@@ -81,15 +84,15 @@ anything not listed is "not headphones"):
 | `TYPE_BUILTIN_SPEAKER` (2) | no | `speaker` |
 | Anything else (SCO, hearing aid, BLE speaker, USB device, HDMI, dock, …) | no | `other` |
 
-`HeadphoneRoute.headphones` is the general verdict (wired or Bluetooth headphones); only
-`HeadphoneRoute.wired` (`reason == 'wired'`) currently opens the playback barge-in gate, per the
-wired-only restriction above — `classifyRoute` itself is unchanged and stays general-purpose for
-when t_fabcb273 lands.
+`HeadphoneRoute.headphones` is the general verdict (wired or Bluetooth headphones) and is what
+opens the playback barge-in gate, per "Bluetooth" above. `HeadphoneRoute.wired`
+(`reason == 'wired'`) is narrower and no longer used to gate barge-in; it is kept for routes that
+still need the wired-only distinction.
 
 The verdict is cached and refreshed when a conversation sends a prompt (so it is fresh when the
-reply arrives), on every native audio-device add/remove, and when Wing car mode switches. Wired
-headphones going away while Wing reads aloud closes the playback round
-(`listen close reason=route`); wired headphones coming back opens one, if the other conditions in
+reply arrives), on every native audio-device add/remove, and when Wing car mode switches.
+Headphones going away while Wing reads aloud closes the playback round
+(`listen close reason=route`); headphones coming back opens one, if the other conditions in
 "What it does" still hold.
 
 ## Echo measurement
@@ -107,8 +110,9 @@ in every valid run).
 
 Decision: S2 pass, bargeInPlaybackAvailable=true, threshold 0.7, windows 16
 
-Getestet nur mit Kabel-Headset. Bluetooth-Kopfhörer: nicht gemessen (t_fabcb273), Reinreden ins
-Vorlesen bleibt bei Bluetooth deaktiviert.
+Getestet nur mit Kabel-Headset. Bluetooth headphones: enabled by owner decision 2026-10-20
+without an echo probe (t_fabcb273, closed as "not needed"); the echo gate itself (p ≥ 0.7, 16
+windows) is unchanged.
 
 S1 (speaker) and S3 (car) were not run in this session; they are optional and informational only
 and do not change the S2 decision.
@@ -189,6 +193,6 @@ its inputs change, not on every refresh.
   Kotlin falls back to `VOICE_RECOGNITION` without telling Dart which one actually recorded.
 - A car on an AUX cable looks like wired headphones; only Wing car mode or Android car mode closes
   the gate then.
-- Bluetooth headphones with an unreadable or unusual class do not count as headphones, and even a
-  correctly classified Bluetooth headphone does not trigger barge-in yet (t_fabcb273).
+- Bluetooth headphones with an unreadable or unusual class (`bluetoothClassUnknown`,
+  `bluetoothOther`) still do not count as headphones and do not open the barge-in gate.
 - The hint is visible in the user's own message; there is no separate system note for it.

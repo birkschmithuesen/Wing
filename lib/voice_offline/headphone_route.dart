@@ -196,9 +196,10 @@ class HeadphoneRoute extends ChangeNotifier {
 
   bool get headphones => _headphones;
 
-  /// Voice barge-in into read-aloud is restricted to wired headphones until
-  /// the Bluetooth echo measurement lands (t_fabcb273): stricter than
-  /// [headphones], which also counts Bluetooth headphones.
+  /// True only for the `wired` reason, unlike [headphones] which also counts
+  /// Bluetooth headphones. No longer used to gate playback barge-in: the
+  /// owner lifted that Bluetooth lock 2026-10-20 without an echo measurement
+  /// (t_fabcb273); kept for routes that still need the wired-only distinction.
   bool get wired => _reason == 'wired';
 
   /// True when the session-local "Interrupt by speaking" switch lifted the
