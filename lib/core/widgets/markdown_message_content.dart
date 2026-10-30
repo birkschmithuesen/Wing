@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'studio_task_marker.dart';
 import 'studio_error.dart';
 import 'package:flutter/material.dart';
@@ -20,6 +22,7 @@ class MarkdownMessageContent extends StatefulWidget {
   final bool streaming;
   final Future<void> Function(ChatOutput output)? onOpenRemoteFile;
   final Future<bool> Function(ChatOutput output)? onDownloadRemoteFile;
+  final Future<Uint8List> Function(ChatOutput output)? onLoadRemoteImage;
   final bool deliverables;
   final String? documentPath;
   final String? initialFragment;
@@ -30,6 +33,7 @@ class MarkdownMessageContent extends StatefulWidget {
     this.streaming = false,
     this.onOpenRemoteFile,
     this.onDownloadRemoteFile,
+    this.onLoadRemoteImage,
     this.deliverables = false,
     this.documentPath,
     this.initialFragment,
@@ -89,7 +93,9 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
         (widget.onOpenRemoteFile == null) !=
             (oldWidget.onOpenRemoteFile == null) ||
         (widget.onDownloadRemoteFile == null) !=
-            (oldWidget.onDownloadRemoteFile == null)) {
+            (oldWidget.onDownloadRemoteFile == null) ||
+        (widget.onLoadRemoteImage == null) !=
+            (oldWidget.onLoadRemoteImage == null)) {
       _content = null;
     }
     if (widget.initialFragment != oldWidget.initialFragment) {
@@ -216,6 +222,9 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
                         widget.onDownloadRemoteFile == null
                             ? null
                             : (output) => widget.onDownloadRemoteFile!(output),
+                        widget.onLoadRemoteImage == null
+                            ? null
+                            : (output) => widget.onLoadRemoteImage!(output),
                         maxWidth: MediaQuery.sizeOf(context).width,
                       ),
                   },
@@ -246,10 +255,16 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
 }
 
 class _DeliverableBuilder extends MarkdownElementBuilder {
-  _DeliverableBuilder(this.onOpen, this.onDownload, {required this.maxWidth});
+  _DeliverableBuilder(
+    this.onOpen,
+    this.onDownload,
+    this.onLoadImage, {
+    required this.maxWidth,
+  });
 
   final Future<void> Function(ChatOutput)? onOpen;
   final Future<bool> Function(ChatOutput)? onDownload;
+  final Future<Uint8List> Function(ChatOutput)? onLoadImage;
   final double maxWidth;
 
   @override
@@ -276,6 +291,7 @@ class _DeliverableBuilder extends MarkdownElementBuilder {
         ),
         onOpen: onOpen,
         onDownload: onDownload,
+        onLoadImage: onLoadImage,
       ),
     );
   }
