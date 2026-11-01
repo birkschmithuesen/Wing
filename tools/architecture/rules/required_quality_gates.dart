@@ -73,6 +73,12 @@ List<String> checkRequiredQualityGates(Directory root) {
         throw FormatException('Expected job ${target.$2} with steps.');
       }
       final steps = (job['steps'] as List).whereType<Map>().toList();
+      if (target.$2 == 'quality' && !steps.any(_mainGradleCacheWriter)) {
+        failures.add(
+          '${target.$1}:quality:gradle-cache-writer REQUIRED_QUALITY_GATE: '
+          'Publish the basic Gradle cache on main pushes; keep other events read-only.',
+        );
+      }
       for (final gate in [
         ('offline-qa', _qaCommand),
         ('transport-fixture', _fixtureTransportCommand),
@@ -192,6 +198,19 @@ List<String> checkRequiredQualityGates(Directory root) {
 
 bool _boundTestBase(Object? environment) =>
     environment is Map && environment['TEST_BASE_REF'] == _testBaseRef;
+
+bool _mainGradleCacheWriter(Map step) {
+  final inputs = step['with'];
+  return step['uses'] is String &&
+      (step['uses'] as String).startsWith('gradle/actions/setup-gradle@') &&
+      _mandatory(step['if']) &&
+      _hardFailure(step['continue-on-error']) &&
+      inputs is Map &&
+      inputs['cache-provider'] == 'basic' &&
+      _hardFailure(inputs['cache-disabled']) &&
+      inputs['cache-read-only'] ==
+          r"${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}";
+}
 
 List<String> _checkNightly(Directory root) {
   const path = '.github/workflows/nightly-tests.yml';

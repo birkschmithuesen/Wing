@@ -116,6 +116,47 @@ void main() {
     expect(checkRequiredQualityGates(root), isEmpty);
   });
 
+  test('Gradle cache has a main-push writer, not only readers', () {
+    final file = File('${root.path}/.github/workflows/pr-quality.yml');
+    final original = file.readAsStringSync();
+    for (final replacement in [
+      'true',
+      'false',
+      "\${{ github.ref != 'refs/heads/main' }}",
+    ]) {
+      file.writeAsStringSync(
+        original.replaceFirst(gradleCacheReadOnly, replacement),
+      );
+      expect(
+        checkRequiredQualityGates(root),
+        contains(contains('gradle-cache-writer')),
+        reason: replacement,
+      );
+    }
+    for (final disabled in [
+      '        if: false\n',
+      '        continue-on-error: true\n',
+    ]) {
+      file.writeAsStringSync(
+        original.replaceFirst('        with:\n', '$disabled        with:\n'),
+      );
+      expect(
+        checkRequiredQualityGates(root),
+        contains(contains('gradle-cache-writer')),
+      );
+    }
+    file.writeAsStringSync(
+      original.replaceFirst(
+        'cache-provider: basic',
+        'cache-provider: basic\n          cache-disabled: true',
+      ),
+    );
+    expect(
+      checkRequiredQualityGates(root),
+      contains(contains('gradle-cache-writer')),
+    );
+  });
+
   test('transport fixture tests require their dependency setup first', () {
     final file = File('${root.path}/.github/workflows/pr-quality.yml');
     const setup =
@@ -763,6 +804,9 @@ void main() {
   );
 }
 
+const gradleCacheReadOnly =
+    r"${{ github.event_name != 'push' || github.ref != 'refs/heads/main' }}";
+
 void _writeWorkflows(
   Directory root, {
   String qa = qaCommand,
@@ -782,6 +826,11 @@ jobs:
   ${item.$2}:
     ${jobCondition == null ? '# mandatory job' : 'if: $jobCondition'}
     steps:
+${item.$1 == 'pr-quality.yml' ? '''      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+        with:
+          cache-provider: basic
+          cache-read-only: $gradleCacheReadOnly
+''' : ''}
       - name: Linter runner proofs
         run: ${item.$1 == 'pr-quality.yml' ? 'python3 -m unittest discover -s scripts/tests -v' : r'python3 -m unittest discover -s "$RELEASE_TOOLS/tests" -v'}
       - name: Offline QA
