@@ -40,6 +40,17 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
+Accepted steering stays compact only until Hermes adds the message to saved
+history. It then becomes a normal user bubble with formatted text and Copy;
+reopened chats show saved steering in that same form. The `steer becomes a
+normal bubble in saved history` cases drive Steer, acceptance, history refresh
+and Copy in both themes at normal and enlarged text. Projection and cache
+restoration are covered by:
+
+```sh
+flutter test --no-pub test/profile_steering_feedback_test.dart test/profile_composer_actions_test.dart test/workspace_reading_snapshot_test.dart test/reading_snapshot_message_test.dart
+```
+
 The `one sent bubble through processing start` cases in
 `profile_composer_actions_test.dart` drive Send with a held acknowledgement and
 check both event orders, history replacement and separate identical-text inputs

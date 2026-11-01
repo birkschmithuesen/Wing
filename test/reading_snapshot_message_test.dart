@@ -268,7 +268,7 @@ void main() {
     }
   });
 
-  test('clean steering remains a note rather than a human prompt', () {
+  test('saved steering retains its clean text and replay classification', () {
     final saved = roundtrip({
       'id': 4,
       'role': 'user',

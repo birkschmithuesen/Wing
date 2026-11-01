@@ -31,8 +31,9 @@ void main() {
         };
         expect(isHiddenAnswerMessage(row), isFalse);
         final display = TranscriptMessage.fromRow(row);
-        expect(display.kind, TranscriptMessageKind.steering);
+        expect(display.kind, TranscriptMessageKind.dialogue);
         expect(display.text, text);
+        expect(display.copyText, text);
         expect(display.id, 7);
         expect(row, {
           'id': 7,
@@ -132,7 +133,7 @@ void main() {
     },
   );
   testWidgets(
-    'saved steering renders a compact note without the delivery wrapper',
+    'accepted unsaved steering renders a compact note without the delivery wrapper',
     (tester) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -154,4 +155,39 @@ void main() {
       expect(find.byTooltip('Copy message'), findsNothing);
     },
   );
+
+  test('only a durable user row promotes steering to dialogue', () {
+    for (final identity in <Map<String, dynamic>>[
+      {},
+      {'id': 'local-steer'},
+      {'timestamp': 1793495836.9},
+      {'id': 7},
+      {'row_id': 7},
+    ]) {
+      final row = {
+        'role': 'user',
+        'content': wrappedSteer,
+        'display_kind': 'steer',
+        ...identity,
+      };
+      final saved = identity['id'] == 7 || identity['row_id'] == 7;
+      final message = TranscriptMessage.fromRow(row);
+      expect(
+        message.kind,
+        saved ? TranscriptMessageKind.dialogue : TranscriptMessageKind.steering,
+      );
+      expect(message.text, 'Keep searching');
+      expect(message.copyText, saved ? 'Keep searching' : '');
+      expect(row['content'], wrappedSteer);
+      expect(row['display_kind'], 'steer');
+    }
+    expect(
+      TranscriptMessage.fromRow({
+        'id': 7,
+        'role': 'system',
+        'content': 'steer:Keep searching',
+      }).kind,
+      TranscriptMessageKind.steering,
+    );
+  });
 }

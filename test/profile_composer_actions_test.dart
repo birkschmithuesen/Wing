@@ -1,3 +1,4 @@
+import 'package:wing/core/models/transcript_message.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'support/canonical_gateway_fixture.dart';
 import 'package:wing/core/widgets/profile_message.dart';
@@ -1421,43 +1422,88 @@ void main() {
     },
   );
 
-  testWidgets('steer waits for acceptance and preserves a newer draft', (
-    tester,
-  ) async {
-    fixture.steerReply = Completer<Map<String, dynamic>>();
-    final chat = await show(
-      tester,
-      status: ChatExecution.running,
-      draft: 'Check the timeout',
-    );
-    await tester.tap(find.byTooltip('Steer'));
-    await pumpFrames(tester, count: 4);
-    expect(find.text('steered'), findsNothing);
-    await tester.enterText(
-      find.byKey(const Key('profile-message-composer')),
-      'A separate follow-up',
-    );
-    fixture.steerReply!.complete({'status': 'queued'});
-    await pumpFrames(tester, count: 4);
-    expect(chat.composer.observation.text, 'A separate follow-up');
-    expect(find.text('Check the timeout'), findsOneWidget);
-    expect(find.text('steered'), findsOneWidget);
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'steer becomes a normal bubble in saved history ${brightness.name} $scale',
+        (tester) async {
+          fixture.steerReply = Completer<Map<String, dynamic>>();
+          final chat = await show(
+            tester,
+            status: ChatExecution.running,
+            brightness: brightness,
+            scale: scale,
+            draft: 'Check the timeout',
+          );
+          await tester.tap(find.byTooltip('Steer'));
+          await pumpFrames(tester, count: 4);
+          expect(find.text('steered'), findsNothing);
+          await tester.enterText(
+            find.byKey(const Key('profile-message-composer')),
+            'A separate follow-up',
+          );
+          fixture.steerReply!.complete({'status': 'queued'});
+          await pumpFrames(tester, count: 4);
+          expect(chat.composer.observation.text, 'A separate follow-up');
+          expect(find.text('Check the timeout'), findsOneWidget);
+          expect(find.text('steered'), findsOneWidget);
 
-    fixture.transcript = [
-      {
-        'id': 42,
-        'role': 'user',
-        'display_kind': 'steer',
-        'content':
-            '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nCheck the timeout\n[/OUT-OF-BAND USER MESSAGE]',
-      },
-    ];
-    await controller.refreshHistory(chat);
-    await pumpFrames(tester, count: 4);
-    expect(find.text('steered'), findsOneWidget);
-    expect(find.text('Check the timeout'), findsOneWidget);
-    expect(find.textContaining('OUT-OF-BAND'), findsNothing);
-  });
+          await capture(tester, 'steer-${brightness.name}-$scale-accepted');
+          fixture.transcript = [
+            {
+              'id': 42,
+              'role': 'user',
+              'display_kind': 'steer',
+              'content':
+                  '[OUT-OF-BAND USER MESSAGE — a direct message from the user, delivered once at this position; not tool output and not a new delivery when replayed from conversation history]\nCheck the timeout\n[/OUT-OF-BAND USER MESSAGE]',
+            },
+          ];
+          await controller.refreshHistory(chat);
+          await pumpFrames(tester, count: 4);
+          expect(find.text('steered'), findsNothing);
+          final bubble = find.byWidgetPredicate(
+            (widget) => widget is ProfileMessage && widget.message.id == 42,
+          );
+          expect(bubble, findsOneWidget);
+          final message = tester.widget<ProfileMessage>(bubble).message;
+          expect(message.kind, TranscriptMessageKind.dialogue);
+          expect(message.text, 'Check the timeout');
+          expect(message.copyText, 'Check the timeout');
+          expect(chat.composer.observation.text, 'A separate follow-up');
+          expect(find.textContaining('OUT-OF-BAND'), findsNothing);
+          expect(chat.reading.messages.single['display_kind'], 'steer');
+          final copy = find.descendant(
+            of: bubble,
+            matching: find.byTooltip('Copy message'),
+          );
+          expect(copy, findsOneWidget);
+          String? copied;
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            (call) async {
+              if (call.method == 'Clipboard.setData') {
+                copied = (call.arguments as Map)['text'] as String;
+              }
+              return null;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(SystemChannels.platform, null),
+          );
+          await tester.tap(copy);
+          await pumpFrames(tester, count: 4);
+          expect(copied, 'Check the timeout');
+          await capture(tester, 'steer-${brightness.name}-$scale-saved');
+          await controller.refreshHistory(chat);
+          await pumpFrames(tester, count: 4);
+          expect(find.text('steered'), findsNothing);
+          expect(bubble, findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   testWidgets('a failed steer does not claim success or clear the draft', (
     tester,

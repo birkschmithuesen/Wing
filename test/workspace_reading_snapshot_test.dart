@@ -156,8 +156,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Hidden context'), findsNothing);
       expect(find.text('Model-facing context'), findsNothing);
-      expect(find.text('steered'), findsOneWidget);
+      expect(find.text('steered'), findsNothing);
       expect(find.text('Keep searching'), findsOneWidget);
+      final savedSteer = tester.widget<ProfileMessage>(
+        find.byWidgetPredicate(
+          (widget) => widget is ProfileMessage && widget.message.id == 2,
+        ),
+      );
+      expect(savedSteer.message.kind, TranscriptMessageKind.dialogue);
+      expect(savedSteer.message.copyText, 'Keep searching');
       expect(find.text('2 background agents finished'), findsOneWidget);
       expect(find.text('Memory and skills review'), findsOneWidget);
       expect(find.text('Reported changes'), findsNothing);

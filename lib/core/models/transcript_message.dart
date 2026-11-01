@@ -170,7 +170,10 @@ final class TranscriptMessage {
       );
     }
     final steering = steeringMessageText(row);
-    if (steering != null) {
+    // Acceptance is local feedback until Hermes incorporates this user message
+    // into saved history. Keep its raw kind for replay, but render the saved row
+    // through the ordinary user bubble and clean-text Copy projection below.
+    if (steering != null && (role != 'user' || answerMessageId(row) == null)) {
       return TranscriptMessage._(
         streaming: streaming,
         kind: TranscriptMessageKind.steering,

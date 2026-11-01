@@ -16,7 +16,7 @@ Screen readers provide named actions on the button. With a hardware keyboard, Ta
 
 ## Steer and queue
 
-Accepted steering appears in the conversation as a compact compass row. Rejected steering or a connection failure keeps the draft. Text typed while a request is pending remains separate.
+Accepted steering appears as a compact steering row until Hermes adds it to saved conversation history. It then becomes a normal user bubble with formatted text and Copy. Saved steering also opens as a normal bubble when you return to a chat. Rejected steering or a connection failure keeps the draft. Text typed while a request is pending remains separate.
 
 The outbox appears above the composer whenever it contains messages, whether
 connected or offline. Messages added through Send or Queue appear in the same
