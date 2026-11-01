@@ -42,7 +42,7 @@ Approval actions require unlocking the phone. Short complete commands offer Once
 
 The alert stays visible while an answer is being sent. A failure keeps the request available; changed or expired requests require reopening the chat for review.
 
-Chat alerts use Android conversation notifications. Tap an alert to open its original chat or shared discussion. The ongoing monitoring notification opens the watched conversation when there is one, including a shared discussion. With two or more watched conversations, it opens Recents. Reading the latest answer in Wing clears that result's alert. Opening older history does not. If newer history has arrived, an older alert may open the latest available answer.
+Chat alerts use Android conversation notifications. Tap an alert to open its original chat or shared discussion. Reply alerts show the beginning of the answer, including long answers that span several screens. The ongoing monitoring notification opens the watched conversation when there is one, including a shared discussion. With two or more watched conversations, it opens Recents. Reading the latest answer in Wing clears that result's alert. Opening older history does not. If newer history has arrived, an older alert may open the latest available answer.
 
 ## Delivery limits
 

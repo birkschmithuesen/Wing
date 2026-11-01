@@ -19,6 +19,10 @@ Feature ID: `conversation`.
 
 Open a chat from Chats, Bots, Recents or a notification. Read older messages, choose Find in chat from its menu, open a result, then return to your reading position or Latest.
 
+Opening a reply notification positions the beginning of its answer in view,
+even when the answer spans several screens. This explicit destination takes
+precedence over the remembered reading position.
+
 ## Driving it with Wing harnesses
 
 Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-preconditions). Use the [verification workflow](../../.agents/skills/verify-wing/SKILL.md) for launch, readiness, evidence and cleanup.

@@ -63,6 +63,7 @@ void main() {
   Future<void> mount(
     WidgetTester tester, {
     List<Widget> tail = const [],
+    double answerHeight = 120,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -94,8 +95,10 @@ void main() {
             onRefreshHistory: () => controller.refreshHistory(chat),
             onLoadOlder: () => controller.loadOlderMessages(chat),
             tail: tail,
-            messageBuilder: (row) =>
-                SizedBox(height: 120, child: Text(row.message.text)),
+            messageBuilder: (row) => SizedBox(
+              height: row.message.text == 'Message 40' ? answerHeight : 120,
+              child: Text(row.message.text),
+            ),
           ),
         ),
       ),
@@ -121,6 +124,26 @@ void main() {
     expect(chat.reading.notificationFocus, isNull);
     expect(reads, isEmpty);
   });
+
+  for (final messageId in [null, 40]) {
+    testWidgets(
+      'answer notification shows the beginning of a long answer: $messageId',
+      (tester) async {
+        chat.reading.recordReading(const TranscriptBookmark(messageId: 25));
+        chat.reading.revealNotification(
+          NotificationFocus('answer', 'latest', messageId: messageId),
+        );
+        await mount(tester, answerHeight: 2400);
+        final viewport = tester.getRect(
+          find.byKey(const ValueKey('profile-transcript')),
+        );
+        final beginning = tester.getRect(find.text('Message 40'));
+        expect(beginning.top, greaterThanOrEqualTo(viewport.top));
+        expect(beginning.top, lessThan(viewport.bottom));
+        expect(reads, isEmpty);
+      },
+    );
+  }
 
   testWidgets(
     'opening and Latest do not read; scrolling to the end acknowledges',

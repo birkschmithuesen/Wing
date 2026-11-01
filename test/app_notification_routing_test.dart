@@ -1,5 +1,7 @@
 import 'package:wing/core/services/notification_delivery_ledger.dart';
 import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/screens/health_alert_settings_screen.dart';
@@ -220,6 +222,105 @@ Future<void> _pumpNavigation(WidgetTester tester) async {
 const _nativeNotifications = MethodChannel(NativeNotificationSink.channelName);
 
 void main() {
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'answer notification opens long Markdown at its beginning ${brightness.name} $scale',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.platformDispatcher.platformBrightnessTestValue = brightness;
+          tester.platformDispatcher.textScaleFactorTestValue = scale;
+          addTearDown(tester.view.reset);
+          addTearDown(tester.platformDispatcher.clearAllTestValues);
+          if (const bool.fromEnvironment('CAPTURE_NOTIFICATION_READING')) {
+            await tester.runAsync(() async {
+              const fonts = String.fromEnvironment('CAPTURE_FONT_DIR');
+              for (final font in {
+                'Roboto': 'Roboto-Regular.ttf',
+                'MaterialIcons': 'MaterialIcons-Regular.otf',
+              }.entries) {
+                await (FontLoader(font.key)..addFont(
+                      File(
+                        '$fonts/${font.value}',
+                      ).readAsBytes().then(ByteData.sublistView),
+                    ))
+                    .load();
+              }
+            });
+          }
+          final harness = await _harness();
+          harness.host.running = false;
+          harness.host.historyMessages = [
+            {'id': 1, 'role': 'user', 'content': 'Explain the result'},
+            {
+              'id': 2,
+              'role': 'assistant',
+              'content': [
+                'The answer begins here.',
+                for (var i = 0; i < 35; i++)
+                  'Paragraph $i explains another part of the answer in detail.',
+                'The answer ends here.',
+              ].join('\n\n'),
+            },
+          ];
+          final app = await _pumpApp(tester, harness);
+          await app.currentState!.openProfileNotification(
+            jsonEncode({
+              ...jsonDecode(_payload(harness, 'a')) as Map<String, dynamic>,
+              'focus': const NotificationFocus(
+                'answer',
+                'result',
+                messageId: 2,
+              ).toJson(),
+            }),
+          );
+          await _pumpNavigation(tester);
+          await tester.settleMarkdown();
+          await _pumpNavigation(tester);
+          final viewport = tester.getRect(
+            find.byKey(const ValueKey('profile-transcript')),
+          );
+          final beginning = tester.getRect(
+            find.text('The answer begins here.', findRichText: true),
+          );
+          expect(beginning.top, greaterThanOrEqualTo(viewport.top));
+          expect(beginning.bottom, lessThanOrEqualTo(viewport.bottom));
+          expect(
+            tester
+                .getTopLeft(
+                  find.text('The answer ends here.', findRichText: true),
+                )
+                .dy,
+            greaterThan(viewport.bottom),
+          );
+          expect(tester.takeException(), isNull);
+          if (const bool.fromEnvironment('CAPTURE_NOTIFICATION_READING')) {
+            final boundary = tester
+                .element(find.byType(ProfileWorkspaceScreen))
+                .findAncestorRenderObjectOfType<RenderRepaintBoundary>()!;
+            await tester.runAsync(() async {
+              final image = await boundary.toImage();
+              final bytes = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final directory = Directory(
+                'build/feature-verification/notification-reading',
+              );
+              await directory.create(recursive: true);
+              await File(
+                '${directory.path}/${brightness.name}-$scale.png',
+              ).writeAsBytes(bytes!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
+          await _pumpNavigation(tester);
+        },
+      );
+    }
+  }
+
   test(
     'native notification bootstrap never borrows another profile session index',
     () async {

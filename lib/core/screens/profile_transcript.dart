@@ -512,14 +512,22 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
         }
         final anchor = _notificationAnchor(focus)?.currentContext;
         if (anchor != null) {
+          final row = anchor.findRenderObject();
+          if (row is TranscriptAnchorBox && row.contentPending) {
+            _scheduleNoticeVisibility();
+            return;
+          }
           _revealedNotificationGeneration =
               notification.notificationFocusGeneration;
           _noticeRevealAttempts = 0;
           notification.releaseNotificationFocus(focus, _noticeRevealGeneration);
+          _scroll.releaseExpansionAnchor();
           unawaited(
             Scrollable.ensureVisible(
               anchor,
-              alignment: .2,
+              // The transcript grows upwards. Align the answer's beginning,
+              // including when its body is taller than the viewport.
+              alignment: focus.kind == 'answer' ? 1 : .2,
             ).then((_) => _scheduleNoticeVisibility()),
           );
         } else if (_noticeRevealAttempts++ < 24) {

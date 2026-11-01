@@ -7,7 +7,7 @@ Use several features together and retain the exact connection, profile, conversa
 - `journeys.connect-reopen` — verify and save a connection, enter its workspace, leave and reopen its credentials.
 - `journeys.conversation` — find a chat, prepare a referenced/attached prompt, send or queue it, inspect Activity and revisit a saved answer.
 - `journeys.restore` — restore staged work after process death without repeating a submission or upload.
-- `journeys.notification` — receive, open, read or dismiss a request in the exact conversation, including cold entry.
+- `journeys.notification` — receive, open, read or dismiss a request in the exact conversation, including cold entry. Reply alerts open at the beginning of the answer after its formatted content settles.
 - `journeys.voice` — grant/refuse permission, record or cancel, play or interrupt and recover a missing capability.
 - `journeys.stock` — create/edit/delete a disposable stock-Hermes profile and project through Android controls.
 

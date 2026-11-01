@@ -6,7 +6,7 @@ Feature ID: `notifications`.
 
 ## Sub-features
 
-- `notifications.route` — Open the exact notification owner.
+- `notifications.route` — Open the exact notification owner. Reply alerts show the beginning of the answer, including answers longer than the screen, after formatted content settles.
 - `notifications.act` — Answer a supported request without duplication, retaining its exact request and turn identity. Command review uses the same exact-command and request-details content as normal, bot and group chats, while keeping the selected notification approval scope explicit.
 - `notifications.settle` — Keep read dismissed and restored notices consistent.
 - `notifications.monitor` — Watch ongoing work in a compact summary of up to
@@ -36,6 +36,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   chats and display the answer above the remembered workspace route.
   Restored profiles must also admit a later message and publish its reply
   without changing the selected chat during recovery.
+
+  Long-answer cases verify the first line is visible after Markdown settles,
+  in both themes at 390 dp/100% and 320 dp/200%. Opening alone does not mark
+  the answer read; scrolling retains the existing read acknowledgement.
 
   For monitoring summaries and outage recovery, run:
 
