@@ -9,6 +9,13 @@ Feature ID: `notifications`.
 - `notifications.route` — Open the exact notification owner.
 - `notifications.act` — Answer a supported request without duplication, retaining its exact request and turn identity. Command review uses the same exact-command and request-details content as normal, bot and group chats, while keeping the selected notification approval scope explicit.
 - `notifications.settle` — Keep read dismissed and restored notices consistent.
+- `notifications.monitor` — Watch ongoing work in a compact summary of up to
+  three chats or discussions, followed by the remaining count. Unnamed sessions
+  include a short session ID. A single watched conversation opens directly;
+  multiple conversations open Recents, including when some rows are omitted.
+  Initialization alone never starts work monitoring. A validated live-session
+  snapshot retires watches for runtimes that have disappeared without inventing
+  a completion alert; failed reads retain previously verified work.
 
 ## How to get to it (user POV)
 
@@ -29,6 +36,22 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   chats and display the answer above the remembered workspace route.
   Restored profiles must also admit a later message and publish its reply
   without changing the selected chat during recovery.
+
+  For monitoring summaries and outage recovery, run:
+
+  ```sh
+  flutter test --no-pub test/background_monitoring_activity_test.dart test/notification_outage_recovery_test.dart test/profile_workspace_registry_test.dart
+  ```
+
+  The many-unnamed-chats case retains twelve distinct unfinished chats through
+  an outage while displaying three identifiable rows and `9 more chats`. Recovery
+  updates the count, restores single-chat tap routing and removes the summary
+  after all work finishes. Existing cases cover bot names, shared discussions,
+  connection isolation and uncertain completion.
+  The outage suite also checks that initializing twelve unopened chats and an
+  idle loaded chat starts no watch, disappeared/replaced runtimes retire, and
+  an unrelated metadata failure cannot retain an absent runtime. Invalid
+  snapshots and unknown states preserve verified work.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

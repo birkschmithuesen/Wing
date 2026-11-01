@@ -51,18 +51,20 @@ class ProfileWorkspaceRegistry extends ChangeNotifier {
     return {
       'title': 'Watching chats',
       'payload': chats.length == 1 ? chats.single.payload : '',
-      'text': chats
-          .map((chat) {
-            final bot = _monitoringBots[chat.key?.workspace];
-            final title =
-                bot != null &&
-                    chat.key != null &&
-                    (chat.key == bot.root || chat.key == bot.tip)
-                ? bot.title
-                : chat.title;
-            return '$title · ${chat.state}';
-          })
-          .join('\n'),
+      'text': [
+        ...chats.take(3).map((chat) {
+          final bot = _monitoringBots[chat.key?.workspace];
+          final title =
+              bot != null &&
+                  chat.key != null &&
+                  (chat.key == bot.root || chat.key == bot.tip)
+              ? bot.title
+              : chat.title;
+          return '$title · ${chat.state}';
+        }),
+        if (chats.length > 3)
+          '${chats.length - 3} more ${chats.length == 4 ? 'chat' : 'chats'}',
+      ].join('\n'),
     };
   }
 

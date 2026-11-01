@@ -101,6 +101,88 @@ void main() {
     appPreferences.dispose();
   });
 
+  test(
+    'many unnamed reconnecting chats have a bounded identifiable summary',
+    () async {
+      final host = NotificationCoverageHost();
+      String sessionId(int index) =>
+          '20261101_120000_${index.toString().padLeft(8, '0')}';
+      host.saved['a'] = [
+        for (var i = 0; i < 12; i++) {'id': sessionId(i), 'profile': 'a'},
+      ];
+      final watch = ProfileWorkspaceRegistry(
+        identities: ProfileConnectionIdentity(
+          credentialStore: MemoryIdentityStore(),
+        ),
+        create: (connection, identity) => ProfileWorkspaceController(
+          access: ConnectionAccess(
+            connection: connection,
+            dashboardOAuth: null,
+          ),
+          connectionIdentity: identity,
+          preferences: preferences,
+          appPreferences: appPreferences,
+          gatewayFactory: host.gateway,
+          onAttention: (_) async {},
+        ),
+      );
+      addTearDown(watch.dispose);
+      final owner = await watch.forConnection(identityTestConnection());
+      await owner.initialize();
+      final reads = host.activeReads;
+      host.active = [
+        for (var i = 0; i < 12; i++) row('runtime-$i', sessionId(i), 'working'),
+      ];
+      host.changed();
+      await waitForReads(host, reads + 1);
+      owner.networkUnavailable();
+      final summary = watch.monitoringSummary;
+      expect(summary['text']!.split('\n'), hasLength(4));
+      expect(
+        summary['text'],
+        'Hermes session · 00000000 · reconnecting\n'
+        'Hermes session · 00000001 · reconnecting\n'
+        'Hermes session · 00000002 · reconnecting\n'
+        '9 more chats',
+      );
+      expect(summary['payload'], isEmpty);
+      expect(owner.notificationMonitoringChats, hasLength(12));
+      expect(
+        owner.notificationMonitoringChats.map((chat) => chat.key).toSet(),
+        hasLength(12),
+      );
+      expect(watch.hasActiveChats, isTrue);
+
+      host.history = [
+        {'id': 1, 'role': 'assistant', 'content': 'Finished'},
+      ];
+      for (final remaining in [4, 1, 0]) {
+        final reads = host.activeReads;
+        host.active = [
+          for (var i = 0; i < 12; i++)
+            row('runtime-$i', sessionId(i), i < remaining ? 'working' : 'idle'),
+        ];
+        host.changed();
+        await waitForReads(host, reads + 1);
+        expect(owner.notificationMonitoringChats, hasLength(remaining));
+        final recovered = watch.monitoringSummary;
+        if (remaining == 4) {
+          expect(recovered['text']!.split('\n').last, '1 more chat');
+          expect(recovered['payload'], isEmpty);
+        } else if (remaining == 1) {
+          expect(recovered['text'], 'Hermes session · 00000000 · working');
+          expect(
+            jsonDecode(recovered['payload']!),
+            owner.notificationMonitoringChats.single.key!.toJson(),
+          );
+        } else {
+          expect(recovered['text'], isEmpty);
+          await until(() => !watch.hasActiveChats);
+        }
+      }
+    },
+  );
+
   test('shared discussion retains monitoring across idle bot turns', () async {
     final host = NotificationCoverageHost();
     host.groups = [
@@ -697,8 +779,8 @@ void main() {
       await waitForReads(host, ++reads);
       expect(
         owner.hasActiveChats,
-        isTrue,
-        reason: 'A missing row cannot prove the side task finished',
+        isFalse,
+        reason: 'A retired runtime no longer owns a background watch',
       );
       host.active = [row('outside-runtime', 'outside', 'waiting')];
       host.changed();

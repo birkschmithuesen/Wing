@@ -2,6 +2,14 @@
 
 Wing can keep watching connected work while you use other apps. Its ongoing Android notification shows **Watching chats**, with each chat's name and status, such as **Research bot · working**. Bot conversations use the bot's saved name once its identity loads, and the profile's display name while it is unavailable. Replies and requests for input appear as separate chat alerts.
 
+The summary shows up to three conversations and a count of the others. Unnamed
+chats include a short session ID so they can be distinguished. A temporary
+connection loss shows **reconnecting** for unfinished work; Wing keeps watching
+all those chats, including ones omitted from the summary.
+Opening or initializing a chat alone does not start monitoring. Once a successful
+live-session check confirms that an old runtime is gone, Wing stops watching it.
+That does not generate a reply alert or claim its task finished successfully.
+
 ## Enable monitoring
 
 1. Connect Hermes and allow Android notifications in **App settings → Notifications**.

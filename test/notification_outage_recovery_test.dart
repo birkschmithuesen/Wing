@@ -12,6 +12,115 @@ import 'profile_notification_coverage_test.dart'
     show NotificationCoverageHost, row, waitForReads;
 
 void main() {
+  test(
+    'initializing unopened chats never starts work monitoring or reply alerts',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final host = NotificationCoverageHost();
+      host.saved['a'] = [
+        for (var i = 0; i < 12; i++) {'id': 'chat-$i', 'profile': 'a'},
+      ];
+      final notices = <ProfileNotification>[];
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final owner = ProfileWorkspaceController(
+        access: ConnectionAccess(
+          connection: identityTestConnection(),
+          dashboardOAuth: null,
+        ),
+        connectionIdentity: 'initializing-chats',
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+        onAttention: (notice) async => notices.add(notice),
+      );
+      addTearDown(owner.dispose);
+      await owner.initialize();
+      final loaded = await owner.createChat(canDispatch: () => true);
+      final resumeCount = host.resumeCalls.length;
+      for (final status in ['starting', 'idle']) {
+        final reads = host.activeReads;
+        host.active = [
+          for (var i = 0; i < 12; i++) row('runtime-$i', 'chat-$i', status),
+          row(loaded.runtime.runtimeId, loaded.key.sessionId, status),
+        ];
+        host.changed();
+        await waitForReads(host, reads + 1);
+        expect(
+          owner.hasActiveChats,
+          isFalse,
+          reason: 'Agent initialization is not user work',
+        );
+        expect(owner.notificationMonitoringChats, isEmpty);
+        expect(notices, isEmpty);
+        expect(
+          host.resumeCalls,
+          hasLength(resumeCount),
+          reason: 'Initializing an idle loaded chat must not attach it as work',
+        );
+      }
+    },
+  );
+
+  for (final scenario in ['removed', 'replacement', 'metadata-failure']) {
+    test(
+      'retired runtime stops monitoring without inventing a reply ($scenario)',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final host = NotificationCoverageHost();
+        final notices = <ProfileNotification>[];
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        addTearDown(appPreferences.dispose);
+        final owner = ProfileWorkspaceController(
+          access: ConnectionAccess(
+            connection: identityTestConnection(),
+            dashboardOAuth: null,
+          ),
+          connectionIdentity: 'retired-runtime',
+          preferences: preferences,
+          appPreferences: appPreferences,
+          gatewayFactory: host.gateway,
+          onAttention: (notice) async => notices.add(notice),
+        );
+        addTearDown(owner.dispose);
+        await owner.initialize();
+        Future<void> observe() async {
+          final reads = host.activeReads;
+          host.changed();
+          await waitForReads(host, reads + 1);
+        }
+
+        host.active = [row('old-runtime', 'outside', 'working')];
+        await observe();
+        expect(owner.hasActiveChats, isTrue);
+        owner.networkUnavailable();
+        host.active = switch (scenario) {
+          'replacement' => [row('new-runtime', 'outside', 'idle')],
+          'metadata-failure' => [row('other-runtime', 'loaded', 'working')],
+          _ => [],
+        };
+        if (scenario == 'metadata-failure') {
+          host.failedMetadataProfiles.add('b');
+        }
+        await observe();
+        expect(
+          owner.hasActiveChats,
+          isFalse,
+          reason:
+              'A successful complete live list no longer contains the watched runtime',
+        );
+        expect(owner.notificationMonitoringChats, isEmpty);
+        expect(
+          notices,
+          isEmpty,
+          reason: 'Runtime retirement does not establish a completed answer',
+        );
+      },
+    );
+  }
+
   for (final scenario in [
     'normal',
     'disconnect',
@@ -103,10 +212,11 @@ void main() {
   }
 
   for (final uncertain in [
-    'missing',
     'unknown',
+    'starting',
+    'malformed',
+    'duplicate-runtime',
     'ambiguous-owner',
-    'new-runtime',
     'history-failure',
   ]) {
     test(
@@ -144,9 +254,13 @@ void main() {
           {'id': 77, 'role': 'assistant', 'content': 'Recovered exact answer'},
         ];
         host.active = switch (uncertain) {
-          'missing' => [],
           'unknown' => [row('outside-runtime', 'outside', 'unknown')],
-          'new-runtime' => [row('different-runtime', 'outside', 'idle')],
+          'starting' => [row('outside-runtime', 'outside', 'starting')],
+          'malformed' => [{}],
+          'duplicate-runtime' => [
+            row('outside-runtime', 'outside', 'idle'),
+            row('outside-runtime', 'loaded', 'idle'),
+          ],
           _ => [row('outside-runtime', 'outside', 'idle')],
         };
         if (uncertain == 'ambiguous-owner') {

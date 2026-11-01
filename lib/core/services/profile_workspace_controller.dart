@@ -9156,9 +9156,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (response['sessions'] is! List) {
         throw const FormatException('Missing active sessions');
       }
-      final rows = <Map<String, dynamic>>[];
-      final workingRuntimes = <String>{};
-      for (final row in ProfileGateway.records(response['sessions'])) {
+      final activeRows = ProfileGateway.records(response['sessions']);
+      if (activeRows.length != (response['sessions'] as List).length) {
+        throw const FormatException('Invalid active sessions');
+      }
+      final liveIdentities = <String, String>{};
+      for (final row in activeRows) {
         final runtimeId = row['id'];
         final sessionId = row['session_key'];
         final status = row['status'];
@@ -9166,6 +9169,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         final sideTasks = row['side_tasks_running'];
         if (runtimeId is! String ||
             runtimeId.isEmpty ||
+            liveIdentities.containsKey(runtimeId) ||
             sessionId is! String ||
             sessionId.isEmpty ||
             status is! String ||
@@ -9173,9 +9177,31 @@ class ProfileWorkspaceController extends ChangeNotifier {
             (sideTasks != null && (sideTasks is! int || sideTasks < 0))) {
           throw const FormatException('Invalid active session');
         }
-        if (status == 'working' ||
-            status == 'starting' ||
-            (sideTasks is int && sideTasks > 0)) {
+        liveIdentities[runtimeId] = sessionId;
+      }
+      if (_closed) return;
+      // The stock list is complete and excludes finalized runtimes. Retiring
+      // an absent watch does not claim a completed answer or clear a notice.
+      // Validate the whole list first; failed/partial reads establish nothing.
+      _notificationSnapshot?.removeWhere(
+        (runtime, entry) => liveIdentities[runtime] != entry.chat.key.sessionId,
+      );
+      _backgroundChats = {
+        for (final entry in _backgroundChats.entries)
+          if (liveIdentities[entry.key] == entry.value.sessionId)
+            entry.key: entry.value,
+      };
+      _uncertainNotificationRuntimes.retainAll(_backgroundChats.keys);
+
+      final rows = <Map<String, dynamic>>[];
+      final workingRuntimes = <String>{};
+      for (final row in activeRows) {
+        final runtimeId = row['id'] as String;
+        final sessionId = row['session_key'] as String;
+        final status = row['status'] as String;
+        final sideTasks = row['side_tasks_running'] as int? ?? 0;
+        final working = status == 'working' || sideTasks > 0;
+        if (working) {
           workingRuntimes.add(runtimeId);
         }
         final loaded = _loadedNotificationChat(runtimeId, sessionId);
@@ -9183,7 +9209,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
           // An idle chat can be omitted when the socket reconnects from the
           // chat list. A later desktop turn therefore arrives first through
           // the global working snapshot, not through message.start.
-          final remoteWorking = status == 'working' || status == 'starting';
+          final remoteWorking = status == 'working';
           final localInputs = jsonEncode(
             _notificationInputs(loaded).map((input) => input.toJson()).toList(),
           );
@@ -9245,9 +9271,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         final tracked = _notificationSnapshot?[runtimeId];
         final relevant =
             status == 'waiting' ||
-            status == 'starting' ||
-            status == 'working' ||
-            (sideTasks is int && sideTasks > 0) ||
+            working ||
             status == 'idle' &&
                 tracked != null &&
                 tracked.chat._key.sessionId == sessionId;
@@ -9329,8 +9353,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
       final previous = _notificationSnapshot;
       // Retain verified unfinished identities until a corroborated observation
-      // settles them. Missing rows, ownership ambiguity and unknown states are
-      // uncertainty, not completion. A cold snapshot still has no prior work.
+      // settles them. Ownership ambiguity and unknown/initializing states are
+      // uncertainty, not completion. Absent runtimes were retired above.
       _notificationSnapshot = {...?previous};
       _backgroundChats = {..._backgroundChats};
       _uncertainNotificationRuntimes.addAll(_backgroundChats.keys);

@@ -87,11 +87,21 @@ extension ProfileNotificationState on ProfileWorkspaceController {
     }
   }
 
-  String _monitoringChatTitle(ProfileChat chat) =>
-      chat.source == 'desktop' && chat.title == 'Bot Chat'
-      ? _discovery?.named(chat.key.workspace.profileName)?.label ??
-            chat.key.workspace.profileName
-      : chat.title;
+  String _monitoringChatTitle(ProfileChat chat) {
+    if (chat.source == 'desktop' && chat.title == 'Bot Chat') {
+      return _discovery?.named(chat.key.workspace.profileName)?.label ??
+          chat.key.workspace.profileName;
+    }
+    if (chat.title.isEmpty || chat.title == 'Hermes session') {
+      final sessionId = chat.key.sessionId;
+      // Date-prefixed session IDs share their leading characters.
+      final shortId = sessionId.length <= 8
+          ? sessionId
+          : sessionId.substring(sessionId.length - 8);
+      return 'Hermes session · $shortId';
+    }
+    return chat.title;
+  }
 
   Iterable<ProfileChat> get notificationChats =>
       _resources.values.expand((r) => r._chats.values);
