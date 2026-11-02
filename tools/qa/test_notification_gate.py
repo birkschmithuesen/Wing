@@ -11,7 +11,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 import xml.etree.ElementTree as ET
 
 import check_notification_revamp as driver
@@ -377,6 +377,80 @@ elif sys.argv[3] == 'forward':
                               'failure-services.txt', 'failure-window.txt', 'failure-input-method.txt',
                               'failure-ui.xml', 'failure.png'})
         self.assertEqual(capture.call_args.args[0][-3:], ['exec-out', 'screencap', '-p'])
+
+
+class OwnedEmulatorRetirementTest(unittest.TestCase):
+    @contextlib.contextmanager
+    def transport(self, *, disappears=True, occupied=False, query_failure=False):
+        clock = [0.0]
+        registered_until = [float('inf') if occupied else -1.0]
+        processes = []
+
+        def launch(*args, **kwargs):
+            registered_until[0] = float('inf')
+            process = Mock()
+            process.poll.return_value = None
+            def stopped(*args, **kwargs):
+                registered_until[0] = clock[0] + 0.5 if disappears else float('inf')
+                return 0
+            process.wait.side_effect = stopped
+            processes.append(process)
+            return process
+
+        def devices(*args, **kwargs):
+            if query_failure and processes:
+                raise subprocess.CalledProcessError(1, args[0])
+            rows = 'List of devices attached\nother-device\tdevice\n'
+            if clock[0] < registered_until[0]:
+                rows += 'emulator-5562\toffline\n'
+            return rows
+
+        def advance(seconds):
+            clock[0] += seconds
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(gate, 'OUTPUT', Path(directory)), \
+             patch.dict(os.environ, {'ANDROID_HOME': directory}), \
+             patch.object(gate, 'command'), \
+             patch.object(gate, 'device', return_value='1'), \
+             patch.object(gate, 'prepare_owned_android'), \
+             patch.object(gate.subprocess, 'Popen', side_effect=launch), \
+             patch.object(gate.subprocess, 'check_output', side_effect=devices), \
+             patch.object(gate.time, 'monotonic', side_effect=lambda: clock[0]), \
+             patch.object(gate.time, 'sleep', side_effect=advance):
+            yield processes, clock
+
+    def test_next_suite_can_own_slot_after_process_exits_before_adb_unregisters(self):
+        with self.transport() as (processes, clock):
+            for _ in range(2):
+                with gate.owned_emulator() as serial:
+                    self.assertEqual(serial, 'emulator-5562')
+            self.assertEqual(len(processes), 2)
+            self.assertGreaterEqual(clock[0], 1.0)
+            for process in processes:
+                process.terminate.assert_called_once_with()
+                process.kill.assert_not_called()
+
+    def test_still_registered_after_deadline_fails_retirement(self):
+        with self.transport(disappears=False) as (processes, clock):
+            with self.assertRaisesRegex(TimeoutError, 'emulator-5562.*registered'):
+                with gate.owned_emulator():
+                    pass
+            self.assertLessEqual(clock[0], 30)
+            processes[0].kill.assert_not_called()
+
+    def test_preexisting_serial_is_still_rejected_without_starting_or_stopping(self):
+        with self.transport(occupied=True) as (processes, _):
+            with self.assertRaisesRegex(ValueError, 'occupied'):
+                with gate.owned_emulator():
+                    self.fail('An occupied emulator is not ours')
+            self.assertEqual(processes, [])
+
+    def test_failed_adb_observation_cannot_establish_retirement(self):
+        with self.transport(query_failure=True):
+            with self.assertRaises(subprocess.CalledProcessError):
+                with gate.owned_emulator():
+                    pass
 
 
 class OwnedAndroidBootTest(unittest.TestCase):
