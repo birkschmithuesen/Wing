@@ -1,6 +1,9 @@
-"""Input focus parsing using the owned API36 emulator's observed field shapes."""
+"""External-share emulator observations and owned-lifecycle guards."""
 import unittest
 import subprocess
+from unittest.mock import patch
+import xml.etree.ElementTree as ET
+import check_external_share as external
 from check_external_share import (focused_window_component, camera_components,
                                   retire_owned_host, provider_released, Device,
                                   host_has_saved_stopped_state, PACKAGE, HELPER)
@@ -119,6 +122,55 @@ class OwnedHostRetirementTest(unittest.TestCase):
                 return {'released': '2'}
         self.assertTrue(provider_released(Frozen(), 1))
         self.assertFalse(provider_released(Frozen(), 2))
+
+
+class PreferenceObservationTest(unittest.TestCase):
+    def device(self, observations, *, exists=True):
+        device = Device('emulator-5562')
+        self.enterContext(patch.object(device, 'private_exists', return_value=exists))
+        read = self.enterContext(patch.object(device, 'private_read', side_effect=observations))
+        clock = [0.0]
+        self.enterContext(patch.object(external.time, 'monotonic', side_effect=lambda: clock[0]))
+        self.enterContext(patch.object(external.time, 'sleep', side_effect=lambda delay: clock.__setitem__(0, clock[0] + delay)))
+        return device, read, clock
+
+    def test_partial_write_is_observed_until_complete_before_returning_state(self):
+        device, read, _ = self.device([
+            b'', b'<map><string name="pending_name">qa-owned',
+            b'<map><string name="pending_name">qa-owned.json</string><int name="saved_bytes" value="12" /></map>',
+        ])
+        self.assertEqual(device.preferences(HELPER, 'backup_save'),
+                         {'pending_name': 'qa-owned.json', 'saved_bytes': '12'})
+        self.assertEqual(read.call_count, 3)
+        self.assertTrue(all(call.args == (HELPER, 'shared_prefs/backup_save.xml')
+                            for call in read.call_args_list))
+
+    def test_persistent_malformed_state_fails_at_observation_deadline(self):
+        device, read, clock = self.device([b'<map>'] * 60)
+        with self.assertRaises(ET.ParseError):
+            device.preferences(HELPER, 'backup_save')
+        self.assertEqual(clock[0], 5)
+        self.assertGreater(read.call_count, 1)
+
+    def test_transport_failure_is_not_retried_or_replaced_with_empty_state(self):
+        error = subprocess.CalledProcessError(1, ['adb'], stderr=b'device offline')
+        device, read, clock = self.device([error])
+        with self.assertRaises(subprocess.CalledProcessError) as raised:
+            device.preferences(HELPER, 'backup_save')
+        self.assertIs(raised.exception, error)
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(clock[0], 0)
+
+    def test_absent_preferences_are_distinct_from_an_unfinished_file(self):
+        device, read, _ = self.device([], exists=False)
+        self.assertEqual(device.preferences(HELPER, 'backup_save'), {})
+        read.assert_not_called()
+
+    def test_complete_empty_map_is_a_valid_observation(self):
+        device, read, clock = self.device([b'<map />'])
+        self.assertEqual(device.preferences(HELPER, 'backup_save'), {})
+        self.assertEqual(read.call_count, 1)
+        self.assertEqual(clock[0], 0)
 
 
 if __name__ == '__main__':
