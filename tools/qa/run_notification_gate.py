@@ -9,6 +9,7 @@ import json
 from contextlib import contextmanager
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -163,6 +164,10 @@ def start_owned_emulator(sdk, serial, avds):
     command(str(sdk / 'cmdline-tools/latest/bin/avdmanager'), 'create', 'avd',
             '--force', '--name', 'wing_notification_gate', '--package', IMAGE,
             '--device', 'pixel_2', input='no\n', text=True, env=env)
+    disk = shutil.disk_usage(avds)
+    (OUTPUT / 'emulator-storage.json').write_text(json.dumps({
+        'total_bytes': disk.total, 'used_bytes': disk.used, 'free_bytes': disk.free,
+    }, indent=2) + '\n')
     with (OUTPUT / 'emulator.log').open('w') as log:
         process = subprocess.Popen([
             str(sdk / 'emulator/emulator'), '-avd', 'wing_notification_gate',

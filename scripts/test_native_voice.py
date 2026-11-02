@@ -86,6 +86,39 @@ class Driver:
         if self.shell('id', '-u').strip() != '0':
             raise RuntimeError('Recognition isolation requires a rooted disposable emulator')
 
+    def transition_adbd(self, command, uid, record):
+        """Dispatch once, then observe the daemon restart before changing direction."""
+        previous_deadline = self.deadline
+        self.deadline = time.monotonic() + self.remaining()
+        try:
+            self.adb('wait-for-device')
+            if self.adb('get-serialno').strip() != self.serial:
+                raise RuntimeError('The admitted emulator identity changed before adb ' + command)
+            try:
+                self.adb(command)
+            except subprocess.CalledProcessError as error:
+                record[command + '_reply_error'] = {
+                    'returncode': error.returncode, 'stderr': error.stderr,
+                }
+            while True:
+                self.remaining()
+                try:
+                    self.adb('wait-for-device')
+                    if self.adb('get-serialno').strip() != self.serial:
+                        raise RuntimeError('The admitted emulator identity changed after adb ' + command)
+                    if self.shell('id', '-u').strip() == uid:
+                        return
+                except subprocess.CalledProcessError:
+                    # wait-for-device can observe the old transport just before
+                    # it closes. Only a read of the requested UID settles this.
+                    pass
+                time.sleep(min(.1, self.remaining()))
+        except (TimeoutError, subprocess.TimeoutExpired) as error:
+            raise RuntimeError('Emulator adbd authority was not restored' if command == 'unroot'
+                               else 'Emulator adbd root authority was not established') from error
+        finally:
+            self.deadline = previous_deadline
+
     @contextmanager
     def rooted_emulator(self):
         self.require_emulator()
@@ -97,8 +130,7 @@ class Driver:
         }
         try:
             if record['root_requested']:
-                self.adb('root')
-                self.adb('wait-for-device')
+                self.transition_adbd('root', '0', record)
             if self.adb('get-serialno').strip() != self.serial:
                 raise RuntimeError('The admitted emulator identity changed after adb root')
             self.require_rooted_emulator()
@@ -110,16 +142,7 @@ class Driver:
                 self.deadline = None
                 try:
                     if record['root_requested']:
-                        try:
-                            self.adb('unroot')
-                        except subprocess.CalledProcessError as error:
-                            # Restarting adbd can close its reply after unroot
-                            # succeeds. Reconnect and establish actual authority.
-                            record['unroot_reply_error'] = {
-                                'returncode': error.returncode,
-                                'stderr': error.stderr,
-                            }
-                        self.adb('wait-for-device')
+                        self.transition_adbd('unroot', prior_uid, record)
                     if (self.adb('get-serialno').strip() != self.serial
                             or self.shell('id', '-u').strip() != prior_uid):
                         raise RuntimeError('Original emulator adbd authority was not restored')
