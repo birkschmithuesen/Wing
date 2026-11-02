@@ -438,6 +438,9 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
     (tester) async {
       tester.view.physicalSize = const Size(360, 760);
       tester.view.devicePixelRatio = 1;
+      // This synthetic viewport also owns its keyboard geometry. Android's
+      // physical keyboard inset can exceed the entire 760px test viewport.
+      tester.view.viewInsets = const FakeViewPadding(bottom: 320);
       addTearDown(tester.view.reset);
       chat.reading.installSavedHistory([
         {'id': 1, 'role': 'user', 'content': 'Saved prompt'},

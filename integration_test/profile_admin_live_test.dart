@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
@@ -266,6 +268,28 @@ void main() {
                     row['color'] == 'hsl(270 68% 58%)' &&
                     row['icon'] == 'rocket',
               ),
+          diagnostic: () {
+            final confirm = find.byKey(const ValueKey('project-edit-confirm'));
+            final projects = workspace.current!.projects
+                .where((row) => row['id'] == createdId)
+                .map(
+                  (row) => {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'color': row['color'],
+                    'icon': row['icon'],
+                  },
+                )
+                .toList();
+            final state = {
+              'editorPresent': confirm.evaluate().isNotEmpty,
+              'confirmHitTestable': confirm.hitTestable().evaluate().isNotEmpty,
+              'workspaceError': workspace.error?.toString(),
+              'projectsError': workspace.current?.projectsError?.toString(),
+              'projects': projects,
+            };
+            return 'Project save state: ${jsonEncode(state)}';
+          },
         );
         await tester.pumpAndSettle();
 
