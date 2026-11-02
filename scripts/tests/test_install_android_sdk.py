@@ -29,10 +29,13 @@ root = Path(os.environ['ANDROID_HOME'])
 counter = root / 'calls'
 attempt = int(counter.read_text()) + 1 if counter.exists() else 1
 counter.write_text(str(attempt))
-assert sys.argv[1:] == ['--verbose', 'emulator', 'system-images;android-36;google_apis;x86_64']
+expected = ['--verbose', 'emulator', 'system-images;android-36;google_apis;x86_64']
+if os.environ.get('FAKE_NDK'):
+    expected.append('ndk;' + os.environ['FAKE_NDK'])
+assert sys.argv[1:] == expected, sys.argv[1:]
 print('SDK download attempt', attempt)
 if attempt <= int(os.environ['FAKE_SDK_FAILURES']):
-    archive = root / '.temp/PackageOperation01/emulator.zip'
+    archive = root / '.temp/PackageOperation01' / ('ndk.zip' if os.environ.get('FAKE_NDK') else 'emulator.zip')
     archive.parent.mkdir(parents=True, exist_ok=True)
     archive.write_bytes(b'PK truncated')
     print('Error on ZipFile unknown archive', file=sys.stderr)
@@ -83,16 +86,53 @@ if attempt <= int(os.environ['FAKE_SDK_FAILURES']):
         self.assertEqual((self.sdk / 'calls').read_text(), '1')
         self.assertTrue((self.output / 'context.json').exists())
 
+    def write_ndk(self, version):
+        properties = self.root / 'android/gradle.properties'
+        properties.parent.mkdir(exist_ok=True)
+        properties.write_text(f'wing.ndkVersion={version}\n')
+
+    def test_cli_provisions_the_selected_source_ndk_with_diagnostics(self):
+        self.write_ndk('28.2.13676358')
+        with contextlib.chdir(self.root), \
+             patch.dict(os.environ, {'ANDROID_HOME': str(self.sdk),
+                                    'FAKE_NDK': '28.2.13676358',
+                                    'FAKE_SDK_FAILURES': '1'}), \
+             patch.object(installer.time, 'sleep'), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = installer.main(['emulator', 'system-images;android-36;google_apis;x86_64'])
+        self.assertEqual(code, 0)
+        output = self.root / 'build/sdk-install'
+        context = json.loads((output / 'context.json').read_text())
+        self.assertIn('ndk;28.2.13676358', context['packages'])
+        failed = json.loads((output / 'attempt-1.json').read_text())
+        self.assertEqual(failed['exit_code'], 7)
+        self.assertTrue(failed['archives'][0]['path'].endswith('ndk.zip'))
+        self.assertFalse(failed['archives'][0]['valid_zip'])
+        self.assertEqual(json.loads((output / 'attempt-2.json').read_text())['exit_code'], 0)
+
+    def test_missing_or_invalid_source_ndk_fails_before_sdk_process(self):
+        for value in ('', '28.2.invalid', '28.2.13676358\nwing.ndkVersion=29.0.1'):
+            self.write_ndk(value)
+            with self.subTest(value=value), contextlib.chdir(self.root), \
+                 patch.object(installer, 'install') as install:
+                with self.assertRaisesRegex(ValueError, 'wing.ndkVersion'):
+                    installer.main(['emulator'])
+                install.assert_not_called()
+
     def test_cli_keeps_artifacts_in_source_checkout_when_tooling_is_elsewhere(self):
+        self.write_ndk('99.2.3')
         result = subprocess.run(
             [sys.executable, str(Path(installer.__file__).resolve()),
              'emulator', 'system-images;android-36;google_apis;x86_64'],
             cwd=self.root,
-            env={**os.environ, 'ANDROID_HOME': str(self.sdk), 'FAKE_SDK_FAILURES': '0'},
+            env={**os.environ, 'ANDROID_HOME': str(self.sdk), 'FAKE_SDK_FAILURES': '0',
+                 'FAKE_NDK': '99.2.3'},
             capture_output=True, text=True,
         )
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue((self.root / 'build/sdk-install/attempt-1.log').exists())
+        context = json.loads((self.root / 'build/sdk-install/context.json').read_text())
+        self.assertIn('ndk;99.2.3', context['packages'])
 
 
 if __name__ == '__main__':

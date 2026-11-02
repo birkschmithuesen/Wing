@@ -1370,10 +1370,21 @@ void main() {
             }
 
             final afterRelease = <String>[];
+            final diagnosticFrames = <Map<String, Object?>>[];
             var released = false, recording = true;
             void observeFocus(Duration frame) {
               if (!recording) return;
               final label = focusedChoice();
+              // Event timestamps alone cannot distinguish delayed input
+              // delivery from missed rendered frames on a loaded emulator.
+              if (diagnosticFrames.length < 500) {
+                diagnosticFrames.add({
+                  'wall': DateTime.now().microsecondsSinceEpoch,
+                  'frame': frame.inMicroseconds,
+                  'focus': label,
+                  'released': released,
+                });
+              }
               if (released &&
                   label != null &&
                   (afterRelease.isEmpty || afterRelease.last != label)) {
@@ -1393,6 +1404,7 @@ void main() {
               flingEvents.add({
                 'kind': event.runtimeType.toString(),
                 'pointer': event.pointer,
+                'wall': DateTime.now().microsecondsSinceEpoch,
                 'microseconds': event.timeStamp.inMicroseconds,
                 'x': event.position.dx,
                 'y': event.position.dy,
@@ -1420,7 +1432,7 @@ void main() {
               greaterThanOrEqualTo(3),
               reason:
                   'After finger release, one flick must continue through multiple visible conversation choices. '
-                  '${jsonEncode({'focusedAfterRelease': afterRelease, 'events': flingEvents})}',
+                  '${jsonEncode({'focusedAfterRelease': afterRelease, 'events': flingEvents, 'frames': diagnosticFrames})}',
             );
             expect(host.resumes, resumes);
             expect(controller.current!.chat!.key, first.key);
@@ -1443,6 +1455,8 @@ void main() {
               '$prefix-momentum-select',
               observation: {
                 'focusedAfterRelease': afterRelease,
+                'diagnosticFrames': diagnosticFrames,
+                'diagnosticEvents': flingEvents,
                 'chosen': focusedChoice(),
               },
               actions: [
