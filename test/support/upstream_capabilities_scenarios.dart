@@ -254,8 +254,7 @@ void registerUpstreamCapabilitiesScenarios({
             of: find.byKey(const Key('delegation-model-example-second')),
             matching: find.text('Second'),
           );
-          await tester.ensureVisible(option);
-          await tester.pumpAndSettle();
+          await revealUpstreamControl(tester, option);
           await tester.tap(option.hitTestable());
           await tester.pumpAndSettle(
             const Duration(milliseconds: 100),
@@ -358,4 +357,17 @@ void registerUpstreamCapabilitiesScenarios({
       }
     },
   );
+}
+
+/// Reveal a scenario's real control before dispatching its single tap.
+Future<void> revealUpstreamControl(WidgetTester tester, Finder control) async {
+  final deadline = tester.binding.clock.fromNowBy(const Duration(seconds: 5));
+  do {
+    // Native keyboard metrics can arrive after ensureVisible computes its
+    // scroll offset. Advance layout, then observe the actual tap target.
+    await tester.ensureVisible(control);
+    await tester.pump(const Duration(milliseconds: 100));
+  } while (control.hitTestable().evaluate().isEmpty &&
+      tester.binding.clock.now().isBefore(deadline));
+  expect(control.hitTestable(), findsOneWidget);
 }

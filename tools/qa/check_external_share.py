@@ -183,9 +183,21 @@ class Device:
         path = 'shared_prefs/' + name + '.xml'
         if not self.private_exists(package, path):
             return {}
-        root = ET.fromstring(self.private_read(package, path))
-        return {entry.get('name'): entry.text if entry.tag == 'string' else entry.get('value')
-                for entry in root}
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                root = ET.fromstring(self.private_read(package, path))
+            except ET.ParseError:
+                # SharedPreferences can expose an empty/partial file during a
+                # commit. Observe a complete snapshot before evaluating state;
+                # persistent corruption and transport failures still fail.
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise
+                time.sleep(min(.1, remaining))
+            else:
+                return {entry.get('name'): entry.text if entry.tag == 'string' else entry.get('value')
+                        for entry in root}
 
     def intake(self):
         preferences = self.preferences(PACKAGE, 'pending_share_intake')
