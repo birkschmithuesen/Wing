@@ -21,7 +21,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart
+  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart
   ```
 
 - **Android `health-normal`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -45,3 +45,16 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 ## Gotchas
 
 These are device-local in-app alerts, distinct from Android notifications. Durations, hysteresis, snooze deadlines and fresh recovery determine the outcome; a warning icon alone is not proof.
+
+Connector failures clear when a confirmed inventory read shows their failed
+connectors removed or disabled, including readback after Remove connector.
+While collection is active, unresolved connector issues get inventory-only
+checks every 15 seconds and on foreground resume, using the captured profile
+even when another profile is selected. This includes acknowledged and snoozed
+issues. Unavailable or incomplete reads retain the issue; deleting one of several
+failed connectors retains the others. Recovery persists across restart. These
+checks never run connection probes or launch connector programs.
+
+The host suites above cover the real alert → connector → Remove connector path
+in both themes and text scales, automatic cross-profile checks, unavailable
+reads, resume, saved-incident recovery and late inventory completions.

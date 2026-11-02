@@ -56,6 +56,7 @@ class HealthAlert {
   bool remindsAt(DateTime now) =>
       !acknowledged && (snoozedUntil == null || !now.isBefore(snoozedUntil!));
   HealthAlert copyWith({
+    List<String>? connectorNames,
     bool? lastKnown,
     bool? acknowledged,
     DateTime? snoozedUntil,
@@ -70,7 +71,7 @@ class HealthAlert {
     observedAt: observedAt,
     occurrence: occurrence,
     destination: destination,
-    connectorNames: connectorNames,
+    connectorNames: connectorNames ?? this.connectorNames,
     profileName: profileName,
     trigger: trigger,
     lastKnown: lastKnown ?? this.lastKnown,

@@ -1,4 +1,5 @@
 import 'profile_model_catalog.dart';
+import 'connector_inventory.dart';
 import 'models_dev_pricing.dart';
 import 'usage_analytics.dart';
 import 'skill_reader_session.dart';
@@ -50,6 +51,9 @@ typedef AdministrationMutation =
 /// One connection, independent of the currently selected workspace.
 /// Profile views capture an explicit canonical scope.
 class AdministrationRepository {
+  ConnectorInventory? _connectorInventory;
+  ConnectorInventory get connectorInventory => _connectorInventory ??=
+      ConnectorInventory((name) => profile(name).read('mcp/servers'));
   late final _skillReader = SkillReaderRepository(
     (endpoint, query) => read(endpoint, query),
   );
@@ -270,6 +274,7 @@ class AdministrationRepository {
     if (_leases == 0 && !_closed) {
       _closed = true;
       _usageAnalytics?.close();
+      _connectorInventory?.dispose();
       _closeModelCatalogs();
       _close();
     }

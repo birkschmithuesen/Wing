@@ -1321,6 +1321,11 @@
       "feature": "connections",
       "library": "lib/core/services/connection_setup_session.dart"
     },
+    "lib/core/services/connector_inventory.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/connector_inventory.dart"
+    },
     "lib/core/services/conversation_reading_memory.dart": {
       "role": "application",
       "feature": "conversation",

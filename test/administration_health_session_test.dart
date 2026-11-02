@@ -26,6 +26,7 @@ void main() {
   var diagnosticRunning = false;
   var tasksOffline = false;
   var taskRows = <Map<String, dynamic>>[];
+  var connectorRows = <Map<String, dynamic>>[];
   var nextPid = 8;
 
   setUp(() async {
@@ -38,6 +39,7 @@ void main() {
     diagnosticRunning = false;
     tasksOffline = false;
     taskRows = [];
+    connectorRows = [];
     nextPid = 8;
     ProfileGateway gateway(String name) => ProfileGateway(
       scope: WorkspaceScope(
@@ -101,7 +103,8 @@ void main() {
               },
             ],
           },
-          'mcp/servers' => {'servers': []},
+          'mcp/servers' => {'servers': connectorRows},
+          'mcp/servers/grokbot/test' => {'ok': false},
           'cron/jobs' =>
             tasksOffline
                 ? throw StateError('offline')
@@ -781,6 +784,69 @@ void main() {
         );
       } finally {
         fixture.dispose();
+      }
+    },
+  );
+
+  testWidgets(
+    'connector retirement updates unopened snapshots across two restarts',
+    (tester) async {
+      now = DateTime.now();
+      var fixture = HealthAlertsFixture(preferences, repository: server);
+      var session = fixture.owner.healthSession();
+      await select(session, 'default');
+      connectorRows = [
+        {'name': 'grokbot', 'enabled': true},
+      ];
+      await select(session, 'work');
+      expect(
+        fixture.coordinator.alerts.where(
+          (a) => a.destination == 'MCP connectors',
+        ),
+        hasLength(1),
+      );
+      fixture.dispose();
+      await session.saved;
+
+      connectorRows = [];
+      fixture = HealthAlertsFixture(preferences, repository: server);
+      session = fixture.owner.healthSession();
+      session.select(workspaces['default']!.gateway);
+      await tester.pump();
+      await session.saved;
+      expect(
+        fixture.coordinator.alerts.where(
+          (a) => a.destination == 'MCP connectors',
+        ),
+        isEmpty,
+      );
+      expect(session.health.profileName, 'default');
+      fixture.dispose();
+      await session.saved;
+
+      server.connectorInventory.invalidate('work');
+      requests.clear();
+      fixture = HealthAlertsFixture(preferences, repository: server);
+      session = fixture.owner.healthSession();
+      try {
+        session.select(workspaces['work']!.gateway);
+        await tester.pump();
+        expect(
+          fixture.coordinator.alerts.where(
+            (a) => a.destination == 'MCP connectors',
+          ),
+          isEmpty,
+        );
+        expect(session.overviews['work']!.connectorChecks, isEmpty);
+        expect(
+          requests.where((request) => request.$3 != null),
+          isEmpty,
+          reason:
+              'The saved observation must stay retired without another probe',
+        );
+      } finally {
+        fixture.dispose();
+        await session.saved;
       }
     },
   );

@@ -1,5 +1,6 @@
 import 'health_alert.dart';
 import 'host_thresholds.dart';
+import 'profile_connectors.dart';
 
 /// Stateful hysteresis over independent fresh samples. No I/O, timers or UI.
 /// Gaps over three times the applicable duration break progress. Collection
@@ -186,7 +187,16 @@ class HealthAlertEvaluator {
     List<String> connectorNames = const [],
     HealthAlertSeverity severity = HealthAlertSeverity.warning,
     String? profileName,
+    ConnectorInventoryObservation? connectorInventory,
   }) {
+    final remaining = connectorInventory?.remainingFailures(connectorNames, at);
+    if (destination == 'MCP connectors' && remaining != null) {
+      if (remaining.isEmpty) {
+        remove(key);
+        return;
+      }
+      connectorNames = remaining;
+    }
     if (failed == null || at == null) {
       unknown(key);
       return;
@@ -206,6 +216,30 @@ class HealthAlertEvaluator {
       destination: destination,
       connectorNames: connectorNames,
     );
+  }
+
+  /// Retire absent failure sources even when their profile is not selected or
+  /// its last probe is stale. Membership never proves a surviving probe passed.
+  void reconcileConnectors(String profile, ConnectorInventoryObservation data) {
+    for (final alert in alerts) {
+      if (alert.profileName != profile ||
+          alert.destination != 'MCP connectors') {
+        continue;
+      }
+      final remaining = data.remainingFailures(
+        alert.connectorNames,
+        alert.observedAt,
+      );
+      if (remaining == null) continue;
+      if (remaining.isEmpty) {
+        remove(alert.id);
+      } else if (remaining.length != alert.connectorNames.length) {
+        _alerts[alert.id] = alert.copyWith(
+          connectorNames: remaining,
+          lastKnown: true,
+        );
+      }
+    }
   }
 
   void unknown(String key) {

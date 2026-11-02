@@ -42,6 +42,7 @@ class AdministrationHealthSession extends ChangeNotifier {
       }
     }
     health.addListener(_changed);
+    server.connectorInventory.addListener(_connectorsChanged);
   }
 
   final AdministrationRepository server;
@@ -106,24 +107,7 @@ class AdministrationHealthSession extends ChangeNotifier {
     }
     _requireConnection(gateway);
     final name = gateway.scope.profileName;
-    final overview = _overviews.putIfAbsent(name, () {
-      final overview = AdministrationOverview(server.profile(name));
-      final snapshot = _savedProfiles[name];
-      if (snapshot != null) {
-        try {
-          overview.restoreHealth(snapshot['overview'] as Map);
-          final at = healthSnapshotTime(snapshot['refreshedAt']);
-          if (at != null) _refreshedAt[name] = at;
-        } on Object {
-          _savedProfiles.remove(name);
-        }
-      }
-      overview.addListener(() {
-        _checks[name]?.updateModel(overview.observations['model']?.data);
-        _changed();
-      });
-      return overview;
-    });
+    final overview = _overviewFor(name);
     final checks = checksFor(gateway);
     checks.updateModel(overview.observations['model']?.data);
     // Attach independently of full-check expiry. The task list may already
@@ -136,6 +120,37 @@ class AdministrationHealthSession extends ChangeNotifier {
         checks.healthObservation.finding == null) {
       unawaited(refresh(gateway));
     }
+  }
+
+  AdministrationOverview _overviewFor(String name) =>
+      _overviews.putIfAbsent(name, () {
+        final overview = AdministrationOverview(server.profile(name));
+        final snapshot = _savedProfiles[name];
+        if (snapshot != null) {
+          try {
+            overview.restoreHealth(snapshot['overview'] as Map);
+            final at = healthSnapshotTime(snapshot['refreshedAt']);
+            if (at != null) _refreshedAt[name] = at;
+          } on Object {
+            _savedProfiles.remove(name);
+          }
+        }
+        overview.addListener(() {
+          _checks[name]?.updateModel(overview.observations['model']?.data);
+          _changed();
+        });
+        return overview;
+      });
+
+  void _connectorsChanged() {
+    if (_disposed) return;
+    // Unopened profiles still have saved probe failures. Restore their existing
+    // observation owner to reconcile/persist membership, without selecting the
+    // profile or starting diagnostics. Otherwise a second restart resurrects it.
+    for (final name in server.connectorInventory.observations.keys) {
+      if (_savedProfiles.containsKey(name)) _overviewFor(name);
+    }
+    _changed();
   }
 
   ScheduledTasksController _tasksFor(ProfileAdministration profile) =>
@@ -228,7 +243,9 @@ class AdministrationHealthSession extends ChangeNotifier {
     for (final entry in _overviews.entries) {
       profiles[entry.key] = {
         'overview': entry.value.healthSnapshot(),
-        'checks': _checks[entry.key]?.snapshot(),
+        'checks':
+            _checks[entry.key]?.snapshot() ??
+            _savedProfiles[entry.key]?['checks'],
         'refreshedAt': _refreshedAt[entry.key]?.toUtc().toIso8601String(),
       };
     }
@@ -253,6 +270,7 @@ class AdministrationHealthSession extends ChangeNotifier {
   void dispose() {
     _persist();
     _disposed = true;
+    server.connectorInventory.removeListener(_connectorsChanged);
     health.dispose();
     for (final overview in _overviews.values) {
       overview.dispose();

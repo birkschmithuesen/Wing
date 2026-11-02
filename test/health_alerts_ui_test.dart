@@ -881,6 +881,7 @@ void main() {
             SharedPreferences.setMockInitialValues({});
             final admin = AdministrationFixture();
             var failProbe = true;
+            final removedNames = <String>{};
             final names = [
               'broken / docs',
               if (failedCount == 2) 'broken calendar',
@@ -909,16 +910,21 @@ void main() {
                 return {
                   'servers': [
                     for (final name in [...names, 'healthy'])
-                      {
-                        'name': name,
-                        'enabled': true,
-                        'transport': 'http',
-                        'auth': 'oauth',
-                        'source': 'config',
-                        'plugin': null,
-                      },
+                      if (!removedNames.contains(name))
+                        {
+                          'name': name,
+                          'enabled': true,
+                          'transport': 'http',
+                          'auth': 'oauth',
+                          'source': 'config',
+                          'plugin': null,
+                        },
                   ],
                 };
+              }
+              if (method == 'DELETE') {
+                removedNames.add(Uri.decodeComponent(path.split('/').last));
+                return {'ok': true};
               }
               expect(method, 'POST');
               return {
@@ -1095,6 +1101,38 @@ void main() {
                   ? find.byType(AdminConnectorDetail)
                   : find.byType(AdminConnectorsPage),
               findsOneWidget,
+            );
+            for (final name in names) {
+              if (failedCount == 2) {
+                await tester.tap(find.text(name));
+                await tester.pumpAndSettle();
+              }
+              await tester.ensureVisible(find.text('Remove connector'));
+              await tester.tap(find.text('Remove connector'));
+              await tester.pumpAndSettle();
+              await tester.tap(find.byTooltip('Remove'));
+              await tester.pumpAndSettle();
+              expect(removedNames, contains(name));
+              if (removedNames.length < names.length) {
+                expect(fixture.coordinator.alerts.single.connectorNames, [
+                  names.last,
+                ]);
+                expect(
+                  HealthAlertIncidentStore(
+                    fixture.preferences,
+                  ).read(admin.server.connectionIdentity).single.connectorNames,
+                  [names.last],
+                );
+              }
+            }
+            expect(fixture.coordinator.alerts, isEmpty);
+            expect(
+              find.byKey(const ValueKey('health-alert-bell')),
+              findsNothing,
+            );
+            await shot(
+              tester,
+              'connector-removed-$failedCount-${brightness.name}-$scale',
             );
             await tester.pumpWidget(const SizedBox());
             draft.dispose();

@@ -9545,6 +9545,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/services/connector_inventory.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/services/conversation_reading_memory.dart",
       "area": "lib",
       "provenance": "intentional-untracked"

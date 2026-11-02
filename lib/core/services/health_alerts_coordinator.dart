@@ -99,6 +99,7 @@ class HealthAlertsCoordinator extends ChangeNotifier {
     final resumed = active ? _activeOwners.add(owner) : false;
     if (!active) _activeOwners.remove(owner);
     if (resumed && settings.settings.enabled && settings.settings.profile) {
+      unawaited(_sessions[owner]!.refreshConnectorInventories());
       // Acknowledged incidents still need recovery checks. Use their captured
       // profiles, including those that are not selected in the workspace.
       final profiles = _sessions[owner]!.alerts

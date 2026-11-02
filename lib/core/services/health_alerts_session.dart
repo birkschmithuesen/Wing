@@ -12,7 +12,8 @@ import 'health_alert_incident_store.dart';
 import 'host_resources_session.dart';
 
 /// Connection-owned evaluator borrowing canonical observations. Owns only its
-/// watch demand and incidents; never runs diagnostics or duplicates data reads.
+/// watch demand and incidents; never runs diagnostics. Inventory recovery reads
+/// join the same connection owner used by the connector editor and Health.
 class HealthAlertsSession extends ChangeNotifier {
   HealthAlertsSession({
     required this.host,
@@ -36,6 +37,7 @@ class HealthAlertsSession extends ChangeNotifier {
     _lastSettings = settings.settings;
     host.addListener(_changed);
     health.addListener(_changed);
+    health.server.connectorInventory.addListener(_changed);
     settings.addListener(_settingsChanged);
     _changed();
   }
@@ -53,6 +55,54 @@ class HealthAlertsSession extends ChangeNotifier {
   final HealthAlertEvaluator _evaluator;
   late final HostResourcesWatch _watch;
   bool _active = false;
+  Timer? _connectorRecheck;
+  bool _checkingConnectors = false;
+
+  /// Recovery checks read configuration membership only, never connection probes.
+  Future<void> refreshConnectorInventories() async {
+    if (_closed || !_active || _checkingConnectors) return;
+    final profiles = alerts
+        .where((alert) => alert.destination == 'MCP connectors')
+        .map((alert) => alert.profileName)
+        .whereType<String>()
+        .toSet();
+    if (profiles.isEmpty) return;
+    _checkingConnectors = true;
+    _connectorRecheck?.cancel();
+    _connectorRecheck = null;
+    health.server.retain();
+    try {
+      await Future.wait([
+        for (final profile in profiles)
+          () async {
+            try {
+              await health.server.connectorInventory.refresh(profile);
+            } catch (_) {
+              // An unavailable inventory cannot establish incident recovery.
+            }
+          }(),
+      ]);
+    } finally {
+      health.server.release();
+      _checkingConnectors = false;
+      if (!_closed) _publish();
+    }
+  }
+
+  void _scheduleConnectorRecheck() {
+    final needed =
+        _active && alerts.any((a) => a.destination == 'MCP connectors');
+    if (!needed) {
+      _connectorRecheck?.cancel();
+      _connectorRecheck = null;
+    } else if (!_checkingConnectors && _connectorRecheck == null) {
+      _connectorRecheck = Timer(const Duration(seconds: 15), () {
+        _connectorRecheck = null;
+        unawaited(refreshConnectorInventories());
+      });
+    }
+  }
+
   HealthAlertSettings? _lastSettings;
   (HostReading<HostSystemStats>, HostReading<HostPressureStatus>)?
   _evaluatedHost;
@@ -172,6 +222,16 @@ class HealthAlertsSession extends ChangeNotifier {
       }
     }
     if (policy.profile) {
+      final inventories = health.server.connectorInventory.observations;
+      final currentInventories = {
+        for (final entry in inventories.entries)
+          if (!now.isBefore(entry.value.checkedAt) &&
+              now.difference(entry.value.checkedAt) < health.maxAge)
+            entry.key: entry.value,
+      };
+      for (final entry in currentInventories.entries) {
+        _evaluator.reconcileConnectors(entry.key, entry.value);
+      }
       final findings = [
         for (final entry in health.scheduledTaskFindings.entries)
           (entry.key, entry.value, const <String>[]),
@@ -202,6 +262,7 @@ class HealthAlertsSession extends ChangeNotifier {
           profileName: name,
           destination: finding.destination,
           connectorNames: connectors,
+          connectorInventory: currentInventories[name],
           at: at,
           failed:
               taskUnknown ||
@@ -273,8 +334,10 @@ class HealthAlertsSession extends ChangeNotifier {
   }
 
   List<Object> _incidentState(List<HealthAlert> values) => [
-    for (final a in values)
+    for (final a in values) ...<Object>[
       (a.id, a.occurrence, a.severity, a.acknowledged, a.snoozedUntil),
+      ...a.connectorNames,
+    ],
   ];
 
   void _persistIncidents() {
@@ -307,6 +370,7 @@ class HealthAlertsSession extends ChangeNotifier {
   }
 
   void _publish() {
+    _scheduleConnectorRecheck();
     _persistIncidents();
     final next = alerts
         .expand(
@@ -339,9 +403,11 @@ class HealthAlertsSession extends ChangeNotifier {
   @override
   void dispose() {
     _closed = true;
+    _connectorRecheck?.cancel();
     _watch.close();
     host.removeListener(_changed);
     health.removeListener(_changed);
+    health.server.connectorInventory.removeListener(_changed);
     settings.removeListener(_settingsChanged);
     super.dispose();
   }

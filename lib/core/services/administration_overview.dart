@@ -104,7 +104,9 @@ class ModelAccessObservation {
 }
 
 class AdministrationOverview extends ChangeNotifier {
-  AdministrationOverview(this.profile);
+  AdministrationOverview(this.profile) {
+    profile.server.connectorInventory.addListener(_inventoryChanged);
+  }
   final ProfileAdministration profile;
   final _observations = <String, AdministrationObservation>{};
   Map<String, AdministrationObservation> get observations =>
@@ -117,6 +119,20 @@ class AdministrationOverview extends ChangeNotifier {
   Map<String, bool?> _connectorChecks = const {};
   Map<String, bool?> get connectorChecks => _connectorChecks;
   bool _disposed = false;
+  void _inventoryChanged() {
+    if (_disposed || _connectorChecks.isEmpty) return;
+    final inventory =
+        profile.server.connectorInventory.observations[profile.name];
+    if (inventory == null) return;
+    final retained = <String, bool?>{
+      for (final entry in _connectorChecks.entries)
+        if (inventory.enabled[entry.key] == true) entry.key: entry.value,
+    };
+    if (mapEquals(retained, _connectorChecks)) return;
+    _connectorChecks = Map.unmodifiable(retained);
+    notifyListeners();
+  }
+
   final _generations = <String, int>{};
   static const endpoints = {
     'config': 'config',
@@ -155,6 +171,7 @@ class AdministrationOverview extends ChangeNotifier {
     );
     _observations.addAll(restored);
     _connectorChecks = connectors;
+    _inventoryChanged();
   }
 
   Map<String, dynamic> _healthData(String key, Map<String, dynamic> data) {
@@ -219,7 +236,13 @@ class AdministrationOverview extends ChangeNotifier {
     if (!_disposed) notifyListeners();
     try {
       final data =
-          _immutableObservationValue(await profile.read(endpoint))
+          _immutableObservationValue(
+                key == 'connectors'
+                    ? await profile.server.connectorInventory.refresh(
+                        profile.name,
+                      )
+                    : await profile.read(endpoint),
+              )
               as Map<String, dynamic>;
       if (key == 'model') ConfiguredModel.fromInfo(data);
       // Validate collection shape before replacing the last good observation.
@@ -259,6 +282,7 @@ class AdministrationOverview extends ChangeNotifier {
         }
         if (_disposed || generation != _generations[key]) return;
         _connectorChecks = Map.unmodifiable(results);
+        _inventoryChanged();
       }
       _observations[key] = AdministrationObservation._retained(
         data,
@@ -282,6 +306,7 @@ class AdministrationOverview extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    profile.server.connectorInventory.removeListener(_inventoryChanged);
     super.dispose();
   }
 }

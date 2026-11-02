@@ -1,3 +1,39 @@
+/// Authoritative membership only; a listed connector is not proof it connects.
+final class ConnectorInventoryObservation {
+  ConnectorInventoryObservation._(this.enabled, this.checkedAt);
+  final Map<String, bool> enabled;
+  final DateTime checkedAt;
+
+  factory ConnectorInventoryObservation.decode(
+    Map<String, dynamic> response,
+    DateTime checkedAt,
+  ) {
+    final rows = response['servers'];
+    if (rows is! List) throw const FormatException('Invalid connector list');
+    final enabled = <String, bool>{};
+    for (final row in rows) {
+      if (row is! Map ||
+          row['name'] is! String ||
+          (row['name'] as String).isEmpty ||
+          row['enabled'] is! bool ||
+          enabled.containsKey(row['name'])) {
+        throw const FormatException('Invalid connector membership');
+      }
+      enabled[row['name'] as String] = row['enabled'] as bool;
+    }
+    return ConnectorInventoryObservation._(
+      Map.unmodifiable(enabled),
+      checkedAt,
+    );
+  }
+
+  /// Null means this inventory cannot retire targets from that observation.
+  List<String>? remainingFailures(List<String> names, DateTime? observedAt) =>
+      names.isEmpty || observedAt == null || checkedAt.isBefore(observedAt)
+      ? null
+      : List.unmodifiable(names.where((name) => enabled[name] == true));
+}
+
 /// Current-stock connector observations. Credentials/configuration never escape.
 final class ProfileConnector {
   const ProfileConnector({

@@ -42,7 +42,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/profile_connectors_session_test.dart test/mcp_setup_test.dart test/mcp_oauth_test.dart
+  flutter test --no-pub test/profile_connectors_session_test.dart test/mcp_setup_test.dart test/mcp_oauth_test.dart test/administration_connector_health_test.dart
   flutter test --no-pub test/hosted_connector_accounts_session_test.dart test/upstream_capabilities_ui_test.dart test/hosted_connection_request_test.dart
   ```
 
@@ -63,3 +63,8 @@ An expired authorization is not an account deletion. A replaced account remains
 visible but cannot be reconnected. A lost mutation response never authorizes an
 automatic retry, and changing the selected profile never redirects a pending
 operation into the new profile.
+
+Confirmed connector inventories are shared with Health alerts. Removing or
+disabling a failed connector clears its alert target on successful readback;
+other failed connectors remain actionable. An unavailable readback retains the
+last known issue until a subsequent inventory check confirms removal.

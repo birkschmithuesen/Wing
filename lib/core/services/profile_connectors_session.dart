@@ -50,8 +50,9 @@ class ProfileConnectorsSession extends ChangeNotifier {
     }
   }
 
-  Future<List<ProfileConnector>> _read() async =>
-      ProfileConnector.decodeList(await _profile.read('mcp/servers'));
+  Future<List<ProfileConnector>> _read() async => ProfileConnector.decodeList(
+    await _profile.server.connectorInventory.refresh(profileName),
+  );
   Future<void> refresh() async {
     if (_disposed) return;
     if (_phase != ConnectorPhase.idle && _phase != ConnectorPhase.reading) {
@@ -310,7 +311,12 @@ class ProfileConnectorsSession extends ChangeNotifier {
         {'profile': profileName},
         {...body, 'profile': profileName},
         active,
-        () => dispatched = true,
+        () {
+          dispatched = true;
+          if (!probe) {
+            _profile.server.connectorInventory.invalidate(profileName);
+          }
+        },
       );
       if (probe) {
         final observation = ConnectorProbe.decode(
