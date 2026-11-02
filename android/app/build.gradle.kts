@@ -66,6 +66,7 @@ android {
    buildFeatures { buildConfig = true }
    namespace = "com.tarkilhk.wing"
    compileSdk = 36
+   ndkVersion = providers.gradleProperty("wing.ndkVersion").get()
 
    compileOptions {
        sourceCompatibility = JavaVersion.VERSION_17
