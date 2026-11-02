@@ -98,8 +98,10 @@ def current_upstream_revision() -> str:
 
 def validate_source(source: Path) -> str:
     revision = checkout_revision(source)
-    if revision != current_upstream_revision():
-        raise PreconditionError('Hermes checkout is not current official upstream main; prepare a current checkout')
+    upstream = current_upstream_revision()
+    if revision != upstream:
+        raise PreconditionError(f'Hermes checkout {revision} is not current official upstream main '
+                                f'{upstream}; prepare a current checkout')
     return revision
 
 
@@ -240,33 +242,37 @@ def run(source: Path, output: Path, device: str | None = None) -> dict:
             android.require_emulator(serial)
             receipt['device'] = serial
             stage = 'backend initialization'
-            with owned_backend(source, output) as backend:
-                receipt['backend'] = backend
-                endpoint = f'tcp:{backend["port"]}'
-                forwarded = False
-                stage = 'Android journeys'
-                try:
-                    android.device(serial, 'reverse', '--no-rebind', endpoint, endpoint)
-                    forwarded = True
-                    command = ['flutter', 'test', '--no-pub', '-d', serial, '--reporter=json',
-                               '--dart-define-from-file=' + backend['defines_file'], TARGET]
-                    receipt['command'] = command
-                    with private_file(output / 'journeys.jsonl') as log:
-                        process = subprocess.Popen(command, cwd=ROOT, stdout=log,
-                                                   stderr=subprocess.STDOUT, start_new_session=True,
-                                                   env=flutter_environment(os.environ))
-                        try:
-                            code = process.wait(timeout=900)
-                        finally:
-                            stop_process_group(process)
-                    receipt['journeys'] = journey_verdict((output / 'journeys.jsonl').read_text().splitlines(), code)
-                    receipt['passed'] = receipt['journeys']['passed']
-                finally:
+            try:
+                with owned_backend(source, output) as backend:
+                    receipt['backend'] = backend
+                    endpoint = f'tcp:{backend["port"]}'
+                    forwarded = False
+                    stage = 'Android journeys'
                     try:
-                        android.device(serial, 'shell', 'am', 'force-stop', PACKAGE)
+                        android.device(serial, 'reverse', '--no-rebind', endpoint, endpoint)
+                        forwarded = True
+                        command = ['flutter', 'test', '--no-pub', '-d', serial, '--reporter=json',
+                                   '--dart-define-from-file=' + backend['defines_file'], TARGET]
+                        receipt['command'] = command
+                        with private_file(output / 'journeys.jsonl') as log:
+                            process = subprocess.Popen(command, cwd=ROOT, stdout=log,
+                                                       stderr=subprocess.STDOUT, start_new_session=True,
+                                                       env=flutter_environment(os.environ))
+                            try:
+                                code = process.wait(timeout=900)
+                            finally:
+                                stop_process_group(process)
+                        receipt['journeys'] = journey_verdict((output / 'journeys.jsonl').read_text().splitlines(), code)
+                        receipt['passed'] = receipt['journeys']['passed']
                     finally:
-                        if forwarded:
-                            android.device(serial, 'reverse', '--remove', endpoint)
+                        try:
+                            android.device(serial, 'shell', 'am', 'force-stop', PACKAGE)
+                        finally:
+                            if forwarded:
+                                android.device(serial, 'reverse', '--remove', endpoint)
+            finally:
+                if not receipt['passed']:
+                    android.capture_failure(serial, output)
         receipt['backend_cleaned'] = not Path(receipt['backend']['temporary_home']).exists()
         stage = 'source recheck'
         if checkout_revision(source) != receipt['hermes_revision']:

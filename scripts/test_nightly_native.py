@@ -201,8 +201,8 @@ class Runner:
         elif family == 'stock-hermes':
             if hermes_source is None:
                 raise ValueError('stock-hermes requires --hermes-source with prepared current stock dependencies')
-            self.driver('scripts/test_vanilla_hermes.py', '--device', self.device,
-                        '--hermes-source', hermes_source, '--output', self.output / 'stock')
+            self.driver('scripts/test_vanilla_hermes.py', '--hermes-source', hermes_source,
+                        '--output', self.output / 'stock')
         elif family in ('notification-actions', 'notification-restore',
                         'notification-counts', 'notification-cold'):
             target = ('notification_cold_input_device.dart' if family == 'notification-cold'
@@ -510,15 +510,21 @@ def main():
                 runner.build('integration_test/queued_message_edit_test.dart')
             elif args.family == 'slash':
                 runner.build('integration_test/slash_completion_native_test.dart', defines=SLASH_DEFINES)
-            with android.owned_emulator() as device:
-                runner.device = device
-                android.require_emulator(device)
-                receipt['device'] = device
-                try:
-                    runner.family(args.family, args.hermes_source)
-                except (Exception, KeyboardInterrupt):
-                    runner.capture_failure()
-                    raise
+            if args.family == 'stock-hermes':
+                # The stock runner admits current upstream before it boots its
+                # own emulator. A wrapper-owned boot would make that prepared
+                # source stale if upstream advances during Android startup.
+                runner.family(args.family, args.hermes_source)
+            else:
+                with android.owned_emulator() as device:
+                    runner.device = device
+                    android.require_emulator(device)
+                    receipt['device'] = device
+                    try:
+                        runner.family(args.family, args.hermes_source)
+                    except (Exception, KeyboardInterrupt):
+                        runner.capture_failure()
+                        raise
         receipt['passed'] = bool(runner.steps) and all(step['passed'] for step in runner.steps)
     except (Exception, KeyboardInterrupt) as error:
         receipt['error'] = str(error) or type(error).__name__

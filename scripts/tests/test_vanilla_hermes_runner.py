@@ -41,6 +41,20 @@ class VanillaSourceAdmission(unittest.TestCase):
             with self.assertRaises(ValueError):
                 runner.validate_source(self.source)
 
+    def test_stale_source_cannot_allocate_emulator_or_backend(self):
+        with tempfile.TemporaryDirectory() as output, \
+             patch.object(runner, 'current_upstream_revision', return_value='b' * 40), \
+             patch.object(runner, 'fingerprint', return_value='stable'), \
+             patch.object(runner.android, 'owned_emulator') as emulator, \
+             patch.object(runner, 'owned_backend') as backend:
+            result = runner.run(self.source, Path(output))
+        self.assertFalse(result['passed'])
+        self.assertEqual(result['failed_stage'], 'source validation')
+        self.assertIn(self.revision, result['error'])
+        self.assertIn('b' * 40, result['error'])
+        emulator.assert_not_called()
+        backend.assert_not_called()
+
     def test_modified_backend_code_is_rejected(self):
         (self.source / 'stock.py').write_text('value = 2\n')
         with self.assertRaises(ValueError):
@@ -220,8 +234,10 @@ class BackendOwnership(unittest.TestCase):
              patch.object(runner, 'fingerprint', return_value='stable'), \
              patch.object(runner.android, 'require_emulator'), \
              patch.object(runner.android, 'device', side_effect=device), \
+             patch.object(runner.android, 'capture_failure') as capture, \
              patch.object(runner.subprocess, 'Popen', side_effect=start):
             result = runner.run(self.source, self.output, 'emulator-5562')
+        capture.assert_called_once_with('emulator-5562', self.output)
         self.assertFalse(result['passed'])
         self.assertTrue(result['backend_cleaned'])
         self.assertNotIn('synthetic-local-token', json.dumps(result))

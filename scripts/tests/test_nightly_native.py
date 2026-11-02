@@ -34,6 +34,43 @@ class NativeExecution(unittest.TestCase):
     def command(self, text, code=0):
         return [sys.executable, '-c', f'print({text!r}); raise SystemExit({code})']
 
+    def test_stock_source_is_admitted_before_emulator_boot_can_advance_upstream(self):
+        from scripts import test_vanilla_hermes as vanilla
+        order = []
+        upstream = ['a' * 40]
+
+        @contextlib.contextmanager
+        def emulator():
+            order.append('emulator boot')
+            upstream[0] = 'b' * 40  # Official main advances while Android starts.
+            try:
+                yield 'emulator-5562'
+            finally:
+                order.append('emulator retired')
+
+        class StockRunner(nightly.Runner):
+            def driver(self, script, *args):
+                order.append('source admission')
+                vanilla.validate_source(Path('/prepared-stock'))
+                context = (contextlib.nullcontext(self.device) if '--device' in args
+                           else nightly.android.owned_emulator())
+                with context:
+                    self.steps.append({'name': 'stock journeys', 'passed': True})
+
+        with patch.object(sys, 'argv', ['nightly', 'stock-hermes', '--hermes-source',
+                                       '/prepared-stock', '--output', str(self.output)]), \
+             patch.object(nightly, 'Runner', StockRunner), \
+             patch.object(nightly, 'fingerprint', return_value='stable'), \
+             patch.object(nightly.android, 'owned_emulator', side_effect=emulator), \
+             patch.object(nightly.android, 'require_emulator'), \
+             patch.object(nightly.android, 'capture_failure'), \
+             patch.object(vanilla, 'checkout_revision', return_value='a' * 40), \
+             patch.object(vanilla, 'current_upstream_revision', side_effect=lambda: upstream[0]), \
+             contextlib.redirect_stdout(io.StringIO()):
+            code = nightly.main()
+        self.assertEqual(code, 0)
+        self.assertEqual(order, ['source admission', 'emulator boot', 'emulator retired'])
+
     def test_counts_retires_its_work_lease_when_a_native_assertion_fails(self):
         requests = []
         def post(request, **kwargs):
