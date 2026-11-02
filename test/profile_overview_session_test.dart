@@ -176,7 +176,7 @@ void main() {
         },
         'mcp/servers' => {
           'servers': [
-            {'name': 'local'},
+            {'name': 'local', 'enabled': true},
           ],
         },
         _ => {'data': []},
