@@ -146,6 +146,31 @@ def prepare_owned_android(serial):
     raise TimeoutError('Android launcher did not become healthy before Wing installation')
 
 
+def host_memory_snapshot():
+    snapshot = {}
+    for name, path in {
+        'memory': '/proc/meminfo',
+        'pressure': '/proc/pressure/memory',
+        'oom_kills': '/proc/vmstat',
+        'cgroup_events': '/sys/fs/cgroup/memory.events',
+        'cgroup_limit': '/sys/fs/cgroup/memory.max',
+        'cgroup_current': '/sys/fs/cgroup/memory.current',
+    }.items():
+        try:
+            text = Path(path).read_text()
+            if name == 'memory':
+                text = '\n'.join(line for line in text.splitlines()
+                                 if line.partition(':')[0] in
+                                 ('MemTotal', 'MemAvailable', 'SwapTotal', 'SwapFree'))
+            elif name == 'oom_kills':
+                text = '\n'.join(line for line in text.splitlines()
+                                 if line.startswith('oom_kill '))
+            snapshot[name] = text.strip()
+        except OSError as error:
+            snapshot[name] = {'error': str(error)}
+    return snapshot
+
+
 def emulator_registered(serial, *, timeout=25):
     connected = subprocess.check_output(
         [adb_path(), 'devices'], text=True, timeout=timeout)
@@ -174,6 +199,7 @@ def start_owned_emulator(sdk, serial, avds):
     (OUTPUT / 'emulator-storage.json').write_text(json.dumps({
         'total_bytes': disk.total, 'used_bytes': disk.used, 'free_bytes': disk.free,
     }, indent=2) + '\n')
+    lifecycle = {'before_start': host_memory_snapshot(), 'retirement_confirmed': False}
     with (OUTPUT / 'emulator.log').open('w') as log:
         process = subprocess.Popen([
             str(sdk / 'emulator/emulator'), '-avd', 'wing_notification_gate',
@@ -198,22 +224,33 @@ def start_owned_emulator(sdk, serial, avds):
             prepare_owned_android(serial)
             yield serial
         finally:
-            process.terminate()
+            lifecycle.update(pid=process.pid, exit_before_cleanup=process.poll())
             try:
-                process.wait(timeout=15)
-            except subprocess.TimeoutExpired:
-                process.kill()
-                process.wait(timeout=15)
-            # Process exit and ADB transport retirement are separate events.
-            # Release this context only once the next owner can admit its slot.
-            deadline = time.monotonic() + 30
-            while True:
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise TimeoutError(f'{serial} remained registered after emulator exit')
-                if not emulator_registered(serial, timeout=min(25, remaining)):
-                    break
-                time.sleep(min(0.25, remaining))
+                process.terminate()
+                try:
+                    lifecycle['exit_after_cleanup'] = process.wait(timeout=15)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    lifecycle['exit_after_cleanup'] = process.wait(timeout=15)
+                # Process exit and ADB transport retirement are separate events.
+                # Release this context only once the next owner can admit its slot.
+                deadline = time.monotonic() + 30
+                while True:
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(f'{serial} remained registered after emulator exit')
+                    if not emulator_registered(serial, timeout=min(25, remaining)):
+                        lifecycle['retirement_confirmed'] = True
+                        break
+                    time.sleep(min(0.25, remaining))
+            finally:
+                lifecycle['after_cleanup'] = host_memory_snapshot()
+                try:
+                    (OUTPUT / 'emulator-lifecycle.json').write_text(
+                        json.dumps(lifecycle, indent=2) + '\n')
+                except OSError as error:
+                    print('Could not record emulator lifecycle: ' + str(error),
+                          file=sys.stderr)
 
 
 def main():

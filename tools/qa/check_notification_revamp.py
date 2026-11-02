@@ -253,17 +253,24 @@ def check_untrusted_main_intents():
     print('PASS: exported MainActivity rejects raw, forged and wrong-type notification inputs without decisions or crashes', flush=True)
 
 
+def wait_for_reply_notice(answer):
+    """Observe the exact reply after the coordinator has rendered and saved it."""
+    def published_notice():
+        notices = json.loads(state()['notices'] or '{}')
+        return next((value for key, value in notices.items()
+                     if json.loads(key).get('profile') == 'a'
+                     and isinstance(value.get('result'), dict)
+                     and value['result'].get('content', {}).get('preview') == answer), None)
+    return until(published_notice, 'Exact reply notification was not published')
+
+
 def check_content_tap_clear():
     """A body tap must clear Android's slot before history/network settlement."""
     adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     until(lambda: state()['lifecycle'] == 'paused', 'Fixture did not enter the background')
     answer = 'Read this notification while history is held.'
     state('/reply', {'text': answer})
-    def published_notice():
-        notices = json.loads(state()['notices'] or '{}')
-        return next((value for key, value in notices.items()
-                     if json.loads(key).get('profile') == 'a' and value['result']), None)
-    notice = until(published_notice, 'Captured chat notification was not published')
+    notice = wait_for_reply_notice(answer)
     notification_id = json.loads(notice['rendered'])['id']
     state('/hold-history', {})
     try:
@@ -347,6 +354,7 @@ def check_cold_chat_body_tap(output):
     adb('shell', 'input', 'keyevent', 'KEYCODE_HOME')
     answer = 'This exact individual answer must survive cold startup.'
     state('/reply', {'text': answer})
+    wait_for_reply_notice(answer)
     pid = adb('shell', 'pidof', PACKAGE).strip()
     adb('shell', 'run-as', PACKAGE, 'kill', '-9', pid)
     until(lambda: not adb('shell', f'pidof {PACKAGE} || true').strip(),

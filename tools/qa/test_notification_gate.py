@@ -78,6 +78,59 @@ class NotificationShadeNavigationTest(unittest.TestCase):
         self.assertIs(shown, notice)
 
 
+class ColdChatPublicationTest(unittest.TestCase):
+    def exercise(self, never_publishes=False):
+        answer = 'This exact individual answer must survive cold startup.'
+        reads = 0
+        killed = False
+        clock = [0.0]
+        def state(path='/', data=None):
+            nonlocal reads
+            if path == '/':
+                reads += 1
+            preview = answer if reads >= 2 and not never_publishes else 'Previous reply'
+            return {'selected_profile': 'a', 'notices': json.dumps({
+                json.dumps({'profile': 'a'}): {
+                    'result': {'content': {'preview': preview}},
+                    'rendered': json.dumps({'id': 42}),
+                }})}
+        def adb(*args):
+            nonlocal killed
+            if args[:3] == ('shell', 'run-as', driver.PACKAGE):
+                self.assertGreaterEqual(reads, 2,
+                    'Cold tap must not kill Wing before the exact new reply is published')
+                self.assertFalse(never_publishes)
+                killed = True
+            if args[:2] == ('shell', 'pidof'):
+                return '99'
+            return ''
+        def tap(**kwargs):
+            self.assertTrue(killed)
+            self.assertEqual(kwargs['text'], answer)
+        def sleep(seconds):
+            clock[0] += seconds
+        try:
+            with patch.object(driver, 'state', side_effect=state), \
+                 patch.object(driver, 'adb', side_effect=adb), \
+                 patch.object(driver, 'tap', side_effect=tap), \
+                 patch.object(driver, 'shade'), patch.object(driver, 'screenshot'), \
+                 patch.object(driver, 'nodes', return_value=[ET.Element('node', text=answer)]), \
+                 patch.object(driver.time, 'sleep', side_effect=sleep), \
+                 patch.object(driver.time, 'monotonic', side_effect=lambda: clock[0]):
+                driver.check_cold_chat_body_tap(Path('unused'))
+        finally:
+            if never_publishes:
+                self.assertFalse(killed)
+        self.assertTrue(killed)
+
+    def test_exact_new_reply_is_published_before_process_death(self):
+        self.exercise()
+
+    def test_old_published_reply_cannot_admit_killing_the_process(self):
+        with self.assertRaisesRegex(AssertionError, '^Exact reply notification was not published$'):
+            self.exercise(never_publishes=True)
+
+
 class NotificationFixtureSetupTest(unittest.TestCase):
     def test_provisions_only_qa_permissions_before_first_launch(self):
         calls = []
@@ -156,7 +209,10 @@ class NotificationDismissalTest(unittest.TestCase):
             if path == '/release-history':
                 released = True
             return {'notices': json.dumps({json.dumps({'profile': 'a'}): {
-                        'result': not delayed_publication or publication_reads >= 2,
+                        'result': {'content': {'preview': (
+                            'Read this notification while history is held.'
+                            if not delayed_publication or publication_reads >= 2
+                            else 'A previously published reply')}},
                         'rendered': json.dumps({'id': 42001}),
                     }}), 'lifecycle': 'resumed' if held else 'paused',
                     'chat_visible': held, 'history_held': held,
@@ -389,10 +445,11 @@ class OwnedEmulatorRetirementTest(unittest.TestCase):
         def launch(*args, **kwargs):
             registered_until[0] = float('inf')
             process = Mock()
+            process.pid = 123
             process.poll.return_value = None
             def stopped(*args, **kwargs):
                 registered_until[0] = clock[0] + 0.5 if disappears else float('inf')
-                return 0
+                return process.poll.return_value if process.poll.return_value is not None else 0
             process.wait.side_effect = stopped
             processes.append(process)
             return process
@@ -430,6 +487,30 @@ class OwnedEmulatorRetirementTest(unittest.TestCase):
             for process in processes:
                 process.terminate.assert_called_once_with()
                 process.kill.assert_not_called()
+
+    def test_unexpected_exit_retains_signal_and_host_memory_evidence(self):
+        with self.transport() as (processes, _):
+            with gate.owned_emulator():
+                processes[0].poll.return_value = -9
+            evidence = json.loads((gate.OUTPUT / 'emulator-lifecycle.json').read_text())
+            self.assertEqual(evidence['exit_before_cleanup'], -9)
+            self.assertEqual(evidence['exit_after_cleanup'], -9)
+            self.assertIn('before_start', evidence)
+            self.assertIn('after_cleanup', evidence)
+            self.assertIn('memory', evidence['before_start'])
+
+    def test_unwritable_lifecycle_evidence_does_not_replace_native_failure(self):
+        write_text = Path.write_text
+        def write(path, *args, **kwargs):
+            if path.name == 'emulator-lifecycle.json':
+                raise PermissionError('evidence denied')
+            return write_text(path, *args, **kwargs)
+        with self.transport(), patch.object(Path, 'write_text', new=write), \
+             contextlib.redirect_stderr(io.StringIO()) as errors:
+            with self.assertRaisesRegex(RuntimeError, 'native failure'):
+                with gate.owned_emulator():
+                    raise RuntimeError('native failure')
+        self.assertIn('Could not record emulator lifecycle', errors.getvalue())
 
     def test_still_registered_after_deadline_fails_retirement(self):
         with self.transport(disappears=False) as (processes, clock):
