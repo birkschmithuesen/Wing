@@ -204,7 +204,7 @@ def start_owned_emulator(sdk, serial, avds):
         process = subprocess.Popen([
             str(sdk / 'emulator/emulator'), '-avd', 'wing_notification_gate',
             '-port', serial.removeprefix('emulator-'), '-no-window', '-no-audio', '-no-boot-anim',
-            '-no-snapshot', '-gpu', 'swiftshader', '-feature', '-Vulkan',
+            '-no-snapshot', '-gpu', 'lavapipe', '-feature', 'Vulkan,VulkanNativeSwapchain',
             '-memory', '4096', '-cores', '4',
             '-no-metrics', '-show-kernel',
         ], stdout=log, stderr=subprocess.STDOUT, env=env)
