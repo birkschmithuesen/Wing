@@ -146,12 +146,18 @@ def prepare_owned_android(serial):
     raise TimeoutError('Android launcher did not become healthy before Wing installation')
 
 
+def emulator_registered(serial, *, timeout=25):
+    connected = subprocess.check_output(
+        [adb_path(), 'devices'], text=True, timeout=timeout)
+    return any(line.split()[0] == serial
+               for line in connected.splitlines()[1:] if line.split())
+
+
 @contextmanager
 def owned_emulator():
     sdk = Path(os.environ['ANDROID_HOME'])
     serial = 'emulator-5562'
-    connected = subprocess.check_output([adb_path(), 'devices'], text=True, timeout=25)
-    if any(line.split()[0] == serial for line in connected.splitlines()[1:] if line.split()):
+    if emulator_registered(serial):
         raise ValueError(f'{serial} is occupied; refusing to replace another emulator')
     with tempfile.TemporaryDirectory(prefix='avd-', dir=OUTPUT.resolve()) as directory:
         with start_owned_emulator(sdk, serial, Path(directory)) as started:
@@ -198,6 +204,16 @@ def start_owned_emulator(sdk, serial, avds):
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait(timeout=15)
+            # Process exit and ADB transport retirement are separate events.
+            # Release this context only once the next owner can admit its slot.
+            deadline = time.monotonic() + 30
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TimeoutError(f'{serial} remained registered after emulator exit')
+                if not emulator_registered(serial, timeout=min(25, remaining)):
+                    break
+                time.sleep(min(0.25, remaining))
 
 
 def main():
