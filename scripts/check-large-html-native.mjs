@@ -375,10 +375,12 @@ try {
   assert.equal(await connection.evaluate(parentContext, 'location.href'), pageUrl);
 
   const httpIsolation = await checkExternalHttpIsolation(connection, reportContext);
-  const screenshot = await connection.request('Page.captureScreenshot', { format: 'png' });
+  // Android owns the composed display; capture the selected emulator's pixels.
+  const { stdout: screenshot } = await run('adb', ['-s', serial, 'exec-out', 'screencap', '-p'], {
+    encoding: null, timeout: requestTimeout, killSignal: 'SIGKILL', maxBuffer: 16 * 1024 * 1024,
+  });
   await mkdir(resolve('build/large-html-review'), { recursive: true });
-  await writeFile(resolve('build/large-html-review/native-32mib.png'),
-    Buffer.from(screenshot.data, 'base64'));
+  await writeFile(resolve('build/large-html-review/native-32mib.png'), screenshot);
   await writeFile(resolve('build/large-html-review/native-http-isolation.json'),
     `${JSON.stringify(httpIsolation, null, 2)}\n`);
   console.log('PASS: native Android WebView rendered the complete 32 MiB report; controls work; parent/storage and external HTTP fetch/image remain blocked; the same emulator reached the HTTP control.');
