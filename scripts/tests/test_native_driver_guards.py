@@ -28,9 +28,12 @@ DRIVERS = (
 
 class NativeVoiceAdbdOwnership(unittest.TestCase):
     def driver(self, prior='2000', *, root_error=False, root_denied=False,
-               restore_bad=False, unroot_error=False):
+               restore_bad=False, unroot_error=False, root_reply_error=False):
         from scripts import test_native_voice as voice
         driver = voice.Driver('emulator-5562', Path('/unused'), 30)
+        clock = [0.0]
+        self.enterContext(patch.object(voice.time, 'monotonic', side_effect=lambda: clock[0]))
+        self.enterContext(patch.object(voice.time, 'sleep', side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)))
         state = {'uid': prior}
         calls = []
 
@@ -49,6 +52,9 @@ class NativeVoiceAdbdOwnership(unittest.TestCase):
             if command == ('root',):
                 if not root_denied:
                     state['uid'] = '0'
+                if root_reply_error:
+                    raise subprocess.CalledProcessError(
+                        1, ['adb', '-s', driver.serial, 'root'], stderr='error: closed')
                 if root_error:
                     raise RuntimeError('lost root receipt')
             elif command == ('unroot',):
@@ -107,6 +113,17 @@ class NativeVoiceAdbdOwnership(unittest.TestCase):
         self.assertFalse(driver.evidence['adbd']['restored'])
         self.assertIn('cleanup_error', driver.evidence['adbd'])
 
+    def test_lost_root_reply_observes_authority_before_admitting_or_restoring(self):
+        driver, state, calls = self.driver(root_reply_error=True)
+        with driver.rooted_emulator():
+            self.assertEqual(state['uid'], '0')
+            self.assertIn(('wait-for-device',), calls[calls.index(('root',)) + 1:])
+        self.assertEqual(state['uid'], '2000')
+        self.assertTrue(driver.evidence['adbd']['restored'])
+        self.assertEqual(calls.count(('root',)), 1)
+        self.assertEqual(driver.evidence['adbd']['root_reply_error'],
+                         {'returncode': 1, 'stderr': 'error: closed'})
+
     def test_lost_unroot_reply_reconnects_and_verifies_restored_authority(self):
         driver, state, calls = self.driver(unroot_error=True)
         with driver.rooted_emulator():
@@ -128,11 +145,50 @@ class NativeVoiceAdbdOwnership(unittest.TestCase):
     def test_lost_unroot_reply_with_changed_identity_still_fails(self):
         driver, _, _ = self.driver(unroot_error=True)
         adb = driver.adb
-        with self.assertRaisesRegex(RuntimeError, 'authority was not restored'):
+        with self.assertRaisesRegex(RuntimeError, 'identity changed'):
             with driver.rooted_emulator():
                 driver.adb = lambda *args: ('emulator-9999' if args == ('get-serialno',)
                                             else adb(*args))
         self.assertFalse(driver.evidence['adbd']['restored'])
+
+    def test_delayed_root_and_unroot_replies_do_not_settle_the_transition(self):
+        driver, state, calls = self.driver()
+        adb, shell = driver.adb, driver.shell
+        pending = [None, 0]
+
+        def dispatch(*command):
+            result = adb(*command)
+            if command in {('root',), ('unroot',)}:
+                pending[:] = [state['uid'], 3]
+                state['uid'] = '2000' if command == ('root',) else '0'
+                raise subprocess.CalledProcessError(1, ['adb', *command], stderr='closed')
+            return result
+
+        def observe(*command):
+            if command == ('id', '-u') and pending[1]:
+                pending[1] -= 1
+                if pending[1] == 2:
+                    raise subprocess.CalledProcessError(1, ['adb', 'shell'], stderr='offline')
+                if not pending[1]:
+                    state['uid'] = pending[0]
+            return shell(*command)
+
+        driver.adb, driver.shell = dispatch, observe
+        with driver.rooted_emulator():
+            self.assertEqual(state['uid'], '0')
+            self.assertNotIn(('unroot',), calls)
+        self.assertEqual(state['uid'], '2000')
+        self.assertEqual(calls.count(('root',)), 1)
+        self.assertEqual(calls.count(('unroot',)), 1)
+        self.assertTrue(driver.evidence['adbd']['restored'])
+
+    def test_root_reply_error_does_not_admit_work_without_root_authority(self):
+        driver, _, calls = self.driver(root_reply_error=True, root_denied=True)
+        with self.assertRaisesRegex(RuntimeError, 'root authority was not established'):
+            with driver.rooted_emulator():
+                self.fail('Unconfirmed root admitted native work')
+        self.assertEqual(calls.count(('root',)), 1)
+        self.assertTrue(driver.evidence['adbd']['restored'])
 
     def test_physical_identity_is_rejected_before_adb_root(self):
         driver, _, calls = self.driver()
