@@ -412,6 +412,48 @@ elif sys.argv[3] == 'forward':
             gate.capture_failure('emulator-5562', Path(directory))
         self.assertIn('disk full', errors.getvalue())
 
+    def test_only_observed_anr_captures_owned_android_bugreport(self):
+        cases = [
+            (('logcat', '-d', '-t', '3000'), 'ANR in com.tarkilhk.wing.dev'),
+            (('shell', 'dumpsys', 'window'),
+             'mCurrentFocus=Application Not Responding: com.android.systemui'),
+            (None, 'ordinary assertion failure'),
+        ]
+        for trigger, evidence in cases:
+            with self.subTest(trigger=trigger), tempfile.TemporaryDirectory() as directory:
+                def device(serial, *args):
+                    self.assertEqual(serial, 'emulator-5562')
+                    return evidence if args == trigger else 'ordinary diagnostics'
+
+                with patch.object(gate, 'device', side_effect=device), \
+                     patch.object(gate, 'adb_path', return_value='/sdk/adb'), \
+                     patch.object(gate.subprocess, 'run') as run:
+                    gate.capture_failure('emulator-5562', Path(directory))
+                reports = [call for call in run.call_args_list
+                           if 'bugreport' in call.args[0]]
+                self.assertEqual(len(reports), 0 if trigger is None else 1)
+                if reports:
+                    self.assertEqual(reports[0].args[0], [
+                        '/sdk/adb', '-s', 'emulator-5562', 'bugreport',
+                        str(Path(directory) / 'failure-bugreport.zip')])
+                    self.assertTrue(reports[0].kwargs['check'])
+                    self.assertEqual(reports[0].kwargs['timeout'], 120)
+
+    def test_anr_bugreport_timeout_does_not_replace_original_failure(self):
+        def run(command, **kwargs):
+            if 'bugreport' in command:
+                raise subprocess.TimeoutExpired(command, 120)
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.object(gate, 'device', return_value='ANR in com.tarkilhk.wing.dev'), \
+             patch.object(gate, 'adb_path', return_value='/sdk/adb'), \
+             patch.object(gate.subprocess, 'run', side_effect=run):
+            output = Path(directory)
+            gate.capture_failure('emulator-5562', output)
+            errors = json.loads((output / 'capture-errors.json').read_text())
+            self.assertTrue(any('failure-bugreport.zip' in error for error in errors))
+            self.assertIn('ANR in', (output / 'failure-logcat.txt').read_text())
+
     def test_shade_driver_failure_fails_the_gate(self):
         calls = []
 
