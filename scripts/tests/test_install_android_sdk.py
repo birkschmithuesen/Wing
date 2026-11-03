@@ -7,7 +7,10 @@ import tempfile
 import unittest
 import subprocess
 import sys
-from unittest.mock import patch
+import signal
+import time
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from scripts import install_android_sdk as installer
 
@@ -25,6 +28,8 @@ class SdkInstall(unittest.TestCase):
 import os
 from pathlib import Path
 import sys
+import subprocess
+import time
 root = Path(os.environ['ANDROID_HOME'])
 counter = root / 'calls'
 attempt = int(counter.read_text()) + 1 if counter.exists() else 1
@@ -33,7 +38,14 @@ expected = ['--verbose', 'emulator', 'system-images;android-36;google_apis;x86_6
 if os.environ.get('FAKE_NDK'):
     expected.append('ndk;' + os.environ['FAKE_NDK'])
 assert sys.argv[1:] == expected, sys.argv[1:]
-print('SDK download attempt', attempt)
+print('SDK download attempt', attempt, flush=True)
+if attempt <= int(os.environ.get('FAKE_SDK_HANGS', '0')):
+    child = subprocess.Popen([sys.executable, '-c',
+        'import signal,time; signal.signal(signal.SIGTERM,signal.SIG_IGN); '
+        'print("ready",flush=True); time.sleep(600)'], stdout=subprocess.PIPE, text=True)
+    child.stdout.readline()
+    (root / ('child-' + str(attempt))).write_text(str(child.pid))
+    time.sleep(600)
 if attempt <= int(os.environ['FAKE_SDK_FAILURES']):
     archive = root / '.temp/PackageOperation01' / ('ndk.zip' if os.environ.get('FAKE_NDK') else 'emulator.zip')
     archive.parent.mkdir(parents=True, exist_ok=True)
@@ -43,16 +55,91 @@ if attempt <= int(os.environ['FAKE_SDK_FAILURES']):
 ''')
         manager.chmod(0o755)
 
-    def install(self, failures):
+    def install(self, failures, hangs=0):
+        sleep = Mock()
         with patch.dict(os.environ, {'ANDROID_HOME': str(self.sdk),
-                                    'FAKE_SDK_FAILURES': str(failures)}), \
-             patch.object(installer.time, 'sleep') as sleep, \
+                                    'FAKE_SDK_FAILURES': str(failures),
+                                    'FAKE_SDK_HANGS': str(hangs)}), \
+             patch.object(installer, 'ATTEMPT_TIMEOUT_SECONDS', 1), \
+             patch.object(installer, 'time', SimpleNamespace(time=time.time, sleep=sleep)), \
              contextlib.redirect_stdout(io.StringIO()):
             code = installer.install(
                 ['emulator', 'system-images;android-36;google_apis;x86_64'],
                 self.output,
             )
         return code, sleep
+
+    def assert_children_stopped(self):
+        for child in self.sdk.glob('child-*'):
+            stat = Path('/proc') / child.read_text() / 'stat'
+            deadline = time.monotonic() + 2
+            while True:
+                try:
+                    state = stat.read_text().rsplit(')', 1)[1].split()[0]
+                except (FileNotFoundError, ProcessLookupError):
+                    break
+                if state == 'Z':
+                    break
+                if time.monotonic() >= deadline:
+                    self.fail('SDK descendant remained alive: ' + child.read_text())
+                time.sleep(.01)
+
+    def test_stalled_attempt_is_retired_before_existing_retry_succeeds(self):
+        code, sleep = self.install(0, hangs=1)
+        self.assertEqual(code, 0)
+        self.assertEqual((self.sdk / 'calls').read_text(), '2')
+        self.assertEqual(sleep.call_count, 1)
+        failed = json.loads((self.output / 'attempt-1.json').read_text())
+        self.assertEqual(failed['exit_code'], 124)
+        self.assertTrue(failed['timed_out'])
+        self.assertFalse(failed['interrupted'])
+        self.assertIn('SDK download attempt 1', (self.output / 'attempt-1.log').read_text())
+        self.assertFalse(json.loads((self.output / 'attempt-2.json').read_text())['timed_out'])
+        self.assert_children_stopped()
+
+    def test_persistent_stall_remains_failed_after_existing_attempt_budget(self):
+        code, sleep = self.install(0, hangs=3)
+        self.assertEqual(code, 124)
+        self.assertEqual((self.sdk / 'calls').read_text(), '3')
+        self.assertEqual(sleep.call_count, 2)
+        for attempt in (1, 2, 3):
+            report = json.loads((self.output / f'attempt-{attempt}.json').read_text())
+            self.assertTrue(report['timed_out'])
+            self.assertEqual(report['exit_code'], 124)
+        self.assert_children_stopped()
+
+    def test_cli_cancellation_retires_owned_manager_without_retry(self):
+        self.write_ndk('28.2.13676358')
+        environment = {**os.environ, 'ANDROID_HOME': str(self.sdk),
+                       'FAKE_NDK': '28.2.13676358', 'FAKE_SDK_FAILURES': '0',
+                       'FAKE_SDK_HANGS': '3'}
+        with (self.root / 'cli.log').open('w') as log:
+            process = subprocess.Popen([sys.executable, installer.__file__, 'emulator',
+                'system-images;android-36;google_apis;x86_64'], cwd=self.root,
+                env=environment, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+            try:
+                deadline = time.monotonic() + 5
+                while not (self.sdk / 'child-1').exists():
+                    if time.monotonic() >= deadline:
+                        self.fail('Controlled SDK manager did not start')
+                    time.sleep(.01)
+                process.send_signal(signal.SIGTERM)
+                self.assertNotEqual(process.wait(timeout=5), 0)
+                report = json.loads((self.root / 'build/sdk-install/attempt-1.json').read_text())
+                self.assertTrue(report['interrupted'])
+                self.assertFalse(report['timed_out'])
+                self.assertEqual((self.sdk / 'calls').read_text(), '1')
+                self.assert_children_stopped()
+            finally:
+                installer.stop_process_group(process)
+                report_path = self.root / 'build/sdk-install/attempt-1.json'
+                if report_path.exists():
+                    pid = json.loads(report_path.read_text()).get('pid')
+                    if pid is not None:
+                        try:
+                            os.killpg(pid, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
 
     def test_transient_archive_failures_recover_and_keep_each_attempt(self):
         code, sleep = self.install(2)
@@ -97,7 +184,7 @@ if attempt <= int(os.environ['FAKE_SDK_FAILURES']):
              patch.dict(os.environ, {'ANDROID_HOME': str(self.sdk),
                                     'FAKE_NDK': '28.2.13676358',
                                     'FAKE_SDK_FAILURES': '1'}), \
-             patch.object(installer.time, 'sleep'), \
+             patch.object(installer, 'time', SimpleNamespace(time=time.time, sleep=Mock())), \
              contextlib.redirect_stdout(io.StringIO()):
             code = installer.main(['emulator', 'system-images;android-36;google_apis;x86_64'])
         self.assertEqual(code, 0)
