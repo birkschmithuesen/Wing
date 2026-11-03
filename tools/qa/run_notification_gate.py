@@ -47,6 +47,7 @@ def capture_failure(serial, output):
         print('Could not create failure evidence directory: ' + str(error), file=sys.stderr)
         return
     errors = []
+    anr = False
     for name, args in {
         'failure-logcat.txt': ('logcat', '-d', '-t', '3000'),
         'failure-window.txt': ('shell', 'dumpsys', 'window'),
@@ -56,7 +57,10 @@ def capture_failure(serial, output):
         'failure-services.txt': ('shell', 'dumpsys', 'activity', 'services'),
     }.items():
         try:
-            (output / name).write_text(device(serial, *args))
+            evidence = device(serial, *args)
+            (output / name).write_text(evidence)
+            if name in ('failure-logcat.txt', 'failure-window.txt'):
+                anr |= 'ANR in ' in evidence or 'Application Not Responding:' in evidence
         except (OSError, subprocess.SubprocessError) as error:
             errors.append(name + ': ' + str(error))
     try:
@@ -70,6 +74,16 @@ def capture_failure(serial, output):
                            stdout=capture, check=True, timeout=25)
     except (OSError, subprocess.SubprocessError) as error:
         errors.append('failure.png: ' + str(error))
+    if anr:
+        # Logcat identifies the ANR but omits the saved Java/native thread traces.
+        # The Android bugreport retains those after the failed app has stopped.
+        try:
+            with (output / 'failure-bugreport-command.log').open('w') as log:
+                subprocess.run([adb_path(), '-s', serial, 'bugreport',
+                                str(output / 'failure-bugreport.zip')],
+                               stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+        except (OSError, subprocess.SubprocessError) as error:
+            errors.append('failure-bugreport.zip: ' + str(error))
     if errors:
         try:
             (output / 'capture-errors.json').write_text(json.dumps(errors, indent=2) + '\n')

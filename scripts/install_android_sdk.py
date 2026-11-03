@@ -7,10 +7,18 @@ import os
 from pathlib import Path
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
 import zipfile
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+from scripts.test import stop_process_group  # noqa: E402
+
+# Three attempts plus cleanup and diagnostics fit within CI's 15-minute step.
+ATTEMPT_TIMEOUT_SECONDS = 240
 
 
 def archive_details(path, sdk):
@@ -55,23 +63,44 @@ def install(packages, output):
         print(f'Android SDK install attempt {attempt}/3; diagnostics: {output}', flush=True)
         log_path = output / f'attempt-{attempt}.log'
         started = time.time()
-        with log_path.open('w') as log:
-            try:
-                result = subprocess.run([str(manager), '--verbose', *packages],
-                                        stdout=log, stderr=subprocess.STDOUT)
-                code = result.returncode
-            except OSError as error:
-                log.write(str(error) + '\n')
-                code = 1
+        report_path = output / f'attempt-{attempt}.json'
+        report = {'exit_code': None, 'started_at': started,
+                  'timeout_seconds': ATTEMPT_TIMEOUT_SECONDS, 'timed_out': False}
+        report_path.write_text(json.dumps(report, indent=2) + '\n')
+        code = None
+        try:
+            with log_path.open('w') as log:
+                log.write(f'SDK attempt {attempt}; deadline {ATTEMPT_TIMEOUT_SECONDS}s\n')
+                log.flush()
+                process = None
+                try:
+                    process = subprocess.Popen([str(manager), '--verbose', *packages],
+                                               stdout=log, stderr=subprocess.STDOUT,
+                                               start_new_session=True)
+                    report['pid'] = process.pid
+                    report_path.write_text(json.dumps(report, indent=2) + '\n')
+                    try:
+                        code = process.wait(timeout=ATTEMPT_TIMEOUT_SECONDS)
+                    except subprocess.TimeoutExpired:
+                        code = 124
+                        report['timed_out'] = True
+                        log.write('SDK manager exceeded the attempt deadline.\n')
+                except OSError as error:
+                    log.write(str(error) + '\n')
+                    code = 1
+                finally:
+                    if process is not None:
+                        stop_process_group(process)
+        finally:
+            report.update(exit_code=code, interrupted=code is None,
+                          elapsed_seconds=round(time.time() - started, 2),
+                          disk_free_bytes=shutil.disk_usage(sdk).free, archives=[])
+            if code != 0:
+                # Capture before the next invocation checks/replaces the previous ZIP.
+                report['archives'] = [archive_details(path, sdk)
+                                      for path in sorted((sdk / '.temp').rglob('*.zip'))]
+            report_path.write_text(json.dumps(report, indent=2) + '\n')
         print(log_path.read_text(errors='replace'), end='', flush=True)
-        report = {'exit_code': code, 'started_at': started,
-                  'elapsed_seconds': round(time.time() - started, 2),
-                  'disk_free_bytes': shutil.disk_usage(sdk).free, 'archives': []}
-        if code:
-            # Capture before the next invocation checks/replaces the previous ZIP.
-            report['archives'] = [archive_details(path, sdk)
-                                  for path in sorted((sdk / '.temp').rglob('*.zip'))]
-        (output / f'attempt-{attempt}.json').write_text(json.dumps(report, indent=2) + '\n')
         if code == 0:
             return 0
         print(f'Android SDK install failed (exit {code}); evidence saved in {output}', flush=True)
@@ -94,4 +123,8 @@ def main(packages):
 if __name__ == '__main__':
     if not sys.argv[1:]:
         sys.exit('Usage: install_android_sdk.py <sdk-package> [...]')
+    def cancelled(signum, frame):
+        raise KeyboardInterrupt('SDK installation cancelled')
+
+    signal.signal(signal.SIGTERM, cancelled)
     sys.exit(main(sys.argv[1:]))
