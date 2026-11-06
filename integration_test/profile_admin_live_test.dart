@@ -16,6 +16,7 @@ import 'package:wing/core/services/profile_identity_edit_session.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/screens/administration/admin_identity_page.dart';
+import 'package:wing/core/widgets/studio_form_actions.dart';
 
 /// Opt-in UI acceptance against the disposable android-qa-a profile.
 ///
@@ -284,6 +285,39 @@ void main() {
             final state = {
               'editorPresent': confirm.evaluate().isNotEmpty,
               'confirmHitTestable': confirm.hitTestable().evaluate().isNotEmpty,
+              'formActions': tester
+                  .widgetList<StudioFormActions>(
+                    find.ancestor(
+                      of: confirm,
+                      matching: find.byType(StudioFormActions),
+                    ),
+                  )
+                  .map(
+                    (actions) => {
+                      'pending': actions.busy,
+                      'confirmEnabled': actions.onConfirm != null,
+                    },
+                  )
+                  .toList(),
+              'formFields': {
+                for (final key in [
+                  'project-name-field',
+                  'project-folder-field',
+                ])
+                  key: tester
+                      .widgetList<TextField>(find.byKey(ValueKey(key)))
+                      .map((field) => field.controller?.text)
+                      .toList(),
+              },
+              'localFailure': tester
+                  .widgetList<Text>(
+                    find.descendant(
+                      of: find.byKey(const ValueKey('project-save-error')),
+                      matching: find.byType(Text),
+                    ),
+                  )
+                  .map((text) => text.data)
+                  .toList(),
               'workspaceError': workspace.error?.toString(),
               'projectsError': workspace.current?.projectsError?.toString(),
               'projects': projects,
