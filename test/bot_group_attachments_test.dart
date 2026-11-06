@@ -204,7 +204,7 @@ void main() {
       );
       expect(sent.$3['payload'], {
         'text': '',
-        'thread_id': group.id,
+        'thread_id': sent.$3['event_id'],
         'attachments': [manifest],
       });
       expect(owner.attachments, isEmpty);

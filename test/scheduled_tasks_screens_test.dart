@@ -1,6 +1,7 @@
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/models/profile_session_key.dart';
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -163,10 +164,164 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets('Stop run pending and settlement ${brightness.name} $scale', (
+        tester,
+      ) async {
+        fixture.jobs['morning'] = {
+          ...taskJson(state: 'running'),
+          'latest_execution': {
+            'id': 'later',
+            'status': 'rejected',
+            'error': 'Already running',
+          },
+        };
+        final c = await controller();
+        await show(
+          tester,
+          AdminScheduledTaskDetailPage(
+            controller: c,
+            initial: c.task('morning')!,
+            onOpenSession: (_) async {},
+          ),
+          brightness: brightness,
+          scale: scale,
+          width: scale == 2 ? 320 : 390,
+        );
+        fixture.gate = Completer<void>();
+        await tester.tap(find.byTooltip('Stop run'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.bySemanticsLabel('Updating task'), findsWidgets);
+        await screenshot(tester, 'cancel-held-${brightness.name}-$scale');
+        expect(fixture.mutations, 1);
+        fixture.gate!.complete();
+        await tester.pumpAndSettle();
+        expect(c.notice, contains('Stop requested'));
+        expect(c.task('morning')!.running, isTrue);
+        expect(fixture.jobs['morning']!['enabled'], isTrue);
+        await screenshot(tester, 'cancel-requested-${brightness.name}-$scale');
+        fixture.jobs['morning']!['live_execution'] = null;
+        fixture.jobs['morning']!['state'] = 'scheduled';
+        await c.refresh();
+        await tester.pumpAndSettle();
+        expect(find.byTooltip('Stop run'), findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+      testWidgets('task policy and room controls ${brightness.name} $scale', (
+        tester,
+      ) async {
+        fixture.rooms.add({
+          'room_id': 'release',
+          'name': 'Release team',
+          'members': [],
+        });
+        final c = await controller();
+        await show(
+          tester,
+          AdminScheduledTaskEditorPage(
+            controller: c,
+            original: c.task('morning'),
+          ),
+          brightness: brightness,
+          scale: scale,
+          width: scale == 2 ? 320 : 390,
+        );
+        final zone = find.widgetWithText(TextFormField, 'Schedule timezone');
+        await tester.scrollUntilVisible(
+          zone,
+          250,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.enterText(zone, 'Asia/Singapore');
+        tester.testTextInput.hide();
+        await tester.scrollUntilVisible(
+          find.text('Hermes default'),
+          150,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.pumpAndSettle();
+        final missedSelector = find.ancestor(
+          of: find.text('Missed runs'),
+          matching: find.byWidgetPredicate((widget) => widget is DropdownMenu),
+        );
+        await tester.tap(
+          find
+              .descendant(
+                of: missedSelector,
+                matching: find.byIcon(Icons.arrow_drop_down),
+              )
+              .hitTestable(),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Run one catch-up').hitTestable());
+        await tester.pumpAndSettle();
+        final grace = find.widgetWithText(TextFormField, 'Late window (min)');
+        await tester.scrollUntilVisible(
+          grace,
+          180,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.enterText(grace, '0');
+        tester.testTextInput.hide();
+        await tester.pumpAndSettle();
+        await screenshot(tester, 'policy-${brightness.name}-$scale');
+        await tester.scrollUntilVisible(
+          find.text('Release team'),
+          220,
+          scrollable: find.byType(Scrollable).first,
+        );
+        for (
+          var attempt = 0;
+          attempt < 12 &&
+              find.text('Release team').hitTestable().evaluate().isEmpty;
+          attempt++
+        ) {
+          await tester.drag(find.byType(ListView).first, const Offset(0, -180));
+          await tester.pumpAndSettle();
+        }
+        await tester.tap(find.text('Release team').hitTestable());
+        await tester.pumpAndSettle();
+        await screenshot(tester, 'room-delivery-${brightness.name}-$scale');
+        await tester.tap(find.byTooltip('Save changes'));
+        await tester.pumpAndSettle();
+        expect(fixture.jobs['morning']!['timezone'], 'Asia/Singapore');
+        expect(fixture.jobs['morning']!['grace_minutes'], 0);
+        expect(fixture.jobs['morning']!['catch_up'], true);
+        expect(
+          fixture.jobs['morning']!['deliver'],
+          'local,room:release@default',
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('Stop failure is visible and leaves the live execution intact', (
+    tester,
+  ) async {
+    fixture.jobs['morning'] = taskJson(state: 'running');
+    final c = await controller();
+    await show(
+      tester,
+      AdminScheduledTaskDetailPage(
+        controller: c,
+        initial: c.task('morning')!,
+        onOpenSession: (_) async {},
+      ),
+    );
+    fixture.mutationError = const TaskPreflightFailure('Stop refused.');
+    await tester.tap(find.byTooltip('Stop run'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Stop refused'), findsWidgets);
+    expect(c.task('morning')!.running, isTrue);
+    expect(c.busy, isEmpty);
+  });
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
       testWidgets(
         'running schedule pulses in its existing status position ${brightness.name} $scale',
         (tester) async {
-          fixture.jobs['morning']!['state'] = 'running';
+          fixture.jobs['morning'] = taskJson(state: 'running');
           await show(
             tester,
             list(),
@@ -261,6 +416,8 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
+    await tester.pumpAndSettle();
+    expect(find.text('Profile default').hitTestable(), findsOneWidget);
     await tester.tap(find.text('Profile default'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('model-provider-anthropic')));
@@ -763,16 +920,16 @@ void main() {
         onOpenSession: (_) async {},
       ),
     );
-    await tester.tap(find.text('Resume and run'));
+    await tester.tap(find.byTooltip('Resume and run').hitTestable().last);
     await tester.pumpAndSettle();
     expect(find.text('Resume and run?'), findsOneWidget);
     expect(fixture.mutations, 0);
     await tester.tap(find.byTooltip('Cancel').last);
     await tester.pumpAndSettle();
     expect(fixture.mutations, 0);
-    await tester.tap(find.text('Resume and run'));
+    await tester.tap(find.byTooltip('Resume and run').hitTestable().last);
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Resume and run'));
+    await tester.tap(find.byTooltip('Resume and run').hitTestable().last);
     await tester.pumpAndSettle();
     expect(fixture.mutations, 1);
     expect(
@@ -1077,7 +1234,12 @@ void main() {
             await tester.pumpAndSettle();
             expect(find.byType(TimePickerDialog), findsOneWidget);
           }
-          await tester.tap(find.byTooltip('Cancel').last);
+          await tester.tap(
+            find.descendant(
+              of: find.byType(cancelTime ? TimePickerDialog : DatePickerDialog),
+              matching: find.text('Cancel'),
+            ),
+          );
           await tester.pumpAndSettle();
           expect(fixture.mutations, 0);
           expect(
@@ -1097,8 +1259,10 @@ void main() {
                 .canPop,
             true,
           );
-          await tester.ensureVisible(
+          await tester.scrollUntilVisible(
             find.widgetWithText(TextFormField, 'Name (optional)'),
+            -250,
+            scrollable: find.byType(Scrollable).first,
           );
           await tester.enterText(
             find.widgetWithText(TextFormField, 'Name (optional)'),

@@ -172,6 +172,7 @@ End with a short list of next steps.
             'name': 'research',
             'description': 'Turn a question into a sourced briefing.',
             'provenance': 'agent',
+            'locked': false,
             'usage': 12,
             'enabled': true,
           },

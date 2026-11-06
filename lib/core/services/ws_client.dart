@@ -113,6 +113,8 @@ class WsClient {
   final Map<String, String> _gatewayHeaders;
   IOWebSocketChannel? _channel;
   bool _connected = false;
+  bool canonicalClarifyBatch = false;
+  Future<void>? capabilitiesReady;
   int _nextId = 1;
   int _connectionGeneration = 0;
 
@@ -213,18 +215,26 @@ class WsClient {
           reason: 'connection_closed',
         );
       }
-      // Stock Hermes withdraws server requests for unadvertised transports.
-      // Announce on every socket, before connection observers can create or
-      // resume a session. WebSocket ordering puts this inline notification
-      // ahead of any operation that could need an approval or other input.
-      channel.sink.add(
-        jsonEncode({
-          'jsonrpc': '2.0',
-          'method': 'client.capabilities',
-          'params': {'server_requests': true},
-        }),
-      );
       _connected = true;
+      canonicalClarifyBatch = false;
+      capabilitiesReady = send('client.capabilities', {'server_requests': true})
+          .then((capabilities) {
+            final error = capabilities['error'];
+            if (error is Map) {
+              throw JsonRpcError.fromGateway(
+                'client.capabilities',
+                error,
+                fallbackMessage: 'Capability negotiation failed',
+              );
+            }
+            final result = capabilities['result'];
+            if (result is! Map) {
+              throw const FormatException('Missing client capabilities result');
+            }
+            if (generation != _connectionGeneration) return;
+            canonicalClarifyBatch = result['canonical_clarify_batch'] == true;
+          });
+      capabilitiesReady!.ignore();
       logConnectionDiagnostic(
         'ws.connected',
         details: {..._diagnosticContext, 'generation': generation},
@@ -411,7 +421,12 @@ class WsClient {
     if (pinned == null) {
       logConnectionDiagnostic(
         'ws.gateway_ready',
-        details: {..._diagnosticContext, 'generation': generation},
+        details: {
+          ..._diagnosticContext,
+          'generation': generation,
+          'session_authority':
+              frame['params']?['payload']?['session_authority'] == true,
+        },
       );
       _gatewayReadyCanonical = canonical;
       _gatewayReadyFrame = frame;

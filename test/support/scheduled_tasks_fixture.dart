@@ -19,6 +19,10 @@ Map<String, dynamic> taskJson({
       'Summarize my calendar and the three things that need my attention today.',
   'enabled': state != 'paused',
   'state': state,
+  'live_execution': state == 'running'
+      ? {'id': 'execution-$id', 'status': 'running', 'job_id': id}
+      : null,
+  'latest_execution': null,
   'schedule': {'kind': 'cron', 'expr': '0 9 * * 1-5'},
   'schedule_display': 'Weekdays at 09:00',
   'deliver': 'local',
@@ -45,10 +49,15 @@ class ScheduledTasksFixture {
             'The destination needs a home channel. Update it and run the task again.';
     }
     admin.override = send;
+    admin.rpcOverride = (method, params) async {
+      if (method == 'groups.list') return {'rooms': rooms, 'next_offset': null};
+      throw StateError('Unexpected task RPC $method');
+    };
   }
   final AdministrationFixture admin;
   final DateTime _now;
   final jobs = <String, Map<String, dynamic>>{};
+  final rooms = <Map<String, dynamic>>[];
   final runRows = <Map<String, dynamic>>[
     {
       'id': 'cron_morning_123',
@@ -77,7 +86,7 @@ class ScheduledTasksFixture {
     if (intercept != null) return intercept!(method, path, query, body);
     final jobPath = RegExp(r'^cron/jobs/[^/]+$').hasMatch(path);
     final actionPath = RegExp(
-      r'^cron/jobs/[^/]+/(pause|resume|trigger)$',
+      r'^cron/jobs/[^/]+/(pause|resume|trigger|cancel)$',
     ).hasMatch(path);
     final runPath = RegExp(r'^cron/jobs/[^/]+/runs$').hasMatch(path);
     final supported = switch (method) {
@@ -202,6 +211,16 @@ class ScheduledTasksFixture {
     final id = Uri.decodeComponent(parts[2]);
     final job = jobs[id];
     if (job == null) throw CronHttpException(404, path, null);
+    if (path.endsWith('/cancel')) {
+      final id = path.split('/')[2];
+      final live = jobs[id]?['live_execution'];
+      return {
+        'success': true,
+        'cancelled': live != null,
+        'execution_id': live is Map ? live['id'] : null,
+        'job_id': id,
+      };
+    }
     if (method == 'DELETE') {
       jobs.remove(id);
       return {'ok': true};

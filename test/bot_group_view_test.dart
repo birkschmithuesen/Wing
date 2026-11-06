@@ -944,6 +944,12 @@ void main() {
               }
               await stopGate.future;
               fixture.pending.clear();
+              if (!continuing) {
+                fixture.events.add({
+                  ..._event(2, 'room.stop_requested', 'gateway-1', ''),
+                  'payload': {'cancel_id': params['cancel_id']},
+                });
+              }
               return continuing
                   ? {
                       'retried': true,
@@ -1078,7 +1084,7 @@ void main() {
             expect(fixture.commands.map((call) => call.$2), [
               continuing ? 'groups.retry' : 'groups.stop',
             ]);
-            expect(fixture.events, hasLength(1));
+            expect(fixture.events, hasLength(continuing ? 1 : 2));
             expect(session.acting, isFalse);
             expect(session.runtime!.actions, isEmpty);
             expect(session.canStopGroupWork, isFalse);

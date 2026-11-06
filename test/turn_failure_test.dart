@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'support/form_family_capture.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -35,6 +36,28 @@ Map<String, dynamic> limitedTurn() => {
 };
 
 void main() {
+  setUpAll(loadFormFamilyFonts);
+  test('local endpoint recovery never offers provider sign-in', () {
+    final failure = TurnFailure.fromCompletion({
+      'status': 'error',
+      'error_surface': {
+        'code': 'local_runtime_unavailable',
+        'layer': 'endpoint',
+      },
+    })!;
+    expect(failure.canReviewProvider, isFalse);
+    expect(failure.canChooseModel, isTrue);
+    expect(failure.recovery, contains('Start the local model server'));
+    expect(failure.blocking, isTrue);
+  });
+  test('cut-off replies expose explicit Continue as degraded recovery', () {
+    final failure = TurnFailure.fromCompletion({
+      'status': 'error',
+      'error_surface': {'code': 'truncated', 'layer': 'streaming'},
+    })!;
+    expect(failure.canContinue, isTrue);
+    expect(failure.blocking, isFalse);
+  });
   test(
     'launch credential refusal requires a new chat and keeps supplied explanation',
     () {
@@ -100,6 +123,74 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets('Continue failure holds feedback $brightness $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final held = Completer<void>();
+        var calls = 0;
+        final failure = TurnFailure.fromCompletion({
+          'status': 'error',
+          'error': 'Response ended early',
+          'error_surface': {'code': 'truncated', 'layer': 'streaming'},
+        })!;
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: formFamilyCapture,
+            child: MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: Scaffold(
+                body: SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: TurnFailureView(
+                    failure: failure,
+                    onContinue: () {
+                      calls++;
+                      return held.future;
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await captureFormFamily(
+          tester,
+          'failure-continue-${brightness.name}-$scale',
+        );
+        await tester.ensureVisible(find.byTooltip('Continue'));
+        await tester.pump();
+        expect(find.byTooltip('Continue').hitTestable(), findsOneWidget);
+        await tester.tap(find.byTooltip('Continue'));
+        await tester.pump();
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'failure-continue-pending-${brightness.name}-$scale',
+        );
+        await tester.ensureVisible(find.byTooltip('Continue'));
+        await tester.pump();
+        expect(find.byTooltip('Continue').hitTestable(), findsOneWidget);
+        await tester.tap(find.byTooltip('Continue'));
+        expect(calls, 1);
+        held.completeError(StateError('Connection unavailable'));
+        await tester.pump();
+        await tester.pump();
+        final feedback = find.textContaining('Connection unavailable');
+        await tester.ensureVisible(feedback);
+        await tester.pump();
+        expect(feedback.hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
       testWidgets(
         'limit recovery acknowledges held action and preserves failure $brightness $scale',
         (tester) async {

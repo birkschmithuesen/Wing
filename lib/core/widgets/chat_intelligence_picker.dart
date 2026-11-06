@@ -237,12 +237,13 @@ class _ChatIntelligenceSheetState extends State<ChatIntelligenceSheet> {
     });
   }
 
-  Future<void> _apply() async {
+  Future<void> _apply({bool useProfileDefault = false}) async {
     if (_applying) return;
     final selection = ChatIntelligenceSelection(
       choice: _selectedChoice,
       reasoningEffort: _selectedEffort,
       fastMode: _fastMode,
+      useProfileDefault: useProfileDefault,
     );
     setState(() {
       _applying = true;
@@ -428,13 +429,19 @@ class _ChatIntelligenceSheetState extends State<ChatIntelligenceSheet> {
                               enabled: !_applying,
                               icon: const Icon(Icons.more_horiz_rounded),
                               onSelected: (value) {
-                                if (value == 'manual') {
+                                if (value == 'default') {
+                                  _apply(useProfileDefault: true);
+                                } else if (value == 'manual') {
                                   _enterModel();
                                 } else {
                                   widget.onReviewProviderAccess();
                                 }
                               },
                               itemBuilder: (_) => [
+                                const StudioPopupMenuItem(
+                                  value: 'default',
+                                  child: Text('Use profile default'),
+                                ),
                                 const StudioPopupMenuItem(
                                   value: 'manual',
                                   child: Text('Enter model ID'),

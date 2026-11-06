@@ -881,6 +881,11 @@
       "feature": "versions-updates",
       "library": "lib/core/screens/backend_update_changes_screen.dart"
     },
+    "lib/core/screens/bots/bot_group_context_sheet.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_group_context_sheet.dart"
+    },
     "lib/core/screens/bots/bot_group_history_screen.dart": {
       "role": "view",
       "feature": "bots",

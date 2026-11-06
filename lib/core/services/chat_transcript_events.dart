@@ -12,28 +12,18 @@ void applyChatTranscriptEvent({
 }) {
   switch (type) {
     case 'message.start':
+      if (!reading.startReply(data)) return;
       if (!runtime.observation.executionActive) {
         runtime.beginTurn(submitting: false);
         reading.cancelReads();
-        reading.updateStreaming('');
       }
     case 'message.delta':
       final text = data['text']?.toString() ?? '';
-      reading.appendStreaming(text);
-      runtime.observeText(text);
+      if (reading.appendReplyDelta(data)) runtime.observeText(text);
     case 'message.interim':
-      final text = data['text']?.toString() ?? reading.streaming;
-      if (text.isNotEmpty) {
-        reading.appendAssistant(
-          text,
-          turnGeneration: runtime.turnRevision,
-          reasoning: '',
-          responseReused: false,
-          interim: true,
-        );
+      if (reading.sealReply(data, turnGeneration: runtime.turnRevision)) {
+        runtime.finishSegment();
       }
-      reading.updateStreaming('');
-      runtime.finishSegment();
     case 'tool.generating':
     case 'tool.start':
     case 'tool.progress':

@@ -160,6 +160,7 @@ void main() {
                 'name': 'Research',
                 'description': '',
                 'provenance': 'agent',
+                'locked': false,
                 'usage': 0,
                 'enabled': true,
               },

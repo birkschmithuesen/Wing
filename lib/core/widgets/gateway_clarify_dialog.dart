@@ -1,30 +1,29 @@
-import 'selection_viewport.dart';
-import 'studio_form_actions.dart';
-import 'studio_task_marker.dart';
-import 'studio_selection_tile.dart';
-import 'studio_error.dart';
 import 'package:flutter/material.dart';
-import '../theme/wing_theme.dart';
-import 'block_reusing_markdown_body.dart';
-
 import '../models/gateway_clarify.dart';
+import '../theme/wing_theme.dart';
 import '../theme/profile_markdown_style.dart';
+import 'block_reusing_markdown_body.dart';
+import 'selection_viewport.dart';
+import 'studio_error.dart';
+import 'studio_form_actions.dart';
+import 'studio_selection_tile.dart';
+import 'studio_task_marker.dart';
 
-typedef ClarifyResponder = Future<void> Function(String answer);
-
+/// One locally staged answer set. The runtime alone owns confirmed locks.
 class GatewayClarifyDialog extends StatefulWidget {
-  final GatewayClarifyRequest request;
-  final ClarifyResponder onRespond;
-  final int number;
-  final int total;
-
   const GatewayClarifyDialog({
-    required this.request,
+    required this.requests,
     required this.onRespond,
-    this.number = 1,
-    this.total = 1,
+    required this.onSkip,
+    this.answeredIds = const {},
+    this.lockedAnswers = const {},
     super.key,
   });
+  final List<GatewayClarifyRequest> requests;
+  final Set<String> answeredIds;
+  final Map<String, String> lockedAnswers;
+  final Future<void> Function(Map<String, String?> answers) onRespond;
+  final Future<void> Function() onSkip;
 
   @override
   State<GatewayClarifyDialog> createState() => _GatewayClarifyDialogState();
@@ -34,240 +33,315 @@ class _GatewayClarifyDialogState extends State<GatewayClarifyDialog>
     with AutomaticKeepAliveClientMixin {
   @override
   bool get wantKeepAlive => true;
-  final TextEditingController _otherController = TextEditingController();
-  final Set<int> _selectedIndices = {};
-  int? _selectedIndex;
+  final _answers = <String, String?>{};
   bool _submitting = false;
   String? _error;
+  final _errorAnchor = GlobalKey();
+  String _id(GatewayClarifyRequest q) => q.questionId ?? q.requestId;
+  bool _locked(GatewayClarifyRequest q) => widget.answeredIds.contains(_id(q));
 
-  @override
-  void dispose() {
-    _otherController.dispose();
-    super.dispose();
-  }
-
-  void _selectChoice(int index) {
-    if (_submitting) return;
-    setState(() {
-      _error = null;
-      if (widget.request.multiSelect) {
-        if (!_selectedIndices.add(index)) {
-          _selectedIndices.remove(index);
-        }
-      } else {
-        _selectedIndex = index;
-        _otherController.clear();
-      }
-    });
-  }
-
-  Future<void> _respond(String answer) async {
+  Future<void> _respond({bool skip = false}) async {
     if (_submitting) return;
     setState(() {
       _submitting = true;
       _error = null;
     });
     try {
-      await widget.onRespond(answer);
+      if (skip) {
+        await widget.onSkip();
+      } else {
+        await widget.onRespond({
+          for (final q in widget.requests)
+            if (!_locked(q)) _id(q): _answers[_id(q)],
+        });
+      }
     } catch (_) {
-      if (!mounted) return;
-      setState(() {
-        _error = 'Hermes could not accept the answer. Please try again.';
-      });
+      if (mounted) {
+        setState(() => _error = 'Send failed. Try again.');
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final anchor = _errorAnchor.currentContext;
+          if (mounted && anchor != null) {
+            Scrollable.ensureVisible(anchor, alignment: .1);
+          }
+        });
+      }
     } finally {
       if (mounted) setState(() => _submitting = false);
     }
-  }
-
-  Widget _choice(int index) {
-    final theme = Theme.of(context);
-    final multiple = widget.request.multiSelect;
-    final selected = multiple
-        ? _selectedIndices.contains(index)
-        : _selectedIndex == index;
-    final title = Text(widget.request.choices[index]);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: selected
-            ? theme.colorScheme.primaryContainer
-            : theme.colorScheme.surfaceContainer,
-        shape: RoundedRectangleBorder(
-          borderRadius: WingRadius.card,
-          side: BorderSide(color: theme.colorScheme.outlineVariant),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: multiple
-            ? StudioSelectionTile(
-                key: Key('clarify-choice-$index'),
-                value: selected,
-                onChanged: _submitting ? null : (_) => _selectChoice(index),
-                title: title,
-                contentPadding: const EdgeInsets.symmetric(vertical: 8),
-              )
-            : StudioRadioTile<int>(
-                key: Key('clarify-choice-$index'),
-                value: index,
-                enabled: !_submitting,
-                title: title,
-                minTileHeight: 48,
-                minVerticalPadding: 8,
-                contentPadding: EdgeInsets.zero,
-              ),
-      ),
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context);
     final theme = Theme.of(context);
-    final request = widget.request;
-    final answer = request.answer(
-      selectedIndex: _selectedIndex,
-      selectedIndices: _selectedIndices,
-      customText: _otherController.text,
-    );
-
-    final content = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: 560),
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Theme(
-              data: profileMarkdownTheme(theme),
-              child: BlockReusingMarkdownBody(
-                checkboxBuilder: (checked) =>
-                    StudioTaskMarker(completed: checked),
-                data: request.question,
-                selectable: true,
-                sizedImageBuilder: (_) => const Text('[Image omitted]'),
-                styleSheet: profileMarkdownStyle(theme, compact: true),
-              ),
-            ),
-            if (request.hasChoices) ...[
-              const SizedBox(height: 12),
-              Text(
-                request.multiSelect
-                    ? 'Select one or more options, then continue.'
-                    : 'Select one option, or enter another answer.',
-                style: theme.textTheme.bodySmall,
-              ),
-              const SizedBox(height: 8),
-              RadioGroup<int>(
-                groupValue: _selectedIndex,
-                onChanged: (index) {
-                  if (index != null) _selectChoice(index);
-                },
-                child: Column(
-                  children: [
-                    for (var index = 0; index < request.choices.length; index++)
-                      _choice(index),
-                  ],
-                ),
-              ),
-            ],
-            SizedBox(height: request.hasChoices ? 8 : 16),
-            viewportSelection(
-              TextField(
-                key: const Key('clarify-other-field'),
-                controller: _otherController,
-                enabled: !_submitting,
-                minLines: 1,
-                maxLines: 4,
-                textCapitalization: TextCapitalization.sentences,
-                textInputAction: TextInputAction.done,
-                decoration: InputDecoration(
-                  isDense: true,
-                  border: OutlineInputBorder(borderRadius: WingRadius.control),
-                  labelText: request.hasChoices
-                      ? 'Other answer'
-                      : 'Your answer',
-                ),
-                onChanged: (value) {
-                  setState(() {
-                    _error = null;
-                    if (!request.multiSelect && value.trim().isNotEmpty) {
-                      _selectedIndex = null;
-                    }
-                  });
-                },
-              ),
-            ),
-            if (_error != null) ...[
-              const SizedBox(height: 12),
-              StudioError(_error!, key: const Key('clarify-error')),
-            ],
-          ],
-        ),
-      ),
-    );
-    final actions = [
-      StudioFormActions(
-        onCancel: _submitting ? null : () => _respond(''),
-        cancelLabel: 'Skip clarification',
-        cancelKey: const Key('clarify-skip'),
-        confirmKey: const Key('clarify-continue'),
-        onConfirm: _submitting || answer.isEmpty
-            ? null
-            : () => _respond(answer),
-        confirmLabel: widget.number < widget.total
-            ? 'Confirm answer and next'
-            : 'Confirm answer and continue',
-        busy: _submitting,
-        progressLabel: 'Sending answer',
-      ),
-    ];
+    final ready = widget.requests
+        .where((q) => !_locked(q))
+        .every(
+          (q) =>
+              _answers.containsKey(_id(q)) &&
+              (_answers[_id(q)] == null || _answers[_id(q)]!.isNotEmpty),
+        );
     return Container(
+      constraints: BoxConstraints(
+        maxHeight:
+            (MediaQuery.sizeOf(context).height -
+                MediaQuery.viewInsetsOf(context).bottom -
+                MediaQuery.paddingOf(context).vertical) *
+            .55,
+      ),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerLow,
         borderRadius: WingRadius.card,
         border: Border.all(
-          color: theme.colorScheme.primary.withValues(alpha: 0.35),
+          color: theme.colorScheme.primary.withValues(alpha: .35),
         ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Icon(
-                Icons.question_answer_outlined,
-                size: 18,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Your input',
-                  style: theme.textTheme.labelLarge?.copyWith(
-                    color: theme.colorScheme.primary,
-                  ),
-                ),
-              ),
-              if (widget.total > 1)
-                Text(
-                  '${widget.number} of ${widget.total}',
-                  style: theme.textTheme.labelMedium,
-                ),
-            ],
+          Text(
+            'Your input',
+            style: theme.textTheme.labelLarge?.copyWith(
+              color: theme.colorScheme.primary,
+            ),
           ),
           const SizedBox(height: 12),
-          content,
+          Flexible(
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  for (
+                    var index = 0;
+                    index < widget.requests.length;
+                    index++
+                  ) ...[
+                    if (index > 0) const Divider(height: 24),
+                    _ClarifyQuestion(
+                      key: ValueKey(('question', _id(widget.requests[index]))),
+                      request: widget.requests[index],
+                      enabled: !_submitting && !_locked(widget.requests[index]),
+                      locked: _locked(widget.requests[index]),
+                      lockedAnswer:
+                          widget.lockedAnswers[_id(widget.requests[index])],
+                      fieldKey: widget.requests.length == 1
+                          ? 'clarify-other-field'
+                          : 'clarify-other-${_id(widget.requests[index])}',
+                      choicePrefix: widget.requests.length == 1
+                          ? 'clarify-choice'
+                          : 'clarify-${_id(widget.requests[index])}-choice',
+                      onChanged: (answer) => setState(() {
+                        _answers[_id(widget.requests[index])] = answer;
+                        _error = null;
+                      }),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 12),
+            KeyedSubtree(
+              key: _errorAnchor,
+              child: StudioError(_error!, key: const Key('clarify-error')),
+            ),
+          ],
           const SizedBox(height: 12),
-          OverflowBar(
-            alignment: MainAxisAlignment.end,
-            overflowAlignment: OverflowBarAlignment.end,
-            spacing: 12,
-            overflowSpacing: 8,
-            children: actions,
+          StudioFormActions(
+            onCancel: _submitting ? null : () => _respond(skip: true),
+            cancelLabel: 'Skip clarification',
+            cancelKey: const Key('clarify-skip'),
+            confirmKey: const Key('clarify-continue'),
+            onConfirm: _submitting || !ready ? null : _respond,
+            confirmLabel: 'Confirm answers and continue',
+            busy: _submitting,
+            progressLabel: 'Sending answers',
           ),
         ],
       ),
+    );
+  }
+}
+
+class _ClarifyQuestion extends StatefulWidget {
+  const _ClarifyQuestion({
+    super.key,
+    required this.request,
+    required this.enabled,
+    required this.locked,
+    required this.lockedAnswer,
+    required this.fieldKey,
+    required this.choicePrefix,
+    required this.onChanged,
+  });
+  final GatewayClarifyRequest request;
+  final bool enabled, locked;
+  final String? lockedAnswer;
+  final String fieldKey, choicePrefix;
+  final ValueChanged<String?> onChanged;
+  @override
+  State<_ClarifyQuestion> createState() => _ClarifyQuestionState();
+}
+
+class _ClarifyQuestionState extends State<_ClarifyQuestion> {
+  final _text = TextEditingController();
+  final _selected = <int>{};
+  int? _single;
+  bool _skip = false;
+  @override
+  void dispose() {
+    _text.dispose();
+    super.dispose();
+  }
+
+  void _publish() => widget.onChanged(
+    _skip
+        ? null
+        : widget.request.answer(
+            selectedIndex: _single,
+            selectedIndices: _selected,
+            customText: _text.text,
+          ),
+  );
+  void _select(int index) {
+    if (!widget.enabled) return;
+    setState(() {
+      _skip = false;
+      if (widget.request.multiSelect) {
+        if (!_selected.add(index)) _selected.remove(index);
+      } else {
+        _single = index;
+        _text.clear();
+      }
+    });
+    _publish();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final request = widget.request;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Theme(
+          data: profileMarkdownTheme(theme),
+          child: BlockReusingMarkdownBody(
+            checkboxBuilder: (checked) => StudioTaskMarker(completed: checked),
+            data: request.question,
+            selectable: true,
+            sizedImageBuilder: (_) => const Text('[Image omitted]'),
+            styleSheet: profileMarkdownStyle(theme, compact: true),
+          ),
+        ),
+        if (widget.locked) ...[
+          const SizedBox(height: 8),
+          Text(
+            widget.lockedAnswer?.isNotEmpty == true
+                ? widget.lockedAnswer!
+                : 'Answered on another device',
+            style: theme.textTheme.bodySmall,
+          ),
+        ] else ...[
+          if (request.hasChoices) ...[
+            const SizedBox(height: 8),
+            RadioGroup<int>(
+              groupValue: _single,
+              onChanged: (index) {
+                if (index != null) _select(index);
+              },
+              child: Column(
+                children: [
+                  for (var i = 0; i < request.choices.length; i++)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Material(
+                        color:
+                            !_skip &&
+                                (request.multiSelect
+                                    ? _selected.contains(i)
+                                    : _single == i)
+                            ? theme.colorScheme.primaryContainer
+                            : theme.colorScheme.surfaceContainer,
+                        borderRadius: WingRadius.card,
+                        child: request.multiSelect
+                            ? StudioSelectionTile(
+                                key: Key('${widget.choicePrefix}-$i'),
+                                value: !_skip && _selected.contains(i),
+                                onChanged: widget.enabled
+                                    ? (_) => _select(i)
+                                    : null,
+                                title: Text(request.choices[i]),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  vertical: 8,
+                                ),
+                              )
+                            : StudioRadioTile<int>(
+                                key: Key('${widget.choicePrefix}-$i'),
+                                value: i,
+                                enabled: widget.enabled,
+                                title: Text(request.choices[i]),
+                                minTileHeight: 48,
+                                minVerticalPadding: 8,
+                                contentPadding: EdgeInsets.zero,
+                              ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+          const SizedBox(height: 8),
+          viewportSelection(
+            TextField(
+              key: Key(widget.fieldKey),
+              controller: _text,
+              enabled: widget.enabled,
+              minLines: 1,
+              maxLines: 4,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: InputDecoration(
+                isDense: true,
+                border: OutlineInputBorder(borderRadius: WingRadius.control),
+                labelText: request.hasChoices ? 'Other answer' : 'Your answer',
+              ),
+              onChanged: (_) {
+                setState(() {
+                  _skip = false;
+                  if (!request.multiSelect && _text.text.trim().isNotEmpty) {
+                    _single = null;
+                  }
+                });
+                _publish();
+              },
+            ),
+          ),
+          if (request.questionId != null)
+            Align(
+              alignment: Alignment.centerRight,
+              child: StudioButtonPress(
+                child: IconButton(
+                  tooltip: _skip
+                      ? 'Include this question'
+                      : 'Skip this question',
+                  isSelected: _skip,
+                  icon: const Icon(Icons.skip_next_outlined),
+                  onPressed: widget.enabled
+                      ? () {
+                          setState(() => _skip = !_skip);
+                          _publish();
+                        }
+                      : null,
+                ),
+              ),
+            ),
+        ],
+      ],
     );
   }
 }

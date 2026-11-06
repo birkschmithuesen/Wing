@@ -158,12 +158,16 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-123',
-                'question': 'Which interface?',
-                'choices': ['Compact', 'Balanced'],
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-123',
+                  'question': 'Which interface?',
+                  'choices': ['Compact', 'Balanced'],
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
@@ -192,20 +196,30 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-multi',
-                'question': 'Choose several',
-                'choices': ['Compact', 'Balanced', 'Detailed'],
-                'multi_select': true,
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-multi',
+                  'question': 'Choose several',
+                  'choices': ['Compact', 'Balanced', 'Detailed'],
+                  'multi_select': true,
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
       );
 
+      await tester.ensureVisible(find.byKey(const Key('clarify-choice-2')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('clarify-choice-2')));
+      await tester.ensureVisible(find.byKey(const Key('clarify-choice-0')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('clarify-choice-0')));
+      await tester.ensureVisible(find.byKey(const Key('clarify-other-field')));
+      await tester.pump();
       await tester.enterText(
         find.byKey(const Key('clarify-other-field')),
         'Large text',
@@ -223,11 +237,15 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-free',
-                'question': 'Describe the desired interface',
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-free',
+                  'question': 'Describe the desired interface',
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
@@ -247,12 +265,15 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-error',
-                'question': 'What should Hermes do?',
-              })!,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-error',
+                  'question': 'What should Hermes do?',
+                })!,
+              ],
+              onSkip: () async {},
               onRespond: (answer) async {
-                sentAnswers.add(answer);
+                sentAnswers.add(answer.values.single ?? '');
                 if (failResponse) throw Exception('raw gateway detail');
               },
             ),

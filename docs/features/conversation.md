@@ -92,6 +92,19 @@ readability, not permission to force takeover or proof of message submission.
 
 ## Gotchas
 
+Streamed replies use Hermes turn, segment and UTF-16 offset identities. Replayed
+segments appear once; identical words in different segments remain separate.
+A partial reply retained across reconnect or process restoration belongs to its
+execution admission, including an unknown execution. A queued successor cannot
+keep an earlier reply alive. A successful saved-history read retires settled
+local rows; a failed read preserves them. Command and review notices keep their
+place between retained reply segments, including segments with identical text.
+
+```sh
+flutter test --no-pub test/reply_segment_identity_test.dart test/bot_group_history_test.dart test/reading_snapshot_message_test.dart test/workspace_reading_snapshot_test.dart
+```
+
+
 When Hermes refuses attachment because another writer holds a chat, Wing shows
 the saved messages and keeps the draft. Sending remains unavailable until normal
 attachment succeeds. Close the chat in the holding app, then use Retry; Wing
@@ -113,6 +126,9 @@ claiming the workspace is a clean Git repository. The host suites
 late replies, comparisons, copy references, pending feedback and recovery.
 
 Opening or tapping Latest does not mark a message read. Saved reading positions last until Wing restarts. Long-history host tests cover paging beyond the small Android fixture.
+Pending-input navigation stays outside the form: below it at normal height,
+or in a separate side gutter on short keyboard-open screens. The form and
+composer retain scrollable access to their full action targets.
 
 After reopening, use **Input needed** to reach a new question while preserving
 the reading point until that action. Bot and Recents regressions verify visible

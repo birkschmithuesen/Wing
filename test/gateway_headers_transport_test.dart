@@ -555,7 +555,16 @@ class _ProfileAdmissionHost {
         socket = active;
         active.listen((raw) {
           final frame = jsonDecode(raw as String) as Map<String, dynamic>;
-          if (frame['method'] == 'client.capabilities') return;
+          if (frame['method'] == 'client.capabilities') {
+            active.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': frame['id'],
+                'result': {'canonical_clarify_batch': true},
+              }),
+            );
+            return;
+          }
           expect(frame['method'], 'session.list');
           admission.complete(frame);
         }, onDone: socketClosed.complete);

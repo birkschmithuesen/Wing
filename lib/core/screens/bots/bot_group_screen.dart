@@ -15,6 +15,8 @@ import '../../models/attachment_draft.dart';
 import '../../presentation/attachment_preview_image.dart';
 import '../../widgets/composer_attachment_tile.dart';
 import 'package:flutter/material.dart';
+
+import '../../widgets/selection_viewport.dart';
 import '../../services/bot_group_session.dart';
 import '../../services/bot_group_history_session.dart';
 import 'bot_group_history_screen.dart';
@@ -33,6 +35,8 @@ import '../../controllers/voice_input_controller.dart';
 import '../../models/voice_processing_settings.dart';
 import '../../services/android_voice.dart';
 import '../../widgets/voice_input_activity.dart';
+import '../../widgets/studio_form_actions.dart';
+import 'bot_group_context_sheet.dart';
 
 enum _GroupBotAction { history, chat, settings }
 
@@ -365,7 +369,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               'allow_permanent': false,
             }),
             total: pendingCount,
-            enabled: !_session.acting && !_session.sending,
+            enabled: _session.canResolve(action),
             onRespond: (choice) =>
                 _session.resolve(action, choice: choice.wireValue),
           ),
@@ -373,6 +377,99 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             StudioError(error),
         ],
       );
+
+  Future<void> _confirmDiscard(BotGroupAction action) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StudioDialog(
+        title: const Text('Discard unknown attempt?'),
+        content: const Text(
+          'The outcome is unknown. Discard abandons this attempt so the group can recover. It does not undo side effects, prove that nothing happened, or stop a running process.',
+        ),
+        actions: [
+          StudioFormActions(
+            onCancel: () => Navigator.pop(dialogContext, false),
+            onConfirm: () => Navigator.pop(dialogContext, true),
+            confirmLabel: 'Discard unknown attempt',
+            confirmIcon: Icons.delete_outline,
+            destructive: true,
+          ),
+        ],
+      ),
+    );
+    if (mounted && confirmed == true) await _session.discard(action);
+  }
+
+  Future<void> _showMemberActivity() async {
+    final activities = _session.runtime?.memberActivity ?? const [];
+    String time(DateTime value) {
+      final local = value.toLocal();
+      return '${MaterialLocalizations.of(context).formatMediumDate(local)} ${TimeOfDay.fromDateTime(local).format(context)}';
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StudioDialog(
+        title: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Member activity',
+                style: Theme.of(dialogContext).textTheme.titleMedium,
+              ),
+            ),
+            StudioButtonPress(
+              child: IconButton(
+                tooltip: 'Close member activity',
+                onPressed: () => Navigator.pop(dialogContext),
+                icon: const Icon(Icons.close),
+              ),
+            ),
+          ],
+        ),
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (final activity in activities)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _session.group.members
+                              .where((member) => member.id == activity.memberId)
+                              .firstOrNull
+                              ?.name ??
+                          'Bot',
+                      style: Theme.of(dialogContext).textTheme.titleSmall,
+                    ),
+                    Text(activity.status),
+                    if (activity.tool case final tool?) Text('Using $tool'),
+                    if (activity.startedAt case final started?)
+                      Text('Started ${time(started)}'),
+                    if (activity.progressAt case final progress?)
+                      Text('Last activity ${time(progress)}'),
+                    ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      title: const Text('Raw details'),
+                      children: [
+                        viewportSelection(
+                          SelectableText(
+                            'Member: ${activity.memberId}\nThread: ${activity.threadId}\nRound: ${activity.roundIndex ?? 'unknown'}',
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            const Text('Times are reported by Hermes.'),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget _activityStatus(BuildContext context) {
     final runtime = _session.runtime;
@@ -386,13 +483,16 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                 .where((member) => member.id == activity.memberId)
                 .firstOrNull
             case final member?)
-          '${member.name} · ${activity.status}',
+          '${member.name} · ${activity.tool == null ? activity.status : 'Using ${activity.tool}'}',
     ].join(' · ');
     final String? label;
     final bool active;
     final IconData? icon;
     final pendingAction =
-        _session.sending || _session.acting || _launchingCamera;
+        _session.sending ||
+        _session.acting ||
+        _launchingCamera ||
+        (_session.awaitingStopFence && _session.error == null);
     if (_session.pendingText != null && !pendingAction) {
       label = 'Message not confirmed · Retry the same message';
       active = false;
@@ -723,7 +823,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       messageProjection: reading.messageForRow,
     );
     final canStop =
-        !_session.acting &&
+        _session.canStopGroupWork &&
         (_session.runtime?.working == true ||
             _session.runtime?.blocked == true);
     final stopping =
@@ -762,6 +862,16 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                   await _refreshGroup();
                 case 'stop':
                   await _session.stop();
+                case 'context':
+                  await showModalBottomSheet<void>(
+                    context: context,
+                    isScrollControlled: true,
+                    isDismissible: false,
+                    enableDrag: false,
+                    builder: (_) => BotGroupContextSheet(session: _session),
+                  );
+                case 'activity':
+                  await _showMemberActivity();
               }
             },
             itemBuilder: (_) => [
@@ -769,6 +879,16 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                 value: 'histories',
                 child: Text('Bot working histories'),
               ),
+              if (_session.canEditContext)
+                const StudioPopupMenuItem(
+                  value: 'context',
+                  child: Text('Shared settings'),
+                ),
+              if (_session.runtime?.memberActivity.isNotEmpty == true)
+                const StudioPopupMenuItem(
+                  value: 'activity',
+                  child: Text('Member activity'),
+                ),
               StudioPopupMenuItem(
                 value: 'refresh',
                 enabled: !_session.loading && !_refreshingGroup,
@@ -818,12 +938,16 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                 pendingCount: _session.pendingApprovals.length,
               ),
             if (_session.runtime case final runtime?) ...[
+              if (runtime.lastError case final error? when error.isNotEmpty)
+                StudioError(error),
               if (runtime.blocked && runtime.actions.isEmpty)
                 const Text(
                   'Group work is interrupted. Refresh to check its recovery options.',
                 ),
               for (final action in runtime.actions.where(
-                (action) => action.kind == 'retry',
+                (action) =>
+                    (action.kind == 'retry' || action.kind == 'discard') &&
+                    runtime.supports(action.kind),
               ))
                 Padding(
                   padding: const EdgeInsets.only(bottom: 16),
@@ -831,20 +955,69 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${_session.group.members.where((member) => member.id == action.member).firstOrNull?.name ?? 'Bot'} could not finish. Retry this attempt.',
+                        action.kind == 'discard'
+                            ? '${_session.group.members.where((member) => member.id == action.member).firstOrNull?.name ?? 'Bot'} has an unknown outcome. Review before discarding this attempt.'
+                            : '${_session.group.members.where((member) => member.id == action.member).firstOrNull?.name ?? 'Bot'} could not finish. Retry this attempt.',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
                       StudioButtonPress(
                         child: IconButton(
-                          tooltip: 'Retry group attempt',
-                          onPressed: _session.acting || _session.sending
+                          tooltip: action.kind == 'discard'
+                              ? 'Discard unknown group attempt'
+                              : 'Retry group attempt',
+                          onPressed: !_session.canResolve(action)
                               ? null
-                              : () => _session.resolve(action),
-                          icon: const Icon(Icons.refresh),
+                              : () => action.kind == 'discard'
+                                    ? _confirmDiscard(action)
+                                    : _session.resolve(action),
+                          icon: Icon(
+                            action.kind == 'discard'
+                                ? Icons.delete_outline
+                                : Icons.refresh,
+                          ),
                         ),
                       ),
                     ],
                   ),
+                ),
+              for (final continuation in _session.boundedDiscussions)
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (continuation.text.isNotEmpty)
+                      Text(
+                        continuation.text,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    const Text('Round limit reached.'),
+                    if (runtime.maxContinues != null &&
+                        continuation.grant > runtime.maxContinues!)
+                      const Text('All extensions have been used.')
+                    else if (runtime.supports('continue') &&
+                        runtime.maxContinues != null)
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              '${runtime.maxRounds == null ? 'More rounds' : '${runtime.maxRounds} more rounds'} · Extension ${continuation.grant} of ${runtime.maxContinues}',
+                            ),
+                          ),
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Continue discussion',
+                              onPressed: _session.canContinue(continuation)
+                                  ? () => _session.continueDiscussion(
+                                      continuation,
+                                    )
+                                  : null,
+                              icon: const Icon(Icons.play_arrow),
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
                 ),
             ],
           ],

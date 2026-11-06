@@ -6,10 +6,12 @@ final class InstalledSkill {
     this.name,
     this.description,
     this.provenance,
-    this.usage,
-  );
+    this.usage, {
+    required this.locked,
+  });
   final String name, description, provenance;
   final int usage;
+  final bool locked;
   bool get editable => provenance == 'agent' && !name.startsWith('memory:');
   bool get uninstallable => provenance == 'hub';
   bool matches(String query) =>
@@ -24,12 +26,14 @@ final class InstalledSkill {
         if (row is Map &&
             row['usage'] is int &&
             row['enabled'] is bool &&
+            row['locked'] is bool &&
             names.add(_text(row, 'name')))
           InstalledSkill(
             _text(row, 'name'),
             _text(row, 'description', empty: true),
             _text(row, 'provenance'),
             row['usage'] as int,
+            locked: row['locked'] as bool,
           )
         else
           throw const FormatException('Invalid installed skill'),

@@ -293,7 +293,7 @@ void main() {
               StreamEvent(
                 type: type,
                 sessionId: chat.runtime.runtimeId,
-                data: data,
+                data: stockChatReply(gateway, type, data),
                 envelope: {
                   'replay_epoch': 'fixture-epoch',
                   'seq': ++sequence,
@@ -531,7 +531,7 @@ void main() {
               StreamEvent(
                 type: type,
                 sessionId: chat.runtime.runtimeId,
-                data: data,
+                data: stockChatReply(gateway, type, data),
                 envelope: {
                   'replay_epoch': 'fixture-epoch',
                   'seq': ++sequence,

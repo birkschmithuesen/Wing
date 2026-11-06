@@ -129,6 +129,7 @@ const _library = <String, dynamic>{
       'name': 'research',
       'description': 'Research',
       'provenance': 'agent',
+      'locked': false,
       'usage': 3,
       'enabled': true,
     },

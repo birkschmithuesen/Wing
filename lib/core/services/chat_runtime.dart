@@ -113,6 +113,13 @@ class ChatRuntime {
     }
   }
 
+  void cancelQuestion(String requestId) {
+    _settleQuestionRequest(requestId, HermesQuestionStatus.cancelled);
+    if (_serverQuestions?.pending?.requestId == requestId) {
+      _serverQuestions = null;
+    }
+  }
+
   void closeQuestion(String requestId) {
     _settleQuestionRequest(requestId, HermesQuestionStatus.closed);
     if (_serverQuestions?.pending?.requestId == requestId) {

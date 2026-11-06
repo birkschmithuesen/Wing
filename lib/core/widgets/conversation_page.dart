@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/composer_reference.dart';
+import '../theme/wing_theme.dart';
 import 'conversation_reading_scope.dart';
 import 'recent_conversations/conversation_gestures.dart';
 import 'wing_app_bar.dart';
@@ -34,18 +35,34 @@ class ConversationLayout extends StatelessWidget {
   const ConversationLayout({
     super.key,
     required this.transcript,
+    required this.needsInput,
     this.contextHeader,
     this.footerBuilder,
   });
 
   final Widget transcript;
+  final bool needsInput;
   final Widget? contextHeader;
   final Widget Function(BuildContext, BoxConstraints)? footerBuilder;
+  static const inputMinimumHeight =
+      2 * kMinInteractiveDimension + 4 * WingSpacing.sm;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       final reading = ConversationReadingScope.maybeOf(context)?.active == true;
+      // Pending input needs one complete 48dp action in the transcript, plus
+      // its separate 48dp navigation target and both rows' vertical spacing.
+      // The footer already scrolls; do not let a tall draft consume this area.
+      final footerConstraints = needsInput
+          ? constraints.copyWith(
+              minHeight: 0,
+              maxHeight: (constraints.maxHeight - inputMinimumHeight).clamp(
+                kMinInteractiveDimension.clamp(0.0, constraints.maxHeight),
+                constraints.maxHeight,
+              ),
+            )
+          : constraints;
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -60,7 +77,7 @@ class ConversationLayout extends StatelessWidget {
             Visibility(
               visible: !reading,
               maintainState: true,
-              child: footerBuilder!(context, constraints),
+              child: footerBuilder!(context, footerConstraints),
             ),
         ],
       );

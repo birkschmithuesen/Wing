@@ -769,6 +769,7 @@ class Host {
     String type, [
     Map<String, dynamic> data = const {},
   ]) {
+    data = stockChatReply(gateways[profile]!, type, data);
     if (type == 'approval' && data['server_request_id'] == null) {
       final generation = nativeGenerations[(profile, '$profile-runtime')] ?? 0;
       type = 'approval.request';
@@ -2700,7 +2701,7 @@ void main() {
         paused: true,
       );
 
-      host.event('a', 'message.start');
+      host.event('a', 'message.start', {'turn_id': 'unsolicited-first'});
       expect(chat.runtime.execution, ChatExecution.running);
       expect(chat.composer.observation.text, 'Keep this draft');
       expect(chat.composer.observation.attachments.map((file) => file.id), [
@@ -2716,7 +2717,7 @@ void main() {
       expect(chat.reading.messages.single['content'], 'Keep this turn');
 
       host.event('a', 'message.delta', {'text': 'First'});
-      host.event('a', 'message.start');
+      host.event('a', 'message.start', {'turn_id': 'unsolicited-first'});
       expect(chat.reading.streaming, 'First');
       host.event('a', 'message.delta', {'text': ' loop reply'});
       host.historyMessages = [
@@ -2728,7 +2729,7 @@ void main() {
       expect(chat.runtime.execution, ChatExecution.completed);
       expect(chat.reading.streaming, isEmpty);
 
-      host.event('a', 'message.start');
+      host.event('a', 'message.start', {'turn_id': 'unsolicited-second'});
       expect(chat.runtime.execution, ChatExecution.running);
       host.event('a', 'message.delta', {'text': 'Second loop reply'});
       host.historyMessages = [
@@ -3339,6 +3340,33 @@ void main() {
     expect(chat.runtime.execution, ChatExecution.failed);
     expect(chat.runtime.error, contains('Provider unavailable'));
   });
+
+  for (final terminal in ['completed', 'error', 'interrupted', 'turn.error']) {
+    test(
+      'empty $terminal retires the reply before a restamped delta',
+      () async {
+        final chat = await controller.createChat(canDispatch: () => true);
+        host.event('a', 'message.start', {'turn_id': 'empty-terminal'});
+        host.event(
+          'a',
+          terminal == 'turn.error' ? terminal : 'message.complete',
+          {'status': terminal, 'text': '', 'message': 'Stopped'},
+        );
+        await Future<void>.delayed(Duration.zero);
+        host.event('a', 'message.delta', {
+          'turn_id': 'empty-terminal',
+          'segment': 0,
+          'offset': 0,
+          'text': 'late reply',
+        });
+        expect(chat.reading.streaming, isEmpty);
+        expect(
+          chat.reading.messages.any((row) => row['content'] == 'late reply'),
+          isFalse,
+        );
+      },
+    );
+  }
 
   test('final text survives a failed history refresh', () async {
     final chat = await controller.createChat(canDispatch: () => true);

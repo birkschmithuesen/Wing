@@ -1,3 +1,4 @@
+import 'support/composer_fixture.dart' show stockChatReply;
 import 'support/canonical_gateway_fixture.dart';
 import 'dart:convert';
 import 'package:wing/core/models/chat_runtime.dart';
@@ -287,7 +288,11 @@ class NotificationCoverageHost {
     if (pending.isNotEmpty) pending.first['status'] = 'started';
     _pending(profile, runtime);
     gateways[profile]!.onEvent!(
-      StreamEvent(type: 'message.start', sessionId: runtime, data: const {}),
+      StreamEvent(
+        type: 'message.start',
+        sessionId: runtime,
+        data: stockChatReply(gateways[profile]!, 'message.start', {}),
+      ),
     );
   }
 
@@ -566,7 +571,7 @@ void main() {
           StreamEvent(
             type: 'message.start',
             sessionId: 'outside-runtime',
-            data: {},
+            data: stockChatReply(host.gateways['a']!, 'message.start', {}),
           ),
         );
         host.gateways['a']!.onEvent!(
@@ -666,7 +671,7 @@ void main() {
         StreamEvent(
           type: 'message.start',
           sessionId: 'outside-runtime',
-          data: {},
+          data: stockChatReply(gateway, 'message.start', {}),
         ),
       );
       expect(controller.hasActiveChats, isFalse);
@@ -775,7 +780,7 @@ void main() {
               StreamEvent(
                 type: 'message.start',
                 sessionId: 'outside-runtime',
-                data: {},
+                data: stockChatReply(gateway, 'message.start', {}),
               ),
             );
             gateway.onEvent!(
@@ -988,7 +993,7 @@ void main() {
         StreamEvent(
           type: 'message.start',
           sessionId: chat.runtime.runtimeId,
-          data: const {},
+          data: stockChatReply(host.gateways['a']!, 'message.start', {}),
         ),
       );
       expect(chat.runtime.blocksTurnAdmission, isTrue);

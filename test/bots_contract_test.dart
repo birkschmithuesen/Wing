@@ -46,6 +46,151 @@ class _DraftStorage extends InMemorySharedPreferencesStore {
 }
 
 void main() {
+  for (final method in [
+    'groups.context',
+    'groups.continue',
+    'groups.discard',
+  ]) {
+    test(
+      'production group adapter dispatches $method with its captured profile',
+      () async {
+        final administration = AdministrationFixture();
+        final fixture = BotsFixture();
+        final writes = <Map<String, dynamic>>[];
+        administration.rpcOverride = (incoming, params) async {
+          if (incoming != method) {
+            return fixture.read(params['profile'] as String, incoming, params);
+          }
+          writes.add(Map.of(params));
+          return switch (method) {
+            'groups.context' => {
+              'context': const BotGroupContext(
+                purpose: 'Plan together',
+              ).toJson(),
+              'event': {
+                'room_id': params['room_id'],
+                'event_id': params['event_id'],
+                'kind': 'room.context_set',
+              },
+            },
+            'groups.continue' => {
+              'continued': true,
+              'event': {
+                'room_id': params['room_id'],
+                'kind': 'room.continued',
+                'payload': {
+                  'discussion_event_id': params['discussion_event_id'],
+                },
+              },
+            },
+            _ => {
+              'discarded': true,
+              'task': {
+                'room_id': params['room_id'],
+                'task_id': params['task_id'],
+              },
+            },
+          };
+        };
+        final observations = GroupObservations(
+          WorkspaceScope(
+            connectionId: administration.server.connectionId,
+            connectionIdentity: administration.server.connectionIdentity,
+            profileName: 'default',
+          ),
+        );
+        addTearDown(observations.dispose);
+        final repository = BotsRepository.forServer(
+          administration.server,
+          groupObservations: observations,
+        );
+        final group = (await repository.groupCatalog()).single;
+        final expected = <String, dynamic>{
+          'room_id': group.id,
+          'profile': 'default',
+        };
+        switch (method) {
+          case 'groups.context':
+            const context = BotGroupContext(purpose: 'Plan together');
+            expect(
+              await repository.saveGroupContext(
+                group,
+                context,
+                'context-1',
+                () => true,
+              ),
+              context,
+            );
+            expected.addAll({'event_id': 'context-1', ...context.toJson()});
+          case 'groups.continue':
+            await repository.continueGroup(group, 'discussion-1', () => true);
+            expected['discussion_event_id'] = 'discussion-1';
+          case 'groups.discard':
+            var dispatched = false;
+            await repository.resolveGroup(
+              group,
+              BotGroupAction(
+                kind: 'discard',
+                task: 'task-1',
+                member: 'atlas',
+                generation: 7,
+              ),
+              null,
+              () => true,
+              () => dispatched = true,
+            );
+            expect(dispatched, isTrue);
+            expected.addAll({
+              'task_id': 'task-1',
+              'member_id': 'atlas',
+              'execution_generation': 7,
+            });
+        }
+        expect(writes, [expected]);
+        expect(
+          administration.rpcRequests.where((request) => request.$2 == method),
+          [('default', method)],
+        );
+      },
+    );
+  }
+
+  test(
+    'production bot gateway rejects unknown and retired group commands before dispatch',
+    () async {
+      final administration = AdministrationFixture();
+      final gateway = administration.server.gateway('work');
+      addTearDown(gateway.close);
+      var dispatches = 0;
+      await expectLater(
+        gateway.botCommand(
+          'groups.unrecognized',
+          {},
+          canDispatch: () => true,
+          onDispatched: () => dispatches++,
+        ),
+        throwsArgumentError,
+      );
+      for (final method in [
+        'groups.context',
+        'groups.continue',
+        'groups.discard',
+      ]) {
+        await expectLater(
+          gateway.botCommand(
+            method,
+            {'room_id': 'room-1'},
+            canDispatch: () => false,
+            onDispatched: () => dispatches++,
+          ),
+          throwsA(isA<DashboardRequestNotSentException>()),
+        );
+      }
+      expect(dispatches, 0);
+      expect(administration.rpcRequests, isEmpty);
+    },
+  );
+
   test(
     'stock group passes use payload member identity and reject malformed status',
     () {
@@ -3736,7 +3881,7 @@ void main() {
       expect(sends.first.$3, sends.last.$3);
       expect(sends.first.$3['payload'], {
         'text': 'Hello @bot_atlas',
-        'thread_id': group.id,
+        'thread_id': sends.first.$3['event_id'],
       });
       expect(fixture.events.length, 1);
     },

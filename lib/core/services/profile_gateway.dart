@@ -148,6 +148,7 @@ class ProfileGatewayConnection {
 /// this immutable scope. There is no unscoped or experimental-recovery fallback.
 class ProfileGateway {
   final canonical = CanonicalSessionProtocol();
+  bool canonicalClarifyBatch = false;
   static const commandTimeout = Duration(seconds: 60);
   late final _skillReader = SkillReaderRepository(_get);
   SkillReaderSession skillReader(SkillReaderTarget document) =>
@@ -438,6 +439,8 @@ class ProfileGateway {
       };
       try {
         await candidate.connect();
+        await candidate.capabilitiesReady;
+        gateway.canonicalClarifyBatch = candidate.canonicalClarifyBatch;
         final ready = await candidate.waitForGatewayReady();
         requireCurrent();
         // Stock standalone serve also opens /api/ws, but dispatches a different
@@ -728,6 +731,7 @@ class ProfileGateway {
       'session_id': sessionId,
       'submission_id': submissionId,
       'text': text,
+      if (canonicalClarifyBatch) 'clarify_batch': true,
       if (queued) 'queued': true,
     });
     final receipt = CanonicalAdmission.fromJson(result);
@@ -1467,6 +1471,9 @@ class ProfileGateway {
       'session.create',
       'groups.create',
       'groups.send',
+      'groups.context',
+      'groups.continue',
+      'groups.discard',
       'groups.rename',
       'groups.stop',
       'groups.disband',

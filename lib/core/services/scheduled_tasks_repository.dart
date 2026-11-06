@@ -1,6 +1,7 @@
 import '../models/scheduled_task.dart';
 import '../models/scheduled_task_edit.dart';
 import 'administration_repository.dart';
+import 'bots_repository.dart';
 
 /// A request refused before any task mutation was dispatched.
 class TaskPreflightFailure extends AdministrationFailure {
@@ -98,6 +99,11 @@ class ScheduledTasksRepository {
         throw const TaskMutationUncertain();
       }
     }
+    for (final key in ['timezone', 'grace_minutes', 'catch_up']) {
+      if (updates.containsKey(key) && result.data[key] != updates[key]) {
+        throw const TaskMutationUncertain();
+      }
+    }
     return result;
   }
 
@@ -110,6 +116,21 @@ class ScheduledTasksRepository {
       await profile.write('POST', '${path(id)}/$action'),
       id: id,
     );
+  }
+
+  Future<TaskCancellation> cancel(String id) async {
+    await _requireMember(id);
+    final result = await profile.write('POST', '${path(id)}/cancel');
+    final requested = result['cancelled'], execution = result['execution_id'];
+    if (result['success'] != true ||
+        result['job_id'] != id ||
+        requested is! bool ||
+        (requested
+            ? execution is! String || execution.isEmpty
+            : execution != null)) {
+      throw const TaskMutationUncertain();
+    }
+    return TaskCancellation(requested, execution as String?);
   }
 
   Future<void> delete(String id) async {
@@ -140,6 +161,23 @@ class ScheduledTasksRepository {
   Future<List<TaskDeliveryTarget>> destinations() async => administrationRows(
     (await profile.read('cron/delivery-targets'))['targets'],
   ).map(TaskDeliveryTarget.fromJson).toList();
+
+  Future<List<TaskDeliveryTarget>> roomDestinations() async {
+    final server = profile.server;
+    final rooms = await BotsRepository.readRoomCatalog(
+      read: (name, method, params) => server.profile(name).rpc(method, params),
+      scope: server.profile('default').scope,
+      instance: server.connectionLabel,
+    );
+    return List.unmodifiable([
+      for (final room in rooms)
+        TaskDeliveryTarget.room(
+          id: 'room:${room.id}@${room.scope.profileName}',
+          name: room.name,
+        ),
+    ]);
+  }
+
   Future<List<TaskTemplate>> templates() async => administrationRows(
     (await profile.read('cron/blueprints'))['blueprints'],
   ).map(TaskTemplate.fromJson).toList();

@@ -257,12 +257,29 @@ class BotsFixture {
           },
         ],
       },
-      'groups.capabilities' => {'driver': true},
+      'groups.capabilities' => {
+        'driver': true,
+        'methods': [
+          'groups.send',
+          'groups.stop',
+          'groups.retry',
+          'groups.discard',
+          'groups.approve',
+          'groups.context',
+          'groups.continue',
+        ],
+      },
       'groups.list' => {
         'rooms': [room],
         'next_offset': null,
       },
       'groups.state' => {
+        'context': {
+          'purpose': '',
+          'notes': '',
+          'routing': 'everyone',
+          'lead_member_id': '',
+        },
         'room': {
           ...room,
           'latest_seq': events.isEmpty ? 0 : events.last['seq'] as int,
@@ -271,6 +288,9 @@ class BotsFixture {
           'working': false,
           'blocked': pending.isNotEmpty,
           'pending_actions': pending,
+          'routing_modes': ['everyone', 'lead', 'auto'],
+          'max_rounds': 3,
+          'max_continues': 5,
         },
       },
       'display.status' => {
@@ -420,6 +440,15 @@ class BotsFixture {
       case 'groups.stop':
         final cancelled = pending.length;
         pending.clear();
+        events.add({
+          'room_id': params['room_id'],
+          'seq': events.isEmpty ? 1 : (events.last['seq'] as int) + 1,
+          'event_id': 'stop-${params['cancel_id']}',
+          'kind': 'room.stop_requested',
+          'actor': {'kind': 'gateway', 'id': 'gateway-1'},
+          'payload': {'cancel_id': params['cancel_id']},
+          'created_at': 1791756000.0,
+        });
         return {'cancelled': cancelled};
       case 'groups.disband':
         return {'ok': true};
@@ -458,4 +487,42 @@ Future<List<BotGroup>> readFixtureGroups(
     );
   }
   return rooms;
+}
+
+int _replyFixtureSequence = 0;
+final _replyFixtureState = Expando<Map<String, Object>>();
+
+/// Current stock reply identity for passive-worker fixture emitters.
+Map<String, dynamic> stockWorkerReply(
+  List<Map<String, dynamic>> events,
+  String type,
+  Map<String, dynamic> payload,
+) {
+  if (!{'message.start', 'message.delta', 'message.interim'}.contains(type)) {
+    return payload;
+  }
+  var state = _replyFixtureState[events];
+  if (state == null || type == 'message.start') {
+    state = {
+      'turn': 'worker-fixture-${++_replyFixtureSequence}',
+      'segment': 0,
+      'offset': 0,
+    };
+    _replyFixtureState[events] = state;
+  }
+  final stamped = <String, dynamic>{
+    'turn_id': state['turn'],
+    if (type != 'message.start') 'segment': state['segment'],
+    if (type == 'message.delta') 'offset': state['offset'],
+    ...payload,
+  };
+  if (type == 'message.delta') {
+    state['offset'] =
+        (state['offset'] as int) + (payload['text']?.toString().length ?? 0);
+  }
+  if (type == 'message.interim') {
+    state['segment'] = (state['segment'] as int) + 1;
+    state['offset'] = 0;
+  }
+  return stamped;
 }

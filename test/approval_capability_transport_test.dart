@@ -22,6 +22,13 @@ void main() {
             socket.add(
               jsonEncode({
                 'jsonrpc': '2.0',
+                'id': frame['id'],
+                'result': {'canonical_clarify_batch': true},
+              }),
+            );
+            socket.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
                 'id': 'srq-desktop-only',
                 'method': 'fixture.desktop_only',
                 'params': {'session_id': 'runtime'},
@@ -61,6 +68,13 @@ void main() {
         socket.listen((raw) {
           final frame = jsonDecode(raw as String) as Map<String, dynamic>;
           if (frame['method'] == 'client.capabilities') {
+            socket.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': frame['id'],
+                'result': {'canonical_clarify_batch': true},
+              }),
+            );
             announcements.add(frame);
             answersRequests = frame['params']['server_requests'] == true;
             return;
@@ -119,6 +133,8 @@ void main() {
         };
         await client.connect();
         final result = await response.future;
+        await client.capabilitiesReady;
+        expect(client.canonicalClarifyBatch, isTrue);
         expect(
           result['result']['requests_delivered'],
           isTrue,

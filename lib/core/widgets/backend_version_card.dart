@@ -139,7 +139,9 @@ class _BackendVersionCardState extends State<BackendVersionCard>
           MediaQuery.textScalerOf(context).scale(logStyle.fontSize!) *
           logStyle.height!;
       final initialCheck =
-          check == null && controller.phase == BackendUpdatePhase.idle;
+          !controller.cloudManaged &&
+          check == null &&
+          controller.phase == BackendUpdatePhase.idle;
       final checking =
           controller.checking ||
           initialCheck ||
@@ -245,159 +247,168 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                   const Text(
                     'Last known version · server could not be reached',
                   ),
-                if (check?.installMethod case final method?)
+                if (controller.cloudManaged)
                   Text(
-                    'Install method: $method',
-                    style: tokens.typography.label.copyWith(
-                      color: tokens.muted,
-                    ),
+                    'Updates are managed by Hermes Cloud.',
+                    style: tokens.typography.body,
                   ),
-                if (channel != null || check?.canApply != false)
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          channel?.label ?? 'Channel unavailable',
-                          style: tokens.typography.label.copyWith(
-                            color: tokens.muted,
-                          ),
-                        ),
+                if (!controller.cloudManaged) ...[
+                  if (check?.installMethod case final method?)
+                    Text(
+                      'Install method: $method',
+                      style: tokens.typography.label.copyWith(
+                        color: tokens.muted,
                       ),
-                      if (channel?.canSelect != false)
-                        StudioButtonPress(
-                          child: IconButton(
-                            tooltip: 'Change update channel',
-                            onPressed: controller.canOpenChannelEditor
-                                ? _editChannel
-                                : null,
-                            icon: const Icon(Icons.tune, size: 18),
-                          ),
-                        ),
-                    ],
-                  ),
-                if (channel?.targetVersion case final version?)
-                  Text(
-                    'Release: $version',
-                    style: tokens.typography.label.copyWith(
-                      color: tokens.muted,
                     ),
-                  ),
-                const Divider(height: WingSpacing.lg),
-                if (checkMessage != null)
-                  StudioError(checkMessage)
-                else
-                  Visibility(
-                    visible: !hideAvailability,
-                    maintainSize: true,
-                    maintainState: true,
-                    maintainAnimation: true,
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                  if (channel != null || check?.canApply != false)
+                    Row(
                       children: [
-                        Padding(
-                          padding: const EdgeInsets.only(top: 2),
-                          child: Icon(
-                            current
-                                ? Icons.check_circle_outline
-                                : check?.updateAvailable == true
-                                ? Icons.system_update_alt
-                                : Icons.help_outline,
-                            size: 20,
-                            color: current
-                                ? tokens.success
-                                : check?.updateAvailable == true
-                                ? tokens.accent
-                                : tokens.muted,
-                          ),
-                        ),
-                        const SizedBox(width: WingSpacing.md),
                         Expanded(
                           child: Text(
-                            _checkStatus(check, channel, controller.phase),
-                            style: tokens.typography.body,
+                            channel?.label ?? 'Channel unavailable',
+                            style: tokens.typography.label.copyWith(
+                              color: tokens.muted,
+                            ),
                           ),
                         ),
+                        if (channel?.canSelect != false)
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Change update channel',
+                              onPressed: controller.canOpenChannelEditor
+                                  ? _editChannel
+                                  : null,
+                              icon: const Icon(Icons.tune, size: 18),
+                            ),
+                          ),
                       ],
                     ),
-                  ),
-                if (!hideAvailability &&
-                    checkMessage == null &&
-                    channel?.name == 'main' &&
-                    check?.updateAvailable == true &&
-                    check?.behind == null &&
-                    check?.commits.isEmpty == true) ...[
-                  const SizedBox(height: WingSpacing.sm),
-                  Text(
-                    BackendUpdateChangesScreen.comparisonUnavailableMessage,
-                    style: tokens.typography.label.copyWith(
-                      color: tokens.muted,
+                  if (channel?.targetVersion case final version?)
+                    Text(
+                      'Release: $version',
+                      style: tokens.typography.label.copyWith(
+                        color: tokens.muted,
+                      ),
                     ),
-                  ),
-                ],
-                if (check?.canApply == false)
-                  const Text('Updates must be applied from the server host.'),
-                if (controller.phase != BackendUpdatePhase.idle &&
-                    controller.phase != BackendUpdatePhase.ready &&
-                    controller.message == null)
-                  Text(_phaseLabel(controller.phase)),
-                if (controller.message case final message?
-                    when message != checkMessage)
-                  const {
-                        BackendUpdatePhase.failed,
-                        BackendUpdatePhase.refused,
-                        BackendUpdatePhase.partial,
-                      }.contains(controller.phase)
-                      ? StudioError(message)
-                      : Text(message),
-                if (showUpdate)
-                  ExpansionTile(
-                    key: ValueKey((controller, controller.updateAttempt)),
-                    tilePadding: EdgeInsets.zero,
-                    childrenPadding: const EdgeInsets.only(bottom: 8),
-                    shape: const Border(),
-                    collapsedShape: const Border(),
-                    title: const Text('Update logs'),
-                    subtitle: Text(
-                      lines.isEmpty
-                          ? controller.starting ||
-                                    controller.phase ==
-                                        BackendUpdatePhase.running
-                                ? 'Waiting for update output'
-                                : 'No update output received'
-                          : '${lines.length} lines',
-                    ),
-                    children: [
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(8),
-                        color: Theme.of(
-                          context,
-                        ).colorScheme.surfaceContainerHighest,
-                        child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            maxHeight: 16 * logLineHeight,
+                  const Divider(height: WingSpacing.lg),
+                  if (checkMessage != null)
+                    StudioError(checkMessage)
+                  else
+                    Visibility(
+                      visible: !hideAvailability,
+                      maintainSize: true,
+                      maintainState: true,
+                      maintainAnimation: true,
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 2),
+                            child: Icon(
+                              current
+                                  ? Icons.check_circle_outline
+                                  : check?.updateAvailable == true
+                                  ? Icons.system_update_alt
+                                  : Icons.help_outline,
+                              size: 20,
+                              color: current
+                                  ? tokens.success
+                                  : check?.updateAvailable == true
+                                  ? tokens.accent
+                                  : tokens.muted,
+                            ),
                           ),
-                          child: Scrollbar(
-                            controller: _logScroll,
-                            thumbVisibility: true,
-                            child: SingleChildScrollView(
-                              key: const ValueKey('backend-update-log-scroll'),
+                          const SizedBox(width: WingSpacing.md),
+                          Expanded(
+                            child: Text(
+                              _checkStatus(check, channel, controller.phase),
+                              style: tokens.typography.body,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (!hideAvailability &&
+                      checkMessage == null &&
+                      channel?.name == 'main' &&
+                      check?.updateAvailable == true &&
+                      check?.behind == null &&
+                      check?.commits.isEmpty == true) ...[
+                    const SizedBox(height: WingSpacing.sm),
+                    Text(
+                      BackendUpdateChangesScreen.comparisonUnavailableMessage,
+                      style: tokens.typography.label.copyWith(
+                        color: tokens.muted,
+                      ),
+                    ),
+                  ],
+                  if (check?.canApply == false)
+                    const Text('Updates must be applied from the server host.'),
+                  if (controller.phase != BackendUpdatePhase.idle &&
+                      controller.phase != BackendUpdatePhase.ready &&
+                      controller.message == null)
+                    Text(_phaseLabel(controller.phase)),
+                  if (controller.message case final message?
+                      when message != checkMessage)
+                    const {
+                          BackendUpdatePhase.failed,
+                          BackendUpdatePhase.refused,
+                          BackendUpdatePhase.partial,
+                        }.contains(controller.phase)
+                        ? StudioError(message)
+                        : Text(message),
+                  if (showUpdate)
+                    ExpansionTile(
+                      key: ValueKey((controller, controller.updateAttempt)),
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: const EdgeInsets.only(bottom: 8),
+                      shape: const Border(),
+                      collapsedShape: const Border(),
+                      title: const Text('Update logs'),
+                      subtitle: Text(
+                        lines.isEmpty
+                            ? controller.starting ||
+                                      controller.phase ==
+                                          BackendUpdatePhase.running
+                                  ? 'Waiting for update output'
+                                  : 'No update output received'
+                            : '${lines.length} lines',
+                      ),
+                      children: [
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(8),
+                          color: Theme.of(
+                            context,
+                          ).colorScheme.surfaceContainerHighest,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: 16 * logLineHeight,
+                            ),
+                            child: Scrollbar(
                               controller: _logScroll,
-                              primary: false,
-                              child: viewportSelection(
-                                SelectableText(
-                                  lines.isEmpty
-                                      ? 'No update output received.'
-                                      : lines.reversed.join('\n'),
-                                  style: logStyle,
+                              thumbVisibility: true,
+                              child: SingleChildScrollView(
+                                key: const ValueKey(
+                                  'backend-update-log-scroll',
+                                ),
+                                controller: _logScroll,
+                                primary: false,
+                                child: viewportSelection(
+                                  SelectableText(
+                                    lines.isEmpty
+                                        ? 'No update output received.'
+                                        : lines.reversed.join('\n'),
+                                    style: logStyle,
+                                  ),
                                 ),
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
+                ],
                 const SizedBox(height: 8),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
@@ -440,6 +451,8 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                         child: IconButton(
                           tooltip: controller.requestOutstanding
                               ? 'Check update progress'
+                              : controller.cloudManaged
+                              ? 'Refresh server version'
                               : 'Check for updates',
                           onPressed: busy
                               ? null

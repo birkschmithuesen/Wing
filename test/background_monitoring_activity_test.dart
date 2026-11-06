@@ -1,3 +1,4 @@
+import 'support/composer_fixture.dart' show stockChatReply;
 import 'package:wing/core/models/chat_runtime.dart';
 import 'package:wing/core/models/bots.dart';
 import 'package:wing/core/models/profile_session_key.dart';
@@ -713,7 +714,9 @@ void main() {
         StreamEvent(
           type: type,
           sessionId: chat.runtime.runtimeId,
-          data: const {'text': 'Finished while reconnecting'},
+          data: stockChatReply(host.gateways['a']!, type, {
+            'text': 'Finished while reconnecting',
+          }),
         ),
       );
     }

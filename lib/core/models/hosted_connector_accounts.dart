@@ -63,6 +63,39 @@ final class HostedConnectorAccount {
       List.unmodifiable(_rows(response, 'accounts').map(fromJson));
 }
 
+/// Scrubbed display facts supplied by Hermes, never executable configuration.
+final class HostedConnectionLaunch {
+  HostedConnectionLaunch({
+    required this.kind,
+    required this.target,
+    required Iterable<String> environmentNames,
+    this.cwd,
+  }) : environmentNames = List.unmodifiable(environmentNames);
+  final String kind, target;
+  final List<String> environmentNames;
+  final String? cwd;
+  String get label => kind == 'stdio' ? 'Runs on server' : 'Connects to';
+
+  static HostedConnectionLaunch? parse(Object? value) {
+    if (value == null) return null;
+    if (value is! Map ||
+        !{'remote', 'stdio'}.contains(value['kind']) ||
+        value['target'] is! String ||
+        (value['target'] as String).isEmpty ||
+        (value['env'] != null &&
+            (value['env'] is! List ||
+                (value['env'] as List).any((name) => name is! String)))) {
+      throw const FormatException('Invalid connector launch facts');
+    }
+    return HostedConnectionLaunch(
+      kind: value['kind'] as String,
+      target: value['target'] as String,
+      environmentNames: (value['env'] as List?)?.cast<String>() ?? const [],
+      cwd: _optionalText(value, 'cwd'),
+    );
+  }
+}
+
 final class HostedConnectionTarget {
   const HostedConnectionTarget({
     required this.name,
@@ -71,10 +104,12 @@ final class HostedConnectionTarget {
     required this.detail,
     required this.alias,
     required this.connectUrl,
+    this.launch,
   });
   final String name, kind, state;
   final String? detail, alias;
   final Uri? connectUrl;
+  final HostedConnectionLaunch? launch;
   bool get connected => state == 'connected';
   bool get needsAuthorization =>
       {'connector', 'mcp'}.contains(kind) &&
@@ -100,6 +135,7 @@ final class HostedConnectionTarget {
       state: _text(row, 'state'),
       detail: _optionalText(row, 'detail'),
       alias: _optionalText(row, 'alias'),
+      launch: HostedConnectionLaunch.parse(row['launch']),
       connectUrl:
           uri != null &&
               {'http', 'https'}.contains(uri.scheme) &&

@@ -6,6 +6,8 @@ Feature ID: `administration-skills-tools`.
 
 ## Sub-features
 
+- `administration-skills-tools.lock` — Lock or unlock a skill against agent edits
+  from its existing detail actions, with captured-profile acknowledgement and readback.
 - `administration-skills-tools.library` — Browse and read skill instructions.
 - `administration-skills-tools.readiness` — Inspect setup requirements and capability state.
 - `administration-skills-tools.configure` — Save supported tool settings with confirmed readback.
@@ -47,3 +49,9 @@ Skill documents opened from a completed tool call preserve the instructions that
 call actually received. Updating installed instructions must not rewrite that
 historical document. Hermes can reload changed instructions during a chat; Wing's
 library re-reads saved content and no new-chat step is required.
+
+Skill lock state is separate from provenance and enablement. Locking leaves the
+user’s existing manual editing rights intact. The lock action shows progress
+through readback; an uncertain response requires refreshing before another write.
+`hermes023_administration_test.dart` covers these boundaries, refusal after a
+changed observation, and both themes at normal and enlarged text.

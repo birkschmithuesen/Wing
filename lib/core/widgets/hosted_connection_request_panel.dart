@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/hosted_connector_accounts.dart';
 import '../theme/wing_theme.dart';
+import 'selection_viewport.dart';
 import 'studio_error.dart';
 
 /// The received operation stays in its conversation. Account management lives
@@ -121,6 +122,28 @@ class _HostedConnectionRequestPanelState
                       Text(target.statusLabel),
                       if (target.detail?.isNotEmpty == true)
                         Text(target.detail!, style: theme.textTheme.bodySmall),
+                      if (target.launch case final launch?) ...[
+                        const SizedBox(height: WingSpacing.xs),
+                        Text(launch.label, style: theme.textTheme.labelSmall),
+                        viewportSelection(
+                          SelectableText(
+                            launch.target,
+                            style: WingTokens.of(context).typography.mono,
+                          ),
+                        ),
+                        if (launch.environmentNames.isNotEmpty)
+                          Text(
+                            'Environment: ${launch.environmentNames.join(', ')}',
+                            style: theme.textTheme.bodySmall,
+                          ),
+                        if (launch.cwd?.isNotEmpty == true)
+                          viewportSelection(
+                            SelectableText(
+                              'Working directory: ${launch.cwd}',
+                              style: theme.textTheme.bodySmall,
+                            ),
+                          ),
+                      ],
                     ],
                   ),
                 ),

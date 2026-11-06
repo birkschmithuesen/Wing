@@ -68,7 +68,7 @@ class _WorkerReplay {
         'seq': events.length + 1,
         'session_id': 'atlas-live',
         'type': type,
-        'payload': payload,
+        'payload': stockWorkerReply(events, type, payload),
       });
 }
 
@@ -609,6 +609,30 @@ void main() {
   );
 
   test(
+    'cold worker replay keeps text before a restamped same-turn start',
+    () async {
+      final replay = _WorkerReplay(fixture);
+      replay.add('message.start', {'turn_id': 'same-turn'});
+      replay.add('message.delta', {
+        'turn_id': 'same-turn',
+        'segment': 0,
+        'offset': 0,
+        'text': 'Before ',
+      });
+      replay.add('message.start', {'turn_id': 'same-turn'});
+      replay.add('message.delta', {
+        'turn_id': 'same-turn',
+        'segment': 0,
+        'offset': 7,
+        'text': 'after',
+      });
+      await session.select(group.members.first);
+      await session.refreshLive();
+      expect(session.reader.streaming, 'Before after');
+    },
+  );
+
+  test(
     'worker replay splits reasoning, tracks work and deduplicates deltas',
     () async {
       var working = true;
@@ -616,7 +640,7 @@ void main() {
       final events = <Map<String, dynamic>>[];
       void event(String type, Map<String, dynamic> payload) => events.add({
         'type': type,
-        'payload': payload,
+        'payload': stockWorkerReply(events, type, payload),
         'session_id': 'atlas-live',
         'seq': events.length + 1,
       });
@@ -732,7 +756,7 @@ void main() {
       final events = <Map<String, dynamic>>[];
       void event(String type, Map<String, dynamic> payload) => events.add({
         'type': type,
-        'payload': payload,
+        'payload': stockWorkerReply(events, type, payload),
         'session_id': 'atlas-live',
         'seq': events.length + 1,
       });
@@ -921,11 +945,21 @@ void main() {
       ),
       'session.events.since' => {
         'events': [
-          {'type': 'message.start', 'session_id': 'atlas-live', 'seq': 1},
+          {
+            'type': 'message.start',
+            'session_id': 'atlas-live',
+            'seq': 1,
+            'payload': {'turn_id': 'active-worker-turn'},
+          },
           {
             'type': 'message.delta',
             'session_id': 'atlas-live',
-            'payload': {'text': 'Live answer'},
+            'payload': {
+              'text': 'Live answer',
+              'turn_id': 'active-worker-turn',
+              'segment': 0,
+              'offset': 0,
+            },
             'seq': 2,
           },
         ],

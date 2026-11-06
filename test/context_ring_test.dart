@@ -18,6 +18,7 @@ const _frame = ValueKey('context-review-frame');
 final _sample = {
   'context_used': 132762,
   'context_max': 272000,
+  'config_context_length': 272000,
   'context_percent': 49,
   'context_estimated': true,
   'categories': [
@@ -491,7 +492,7 @@ void main() {
         expect(panel.left, greaterThanOrEqualTo(16));
         expect(panel.right, lessThanOrEqualTo(size.width - 16));
         expect(panel.top, greaterThanOrEqualTo(16));
-        expect(find.text('132,762 / 272,000'), findsOneWidget);
+        expect(find.text('132,762 / 272,000 (pinned)'), findsOneWidget);
         expect(find.text('~49% full'), findsOneWidget);
         expect(find.text('~111,849'), findsOneWidget);
         expect(

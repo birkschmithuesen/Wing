@@ -6,6 +6,115 @@ import 'package:wing/core/services/scheduled_tasks_repository.dart';
 import 'support/scheduled_tasks_fixture.dart';
 
 void main() {
+  test('live execution stays stoppable when a later trigger is rejected', () {
+    final t = ScheduledTask.fromJson({
+      ...taskJson(),
+      'live_execution': {'id': 'older', 'status': 'running'},
+      'latest_execution': {
+        'id': 'newer',
+        'status': 'rejected',
+        'error': 'Already running',
+      },
+    });
+    expect(t.running, isTrue);
+    expect(t.canStop, isTrue);
+    expect(t.canRun, isFalse);
+    expect(t.latestExecution!.label, 'Rejected');
+  });
+
+  test(
+    'cancel decodes receipt and preserves schedule; no live run is a no-op',
+    () async {
+      final f = ScheduledTasksFixture();
+      f.jobs['morning'] = taskJson(state: 'running');
+      final repository = ScheduledTasksRepository(f.profile);
+      final result = await repository.cancel('morning');
+      expect(result.requested, isTrue);
+      expect(result.executionId, 'execution-morning');
+      expect(f.jobs['morning']!['enabled'], isTrue);
+      expect(f.admin.requests.last.$3['profile'], 'personal');
+      f.jobs['morning']!['live_execution'] = null;
+      expect((await repository.cancel('morning')).requested, isFalse);
+    },
+  );
+
+  test('cancel rejects mismatched receipt identity as uncertain', () async {
+    final f = ScheduledTasksFixture();
+    f.intercept = (method, path, query, body) async {
+      if (method == 'GET' && path == 'cron/jobs') {
+        return {
+          'data': [taskJson()],
+        };
+      }
+      if (path == 'profiles') {
+        return {
+          'profiles': [
+            {'name': 'personal'},
+          ],
+        };
+      }
+      return {
+        'success': true,
+        'cancelled': true,
+        'execution_id': 'e',
+        'job_id': 'other',
+      };
+    };
+    await expectLater(
+      ScheduledTasksRepository(f.profile).cancel('morning'),
+      throwsA(isA<TaskMutationUncertain>()),
+    );
+  });
+
+  test(
+    'room targets use room host profile independently of task profile',
+    () async {
+      final f = ScheduledTasksFixture();
+      f.rooms.add({'room_id': 'room-1', 'name': 'Release team', 'members': []});
+      final rooms = await ScheduledTasksRepository(
+        f.profile,
+      ).roomDestinations();
+      expect(rooms.single.id, 'room:room-1@default');
+      expect(rooms.single.label, 'Release team');
+      expect(f.admin.rpcRequests.single, ('default', 'groups.list'));
+      expect(f.mutations, 0);
+    },
+  );
+
+  test(
+    'policy intent retains null false and zero with conflict protection',
+    () {
+      final baseline = ScheduledTask.fromJson({
+        ...taskJson(),
+        'catch_up': null,
+        'grace_minutes': null,
+      });
+      final intent = TaskEditIntent(
+        baseline: baseline,
+        values: {
+          'catch_up': false,
+          'grace_minutes': 0,
+          'timezone': 'Asia/Singapore',
+        },
+      );
+      expect(intent.resolve(baseline).updates, {
+        'catch_up': false,
+        'grace_minutes': 0,
+        'timezone': 'Asia/Singapore',
+      });
+      final changed = ScheduledTask.fromJson({
+        ...baseline.data,
+        'catch_up': true,
+      });
+      expect(intent.resolve(changed).conflicts, ['catch_up']);
+      final reconciled = intent.review(changed).reconcile({
+        TaskConflictField.catchUp: TaskConflictDecision.useServer,
+      });
+      expect(reconciled.values.containsKey('catch_up'), isFalse);
+      expect(reconciled.values['grace_minutes'], 0);
+    },
+  );
+
   for (final operation in ['update', 'pause', 'resume', 'trigger', 'delete']) {
     for (final failure in ['missing', 'offline', 'duplicate', 'wrong owner']) {
       test('$operation refuses $failure membership before dispatch', () async {

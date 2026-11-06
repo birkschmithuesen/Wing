@@ -121,6 +121,7 @@ class BotGroupConversation extends StatelessWidget {
         child: _GroupBubblePalette(
           colors: palette,
           child: ConversationLayout(
+            needsInput: false,
             transcript: transcript,
             footerBuilder: (context, constraints) => ConversationFooter(
               constraints: constraints,

@@ -1,3 +1,4 @@
+import 'support/composer_fixture.dart' show stockChatReply;
 import 'package:wing/core/services/group_observations.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/bots_repository.dart';
@@ -225,7 +226,7 @@ void main() {
           StreamEvent(
             type: 'message.start',
             sessionId: chat.runtime.runtimeId,
-            data: {},
+            data: stockChatReply(gateway, 'message.start', {}),
           ),
         );
         gateway.onEvent!(
@@ -390,7 +391,7 @@ void main() {
         StreamEvent(
           type: 'message.start',
           sessionId: chat.runtime.runtimeId,
-          data: {},
+          data: stockChatReply(gateway, 'message.start', {}),
         ),
       );
       gateway.onEvent!(
@@ -453,7 +454,7 @@ void main() {
         StreamEvent(
           type: 'message.start',
           sessionId: chat.runtime.runtimeId,
-          data: {},
+          data: stockChatReply(gateway, 'message.start', {}),
         ),
       );
       gateway.onEvent!(
@@ -506,7 +507,7 @@ void main() {
           StreamEvent(
             type: 'message.start',
             sessionId: chat.runtime.runtimeId,
-            data: {},
+            data: stockChatReply(gateway, 'message.start', {}),
           ),
         );
         gateway.onEvent!(
@@ -582,7 +583,7 @@ void main() {
           StreamEvent(
             type: 'message.start',
             sessionId: chat.runtime.runtimeId,
-            data: {},
+            data: stockChatReply(gateway, 'message.start', {}),
           ),
         );
         gateway.onEvent!(

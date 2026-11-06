@@ -229,6 +229,21 @@ class SavedConnection {
   final DashboardOAuthGrant? dashboardGrant;
   bool get isCloud => cloudInstanceId != null;
 
+  /// Update ownership also covers a Cloud instance entered as a direct URL.
+  /// This does not change how a saved connection authenticates.
+  bool get cloudManagedUpdates {
+    if (isCloud) return true;
+    final endpoint = desktopGatewayUrl ?? host;
+    final hostname = Uri.tryParse(
+      endpoint.contains('://') ? endpoint : 'https://$endpoint',
+    )?.host.toLowerCase();
+    return hostname != null &&
+        const [
+          '.agents.nousresearch.com',
+          '.agents.staging-nousresearch.com',
+        ].any(hostname.endsWith);
+  }
+
   SavedConnection({
     required this.id,
     required this.label,

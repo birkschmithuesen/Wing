@@ -355,6 +355,131 @@ void main() {
       expect(chat.composer.observation.text, isEmpty);
       expect(harness.fixture.clarificationResponses, hasLength(1));
       await captureJourney(tester, 'native-clarification-answered');
+      emitChatEvent(harness.controller, chat, 'clarify', {
+        'request_id': 'native-batch',
+        'questions': [
+          {
+            'qid': 'q1',
+            'question': 'Which layout?',
+            'choices': ['Compact'],
+          },
+          {
+            'qid': 'q2',
+            'question': 'Which theme?',
+            'choices': ['Dark'],
+          },
+        ],
+      });
+      await _settle(tester);
+      await tapJourneyControl(tester, find.text('Compact'));
+      await tapJourneyControl(tester, find.text('Dark'));
+      final composer = find.byKey(const Key('profile-message-composer'));
+      await _journeyStep('clarification.preserve-draft', () async {
+        await tapJourneyControl(tester, composer);
+        await tester.enterText(composer, 'Keep this unrelated draft');
+      });
+      await _pumpUntil(tester, () => tester.view.viewInsets.bottom > 0);
+      expect(chat.composer.observation.text, 'Keep this unrelated draft');
+      expect(harness.fixture.clarificationLocks, isEmpty);
+      final firstLock = harness.fixture.clarificationLockGate =
+          Completer<void>();
+      final retryLock = harness.fixture.clarificationRetryGate =
+          Completer<void>();
+      addTearDown(() {
+        if (!firstLock.isCompleted) firstLock.complete();
+        if (!retryLock.isCompleted) retryLock.complete();
+      });
+      final confirm = find.byKey(const Key('clarify-continue'));
+      await tapJourneyControl(tester, confirm);
+      await _pumpUntil(
+        tester,
+        () => harness.fixture.clarificationLocks.length == 1,
+      );
+      expect(
+        find.descendant(
+          of: confirm,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(tester.view.viewInsets.bottom, greaterThan(0));
+      await captureJourney(
+        tester,
+        'native-clarification-batch-pending-keyboard',
+      );
+      firstLock.complete();
+      await _pumpUntil(
+        tester,
+        () => find.byKey(const Key('clarify-error')).evaluate().isNotEmpty,
+      );
+      expect(chat.runtime.questions!.answeredIds, {'q1'});
+      expect(chat.composer.observation.text, 'Keep this unrelated draft');
+      await captureJourney(
+        tester,
+        'native-clarification-batch-failed-keyboard',
+      );
+      // Touch-scroll the real conversation; its standard drag behavior may
+      // dismiss the keyboard. Reopen it and prove the footer remains reachable.
+      await _journeyStep(
+        'clarification.retry-drag',
+        () => dragTranscriptToControl(tester, confirm),
+      );
+      await _journeyStep(
+        'clarification.reopen-keyboard',
+        () => tapJourneyControl(tester, composer),
+      );
+      await _pumpUntil(tester, () => tester.view.viewInsets.bottom > 0);
+      expect(confirm.hitTestable(), findsOneWidget);
+      final visibleTranscript = tester.getRect(
+        find.byKey(const ValueKey('profile-transcript')),
+      );
+      final retryBounds = tester.getRect(confirm);
+      expect(visibleTranscript.contains(retryBounds.topLeft), isTrue);
+      expect(
+        visibleTranscript.contains(
+          retryBounds.bottomRight - const Offset(.1, .1),
+        ),
+        isTrue,
+      );
+      expect(chat.composer.observation.text, 'Keep this unrelated draft');
+      harness.fixture.failClarificationSecond = false;
+      await captureJourney(tester, 'native-clarification-batch-retry-keyboard');
+      await tester.tap(confirm);
+      await _pumpUntil(
+        tester,
+        () => harness.fixture.clarificationLocks.length == 3,
+      );
+      expect(
+        find.descendant(
+          of: confirm,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      expect(harness.fixture.clarificationLocks, [
+        {
+          'profile': 'personal',
+          'request_id': 'native-batch',
+          'question_id': 'q1',
+          'answer': 'Compact',
+        },
+        {
+          'profile': 'personal',
+          'request_id': 'native-batch',
+          'question_id': 'q2',
+          'answer': 'Dark',
+        },
+        {
+          'profile': 'personal',
+          'request_id': 'native-batch',
+          'question_id': 'q2',
+          'answer': 'Dark',
+        },
+      ]);
+      retryLock.complete();
+      await _pumpUntil(tester, () => chat.runtime.questions == null);
+      expect(chat.composer.observation.text, 'Keep this unrelated draft');
+      expect(find.byKey(const Key('clarify-continue')), findsNothing);
       expect(tester.takeException(), isNull);
     },
   );
@@ -1518,28 +1643,68 @@ void main() {
       tester,
       find.byKey(const ValueKey('profile-description-field')),
     );
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-description-field')),
+    await _journeyStep(
+      'identity.enter-description',
+      () => tester.enterText(
+        find.byKey(const ValueKey('profile-description-field')),
+        '  Updated from emulator  ',
+      ),
+    );
+    await _journeyStep('identity.description-frame', () => tester.pump());
+    await _journeyStep(
+      'identity.reveal-soul',
+      () => revealJourneyControl(
+        tester,
+        find.byKey(const ValueKey('profile-soul-field')),
+      ),
+    );
+    await _journeyStep(
+      'identity.enter-soul',
+      () => tester.enterText(
+        find.byKey(const ValueKey('profile-soul-field')),
+        'Keep this exact.\n',
+      ),
+    );
+    await _journeyStep('identity.soul-frame', () => tester.pump());
+    expect(
+      tester
+          .widget<TextField>(
+            find.byKey(const ValueKey('profile-description-field')),
+          )
+          .controller!
+          .text,
       '  Updated from emulator  ',
     );
-    await tester.pump();
-    await revealJourneyControl(
-      tester,
-      find.byKey(const ValueKey('profile-soul-field')),
-    );
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-soul-field')),
+    expect(
+      tester
+          .widget<TextField>(find.byKey(const ValueKey('profile-soul-field')))
+          .controller!
+          .text,
       'Keep this exact.\n',
     );
-    await tester.pump();
-    await tester.ensureVisible(find.byTooltip('Save changes'));
-    await _settle(tester);
-    await tapJourneyControl(tester, find.byTooltip('Save changes'));
-    await _settle(tester);
-
-    await _pumpUntil(
-      tester,
-      () => find.text('Saved: description.').evaluate().isNotEmpty,
+    await _journeyStep('identity.save', () async {
+      final save = find.byWidgetPredicate(
+        (widget) => widget is IconButton && widget.tooltip == 'Save changes',
+      );
+      await revealJourneyControl(tester, save);
+      expect(save.hitTestable(), findsOneWidget);
+      expect(tester.widget<IconButton>(save).onPressed, isNotNull);
+      expect(tester.view.viewInsets.bottom, greaterThan(0));
+      await tester.tap(save);
+    });
+    await _journeyStep(
+      'identity.save-receipt',
+      () => _pumpUntil(
+        tester,
+        () => harness.fixture.profileIdentityWrites.isNotEmpty,
+      ),
+    );
+    await _journeyStep(
+      'identity.partial-save-feedback',
+      () => _pumpUntil(
+        tester,
+        () => find.text('Saved: description.').evaluate().isNotEmpty,
+      ),
     );
     final identityWrites = harness.fixture.profileIdentityWrites;
     expect(identityWrites.map((write) => write.$1), [
@@ -2503,4 +2668,16 @@ Future<void> _settle(WidgetTester tester) async {
   for (var i = 0; i < 8; i++) {
     await tester.pump(const Duration(milliseconds: 100));
   }
+}
+
+Future<T> _journeyStep<T>(String name, Future<T> Function() action) async {
+  debugPrint('Journey step started: $name');
+  final value = await action().timeout(
+    const Duration(seconds: 15),
+    onTimeout: () {
+      throw TestFailure('Journey step timed out after 15 seconds: $name');
+    },
+  );
+  debugPrint('Journey step completed: $name');
+  return value;
 }

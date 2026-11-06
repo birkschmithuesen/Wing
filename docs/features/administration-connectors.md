@@ -33,7 +33,10 @@ editor; merely opening Connected apps never creates an account.
 A conversation can also show a received Connect apps request beside its other
 pending input. Open the authorization icon for the named account, return and use
 Check connection status, then Continue. Suggestions link to the same Connected
-apps destination. Opening authorization does not mark an account connected.
+apps destination. Opening authorization does not mark an account connected. MCP requests show
+the server-scrubbed command or remote address, working directory and supplied
+environment-variable names beside consent. Environment values and headers are
+never reconstructed on the phone. Long launch details remain selectable.
 
 ## Driving it with Wing harnesses
 

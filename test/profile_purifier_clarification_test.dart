@@ -120,6 +120,18 @@ void main() {
         try {
           await client.connect();
           final socket = await connected.future;
+          socket.listen((raw) {
+            final capability = jsonDecode(raw as String) as Map;
+            expect(capability['method'], 'client.capabilities');
+            socket.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': capability['id'],
+                'result': {'canonical_clarify_batch': true},
+              }),
+            );
+          });
+          await client.capabilitiesReady;
           socket.add(
             jsonEncode({
               'jsonrpc': '2.0',
@@ -143,44 +155,54 @@ void main() {
 
       for (var i = 0; i < count; i++) {
         expect(find.text(questions[i]['question'] as String), findsOneWidget);
-        final choices = questions[i]['choices'] as List<String>;
         final selected = i == 1 ? [1, 3] : [0];
         for (final choice in selected) {
-          final option = find.byKey(Key('clarify-choice-$choice'));
+          final option = find.byKey(
+            Key(
+              count == 1
+                  ? 'clarify-choice-$choice'
+                  : 'clarify-q$i-choice-$choice',
+            ),
+          );
           await tester.ensureVisible(option);
           await tester.pump();
+          expect(option.hitTestable(), findsOneWidget);
           await tester.tap(option);
           await tester.pump();
         }
-        expect(
-          host.calls.where((call) => call.$2 == 'clarify.lock'),
-          hasLength(i),
-        );
+        expect(host.calls.where((call) => call.$2 == 'clarify.lock'), isEmpty);
+      }
+      host.onClarifyResponse = () async {
+        final qid = host.calls.last.$3['question_id'] as String;
+        final index = int.parse(qid.substring(1));
         host.clarifyResult = {
           'status': 'ok',
-          'remaining': [for (var j = i + 1; j < count; j++) 'q$j'],
+          'remaining': [for (var j = index + 1; j < count; j++) 'q$j'],
         };
-        final submit = find.byKey(const Key('clarify-continue'));
-        await tester.ensureVisible(submit);
-        await tester.pump();
-        await tester.tap(submit);
-        await tester.pump();
-        await tester.pump();
-
-        expect(
-          find.text('Hermes could not accept the answer. Please try again.'),
-          findsNothing,
-        );
-        final replies = host.calls.where((call) => call.$2 == 'clarify.lock');
-        expect(replies, hasLength(i + 1));
-        expect(replies.last.$3, {
+      };
+      final submit = find.byKey(const Key('clarify-continue'));
+      await tester.ensureVisible(submit);
+      await tester.pump();
+      expect(submit.hitTestable(), findsOneWidget);
+      await tester.tap(submit);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('clarify-error')), findsNothing);
+      final replies = host.calls
+          .where((call) => call.$2 == 'clarify.lock')
+          .toList();
+      expect(replies, hasLength(count));
+      for (var i = 0; i < count; i++) {
+        final choices = questions[i]['choices'] as List<String>;
+        final selected = i == 1 ? [1, 3] : [0];
+        expect(replies[i].$3, {
           'profile': 'a',
           'request_id': 'purifier-request',
           'question_id': 'q$i',
           'answer': selected.map((index) => choices[index]).join(', '),
         });
-        expect(tester.takeException(), isNull);
       }
+      expect(tester.takeException(), isNull);
       expect(chat.runtime.questions, isNull);
       expect(find.byKey(const Key('clarify-continue')), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());

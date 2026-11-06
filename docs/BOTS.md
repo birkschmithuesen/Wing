@@ -153,7 +153,7 @@ mentions. Leaving the group or restarting Wing restores its draft. Each server
 and room keeps its own draft. Sending clears the accepted text; a newer draft
 typed while sending stays available.
 
-An unconfirmed send stays available for review/retry. Paused work offers Continue group work to stop the paused attempt and send a continuation request. Pending approvals stay above the composer while you scroll. Commands start collapsed and open in the standard code viewer. Use the icon-only controls to approve or reject. After the request ends, an **Asked a question** entry inside the usual collapsed **Activity** section stays where it first appeared in the conversation, including after reopening the group. It moves up as new messages arrive and has no dismiss control. Closed means the outcome is unknown; Expired requires a confirmed timeout. You can also answer group approvals from Wing notifications.
+An unconfirmed send keeps the same message identity for review and retry. A definite Hermes refusal restores the editable text and attachments. Failed attempts offer Retry; unknown outcomes offer Discard with an explicit consequence review. Bounded discussions offer Continue for that exact discussion within the server’s extension limit. Pending approvals stay above the composer while you scroll. The exact command appears in the transcript; request details expand separately. Use the icon-only controls to approve or reject. After the request ends, an **Asked a question** entry inside the usual collapsed **Activity** section stays where it first appeared in the conversation, including after reopening the group. It moves up as new messages arrive and has no dismiss control. Closed means the outcome is unknown; Expired requires a confirmed timeout. You can also answer group approvals from Wing notifications.
 
 Your bubbles show your message without a User label. Bot replies show the
 sender's saved avatar and name, formatted text, links, code and timestamps.
@@ -227,32 +227,42 @@ Tap the people icon under the title for a compact member list anchored beneath
 that button, with saved names and avatars. Tap outside or use Back
 to dismiss it. Without a saved room picture, the conversation shows its
 member-avatar collage.
-The ellipsis menu contains working histories, Refresh and Stop.
-When work pauses, **Continue group work** below the explanation stops the paused
-attempt, then sends a message asking the bots to continue unfinished work and
-avoid repeating completed work. If Stop cannot be confirmed, Wing keeps Continue
-available and sends no message. If the message cannot be confirmed, Continue
-resends that same message without stopping again. Your draft and conversation
-history are kept.
-Stop group work in the menu also cancels paused work without sending a message.
-Approvals use the same command review as normal chats and notification review.
-The exact command appears in the transcript; expand Hermes request details for the
-explanation. The icon actions offer only the scopes Hermes allows for that
-request. While reading older messages, Waiting for your approval stays above the
-composer; tap Latest to review it. A pending decision keeps progress visible
-until it succeeds or fails.
+The ellipsis menu contains working histories, Shared settings, Refresh and Stop.
+Shared settings edits purpose, shared notes and routing for future discussions.
+Purpose allows 500 characters and notes allow 4 KB of UTF-8 text. Everyone gives
+each member a turn on an unaddressed message. Lead lets a selected member choose
+who replies; an invalid selection leaves the lead alone. Auto makes an extra
+model call to choose recipients; a failed or invalid selection falls back to
+everyone. Choose Auto explicitly if you want this additional model call. Mentions
+select recipients directly, and scheduled posts follow their own routing.
 
-Refresh rereads messages, activity and approval state; it does not restart the bots.
-The header Wing pulse appears while your refresh is running, without changing
-action icons or moving the messages. Wing also refreshes this state automatically. Recognized bot mentions display as bold,
-colored `@Name` text. Copy preserves the original message.
+Retry targets one failed member/task attempt. Discard is available for a stock
+local attempt whose outcome is unknown; it abandons that attempt so the group
+can recover. It does not undo side effects, prove that nothing happened, or stop
+a running process. Continue grants more rounds to the exact discussion that
+reached its limit. Its explanation shows the extension number and server limit;
+stopped, superseded and exhausted discussions cannot continue. Each new message
+starts its own discussion thread.
+
+Stop group work also remains available during Send. Wing waits for the matching
+saved Stop event before permitting Continue. Repeating Stop creates a fresh
+fence for work admitted since the previous request. Retry, Discard, Continue and
+settings controls follow the methods advertised by that connection.
+
+Approvals use the same command review as normal chats and notification review.
+The exact command appears in the transcript; expand request details for the
+explanation. While reading older messages, tap Latest to reach the review.
+Refresh rereads messages, activity and approval state without restarting bots.
+Automatic refresh stays quiet; explicit refresh uses the header Wing pulse.
+
 While work is active, the empty composer offers Stop; entering a draft offers
-Send. A compact status above the composer shows sending, group updates, work or
-approval needs. The conversation working status uses Wing's feather pulse beside steady text. During a manual refresh, ongoing work keeps pulsing and the header shows a refresh symbol until the read settles.
-Automatic background refresh does not show a loading animation. Hermes
-currently exposes group activity rather than individual bots typing, so Wing
-displays “Bots are working…”. The Wing keeps its shape while the menu is open;
-its pulse pauses until you return.
+Send. Sends and controls show the header Wing until settlement. The compact
+status shows each active member’s queued, running or stopping state and tool.
+Open Group options → Member activity for reported start/last activity times;
+Raw details keeps the exact member, thread and round identifiers. These are server
+observations; polling does not update their timestamps or prove a bot has
+stalled. Confirmed work keeps the shared working indicator. Recognized mentions
+display as bold, colored `@Name` text; Copy preserves the original message.
 
 Internal group workers stay out of the default Chats list and chat notifications,
 so they do not produce `Group: <UUID>` alerts, including after opening a worker

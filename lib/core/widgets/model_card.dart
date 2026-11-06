@@ -155,7 +155,7 @@ class ModelCard extends StatelessWidget {
                     ),
                   ),
                 if (plan.creditsPay case final enabled?
-                    when choice.allowanceLabel != 'Free')
+                    when !choice.allowanceExempt)
                   fact(
                     'After allowance',
                     enabled ? 'Uses credits' : 'Stops at the limit',

@@ -185,13 +185,7 @@ void main() {
     };
     addTearDown(() => debugOnRebuildDirtyWidget = previous);
     for (var index = 0; index < 30; index++) {
-      state.controller!.current!.gateway.onEvent!(
-        StreamEvent(
-          type: 'message.delta',
-          sessionId: chat.runtime.runtimeId,
-          data: {'text': '.'},
-        ),
-      );
+      state.appendReply('.');
       await tester.pump(const Duration(milliseconds: 16));
     }
     expect(chat.reading.streaming, '${streamingReplayInitial()}${'.' * 30}');
@@ -456,13 +450,7 @@ void main() {
       chat.composer.observation.displayedText,
       'Physical typing equivalent',
     );
-    key.currentState!.controller!.current!.gateway.onEvent!(
-      StreamEvent(
-        type: 'message.delta',
-        sessionId: chat.runtime.runtimeId,
-        data: {'text': 'A deterministic appended paragraph.'},
-      ),
-    );
+    key.currentState!.appendReply('A deterministic appended paragraph.');
     await tester.pump(const Duration(milliseconds: 120));
     await tester.settleMarkdown();
     expect(

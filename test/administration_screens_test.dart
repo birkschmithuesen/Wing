@@ -88,6 +88,7 @@ void main() {
                   'name': 'research',
                   'description': 'Review the evidence.',
                   'provenance': 'agent',
+                  'locked': false,
                   'usage': 2,
                   'enabled': true,
                 },

@@ -1,6 +1,7 @@
 import '../widgets/profile_message.dart';
 import '../widgets/conversation_activity.dart';
 import '../widgets/scroll_capture_viewport.dart';
+import '../widgets/conversation_page.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import '../widgets/recent_conversations/conversation_gestures.dart';
 import '../widgets/recent_conversations/conversation_route_scope.dart';
@@ -1384,68 +1385,94 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
           _historyBlocksReading ||
           _restoringMarkdown && widget.presentation.history.error == null,
       label: 'Loading history',
-      child: Column(
-        children: [
-          Expanded(
-            child: Stack(
-              key: _viewport,
-              fit: StackFit.expand,
-              children: [
-                ScrollCaptureViewport(
-                  controller: _scroll,
-                  onCaptureChanged: (active) {
-                    _capturing = active;
-                    widget.onCaptureChanged?.call(active);
-                  },
-                  child: NotificationListener<MarkdownContentWillChange>(
-                    onNotification: (event) {
-                      _preserveReaderAnchor(
-                        event.source
-                            .findAncestorRenderObjectOfType<
-                              TranscriptAnchorBox
-                            >(),
-                      );
-                      if (_restoringMarkdown) {
-                        WidgetsBinding.instance.addPostFrameCallback((_) {
-                          _finishMarkdownRestoration();
-                        });
-                      }
-                      return false;
-                    },
-                    child: transcript,
-                  ),
-                ),
-                if (_restoringMarkdown && presentation.history.error != null)
-                  Positioned(
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    child: Material(
-                      color: Theme.of(context).colorScheme.surface,
-                      child: Padding(
-                        padding: const EdgeInsets.all(WingSpacing.lg),
-                        child: _historyEdge(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final sideNavigation =
+              needsInput &&
+              constraints.maxHeight < ConversationLayout.inputMinimumHeight;
+          return Flex(
+            direction: sideNavigation ? Axis.horizontal : Axis.vertical,
+            children: [
+              Expanded(
+                child: Stack(
+                  key: _viewport,
+                  fit: StackFit.expand,
+                  children: [
+                    ScrollCaptureViewport(
+                      controller: _scroll,
+                      onCaptureChanged: (active) {
+                        _capturing = active;
+                        widget.onCaptureChanged?.call(active);
+                      },
+                      child: NotificationListener<MarkdownContentWillChange>(
+                        onNotification: (event) {
+                          _preserveReaderAnchor(
+                            event.source
+                                .findAncestorRenderObjectOfType<
+                                  TranscriptAnchorBox
+                                >(),
+                          );
+                          if (_restoringMarkdown) {
+                            WidgetsBinding.instance.addPostFrameCallback((_) {
+                              _finishMarkdownRestoration();
+                            });
+                          }
+                          return false;
+                        },
+                        child: transcript,
                       ),
                     ),
-                  ),
-                if (!needsInput)
-                  Positioned(bottom: 8, left: 0, right: 0, child: navigation),
-              ],
-            ),
-          ),
-          // A floating navigation button can intercept taps on form actions.
-          // Keep the transcript mounted while input gains its own navigation row.
-          if (needsInput)
-            ValueListenableBuilder<String?>(
-              valueListenable: _jumpLabel,
-              builder: (_, label, _) => label == null
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: navigation,
-                    ),
-            ),
-        ],
+                    if (_restoringMarkdown &&
+                        presentation.history.error != null)
+                      Positioned(
+                        top: 0,
+                        left: 0,
+                        right: 0,
+                        child: Material(
+                          color: Theme.of(context).colorScheme.surface,
+                          child: Padding(
+                            padding: const EdgeInsets.all(WingSpacing.lg),
+                            child: _historyEdge(),
+                          ),
+                        ),
+                      ),
+                    if (!needsInput)
+                      Positioned(
+                        bottom: 8,
+                        left: 0,
+                        right: 0,
+                        child: navigation,
+                      ),
+                  ],
+                ),
+              ),
+              // A floating navigation button can intercept taps on form actions.
+              // Keep the transcript mounted while input gains its own row or,
+              // in a short viewport, a separate navigation gutter.
+              if (needsInput)
+                ValueListenableBuilder<String?>(
+                  valueListenable: _jumpLabel,
+                  builder: (_, label, _) => label == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: sideNavigation
+                              ? const EdgeInsets.symmetric(
+                                  horizontal: WingSpacing.sm,
+                                )
+                              : const EdgeInsets.symmetric(
+                                  vertical: WingSpacing.sm,
+                                ),
+                          child: sideNavigation
+                              ? SizedBox(
+                                  width: kMinInteractiveDimension,
+                                  child: navigation,
+                                )
+                              : navigation,
+                        ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

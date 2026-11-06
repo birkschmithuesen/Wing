@@ -389,7 +389,11 @@ void main() {
         StreamEvent(
           type: 'message.interim',
           sessionId: fixture.chat.runtime.runtimeId,
-          data: {'text': source},
+          data: stockChatReply(
+            fixture.controller.current!.gateway,
+            'message.interim',
+            {'text': source},
+          ),
         ),
       );
       await tester.pump();
@@ -401,7 +405,11 @@ void main() {
         StreamEvent(
           type: 'message.delta',
           sessionId: fixture.chat.runtime.runtimeId,
-          data: {'text': nextSource},
+          data: stockChatReply(
+            fixture.controller.current!.gateway,
+            'message.delta',
+            {'text': nextSource},
+          ),
         ),
       );
       await tester.pump();
@@ -448,7 +456,11 @@ void main() {
         StreamEvent(
           type: 'message.interim',
           sessionId: fixture.chat.runtime.runtimeId,
-          data: {'text': source},
+          data: stockChatReply(
+            fixture.controller.current!.gateway,
+            'message.interim',
+            {'text': source},
+          ),
         ),
       );
       await tester.pump();

@@ -60,20 +60,27 @@ class ModelChoice {
   String get label =>
       displayName?.trim().isNotEmpty == true ? displayName!.trim() : model;
 
-  String? get allowanceLabel => switch (providerInfo?.planUsage == null
+  bool get _subscriptionBilled =>
+      providerInfo?.planUsage?.subscriptionModelIds.contains(model) == true;
+  bool get allowanceExempt =>
+      providerInfo?.planUsage != null &&
+      (_subscriptionBilled || providerInfo?.usageLevels[model] == 'free');
+
+  String? get allowanceLabel =>
+      switch (providerInfo?.planUsage == null || _subscriptionBilled
       ? null
       : providerInfo?.usageLevels[model]) {
-    'top_tier' => 'Large',
-    'free' => 'Free',
-    _ => null,
-  };
+        'top_tier' => 'Large',
+        'free' => 'Free',
+        _ => null,
+      };
   bool get recommended =>
       providerInfo?.planUsage?.featuredModelIds.contains(model) == true;
 
   /// Allowances for this exact route, never inferred from the model's name.
   Iterable<PlanUsageGauge> get allowanceGauges {
     final plan = providerInfo?.planUsage;
-    if (plan == null || allowanceLabel == 'Free') return const [];
+    if (plan == null || allowanceExempt) return const [];
     final large =
         allowanceLabel == 'Large' || plan.topTierModelIds.contains(model);
     return plan.gauges.where(

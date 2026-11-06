@@ -102,6 +102,8 @@ class ScheduledTasksController extends ChangeNotifier {
         (_tasks == null || this.task(task.id) != null);
     return List.unmodifiable([
       TaskActionChoice(TaskAction.edit, 'Edit task', enabled),
+      if (task.canStop)
+        TaskActionChoice(TaskAction.cancel, 'Stop run', enabled),
       if (task.canPause)
         TaskActionChoice(TaskAction.pause, 'Pause schedule', enabled),
       if (task.canResume)
@@ -124,7 +126,7 @@ class ScheduledTasksController extends ChangeNotifier {
         enabled,
         confirmation: TaskConfirmation(
           'Delete ${task.title}?',
-          'Remove this schedule from ${repository.profile.label}. This does not stop work that is already running.',
+          'Remove this schedule from ${repository.profile.label}. Hermes also cancels its running work.',
           'Delete task',
         ),
       ),
@@ -160,6 +162,8 @@ class ScheduledTasksController extends ChangeNotifier {
     if (actionChoice(task, action)?.enabled != true) return;
     if (action == TaskAction.remove) {
       await delete(task);
+    } else if (action == TaskAction.cancel) {
+      await _mutate(task.id, 'cancel', () => repository.cancel(task.id));
     } else if (action != TaskAction.edit) {
       await act(task, action.name);
     }
@@ -253,7 +257,9 @@ class ScheduledTasksController extends ChangeNotifier {
       }
       await refresh();
       _notice = _error == null
-          ? _notice
+          ? value is TaskCancellation
+                ? value.notice
+                : _notice
           : 'The change was confirmed. The list could not be refreshed.';
       return value;
     } catch (e) {

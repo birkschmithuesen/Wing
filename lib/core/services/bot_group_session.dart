@@ -18,6 +18,7 @@ import '../models/composer_reference.dart';
 import '../models/recent_conversation.dart';
 import 'hermes_voice.dart';
 import 'recent_conversation_snapshots.dart';
+import 'ws_client.dart';
 
 /// Canonical member appearance observations, shared by live and passive views.
 abstract interface class BotGroupAppearanceSource implements Listenable {
@@ -503,6 +504,7 @@ class BotGroupSession extends ChangeNotifier {
   }
 
   BotGroupRuntime? _runtime;
+  int _runtimeSequence = 0;
   BotGroupRuntime? get runtime => _runtime;
 
   late final questionHistory = preferences.questions(
@@ -522,13 +524,176 @@ class BotGroupSession extends ChangeNotifier {
   int _recoveryRevision = 0;
   bool _acting = false;
   bool get acting => _acting;
-  bool get canStopGroupWork =>
+  bool canResolve(BotGroupAction action) =>
       !_closed &&
       !_acting &&
       !_sending &&
+      runtime?.supports(action.kind == 'approval' ? 'approve' : action.kind) ==
+          true &&
+      runtime?.actions.any((current) => current.key == action.key) == true;
+  bool get canStopGroupWork =>
+      !_closed &&
+      !_acting &&
+      runtime?.supports('stop') == true &&
       (runtime?.working == true ||
           runtime?.blocked == true ||
+          _sending ||
           runtime?.actions.any((action) => action.kind == 'retry') == true);
+  final _stopCancelIds = <String>{};
+  bool get awaitingStopFence => _stopCancelIds.isNotEmpty;
+  BotGroupContext? _savedContext;
+  BotGroupContext? get context => _savedContext ?? runtime?.context;
+  bool get canEditContext =>
+      !_closed &&
+      !_acting &&
+      runtime?.supports('context') == true &&
+      context != null;
+  (BotGroupContext, String)? _contextAttempt;
+
+  Future<bool> saveContext(BotGroupContext value) async {
+    if (!canEditContext) return false;
+    final validation = value.validate(group, runtime!.routingModes);
+    if (validation != null) {
+      _actionError = validation;
+      notifyListeners();
+      return false;
+    }
+    final attempt = _contextAttempt?.$1 == value
+        ? _contextAttempt!
+        : (value, const Uuid().v4());
+    _contextAttempt = attempt;
+    _recoveryRevision++;
+    _acting = true;
+    _actionError = null;
+    repository.retain();
+    notifyListeners();
+    try {
+      final saved = await repository.saveGroupContext(
+        group,
+        value,
+        attempt.$2,
+        () => !_closed,
+      );
+      if (_closed) return false;
+      // A read begun during the write cannot replace its confirmed context.
+      _recoveryRevision++;
+      _savedContext = saved;
+      _contextAttempt = null;
+      return true;
+    } catch (_) {
+      if (!_closed) {
+        _actionError =
+            'Shared settings could not be confirmed. Review your draft and retry.';
+      }
+      return false;
+    } finally {
+      repository.release();
+      if (!_closed) {
+        _acting = false;
+        notifyListeners();
+      }
+    }
+  }
+
+  /// Project the same bounded-discussion eligibility as stock from durable events.
+  List<BotGroupContinuation> get boundedDiscussions {
+    if (_closed ||
+        _cursor < _runtimeSequence ||
+        _readError != null ||
+        runtime == null) {
+      return const [];
+    }
+    final ordered = events;
+    final bounded = <String, BotGroupEvent>{};
+    final grants = <String, int>{};
+    for (final event in ordered) {
+      if (event.kind == 'room.continued') {
+        grants[event.discussionEventId] = event.continueGrant;
+        bounded.remove(event.discussionEventId);
+      } else if (event.kind == 'room.activity' &&
+          event.discussionEventId.isNotEmpty) {
+        if (event.activityStatus == 'bounded') {
+          bounded[event.discussionEventId] = event;
+        } else {
+          bounded.remove(event.discussionEventId);
+        }
+      }
+    }
+    return [
+      for (final entry in bounded.entries)
+        if (!ordered.any(
+          (event) =>
+              (event.kind == 'room.stop_requested' &&
+                  event.sequence >
+                      (ordered
+                              .where((e) => e.eventId == entry.key)
+                              .firstOrNull
+                              ?.sequence ??
+                          entry.value.sequence)) ||
+              (event.kind == 'message.user' &&
+                  event.sequence > entry.value.sequence &&
+                  event.threadId == entry.value.threadId),
+        ))
+          BotGroupContinuation(
+            entry.key,
+            (grants[entry.key] ?? 0) + 1,
+            text:
+                ordered
+                    .where((event) => event.eventId == entry.key)
+                    .firstOrNull
+                    ?.text ??
+                '',
+          ),
+    ];
+  }
+
+  bool canContinue(BotGroupContinuation continuation) =>
+      !_closed &&
+      !_acting &&
+      !_sending &&
+      !awaitingStopFence &&
+      runtime?.supports('continue') == true &&
+      runtime?.maxContinues != null &&
+      continuation.grant <= runtime!.maxContinues! &&
+      boundedDiscussions.any(
+        (current) =>
+            current.discussionEventId == continuation.discussionEventId &&
+            current.grant == continuation.grant,
+      );
+
+  List<BotGroupContinuation> get continuations =>
+      boundedDiscussions.where(canContinue).toList();
+
+  Future<void> continueDiscussion(BotGroupContinuation continuation) async {
+    if (!canContinue(continuation)) {
+      return;
+    }
+    _acting = true;
+    _recoveryRevision++;
+    _actionError = null;
+    repository.retain();
+    notifyListeners();
+    try {
+      await repository.continueGroup(
+        group,
+        continuation.discussionEventId,
+        () => !_closed,
+      );
+    } catch (_) {
+      if (!_closed) {
+        _actionError =
+            'Continue could not be confirmed. Refresh to check this discussion.';
+      }
+    } finally {
+      repository.release();
+      if (!_closed) {
+        await refresh();
+        _acting = false;
+        notifyListeners();
+      }
+    }
+  }
+
   List<BotGroupEvent> get events => List.unmodifiable(
     _events.values.toList()..sort((a, b) => a.sequence.compareTo(b.sequence)),
   );
@@ -638,6 +803,8 @@ class BotGroupSession extends ChangeNotifier {
       final nextRuntime = observed.runtime;
       if (_closed || _capturing || revision != _recoveryRevision) return;
       _runtime = nextRuntime;
+      _runtimeSequence = observed.sequence;
+      _savedContext = null;
       preferences.observeQuestions(group, nextRuntime, observed.sequence);
       final pendingKeys = nextRuntime.actions
           .map((action) => action.key)
@@ -672,6 +839,9 @@ class BotGroupSession extends ChangeNotifier {
           observation.add(page, since: _cursor);
           for (final event in page.events) {
             _events[event.sequence] = event;
+            if (event.kind == 'room.stop_requested') {
+              _stopCancelIds.remove(event.cancelId);
+            }
           }
           _cursor = page.cursor;
           if (!page.hasMore) break;
@@ -826,15 +996,19 @@ class BotGroupSession extends ChangeNotifier {
       await _acknowledgeDraft(attempt, sentIds);
       if (!_closed) unawaited(refresh());
       return !_closed;
-    } catch (_) {
+    } catch (error) {
       if (!_closed) {
-        if (!dispatched) {
+        final refused = error is BotGroupSendRefused;
+        if (!dispatched || refused) {
+          if (refused) dispatched = false;
           _pending = null;
           _pendingWireText = null;
           _pendingAttachments = const [];
           await _saveDraft();
         }
-        _actionError = dispatched
+        _actionError = refused
+            ? 'Message was refused: ${error.message} Edit your draft and send again.'
+            : dispatched
             ? 'Message not confirmed. Retry sends the same message once.'
             : 'The message could not be sent. Your text is kept. Retry.';
       }
@@ -861,9 +1035,7 @@ class BotGroupSession extends ChangeNotifier {
       await _retryWork(action);
       return;
     }
-    if (_closed ||
-        _acting ||
-        _sending ||
+    if (!canResolve(action) ||
         !pendingApprovals.any((a) => a.key == action.key)) {
       return;
     }
@@ -911,10 +1083,7 @@ class BotGroupSession extends ChangeNotifier {
   }
 
   Future<void> _retryWork(BotGroupAction action) async {
-    if (_closed ||
-        _acting ||
-        _sending ||
-        _runtime?.actions.any((current) => current.key == action.key) != true) {
+    if (!canResolve(action)) {
       return;
     }
     _recoveryRevision++;
@@ -925,17 +1094,14 @@ class BotGroupSession extends ChangeNotifier {
     try {
       await repository.resolveGroup(group, action, null, () => !_closed, () {});
       if (_runtime case final value? when !_closed) {
-        _runtime = BotGroupRuntime(
-          working: value.working,
-          blocked: value.blocked,
-          memberActivity: value.memberActivity,
-          actions: value.actions.where((current) => current.key != action.key),
+        _runtime = value.withActions(
+          value.actions.where((current) => current.key != action.key),
         );
       }
     } catch (_) {
       if (!_closed) {
         _actionError =
-            'Retry could not be confirmed. Refresh the group before retrying.';
+            '${action.kind == 'discard' ? 'Discard' : 'Retry'} could not be confirmed. Refresh the group before retrying.';
       }
     } finally {
       repository.release();
@@ -947,35 +1113,46 @@ class BotGroupSession extends ChangeNotifier {
     }
   }
 
+  Future<void> discard(BotGroupAction action) async {
+    if (action.kind != 'discard') return;
+    await _retryWork(action);
+  }
+
   void _forgetStoppedActions() {
     _recoveryRevision++;
     if (_runtime case final value?) {
-      _runtime = BotGroupRuntime(
-        working: value.working,
-        blocked: value.blocked,
-        memberActivity: value.memberActivity,
-        actions: const [],
-      );
+      _runtime = value.withActions(const []);
     }
   }
 
   Future<void> stop() async {
-    if (_closed || _acting || _sending) return;
+    if (!canStopGroupWork) return;
     _recoveryRevision++;
     _acting = true;
     _actionError = null;
     repository.retain();
     notifyListeners();
+    final cancelId = const Uuid().v4();
     try {
-      await repository.groupAction(
-        group,
-        'stop',
-        const Uuid().v4(),
-        () => !_closed,
-        () {},
-      );
+      await repository.groupAction(group, 'stop', cancelId, () => !_closed, () {
+        // An earlier timed-out request can still commit after this one. Each
+        // dispatched cancellation therefore needs its own observed fence.
+        _stopCancelIds.add(cancelId);
+      });
       _forgetStoppedActions();
-    } catch (_) {
+      await refresh();
+    } catch (failure) {
+      // Stock checks these refusals before entering stop_room. Other errors can
+      // follow the durable fence, including errors while cancelling member work.
+      final refused =
+          failure is JsonRpcError &&
+          failure.method == 'groups.stop' &&
+          const {
+            'permission_denied',
+            'profile_mismatch',
+            'runtime_coordination_required',
+          }.contains(failure.reason);
+      if (refused) _stopCancelIds.remove(cancelId);
       if (!_closed) _actionError = 'Stop could not be confirmed.';
     } finally {
       repository.release();

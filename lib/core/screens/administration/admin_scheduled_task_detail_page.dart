@@ -8,7 +8,6 @@ import '../../models/scheduled_task.dart';
 import '../../services/scheduled_tasks_controller.dart';
 import '../../services/scheduled_task_detail_session.dart';
 import '../../widgets/activity/activity_detail_actions.dart';
-import '../../widgets/studio_action_label.dart';
 import 'admin_scheduled_task_editor_page.dart';
 import 'admin_widgets.dart';
 import 'scheduled_task_widgets.dart';
@@ -75,6 +74,7 @@ class _AdminScheduledTaskDetailPageState
       final task = state.task;
       final missing = state.missing;
       final toggle = controller.toggleChoice(task);
+      final cancel = controller.actionChoice(task, TaskAction.cancel);
       final trigger = controller.actionChoice(task, TaskAction.trigger)!;
       final theme = Theme.of(context);
       return TaskPage(
@@ -109,43 +109,38 @@ class _AdminScheduledTaskDetailPageState
                 runSpacing: 8,
                 alignment: WrapAlignment.end,
                 children: [
-                  if (toggle != null)
+                  if (controller.busy.contains(task.id))
+                    SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                        semanticsLabel: 'Updating task',
+                        value: MediaQuery.disableAnimationsOf(context)
+                            ? .75
+                            : null,
+                      ),
+                    ),
+                  for (final choice in [?toggle, ?cancel, trigger])
                     StudioButtonPress(
-                      child: OutlinedButton.icon(
-                        onPressed: !toggle.enabled
-                            ? null
-                            : () => performTaskAction(
+                      child: IconButton.filledTonal(
+                        tooltip: choice.label,
+                        onPressed: choice.enabled
+                            ? () => performTaskAction(
                                 context,
                                 controller,
                                 task,
-                                toggle.kind,
-                              ),
-                        icon: Icon(
-                          toggle.kind == TaskAction.resume
-                              ? Icons.play_arrow_rounded
-                              : Icons.pause_rounded,
-                        ),
-                        label: Text(
-                          toggle.kind == TaskAction.resume ? 'Resume' : 'Pause',
-                        ),
+                                choice.kind,
+                              )
+                            : null,
+                        icon: Icon(switch (choice.kind) {
+                          TaskAction.pause => Icons.pause_rounded,
+                          TaskAction.cancel => Icons.stop_rounded,
+                          TaskAction.trigger => Icons.bolt_outlined,
+                          _ => Icons.play_arrow_rounded,
+                        }),
                       ),
                     ),
-                  StudioButtonPress(
-                    child: FilledButton(
-                      onPressed: !trigger.enabled
-                          ? null
-                          : () => performTaskAction(
-                              context,
-                              controller,
-                              task,
-                              TaskAction.trigger,
-                            ),
-                      child: StudioActionLabel(
-                        trigger.label,
-                        busy: controller.busy.contains(task.id),
-                      ),
-                    ),
-                  ),
                 ],
               ),
         child: StudioRefresh(
@@ -211,7 +206,7 @@ class _AdminScheduledTaskDetailPageState
                         const Divider(height: 1),
                         const SizedBox(height: 16),
                         Text(
-                          'Run times use your phone’s timezone. Recurring schedules follow Hermes’ timezone.',
+                          'Run times use your phone’s timezone. Schedule timezone: ${task.timezoneLabel}. Pause changes future runs; Stop cancels the current run.',
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -221,7 +216,9 @@ class _AdminScheduledTaskDetailPageState
               const SizedBox(height: 24),
               if (task.error.isNotEmpty)
                 TaskSection(
-                  'Last run needs attention',
+                  task.needsAttention
+                      ? 'Last run needs attention'
+                      : 'Last run outcome',
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -230,7 +227,8 @@ class _AdminScheduledTaskDetailPageState
                         crossAxisAlignment: WrapCrossAlignment.center,
                         spacing: 8,
                         children: [
-                          if (widget.onInvestigate != null)
+                          if (widget.onInvestigate != null &&
+                              task.needsAttention)
                             AdminAskHermesButton(
                               label: 'Ask ${task.profileName}',
                               onPressed: () => widget.onInvestigate!(
@@ -241,12 +239,14 @@ class _AdminScheduledTaskDetailPageState
                               ),
                             ),
                           ToolDetailCopyButton(
-                            label: 'Copy task error',
+                            label: task.needsAttention
+                                ? 'Copy task error'
+                                : 'Copy run outcome',
                             text: task.error,
                           ),
                         ],
                       ),
-                      TaskMessage(task.error, error: true),
+                      TaskMessage(task.error, error: task.needsAttention),
                     ],
                   ),
                 ),
@@ -266,6 +266,14 @@ class _AdminScheduledTaskDetailPageState
                       children: [
                         _fact('Results', task.destinationsDisplay),
                         _fact('Model', task.modelDisplay),
+                        _fact('Missed runs', task.catchUpLabel),
+                        if (task.schedule['kind'] == 'cron')
+                          _fact('Late-run window', task.graceLabel),
+                        if (task.latestExecution case final execution?)
+                          _fact(
+                            'Latest attempt',
+                            '${execution.label}${execution.reason.isEmpty ? '' : ': ${execution.reason}'}',
+                          ),
                         _fact(
                           'Last run',
                           task.lastRun == null

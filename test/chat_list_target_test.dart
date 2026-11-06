@@ -646,7 +646,7 @@ void main() {
       StreamEvent(
         type: 'message.start',
         sessionId: chat.runtime.runtimeId,
-        data: const {},
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pump();
@@ -655,7 +655,9 @@ void main() {
         StreamEvent(
           type: 'message.delta',
           sessionId: chat.runtime.runtimeId,
-          data: {'text': 'answer $i'},
+          data: stockChatReply(owner.gateway, 'message.delta', {
+            'text': 'answer $i',
+          }),
         ),
       );
       await tester.pump(const Duration(milliseconds: 20));
@@ -762,7 +764,7 @@ void main() {
       StreamEvent(
         type: 'message.start',
         sessionId: chat.runtime.runtimeId,
-        data: const {},
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pump();
@@ -997,7 +999,7 @@ void main() {
       StreamEvent(
         type: 'message.start',
         sessionId: chat.runtime.runtimeId,
-        data: const {},
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pumpAndSettle();
@@ -1073,7 +1075,7 @@ void main() {
           StreamEvent(
             type: 'message.start',
             sessionId: chat.runtime.runtimeId,
-            data: const {},
+            data: stockChatReply(owner.gateway, 'message.start', const {}),
           ),
         );
         owner.gateway.onEvent!(

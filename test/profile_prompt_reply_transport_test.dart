@@ -48,6 +48,13 @@ void main() {
             final params = frame['params'] as Map;
             if (method == 'client.capabilities') {
               expect(params, {'server_requests': true});
+              socket.add(
+                jsonEncode({
+                  'jsonrpc': '2.0',
+                  'id': frame['id'],
+                  'result': {'canonical_clarify_batch': true},
+                }),
+              );
               advertised.complete();
               return;
             }

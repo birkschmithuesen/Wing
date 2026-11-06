@@ -16,25 +16,29 @@ Widget panel(
   debugShowCheckedModeBanner: false,
   theme: profileWorkspaceTheme(ThemeData(brightness: brightness)),
   home: MediaQuery(
-    data: MediaQueryData(textScaler: TextScaler.linear(scale)),
+    data: MediaQueryData(
+      size: const Size(360, 800),
+      textScaler: TextScaler.linear(scale),
+    ),
     child: Scaffold(
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(12),
         child: GatewayClarifyDialog(
-          number: 1,
-          total: 2,
-          request: GatewayClarifyRequest(
-            requestId: 'test',
-            questionId: 'q1',
-            question:
-                'Which review should I run?\n\nChoose the **level of detail** for the design and copy review.',
-            choices: const [
-              'Detailed review, including layout and copy',
-              'Quick review of the main issues',
-            ],
-            multiSelect: multiple,
-          ),
-          onRespond: respond,
+          requests: [
+            GatewayClarifyRequest(
+              requestId: 'test',
+              questionId: 'q1',
+              question:
+                  'Which review should I run?\n\nChoose the **level of detail** for the design and copy review.',
+              choices: const [
+                'Detailed review, including layout and copy',
+                'Quick review of the main issues',
+              ],
+              multiSelect: multiple,
+            ),
+          ],
+          onRespond: (answers) => respond(answers.values.single ?? ''),
+          onSkip: () => respond(''),
         ),
       ),
     ),
@@ -106,10 +110,7 @@ void main() {
       ]);
       pending.completeError(Exception('private transport detail'));
       await tester.pump();
-      expect(
-        find.text('Hermes could not accept the answer. Please try again.'),
-        findsOneWidget,
-      );
+      expect(find.text('Send failed. Try again.'), findsOneWidget);
       expect(find.text('Also check accessibility'), findsOneWidget);
       expect(find.textContaining('private transport detail'), findsNothing);
     },
@@ -151,7 +152,7 @@ void main() {
       );
       await tester.ensureVisible(find.byKey(const Key('clarify-continue')));
       expect(tester.takeException(), isNull);
-      expect(find.text('1 of 2'), findsOneWidget);
+      expect(find.text('Your input'), findsOneWidget);
     });
   }
 }

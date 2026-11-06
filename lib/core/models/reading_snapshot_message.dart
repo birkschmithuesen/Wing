@@ -16,6 +16,12 @@ Map<String, dynamic> captureReadingSnapshotMessage(Map<String, dynamic> row) =>
         'content',
         'text',
         'timestamp',
+        '_reply_turn',
+        '_reply_segment',
+        '_reply_offset',
+        '_reply_sealed',
+        '_reply_admission',
+        '_reply_streaming',
         'hidden',
         '_todo_snapshot_synthetic',
         if (row['role'] == 'system') '_review_notice',
@@ -55,6 +61,18 @@ Map<String, dynamic> projectReadingSnapshotMessage(Map row) {
     final value = row[key];
     if (value is int || value is String) result[key] = value;
   }
+  for (final key in ['_reply_turn', '_reply_admission']) {
+    final value = row[key];
+    if (value is String && value.isNotEmpty && value.length <= 256) {
+      result[key] = value;
+    }
+  }
+  final segment = row['_reply_segment'];
+  if (segment is int && segment >= 0) result['_reply_segment'] = segment;
+  if (row['_reply_streaming'] == true) result['_reply_streaming'] = true;
+  if (row['_reply_sealed'] == true) result['_reply_sealed'] = true;
+  final offset = row['_reply_offset'];
+  if (offset is int && offset >= 0) result['_reply_offset'] = offset;
   for (final key in ['role', 'display_kind']) {
     final value = row[key];
     if (value is String && value.length <= 128) result[key] = value;
