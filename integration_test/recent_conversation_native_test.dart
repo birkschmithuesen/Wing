@@ -186,18 +186,19 @@ class _NativeEventChats extends ProfileBrowserFixture {
         'timestamp': now + sequence,
       },
     ];
+    final turnId = 'native-turn-$sequence';
     gateway.onEvent!(
       StreamEvent(
         type: 'message.start',
         sessionId: chat.runtime.runtimeId,
-        data: {},
+        data: {'turn_id': turnId},
       ),
     );
     gateway.onEvent!(
       StreamEvent(
         type: 'message.delta',
         sessionId: chat.runtime.runtimeId,
-        data: {'text': text},
+        data: {'text': text, 'turn_id': turnId, 'segment': 0, 'offset': 0},
       ),
     );
     gateway.onEvent!(

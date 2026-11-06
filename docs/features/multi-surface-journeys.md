@@ -30,6 +30,9 @@ Roadmap actions wait for route completion and reveal controls before tapping,
 including when the Android keyboard reduces the viewport.
 The Identity save journey waits for Android's keyboard inset before checking and
 tapping Save, so its keyboard-open assertion does not race the native show animation.
+After the clarification journey reopens the keyboard, it uses the visible Input
+needed control to recover the full confirmation target, then checks retained
+answers, the unrelated draft and held retry feedback.
 Roadmap failures export their exact failure-time Flutter frame and keyboard metrics under `<suite>-frames/`
 and in the suite log. Native foreground, window and keyboard diagnostics at failed
 suite completion are retained under `<suite>-failure/` before cleanup; later tests
