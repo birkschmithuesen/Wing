@@ -4,10 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/model_choice.dart';
 import 'package:wing/core/models/settings_edit.dart';
 import 'package:wing/core/services/settings_edit_session.dart';
+import 'package:wing/core/services/connection_manager.dart';
 import 'support/administration_fixture.dart';
 
 class _SettingsFixture extends AdministrationFixture {
   final writeStarted = Completer<void>();
+  Object? writeFailure;
+  Object? readbackFailure;
+  bool writeAcknowledged = false;
 
   @override
   Future<Map<String, dynamic>> send(
@@ -15,11 +19,22 @@ class _SettingsFixture extends AdministrationFixture {
     String path,
     Map<String, String> query,
     Map<String, dynamic>? body,
-  ) {
+  ) async {
     if (method == 'PUT' && path == 'config' && !writeStarted.isCompleted) {
       writeStarted.complete();
     }
-    return super.send(method, path, query, body);
+    if (method == 'PUT' && path == 'config' && writeFailure != null) {
+      throw writeFailure!;
+    }
+    if (method == 'GET' &&
+        path == 'config' &&
+        writeAcknowledged &&
+        readbackFailure != null) {
+      throw readbackFailure!;
+    }
+    final result = await super.send(method, path, query, body);
+    if (method == 'PUT' && path == 'config') writeAcknowledged = true;
+    return result;
   }
 }
 
@@ -50,6 +65,80 @@ void main() {
   }
 
   int writes(AdministrationFixture fixture) => fixture.settingsDispatches;
+  for (final (status, detail) in [
+    (403, 'memory.memory_char_limit is locked by organization policy'),
+    (403, 'Cross-origin browser requests are not allowed'),
+    (400, 'memory.memory_char_limit has an invalid value'),
+    (409, 'Configuration changed elsewhere'),
+    (413, 'The configuration is too large'),
+  ]) {
+    test(
+      'definite config $status refusal retains explanation and editable draft: $detail',
+      () async {
+        final fixture = stockFixture()
+          ..writeFailure = DashboardHttpException(
+            status,
+            'config?profile=personal',
+            responseDetail: detail,
+          );
+        final session = await open(fixture);
+        session.setText(memoryFields[2].key, '2500');
+        expect(await session.save(), SettingsSaveOutcome.failed);
+        expect(session.state.error, detail);
+        expect(session.state.fields.single.text, '2500');
+        expect(writes(fixture), 1);
+        fixture.writeFailure = null;
+        expect(await session.save(), SettingsSaveOutcome.confirmed);
+        expect(writes(fixture), 2);
+        session.dispose();
+      },
+    );
+  }
+  for (final failure in [
+    TimeoutException('response lost'),
+    const DashboardHttpException(
+      500,
+      'config',
+      responseDetail: 'Internal server error',
+    ),
+    const DashboardHttpException(
+      403,
+      'auth/password-login',
+      responseDetail: 'Access denied',
+    ),
+  ]) {
+    test(
+      'unconfirmed settings failure cannot become a managed refusal: $failure',
+      () async {
+        final fixture = stockFixture()..writeFailure = failure;
+        final session = await open(fixture);
+        session.setText(memoryFields[2].key, '2500');
+        expect(await session.save(), SettingsSaveOutcome.uncertain);
+        expect(await session.save(), SettingsSaveOutcome.blocked);
+        expect(session.state.fields.single.text, '2500');
+        expect(writes(fixture), 1);
+        session.dispose();
+      },
+    );
+  }
+  test(
+    'a config readback 403 does not turn an accepted write into a rejection',
+    () async {
+      final fixture = stockFixture()
+        ..readbackFailure = const DashboardHttpException(
+          403,
+          'config',
+          responseDetail: 'Access denied',
+        );
+      final session = await open(fixture);
+      session.setText(memoryFields[2].key, '2500');
+      expect(await session.save(), SettingsSaveOutcome.uncertain);
+      expect(await session.save(), SettingsSaveOutcome.blocked);
+      expect(setting(fixture.configs['personal']!, memoryFields[2].key), 2500);
+      expect(writes(fixture), 1);
+      session.dispose();
+    },
+  );
   for (final endpoint in ['config', 'profiles', 'model/info']) {
     test(
       'disposal during held $endpoint preflight sends no settings write',

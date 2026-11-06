@@ -10,6 +10,13 @@ Opening or initializing a chat alone does not start monitoring. Once a successfu
 live-session check confirms that an old runtime is gone, Wing stops watching it.
 That does not generate a reply alert or claim its task finished successfully.
 
+Hermes can also report child tasks and background processes whose parent chat
+is not attached. Wing shows that conversation as **Running** in Recents and
+keeps monitoring it without opening it. A conversation appears once even if
+both its main turn and children are working. Failed checks retain its last
+known status as **reconnecting**. When a successful check no longer reports
+that detached work, its watch ends without generating a completion alert.
+
 ## Enable monitoring
 
 1. Connect Hermes and allow Android notifications in **App settings → Notifications**.
@@ -46,6 +53,6 @@ Chat alerts use Android conversation notifications. Tap an alert to open its ori
 
 ## Delivery limits
 
-Wing monitors connected work and reconciles reported changes while it remains connected. It does not subscribe to every historical chat. Very short work in unopened chats, missing server events and child-only activity can leave alert gaps. Temporary disconnections retain drafts and recent reading, but do not guarantee replay of every missed outcome.
+Wing monitors connected work and reconciles reported changes while it remains connected. It does not subscribe to every historical chat. Detached-work discovery covers the connected gateway process, not every process on the server. It establishes ongoing work, not its eventual result. Very short work in unopened chats and missing server events can leave alert gaps. Temporary disconnections retain drafts and recent reading, but do not guarantee replay of every missed outcome.
 
 Opening a chat refreshes its server state. Notifications help you return to work; the conversation on Hermes remains the record to check. Unsent follow-ups still need a running, connected Wing client. See [Queues and pending input](SUPERVISION_AND_QUEUES.md).

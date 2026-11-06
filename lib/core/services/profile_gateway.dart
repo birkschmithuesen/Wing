@@ -144,8 +144,9 @@ class ProfileGatewayConnection {
   }
 }
 
-/// The stock modern Hermes contract. All profile-owned traffic passes through
-/// this immutable scope. There is no unscoped or experimental-recovery fallback.
+/// The stock modern Hermes contract. Session and profile commands retain this
+/// immutable scope. Host discovery can name explicit target profiles without
+/// granting their runtime authority. There is no experimental recovery fallback.
 class ProfileGateway {
   final canonical = CanonicalSessionProtocol();
   bool canonicalClarifyBatch = false;
@@ -586,6 +587,10 @@ class ProfileGateway {
           timeout: switch (method) {
             'mcp.servers.oauth.start' => const Duration(seconds: 45),
             'command.dispatch' || 'slash.exec' => commandTimeout,
+            // Stock update_all checks and updates installed plugins serially;
+            // even one healthy Git operation can outlast the ordinary RPC wait.
+            'plugins.manage' when params['action'] == 'update_all' =>
+              const Duration(minutes: 5),
             'session.mutate' when params['operation'] == 'compress' =>
               const Duration(minutes: 11),
             _ => const Duration(seconds: 30),
@@ -700,6 +705,14 @@ class ProfileGateway {
       if (id is String) canonical.refused(id, error);
       rethrow;
     }
+  }
+
+  /// Read process-local detached presence for a discovered profile through the
+  /// existing host connection; this never attaches its conversations or opens
+  /// another profile transport. Unlike session calls, the target is explicit.
+  Future<Map<String, dynamic>> detachedWorkRoster(String profileName) {
+    if (profileName.trim().isEmpty) throw ArgumentError('Profile is empty');
+    return _rpc('subagent.roster', {'profile': profileName});
   }
 
   Future<Map<String, dynamic>> mutateSession(
@@ -897,6 +910,24 @@ class ProfileGateway {
       'key': key,
       'enable': enabled,
     });
+  }
+
+  /// Maintain installed plugins in this captured profile. Stock owns which
+  /// pinned or review-requiring items are skipped and returns per-item results.
+  Future<Map<String, dynamic>> updateInstalledPlugins({
+    required bool Function() canDispatch,
+    required void Function() onDispatched,
+  }) async {
+    await connect();
+    if (!canDispatch()) {
+      throw JsonRpcError(
+        'plugins.manage',
+        'Operation retired',
+        reason: 'operation_retired',
+      );
+    }
+    onDispatched();
+    return call('plugins.manage', {'action': 'update_all'});
   }
 
   /// Stock completion derives profile and workspace from the owning session.

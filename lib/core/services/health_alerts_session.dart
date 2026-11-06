@@ -232,11 +232,34 @@ class HealthAlertsSession extends ChangeNotifier {
       for (final entry in currentInventories.entries) {
         _evaluator.reconcileConnectors(entry.key, entry.value);
       }
+      final connectorProfiles = {
+        ...currentInventories.keys,
+        for (final alert in alerts)
+          if (alert.destination == 'MCP connectors') ?alert.profileName,
+      };
+      for (final profile in connectorProfiles) {
+        final runtime =
+            health.server.connectorInventory.runtimeObservations[profile];
+        final currentRuntime =
+            runtime != null &&
+            health.server.connectorInventory.runtimeError(profile) == null &&
+            !now.isBefore(runtime.receivedAt) &&
+            now.difference(runtime.receivedAt) < health.maxAge;
+        _evaluator.connectorRuntime(
+          profile,
+          currentRuntime ? runtime : null,
+          currentInventories[profile],
+        );
+      }
       final findings = [
         for (final entry in health.scheduledTaskFindings.entries)
           (entry.key, entry.value, const <String>[]),
         if (health.profileName case final name?)
-          for (final finding in health.profileFindings)
+          for (final finding in [
+            for (final value in health.profileFindings)
+              if (value.title != 'Connector settings') value,
+            ?health.connectorProbeFinding,
+          ])
             if (finding.destination != 'Scheduled tasks')
               (
                 name,

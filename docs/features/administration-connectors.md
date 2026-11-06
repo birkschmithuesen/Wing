@@ -12,6 +12,8 @@ Feature ID: `administration-connectors`.
 - `administration-connectors.received-request` — Resolve a received conversation
   connection request with captured account authorization, Check status and explicit
   Continue; canonical snapshots clear requests no longer pending.
+- `administration-connectors.runtime` — Read cached runtime/authentication state
+  without probing or launching a connector; retain explicit-test provenance.
 - `administration-connectors.configure` — Edit the captured connector.
 - `administration-connectors.authorize` — Complete or cancel its access flow.
 - `administration-connectors.recover` — Reconnect or retry without a stale setup taking over.
@@ -22,6 +24,12 @@ Feature ID: `administration-connectors`.
 ## How to get to it (user POV)
 
 Open MCP connectors from Hermes administration or Bot settings. Choose a connector, inspect setup or access, edit supported configuration, and complete its sign-in or reconnection.
+
+Connector rows and details show cached runtime status separately from the explicit
+Test connection result. Sign in again identifies a cached authentication problem;
+the existing sign-in action still requires a supported configured connector.
+Refresh connectors reads configuration and cached status with visible progress.
+A status-read failure keeps the last cached observation with an unavailable notice.
 
 For hosted apps, open Administration → Access and connectors → Connected apps,
 or the Manage capabilities menu in Skills and tools. Choose the add-link action
@@ -45,7 +53,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/profile_connectors_session_test.dart test/mcp_setup_test.dart test/mcp_oauth_test.dart test/administration_connector_health_test.dart
+  flutter test --no-pub test/profile_connectors_session_test.dart test/mcp_setup_test.dart test/mcp_oauth_test.dart test/administration_connector_health_test.dart test/connector_runtime_test.dart test/connectors_view_dependency_guard_test.dart
   flutter test --no-pub test/hosted_connector_accounts_session_test.dart test/upstream_capabilities_ui_test.dart test/hosted_connection_request_test.dart
   ```
 
@@ -71,3 +79,14 @@ Confirmed connector inventories are shared with Health alerts. Removing or
 disabling a failed connector clears its alert target on successful readback;
 other failed connectors remain actionable. An unavailable readback retains the
 last known issue until a subsequent inventory check confirms removal.
+
+Cached runtime state is scoped by the gateway's available profile runtime. Not
+loaded does not mean failed, and ready-on-first-use does not mean a connection
+test passed. Cached reads never initiate a test or authorization and do not infer
+local versus remote from the transport name. Host runtime tests exercise the real
+connector list/detail controls, held refresh, unavailable status and recovery in
+both themes at normal/enlarged text, plus cross-profile alert recovery.
+
+Cached status belongs to the configured connector's exact source and plugin owner,
+not just its name. A late observation for a replaced same-name connector cannot
+appear as the replacement's status or raise/clear its runtime Health incident.

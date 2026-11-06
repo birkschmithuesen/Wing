@@ -8,7 +8,9 @@ Feature ID: `model-selection`.
 
 - `model-selection.choose` — Browse and inspect supplied model options.
 - `model-selection.apply` — Confirm the captured model and reasoning in one canonical mutation. While a turn is running, an accepted deferred choice appears as Next turn; the effective model remains unchanged until the server applies it. Reopening the picker starts from the pending choice.
-- `model-selection.reject` — Retain the previous setting after cancellation or rejection.
+- `model-selection.reject` — Retain the previous setting after cancellation or rejection,
+  and show the supplied managed-policy field and explanation. If the model was
+  accepted but the separate Fast change was refused, identify that partial result.
 - `model-selection.allowances` — Inspect supplied plan allowances and reset times, Large/Free labels and recommendations in server order. The composer shows the current task's supplied allowance; a model card shows allowances that apply to that exact route.
 
 ## How to get to it (user POV)

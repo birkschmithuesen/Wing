@@ -120,6 +120,10 @@ class CommandHost extends Host {
           return await readCatalog?.call(scope.profileName) ??
               catalog(scope.profileName);
         }
+        if (method == 'session.mutate' && params['operation'] == 'compress') {
+          if (respond == null) throw StateError('Unexpected compression');
+          return respond!(method, params);
+        }
         if (method == 'skills.reload') {
           return await respond?.call(method, params) ??
               {
@@ -290,6 +294,189 @@ void main() {
     if (!controllerDisposed) controller.dispose();
     appPreferences.dispose();
   });
+
+  for (final command in ['compress', 'compact']) {
+    test(
+      '$command uses canonical raw-argument preview without generic dispatch',
+      () async {
+        host.respond = (method, params) async {
+          expect(method, 'session.mutate');
+          expect(params['operation'], 'compress');
+          expect(params['session_id'], 'a-runtime');
+          expect(params['profile'], 'a');
+          expect(params['request_id'], isNotEmpty);
+          expect(params['expected_revision'], isA<int>());
+          expect(params['expected_generation'], isA<int>());
+          expect(params['payload'], {'focus': 'here 2 --preview'});
+          return {
+            'session_id': params['session_id'],
+            'operation': 'compress',
+            'status': 'preview',
+            'lines': ['Keep the newest 2 messages'],
+            'head_count': 4,
+            'tail_count': 2,
+            'message_count': 6,
+          };
+        };
+        chat.composer.editText('/$command here 2 --preview');
+        await controller.send(chat);
+        expect(chat.runtime.error, isNull);
+        expect(chat.composer.observation.text, isEmpty);
+        expect(
+          chat.reading.messages.any(
+            (m) => m['content'] == 'Keep the newest 2 messages',
+          ),
+          isTrue,
+        );
+        expect(
+          host.commandCalls.where(
+            (c) => {
+              'command.dispatch',
+              'slash.exec',
+              'prompt.submit',
+            }.contains(c.$1),
+          ),
+          isEmpty,
+        );
+      },
+    );
+  }
+
+  for (final noop in [true, false]) {
+    test(
+      'compression ${noop ? 'noop' : 'receipt'} retains newer draft and exact pending ownership',
+      () async {
+        final entered = Completer<void>();
+        final held = Completer<Map<String, dynamic>>();
+        host.respond = (method, params) {
+          expect(method, 'session.mutate');
+          entered.complete();
+          return held.future;
+        };
+        chat.composer.editText('/compress focus project constraints');
+        final running = controller.send(chat);
+        await entered.future;
+        expect(chat.runtime.commandRunning, isTrue);
+        chat.composer.editText('Keep a newer unrelated draft');
+        await controller.send(chat);
+        expect(
+          host.commandCalls.where((c) => c.$1 == 'session.mutate').length,
+          1,
+        );
+        held.complete({
+          'session_id': 'a-runtime',
+          'operation': 'compress',
+          if (noop) 'status': 'noop',
+          if (!noop) ...{
+            'revision': 1,
+            'execution_generation': 1,
+            'target_session_id': chat.key.sessionId,
+            'previous_target_session_id': chat.key.sessionId,
+          },
+          'summary': {
+            'headline': noop
+                ? 'No changes from compression: 2 messages'
+                : 'Compressed: 8 → 3 messages',
+            'token_line': 'Estimated tokens: 90 → 40',
+            'note': '',
+          },
+        });
+        await running;
+        expect(chat.runtime.error, isNull);
+        expect(chat.runtime.commandRunning, isFalse);
+        expect(chat.composer.observation.text, 'Keep a newer unrelated draft');
+        expect(
+          chat.reading.messages.any(
+            (m) => m['content'].toString().contains(
+              noop ? 'No changes from compression' : 'Compressed: 8',
+            ),
+          ),
+          isTrue,
+        );
+        if (!noop) {
+          expect(host.commandCalls.any((c) => c.$1 == 'session.stats'), isTrue);
+        }
+      },
+    );
+  }
+
+  for (final reason in [
+    'unsupported_compress_options',
+    'compression_checkpoint_required',
+    'runtime_coordination_required',
+    'request_timeout',
+  ]) {
+    test(
+      'compression $reason preserves draft without retry or handler fallback',
+      () async {
+        host.respond = (_, _) async => throw JsonRpcError(
+          'session.mutate',
+          reason,
+          code: 4001,
+          reason: reason,
+        );
+        chat.composer.editText('/compress --aggressive');
+        await controller.send(chat);
+        expect(chat.composer.observation.text, '/compress --aggressive');
+        expect(
+          chat.runtime.error,
+          contains(reason == 'request_timeout' ? 'uncertain' : reason),
+        );
+        expect(
+          host.commandCalls.where((c) => c.$1 == 'session.mutate').length,
+          1,
+        );
+        expect(
+          host.commandCalls.where(
+            (c) => {'command.dispatch', 'slash.exec'}.contains(c.$1),
+          ),
+          isEmpty,
+        );
+      },
+    );
+  }
+
+  test(
+    'compression cannot dispatch after profile departure during catalog read',
+    () async {
+      final entered = Completer<void>();
+      final held = Completer<Map<String, dynamic>>();
+      host.readCatalog = (profile) {
+        entered.complete();
+        return held.future;
+      };
+      chat.composer.editText('/compress');
+      final running = controller.send(chat);
+      await entered.future;
+      await controller.switchProfile('b');
+      held.complete(host.catalog('a'));
+      await running;
+      expect(host.commandCalls.where((c) => c.$1 == 'session.mutate'), isEmpty);
+      expect(chat.composer.observation.text, '/compress');
+    },
+  );
+
+  for (final blocked in ['working', 'read-only']) {
+    test('compression refuses $blocked conversation before mutation', () async {
+      if (blocked == 'working') {
+        emitChatEvent(controller, chat, 'message.start');
+      } else {
+        host.gateways['a']!.canonical.refused(
+          'a-runtime',
+          JsonRpcError(
+            'session.mutate',
+            'session_read_only',
+            reason: 'session_read_only',
+          ),
+        );
+      }
+      chat.composer.editText('/compress');
+      await controller.send(chat);
+      expect(host.commandCalls.where((c) => c.$1 == 'session.mutate'), isEmpty);
+      expect(chat.runtime.error, isNotNull);
+      expect(chat.composer.observation.text, '/compress');
+    });
+  }
 
   test(
     'status uses the exact canonical command and preserves captured profile',

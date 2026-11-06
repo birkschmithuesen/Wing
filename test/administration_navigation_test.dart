@@ -519,7 +519,7 @@ void main() {
           find.text('Update available · 3 commits behind main'),
           findsOneWidget,
         );
-        expect(find.text('Reconnect MCP tools'), findsNothing);
+        expect(find.byTooltip('Reconnect MCP tools'), findsNothing);
         expect(find.byTooltip('Check update progress'), findsNothing);
         expect(
           admin.requests.where((r) => r.$2 == 'hermes/update/check').length,

@@ -2,6 +2,7 @@ import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'dart:io';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
 
@@ -18,6 +19,7 @@ import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/slash_command_suggestions.dart';
 
 import '../test/slash_commands_test.dart' show CommandHost;
+import '../test/helpers/journey_controls.dart' show tapJourneyControl;
 
 /// Native input/screenshot checkpoints for a host driving the disposable emulator.
 Future<void> _nativeCheckpoint(WidgetTester tester, String name) async {
@@ -332,6 +334,91 @@ void main() {
           await frames();
           expect(input.text, 'Please use /a-skil for this task');
         }
+
+        // Exercise compression through the actual production Send control.
+        // A held preview uses the existing command admission: visible progress
+        // and a retained, disabled command draft until acknowledgement. After
+        // settlement the user can author a new draft without sending a prompt.
+        final compression = Completer<Map<String, dynamic>>();
+        host.respond = (method, params) {
+          expect(method, 'session.mutate');
+          expect(params['operation'], 'compress');
+          expect(params['payload'], {'focus': 'here 2 --preview'});
+          return compression.future;
+        };
+        await tester.enterText(composer, '/compress here 2 --preview');
+        await frames();
+        await tapJourneyControl(tester, find.byTooltip('Send'));
+        for (var i = 0; i < 100 && !chat.runtime.commandRunning; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await frames();
+        expect(find.text('Running command…'), findsOneWidget);
+        expect(find.text('Running command…').hitTestable(), findsOneWidget);
+        expect(tester.widget<TextField>(composer).enabled, isFalse);
+        expect(input.text, '/compress here 2 --preview');
+        Future<void> captureCompression(String state) async {
+          final boundary = tester.renderObject<RenderRepaintBoundary>(
+            find.byKey(captureKey),
+          );
+          final frame = await boundary.toImage();
+          final bytes = (await frame.toByteData(
+            format: ui.ImageByteFormat.png,
+          ))!.buffer.asUint8List();
+          frame.dispose();
+          await File(
+            '${directory.path}/compression-$state-$label.png',
+          ).writeAsBytes(bytes);
+        }
+
+        await captureCompression('pending');
+        compression.complete({
+          'session_id': chat.runtime.runtimeId,
+          'operation': 'compress',
+          'status': 'preview',
+          'lines': ['Compression preview: keep the newest 2 messages.'],
+          'head_count': 4,
+          'tail_count': 2,
+          'message_count': 6,
+        });
+        for (var i = 0; i < 100 && chat.runtime.commandRunning; i++) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        await frames();
+        expect(chat.runtime.commandRunning, isFalse);
+        expect(find.text('Running command…'), findsNothing);
+        expect(input.text, isEmpty);
+        expect(tester.widget<TextField>(composer).enabled, isTrue);
+        expect(
+          host.commandCalls.where((c) => c.$1 == 'session.mutate'),
+          hasLength(1),
+        );
+        expect(
+          host.commandCalls.where((c) => c.$1 == 'command.dispatch'),
+          isEmpty,
+        );
+        expect(
+          chat.reading.messages.any(
+            (m) =>
+                m['content'] ==
+                'Compression preview: keep the newest 2 messages.',
+          ),
+          isTrue,
+        );
+        await captureCompression('preview');
+        await Scrollable.ensureVisible(tester.element(composer));
+        await tester.tap(composer.hitTestable());
+        await frames();
+        expect(tester.widget<TextField>(composer).focusNode!.hasFocus, isTrue);
+        if (const bool.fromEnvironment('SLASH_NATIVE_INPUT')) {
+          await _nativeCheckpoint(tester, '$label-type-post-compression');
+        } else {
+          await tester.enterText(composer, 'Keep this newer draft');
+        }
+        await frames();
+        expect(input.text, 'Keep this newer draft');
+        expect(chat.composer.observation.text, 'Keep this newer draft');
+        await _nativeCheckpoint(tester, '$label-post-compression-ready');
         expect(
           host.commandCalls.where((c) => c.$1 == 'prompt.submit'),
           isEmpty,

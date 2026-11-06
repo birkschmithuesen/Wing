@@ -184,7 +184,14 @@ class _Fixture {
         },
         'mcp/servers' => {
           'servers': [
-            {'name': 'example', 'enabled': true},
+            {
+              'name': 'example',
+              'enabled': true,
+              'transport': 'http',
+              'auth': null,
+              'source': 'config',
+              'plugin': null,
+            },
           ],
         },
         'cron/jobs' => {
@@ -232,6 +239,24 @@ class _Fixture {
         discover: () async => discovery,
         rpc: (method, params) async {
           requests.add('RPC $method $name');
+          if (method == 'mcp.servers.status') {
+            return {
+              'checked_at': DateTime.now().millisecondsSinceEpoch,
+              'servers': [
+                {
+                  'name': 'example',
+                  'transport': 'http',
+                  'source': 'config',
+                  'plugin': null,
+                  'tools': 0,
+                  'connected': false,
+                  'disabled': false,
+                  'status': 'configured',
+                  'needs_auth': false,
+                },
+              ],
+            };
+          }
           if (method != 'setup.status') {
             throw StateError('Unexpected RPC: $method');
           }

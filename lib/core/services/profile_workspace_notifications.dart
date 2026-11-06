@@ -20,6 +20,7 @@ extension ProfileNotificationState on ProfileWorkspaceController {
     ({ProfileSessionKey? key, String payload, String title, String state})
   >
   get notificationMonitoringChats sync* {
+    final seen = <ProfileSessionKey>{};
     for (final group in _groupNotifications.monitoringGroups) {
       yield (
         key: null,
@@ -58,6 +59,7 @@ extension ProfileNotificationState on ProfileWorkspaceController {
         state = null;
       }
       if (state != null) {
+        seen.add(chat.key);
         yield (
           key: chat.key,
           payload: jsonEncode(chat.key.toJson()),
@@ -77,6 +79,7 @@ extension ProfileNotificationState on ProfileWorkspaceController {
       if (chat.source == 'bot_room') {
         continue;
       } else {
+        if (!seen.add(chat.key)) continue;
         yield (
           key: chat.key,
           payload: jsonEncode(chat.key.toJson()),
@@ -85,22 +88,42 @@ extension ProfileNotificationState on ProfileWorkspaceController {
         );
       }
     }
+    for (final entry in _detachedActivity.entries) {
+      final item = entry.value;
+      if (item.source == 'bot_room' ||
+          (_resources[entry.key.workspace]?.blocksSession(item.sessionId) ??
+              false) ||
+          !seen.add(entry.key)) {
+        continue;
+      }
+      yield (
+        key: entry.key,
+        payload: jsonEncode(entry.key.toJson()),
+        title: _monitoringTitle(entry.key, item.title, item.source),
+        state: _uncertainDetachedWork.contains(entry.key)
+            ? 'reconnecting'
+            : 'working',
+      );
+    }
   }
 
-  String _monitoringChatTitle(ProfileChat chat) {
-    if (chat.source == 'desktop' && chat.title == 'Bot Chat') {
-      return _discovery?.named(chat.key.workspace.profileName)?.label ??
-          chat.key.workspace.profileName;
+  String _monitoringChatTitle(ProfileChat chat) =>
+      _monitoringTitle(chat.key, chat.title, chat.source);
+
+  String _monitoringTitle(ProfileSessionKey key, String title, String? source) {
+    if (source == 'desktop' && title == 'Bot Chat') {
+      return _discovery?.named(key.workspace.profileName)?.label ??
+          key.workspace.profileName;
     }
-    if (chat.title.isEmpty || chat.title == 'Hermes session') {
-      final sessionId = chat.key.sessionId;
+    if (title.isEmpty || title == 'Hermes session') {
+      final sessionId = key.sessionId;
       // Date-prefixed session IDs share their leading characters.
       final shortId = sessionId.length <= 8
           ? sessionId
           : sessionId.substring(sessionId.length - 8);
       return 'Hermes session · $shortId';
     }
-    return chat.title;
+    return title;
   }
 
   Iterable<ProfileChat> get notificationChats =>
@@ -249,6 +272,8 @@ extension ProfileNotificationState on ProfileWorkspaceController {
   Future<void> reconcileNotificationRequests(
     Set<ProfileSessionKey> keys,
   ) async {
+    final source = _current;
+    if (source != null) unawaited(_refreshDetachedWork(source));
     Future<Map<String, dynamic>>? activeSnapshot;
     for (final key in keys) {
       if (_closed) return;

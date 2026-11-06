@@ -22,6 +22,14 @@ not change global defaults. `/steer`, interruption, status, and side questions
 can address active work. Commands that start a normal turn wait until idle.
 Built-in commands mentioned within ordinary prose remain text.
 
+`/compress` and `/compact` use the current conversation's compression operation.
+Add `--preview` to inspect its plan without changing history; `here N` selects
+the newest messages to keep and `focus TOPIC` supplies a focus. The conversation
+must be idle and writable. Wing shows the server's preview, no-change result or
+applied summary, and refreshes history after a confirmed change. It preserves a
+newer draft while waiting. A checkpoint or runtime-coordination refusal remains
+a refusal; Wing does not send it through a generic command or prompt instead.
+
 A command's presence in the catalog does not guarantee it works on mobile.
 Wing checks the server's availability restrictions before running a command.
 Commands reserved for management controls, settings, the terminal or messaging

@@ -6,6 +6,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_settings_page.dart';
+import 'package:wing/core/screens/administration/admin_widgets.dart';
 import 'package:wing/core/screens/administration/admin_memory_page.dart';
 import 'package:wing/core/screens/administration/admin_tool_setup_page.dart';
 import 'package:wing/core/screens/administration/admin_skills_page.dart';
@@ -15,6 +16,8 @@ import 'package:flutter/services.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'support/administration_fixture.dart';
+import 'support/form_family_capture.dart';
+import 'package:wing/core/services/connection_manager.dart';
 import 'helpers/pump_markdown_widget.dart';
 
 final _fields = [
@@ -26,6 +29,131 @@ final _fields = [
   ),
 ];
 void main() {
+  setUpAll(loadFormFamilyFonts);
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'managed settings refusal keeps visible recovery ${brightness.name} $scale',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = scale == 1
+              ? const Size(390, 844)
+              : const Size(320, 640);
+          tester.view.viewInsets = const FakeViewPadding(bottom: 200);
+          addTearDown(tester.view.reset);
+          final fixture = AdministrationFixture();
+          final held = Completer<void>();
+          const refusal =
+              'memory.memory_char_limit is locked by your administrator.';
+          fixture.override = (method, path, query, body) async {
+            if (method == 'PUT' && path == 'config') {
+              await held.future;
+              throw const DashboardHttpException(
+                403,
+                'config?profile=personal',
+                responseDetail: refusal,
+              );
+            }
+            final handler = fixture.override;
+            fixture.override = null;
+            try {
+              return await fixture.send(method, path, query, body);
+            } finally {
+              fixture.override = handler;
+            }
+          };
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: RepaintBoundary(key: formFamilyCapture, child: child!),
+              ),
+              home: AdminSettingsPage(
+                profile: fixture.server.profile('personal'),
+                title: 'Memory settings',
+                fields: _fields,
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.enterText(find.byType(TextFormField), '2500');
+          await tester.pump();
+          await tester.tap(find.byTooltip('Save changes'));
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          await tester.pump(const Duration(milliseconds: 400));
+          await captureFormFamily(
+            tester,
+            'managed-settings-pending-${brightness.name}-$scale',
+          );
+          held.complete();
+          await tester.pumpAndSettle();
+          expect(find.text(refusal), findsOneWidget);
+          expect(find.text('2500'), findsOneWidget);
+          final save = find.byTooltip('Save changes').hitTestable();
+          expect(save, findsOneWidget);
+          final rect = tester.getRect(save);
+          expect(rect.height, greaterThanOrEqualTo(48));
+          expect(
+            rect.bottom,
+            lessThanOrEqualTo(tester.view.physicalSize.height - 200),
+          );
+          // Long refusal text remains readable through the ordinary content
+          // scroll while the fixed recovery controls stay above the keyboard.
+          final errorText = find.text(refusal);
+          final footerTop = tester.getRect(find.text('1 unsaved change')).top;
+          for (
+            var attempt = 0;
+            attempt < 8 && tester.getRect(errorText).bottom > footerTop;
+            attempt++
+          ) {
+            final gap = tester.getRect(errorText).bottom - footerTop;
+            await tester.drag(
+              find.byType(SingleChildScrollView).first,
+              Offset(0, -(gap + 24).clamp(32.0, 80.0).toDouble()),
+            );
+            await tester.pumpAndSettle();
+          }
+          expect(
+            tester.getRect(errorText).bottom,
+            lessThanOrEqualTo(footerTop),
+          );
+          expect(tester.getRect(errorText).bottom, greaterThan(0));
+          await captureFormFamily(
+            tester,
+            'managed-settings-refused-${brightness.name}-$scale',
+          );
+          fixture.override = null;
+          await tester.tap(save);
+          await tester.pumpAndSettle();
+          expect(find.text(refusal), findsNothing);
+          expect(fixture.settingsDispatches, 2);
+          expect(find.text('Settings saved.'), findsOneWidget);
+          expect(find.text('No unsaved changes'), findsOneWidget);
+          expect(
+            fixture.configs['personal']!['memory']['memory_char_limit'],
+            2500,
+          );
+          final acknowledgement = tester.getRect(find.byType(SnackBar));
+          final footer = tester.getRect(find.byType(AdminEditorActions));
+          expect(acknowledgement.top, greaterThanOrEqualTo(0));
+          expect(acknowledgement.bottom, lessThanOrEqualTo(footer.top));
+          expect(
+            footer.bottom,
+            lessThanOrEqualTo(tester.view.physicalSize.height - 200),
+          );
+          await captureFormFamily(
+            tester,
+            'managed-settings-saved-${brightness.name}-$scale',
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
   testWidgets('Hub preview uses shared skill instructions without installing', (
     tester,
   ) async {
@@ -334,7 +462,7 @@ void main() {
       await tester.tap(find.byTooltip('Save changes'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Save not confirmed'), findsOneWidget);
-      expect(find.textContaining('Defaults saved'), findsNothing);
+      expect(find.text('Settings saved.'), findsNothing);
       expect(tester.widget<Switch>(find.byType(Switch)).value, false);
       expect(find.text('2500'), findsOneWidget);
     },
@@ -367,10 +495,7 @@ void main() {
         'memory_enabled': false,
         'memory_char_limit': 3000,
       });
-      expect(
-        find.textContaining('Defaults saved for personal'),
-        findsOneWidget,
-      );
+      expect(find.text('Settings saved.'), findsOneWidget);
     },
   );
 
@@ -394,7 +519,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('2500'), findsOneWidget);
       expect(find.textContaining('Save not confirmed'), findsOneWidget);
-      expect(find.textContaining('Defaults saved'), findsNothing);
+      expect(find.text('Settings saved.'), findsNothing);
     },
   );
 

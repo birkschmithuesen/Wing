@@ -21,6 +21,7 @@ import 'profiles_repository.dart';
 import 'profile_identity_repository.dart';
 import 'server_connection_status.dart';
 import 'workspace_connection_failure.dart';
+import 'ws_client.dart';
 
 typedef AdministrationRequest =
     Future<Map<String, dynamic>> Function(
@@ -52,8 +53,11 @@ typedef AdministrationMutation =
 /// Profile views capture an explicit canonical scope.
 class AdministrationRepository {
   ConnectorInventory? _connectorInventory;
-  ConnectorInventory get connectorInventory => _connectorInventory ??=
-      ConnectorInventory((name) => profile(name).read('mcp/servers'));
+  ConnectorInventory get connectorInventory =>
+      _connectorInventory ??= ConnectorInventory(
+        (name) => profile(name).read('mcp/servers'),
+        (name) => profile(name).rpc('mcp.servers.status'),
+      );
   late final _skillReader = SkillReaderRepository(
     (endpoint, query) => read(endpoint, query),
   );
@@ -106,7 +110,7 @@ class AdministrationRepository {
   final String connectionIdentity;
   final String connectionLabel;
   final AdministrationRequest request;
-  final AdministrationSettingsWrite settingsWrite;
+  final AdministrationSettingsWrite _settingsWrite;
   final AdministrationMutation ownedMutation;
   final ProfileGateway Function(String name) gateway;
   final ProviderConsoleCommand? providerCommand;
@@ -122,7 +126,7 @@ class AdministrationRepository {
     required this.connectionIdentity,
     required this.connectionLabel,
     required this.request,
-    required this.settingsWrite,
+    required AdministrationSettingsWrite settingsWrite,
     required this.ownedMutation,
     required this.gateway,
     this.providerCommand,
@@ -131,8 +135,28 @@ class AdministrationRepository {
   }) : // The named dependency is an injectable public seam.
        // ignore: prefer_initializing_formals
        _apiPricing = apiPricing,
+       // ignore: prefer_initializing_formals
+       _settingsWrite = settingsWrite,
        _close = close ?? _noop;
   static void _noop() {}
+
+  /// Only the write response can establish a definite rejection. A later
+  /// readback refusal cannot undo an acknowledged write. All settings consumers
+  /// share this classification while retaining their own edit/receipt lifetime.
+  Future<Map<String, dynamic>> settingsWrite(
+    String profile,
+    Map<String, dynamic> patch,
+    bool Function() canDispatch,
+    void Function() onDispatched,
+  ) async {
+    try {
+      return await _settingsWrite(profile, patch, canDispatch, onDispatched);
+    } catch (error) {
+      final refusal = SettingsWriteRejected.fromFailure(error);
+      if (refusal != null) throw refusal;
+      rethrow;
+    }
+  }
 
   factory AdministrationRepository.forConnection(
     ConnectionAccess access,
@@ -535,7 +559,7 @@ class ProfileAdministration {
         markDispatched,
       );
       if (response['ok'] == false) {
-        throw const SettingsWriteRejected();
+        throw const SettingsWriteRejected('The server rejected this change.');
       }
       if (response['ok'] != true) {
         throw const SettingsSaveUnconfirmed();
@@ -576,7 +600,32 @@ class SettingsEditRetired implements Exception {
 }
 
 class SettingsWriteRejected extends AdministrationFailure {
-  const SettingsWriteRejected() : super('The server rejected this change.');
+  const SettingsWriteRejected(super.message);
+
+  /// Stock config HTTP refusals deliberately expose safe path/lock information,
+  /// never submitted values. HTTP auth/origin refusals share the same shape:
+  /// preserve the explanation without inventing a managed-setting diagnosis.
+  static SettingsWriteRejected? fromFailure(Object error) {
+    if (error is DashboardHttpException &&
+        Uri.tryParse(error.endpoint)?.path == 'config' &&
+        const {400, 403, 409, 413}.contains(error.statusCode)) {
+      return SettingsWriteRejected(
+        error.serverMessage ?? 'Hermes refused this settings change.',
+      );
+    }
+    if (error is JsonRpcError && error.reason == 'permission_denied') {
+      final field = error.data['field'];
+      final detail = error.data['detail'];
+      return SettingsWriteRejected(
+        [
+          'Hermes refused this change.',
+          if (field is String && field.trim().isNotEmpty) field.trim(),
+          if (detail is String && detail.trim().isNotEmpty) detail.trim(),
+        ].join(' '),
+      );
+    }
+    return null;
+  }
 }
 
 class SettingsSaveUnconfirmed implements Exception {

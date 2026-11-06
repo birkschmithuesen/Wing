@@ -2,11 +2,16 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/models/profile_plugins.dart';
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/screens/administration/admin_plugins_page.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_plugins_session.dart';
+import 'helpers/journey_controls.dart';
 import 'support/administration_fixture.dart';
+import 'support/form_family_capture.dart';
 
 class _PluginsFixture {
   final http = AdministrationFixture();
@@ -17,9 +22,22 @@ class _PluginsFixture {
     'source': 'user',
     'description': 'Review tools',
     'status': 'disabled',
+    'version': '1.0.0',
   };
   bool loseReadback = false, unknownReceipt = false, invalid = false;
-  Completer<void>? connected, release;
+  Completer<void>? connected, release, updating, readback;
+  Map<String, dynamic> outcome = {
+    'results': [
+      {'name': 'review', 'status': 'updated', 'detail': ''},
+      {'name': 'wider', 'status': 'needs_review', 'detail': 'Adds tools'},
+      {'name': 'broken', 'status': 'failed', 'detail': 'Update check failed'},
+      {'name': 'raced', 'status': 'current', 'detail': ''},
+    ],
+    'skipped': [
+      {'name': 'held', 'reason': 'Held with --ref'},
+    ],
+    'current': 2,
+  };
   late final AdministrationRepository server = AdministrationRepository(
     connectionId: http.id,
     connectionIdentity: '${http.id}-endpoint',
@@ -45,14 +63,26 @@ class _PluginsFixture {
       expect(method, 'plugins.manage');
       calls.add({...params});
       if (params['action'] == 'list') {
-        if (loseReadback && calls.any((call) => call['action'] == 'toggle')) {
+        if (loseReadback &&
+            calls.any(
+              (call) => {'toggle', 'update_all'}.contains(call['action']),
+            )) {
           throw StateError('Readback unavailable');
+        }
+        if (readback != null &&
+            calls.any((call) => call['action'] == 'update_all')) {
+          await readback!.future;
         }
         return {
           'plugins': [
             invalid ? {...row, 'status': 7} : row,
           ],
         };
+      }
+      if (params['action'] == 'update_all') {
+        expect(params, {'profile': 'work', 'action': 'update_all'});
+        await updating?.future;
+        return outcome;
       }
       expect(params, {
         'profile': 'work',
@@ -77,6 +107,7 @@ class _PluginsFixture {
 }
 
 void main() {
+  setUpAll(loadFormFamilyFonts);
   test(
     'immutable captured inventory and ACK survive unavailable readback without replay',
     () async {
@@ -195,7 +226,7 @@ void main() {
       await tester.tap(find.byType(Switch));
       await tester.pumpAndSettle();
       expect(tester.widget<Switch>(find.byType(Switch)).value, isTrue);
-      await tester.tap(find.text('Refresh'));
+      await tester.tap(find.byTooltip('Refresh plugins'));
       await tester.pumpAndSettle();
       expect(
         fixture.calls.where((call) => call['action'] == 'toggle'),
@@ -216,4 +247,270 @@ void main() {
       fixture.server.close();
     },
   );
+
+  test(
+    'maintenance keeps mixed receipts through failed readback without replay',
+    () async {
+      final fixture = _PluginsFixture()..loseReadback = true;
+      final session = ProfilePluginsSession(fixture.server.profile('work'));
+      addTearDown(session.dispose);
+      await session.refresh();
+      await session.updateInstalled();
+      final result = session.state.maintenance!;
+      expect(result.updated, 1);
+      expect(result.alreadyCurrent, 3);
+      expect(result.needsReview, isTrue);
+      expect(result.skipped.single.reason, 'Held with --ref');
+      expect(result.results.map((row) => row.status), [
+        PluginUpdateStatus.updated,
+        PluginUpdateStatus.needsReview,
+        PluginUpdateStatus.failed,
+        PluginUpdateStatus.current,
+      ]);
+      expect(() => result.results.clear(), throwsUnsupportedError);
+      expect(session.state.error, startsWith('Update results received'));
+      expect(session.state.canUpdate, isFalse);
+      await session.updateInstalled();
+      expect(
+        fixture.calls.where((row) => row['action'] == 'update_all'),
+        hasLength(1),
+      );
+      fixture.loseReadback = false;
+      await session.refresh();
+      expect(session.state.canUpdate, isTrue);
+      expect(identical(session.state.maintenance, result), isTrue);
+      expect(
+        fixture.calls.where((row) => row['action'] == 'update_all'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'unknown maintenance receipt blocks repeated mutation until refresh',
+    () async {
+      final fixture = _PluginsFixture()..outcome = {'ok': true};
+      final session = ProfilePluginsSession(fixture.server.profile('work'));
+      addTearDown(session.dispose);
+      await session.refresh();
+      await session.updateInstalled();
+      expect(session.state.maintenance, isNull);
+      expect(session.state.error, contains('could not be confirmed'));
+      await session.updateInstalled();
+      expect(
+        fixture.calls.where((row) => row['action'] == 'update_all'),
+        hasLength(1),
+      );
+    },
+  );
+
+  test(
+    'retired maintenance cannot dispatch after connection admission',
+    () async {
+      final fixture = _PluginsFixture();
+      final session = ProfilePluginsSession(fixture.server.profile('work'));
+      await session.refresh();
+      fixture.connected = Completer<void>();
+      fixture.release = Completer<void>();
+      final pending = session.updateInstalled();
+      await fixture.connected!.future;
+      session.dispose();
+      fixture.release!.complete();
+      await pending;
+      expect(
+        fixture.calls.where((row) => row['action'] == 'update_all'),
+        isEmpty,
+      );
+    },
+  );
+
+  test(
+    'plugin metadata remains supplied and malformed batch identities fail',
+    () async {
+      final fixture = _PluginsFixture();
+      fixture.row.addAll({
+        'installed_sha': 'old',
+        'catalog_sha': 'new',
+        'catalog_version': '2.0.0',
+        'update_available': true,
+        'pinned_sha': 'held',
+      });
+      final session = ProfilePluginsSession(fixture.server.profile('work'));
+      addTearDown(session.dispose);
+      await session.refresh();
+      final row = session.state.rows.single;
+      expect(row.version, '1.0.0');
+      expect(row.catalogVersion, '2.0.0');
+      expect(row.installedSha, 'old');
+      expect(row.updateAvailable, isTrue);
+      expect(row.pinnedSha, 'held');
+      expect(
+        () => PluginMaintenanceResult.decode({
+          'results': [
+            {'name': 'same', 'status': 'updated', 'detail': ''},
+          ],
+          'skipped': [
+            {'name': 'same', 'reason': 'held'},
+          ],
+          'current': 0,
+        }),
+        throwsFormatException,
+      );
+    },
+  );
+
+  for (final dark in [false, true]) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('maintenance pending and results $dark $scale', (
+        tester,
+      ) async {
+        final width = scale == 2 ? 320.0 : 390.0;
+        tester.view.physicalSize = Size(width, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final fixture = _PluginsFixture()
+          ..updating = Completer<void>()
+          ..readback = Completer<void>();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: wingTheme(dark ? Brightness.dark : Brightness.light),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(
+                context,
+              ).copyWith(textScaler: TextScaler.linear(scale)),
+              child: RepaintBoundary(key: formFamilyCapture, child: child!),
+            ),
+            home: AdminPluginsPage(
+              createSession: () =>
+                  ProfilePluginsSession(fixture.server.profile('work')),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          MediaQuery.sizeOf(tester.element(find.byType(ListView))).width,
+          width,
+        );
+        await tester.tap(find.byTooltip('Update installed plugins'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(StudioLoading), findsWidgets);
+        await captureFormFamily(
+          tester,
+          'plugins-maintenance-pending-$dark-$scale',
+        );
+        expect(
+          tester
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is IconButton &&
+                      widget.tooltip == 'Update installed plugins',
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+        fixture.updating!.complete();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(StudioLoading), findsWidgets);
+        fixture.readback!.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('1 updated · 3 already current'), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'plugins-maintenance-results-$dark-$scale',
+        );
+        await dragViewportToControl(
+          tester,
+          find.byType(Scrollable),
+          find.text('Skipped · Held with --ref'),
+        );
+        expect(
+          find.text('Skipped · Held with --ref').hitTestable(),
+          findsOneWidget,
+        );
+        await captureFormFamily(
+          tester,
+          'plugins-maintenance-skipped-$dark-$scale',
+        );
+        await tester.scrollUntilVisible(
+          find.byTooltip('Update installed plugins'),
+          -300,
+        );
+        await dragViewportToControl(
+          tester,
+          find.byType(Scrollable),
+          find.byTooltip('Update installed plugins'),
+        );
+        fixture.updating = Completer<void>();
+        fixture.readback = null;
+        fixture.loseReadback = true;
+        await tester.tap(find.byTooltip('Update installed plugins'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(StudioLoading), findsWidgets);
+        fixture.updating!.complete();
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Update results received. Current inventory is unavailable; refresh to check it.',
+          ),
+          findsOneWidget,
+        );
+        await tester.scrollUntilVisible(
+          find.text('1 updated · 3 already current'),
+          150,
+        );
+        await dragViewportToControl(
+          tester,
+          find.byType(Scrollable),
+          find.text('1 updated · 3 already current'),
+        );
+        expect(
+          find.text('1 updated · 3 already current').hitTestable(),
+          findsOneWidget,
+        );
+        await captureFormFamily(
+          tester,
+          'plugins-maintenance-failed-$dark-$scale',
+        );
+        fixture.loseReadback = false;
+        fixture.readback = Completer<void>();
+        await tester.scrollUntilVisible(
+          find.byTooltip('Refresh plugins'),
+          -150,
+        );
+        await dragViewportToControl(
+          tester,
+          find.byType(Scrollable),
+          find.byTooltip('Refresh plugins'),
+        );
+        await tester.tap(find.byTooltip('Refresh plugins'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byType(StudioLoading), findsWidgets);
+        fixture.readback!.complete();
+        await tester.pumpAndSettle();
+        expect(
+          find.text(
+            'Update results received. Current inventory is unavailable; refresh to check it.',
+          ),
+          findsNothing,
+        );
+        expect(
+          fixture.calls.where((call) => call['action'] == 'update_all'),
+          hasLength(2),
+        );
+        await captureFormFamily(
+          tester,
+          'plugins-maintenance-recovered-$dark-$scale',
+        );
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
 }

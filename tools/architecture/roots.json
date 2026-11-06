@@ -6753,6 +6753,24 @@
       "purpose": "Hermes 0.23 stock contract and UI regression",
       "source": "internal/plans/2026-11-06-hermes023-implementation.md",
       "status": "supported"
+    },
+    {
+      "id": "host-test-test/detached_work_test.dart",
+      "kind": "host-test",
+      "path": "test/detached_work_test.dart",
+      "purpose": "Explicit test/driver entry; environment flags and owned target prerequisites apply",
+      "source": "internal/docs/TESTING.md; test/detached_work_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "host-test-test/connector_runtime_test.dart",
+      "kind": "host-test",
+      "path": "test/connector_runtime_test.dart",
+      "purpose": "Explicit test/driver entry; environment flags and owned target prerequisites apply",
+      "source": "internal/docs/TESTING.md; test/connector_runtime_test.dart",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -15870,6 +15888,21 @@
       "path": "docs/SCHEDULED_TASKS.md",
       "area": "docs",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/models/detached_work.dart",
+      "area": "lib",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "test/detached_work_test.dart",
+      "area": "test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "test/connector_runtime_test.dart",
+      "area": "test",
+      "provenance": "task-authored"
     }
   ],
   "direct_dependencies": {

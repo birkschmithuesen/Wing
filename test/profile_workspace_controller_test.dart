@@ -222,6 +222,7 @@ class Host {
   Completer<void>? activeListDelay;
   int connectFailures = 0;
   Object? connectError;
+  Object? rosterFailure;
   Object? resumeError;
   int connectCalls = 0;
   int disconnectCalls = 0;
@@ -426,6 +427,10 @@ class Host {
       rpc: (method, params) async {
         calls.add((name, method, params));
         if (method == 'config.set') return {'value': params['value']};
+        if (method == 'subagent.roster') {
+          if (rosterFailure != null) throw rosterFailure!;
+          return {'sessions': <Object>[]};
+        }
         if (method == 'session.active_list') {
           await activeListDelay?.future;
           return {'sessions': notificationActiveSessions};
@@ -2466,7 +2471,13 @@ void main() {
       requestId: chat.runtime.approval!.requestId,
     );
     await controller.stop(chat);
-    expect(host.calls.every((c) => c.$3['profile'] == c.$1), isTrue);
+    final scopedCalls = host.calls.where((c) => c.$2 != 'subagent.roster');
+    expect(scopedCalls.every((c) => c.$3['profile'] == c.$1), isTrue);
+    // Host presence discovery names each target explicitly on one existing
+    // socket. All session/profile commands above retain their captured scope.
+    final rosters = host.calls.where((c) => c.$2 == 'subagent.roster');
+    expect(rosters.map((c) => c.$3['profile']).toSet(), {'a', 'b'});
+    expect(rosters.every((c) => c.$1 == 'a'), isTrue);
     final profileReads = host.reads.where((r) => r.$1 != 'logs');
     expect(profileReads, isNotEmpty);
     expect(profileReads.every((r) => r.$2['profile'] == 'a'), isTrue);
@@ -3881,6 +3892,20 @@ void main() {
     // enough to retry immediately, without a tap on Retry.
     await tester.pump(const Duration(minutes: 2));
     expect(host.connectsByProfile['a']! - before, 5);
+    host.rosterFailure = JsonRpcError(
+      'subagent.roster',
+      'Connection unavailable',
+      reason: 'connection_closed',
+    );
+    for (var poll = 0; poll < 3; poll++) {
+      await controller.reconcileNotificationRequests({});
+      await tester.pump();
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(host.connectsByProfile['a']! - before, 5);
+      expect(controller.connectionStatus.liveAvailable('a'), isFalse);
+    }
+    host.rosterFailure = null;
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();

@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/models/provider_inventory.dart';
 import 'package:wing/core/screens/administration/admin_provider_credentials.dart';
 import 'package:flutter/material.dart';
@@ -36,17 +38,43 @@ void main() {
       'MCP reconnection reports ${failure.reason ?? 'server error'} without retrying',
       (tester) async {
         final fixture = AdministrationFixture();
-        fixture.rpcOverride = (_, _) async => throw failure;
+        final release = Completer<void>();
+        fixture.rpcOverride = (method, _) async {
+          if (method == 'mcp.servers.status') {
+            return {
+              'servers': [],
+              'checked_at': DateTime.now().millisecondsSinceEpoch,
+            };
+          }
+          expectSync(method, 'reload.mcp');
+          await release.future;
+          throw failure;
+        };
         await tester.pumpWidget(
           MaterialApp(
             home: profileConnectorsPage(fixture.server.profile('personal')),
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Reconnect MCP tools'));
+        await tester.tap(find.byTooltip('Reconnect MCP tools'));
         await tester.pumpAndSettle();
         await tester.tap(find.byTooltip('Reconnect tools'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(
+          find.descendant(
+            of: find.byType(AppBar),
+            matching: find.byType(StudioLoading),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          tester.widget<StudioLoading>(find.byType(StudioLoading)).label,
+          'Reconnecting MCP tools',
+        );
+        release.complete();
         await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
         expect(find.textContaining('Your edits are kept'), findsNothing);
         expect(find.text('MCP tools reconnected.'), findsNothing);
         expect(
@@ -57,11 +85,18 @@ void main() {
           }),
           findsOneWidget,
         );
-        expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+        expect(fixture.rpcRequests, [
+          ('personal', 'mcp.servers.status'),
+          ('default', 'reload.mcp'),
+        ]);
         expect(
           tester
-              .widget<OutlinedButton>(
-                find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is IconButton &&
+                      widget.tooltip == 'Reconnect MCP tools',
+                ),
               )
               .onPressed,
           isNotNull,
@@ -75,7 +110,13 @@ void main() {
   ) async {
     final fixture = AdministrationFixture();
     final requests = <Map<String, dynamic>>[];
-    fixture.rpcOverride = (_, params) async {
+    fixture.rpcOverride = (method, params) async {
+      if (method == 'mcp.servers.status') {
+        return {
+          'servers': [],
+          'checked_at': DateTime.now().millisecondsSinceEpoch,
+        };
+      }
       requests.add({...params});
       return {
         'status': 'confirm_required',
@@ -88,7 +129,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reconnect MCP tools'));
+    await tester.tap(find.byTooltip('Reconnect MCP tools'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Cancel'));
     await tester.pumpAndSettle();
@@ -101,8 +142,15 @@ void main() {
   ) async {
     final fixture = AdministrationFixture();
     final requests = <Map<String, dynamic>>[];
+    final release = Completer<void>();
     fixture.rpcOverride = (method, params) async {
-      expect(method, 'reload.mcp');
+      if (method == 'mcp.servers.status') {
+        return {
+          'servers': [],
+          'checked_at': DateTime.now().millisecondsSinceEpoch,
+        };
+      }
+      expectSync(method, 'reload.mcp');
       requests.add({...params});
       // Stock ReloadMcpParams forbids extra fields, including profile.
       if (params.keys.any(
@@ -114,6 +162,7 @@ void main() {
           code: 4000,
         );
       }
+      await release.future;
       return params['confirm'] == true
           ? {'status': 'reloaded'}
           : {
@@ -127,14 +176,27 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reconnect MCP tools'));
+    await tester.tap(find.byTooltip('Reconnect MCP tools'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Reconnect tools'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(StudioLoading),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<StudioLoading>(find.byType(StudioLoading)).label,
+      'Reconnecting MCP tools',
+    );
+    release.complete();
     expect(find.textContaining('Your edits are kept'), findsNothing);
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(requests, [
       {'confirm': true},
     ]);
@@ -152,7 +214,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text('Backend version'), findsNothing);
-      await tester.tap(find.text('Reconnect MCP tools'));
+      await tester.tap(find.byTooltip('Reconnect MCP tools'));
       await tester.pumpAndSettle();
       expect(
         find.descendant(
@@ -161,15 +223,18 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(fixture.rpcRequests, isEmpty);
+      expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
       await tester.tap(find.byTooltip('Cancel'));
       await tester.pumpAndSettle();
-      expect(fixture.rpcRequests, isEmpty);
-      await tester.tap(find.text('Reconnect MCP tools'));
+      expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
+      await tester.tap(find.byTooltip('Reconnect MCP tools'));
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Reconnect tools'));
       await tester.pumpAndSettle();
-      expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+      expect(fixture.rpcRequests, [
+        ('personal', 'mcp.servers.status'),
+        ('default', 'reload.mcp'),
+      ]);
       expect(find.text('MCP tools reconnected.'), findsOneWidget);
       expect(
         fixture.requests.any((request) => request.$2.contains('update')),

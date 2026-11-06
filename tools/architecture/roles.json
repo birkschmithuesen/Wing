@@ -191,6 +191,11 @@
       "feature": "outputs-and-viewers",
       "library": "lib/core/models/deliverable_reference.dart"
     },
+    "lib/core/models/detached_work.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/detached_work.dart"
+    },
     "lib/core/models/fallback_model.dart": {
       "role": "domain",
       "feature": "model-selection",

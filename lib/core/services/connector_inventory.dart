@@ -5,8 +5,14 @@ import '../models/profile_connectors.dart';
 /// Connection-owned configuration membership, shared by editors and Health.
 /// Reads do not connect to MCP servers or execute their configured programs.
 class ConnectorInventory extends ChangeNotifier {
-  ConnectorInventory(this._read);
-  final Future<Map<String, dynamic>> Function(String profile) _read;
+  ConnectorInventory(this._read, this._readRuntime);
+  final Future<Map<String, dynamic>> Function(String profile) _read,
+      _readRuntime;
+  final _runtime = <String, ConnectorRuntimeObservation>{};
+  final _runtimeErrors = <String, String>{};
+  Map<String, ConnectorRuntimeObservation> get runtimeObservations =>
+      Map.unmodifiable(_runtime);
+  String? runtimeError(String profile) => _runtimeErrors[profile];
   final _observations = <String, ConnectorInventoryObservation>{};
   final _generations = <String, int>{};
   final _pending = <String, Future<Map<String, dynamic>>>{};
@@ -21,6 +27,8 @@ class ConnectorInventory extends ChangeNotifier {
     _generations.update(profile, (value) => value + 1, ifAbsent: () => 1);
     _pending.remove(profile);
     _observations.remove(profile);
+    _runtime.remove(profile);
+    _runtimeErrors.remove(profile);
     if (!_disposed) notifyListeners();
   }
 
@@ -31,12 +39,29 @@ class ConnectorInventory extends ChangeNotifier {
     late final Future<Map<String, dynamic>> pending;
     pending = Future<Map<String, dynamic>>.microtask(() async {
       try {
+        final runtime = () async {
+          try {
+            return ConnectorRuntimeObservation.decode(
+              await _readRuntime(profile),
+              DateTime.now(),
+            );
+          } catch (_) {
+            return null;
+          }
+        }();
         final response = await _read(profile);
         final observation = ConnectorInventoryObservation.decode(
           response,
           DateTime.now(),
         );
+        final cached = await runtime;
         if (!_disposed && generation == (_generations[profile] ?? 0)) {
+          if (cached != null) {
+            _runtime[profile] = cached;
+            _runtimeErrors.remove(profile);
+          } else {
+            _runtimeErrors[profile] = 'Cached connector status is unavailable.';
+          }
           _observations[profile] = observation;
           notifyListeners();
         }
@@ -44,6 +69,8 @@ class ConnectorInventory extends ChangeNotifier {
       } catch (_) {
         if (!_disposed && generation == (_generations[profile] ?? 0)) {
           _observations.remove(profile);
+          _runtime.remove(profile);
+          _runtimeErrors.remove(profile);
           notifyListeners();
         }
         rethrow;

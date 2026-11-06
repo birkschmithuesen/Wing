@@ -58,6 +58,25 @@ void main() {
       ),
       rpc: (method, params) async {
         requests.add(('RPC', method, name));
+        if (method == 'mcp.servers.status') {
+          return {
+            'checked_at': DateTime.now().millisecondsSinceEpoch,
+            'servers': [
+              for (final row in connectorRows)
+                {
+                  'name': row['name'],
+                  'transport': row['transport'],
+                  'source': row['source'],
+                  'plugin': row['plugin'],
+                  'tools': 0,
+                  'connected': false,
+                  'disabled': row['enabled'] == false,
+                  'status': row['enabled'] == false ? 'disabled' : 'configured',
+                  'needs_auth': false,
+                },
+            ],
+          };
+        }
         if (method == 'setup.runtime_check' &&
             name == 'default' &&
             accessGate != null) {
@@ -796,7 +815,14 @@ void main() {
       var session = fixture.owner.healthSession();
       await select(session, 'default');
       connectorRows = [
-        {'name': 'grokbot', 'enabled': true},
+        {
+          'name': 'grokbot',
+          'enabled': true,
+          'transport': 'http',
+          'auth': null,
+          'source': 'config',
+          'plugin': null,
+        },
       ];
       await select(session, 'work');
       expect(

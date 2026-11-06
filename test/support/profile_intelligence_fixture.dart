@@ -20,6 +20,8 @@ Confirm only if you intend to switch now.''';
   bool failReasoning = false;
   bool deferMutation = false;
   bool failFast = false;
+  Object? fastFailure;
+  Object? modelFailure;
   String fastMode = 'normal';
   bool confirmModel = false;
   bool repeatConfirmation = false;
@@ -105,6 +107,7 @@ Confirm only if you intend to switch now.''';
           final payload = Map<String, dynamic>.from(params['payload'] as Map);
           writes.add(Map.of(params));
           await configSetDelay?.future;
+          if (modelFailure != null) throw modelFailure!;
           if (payload['confirm'] != null && failConfirmedModel) {
             throw StateError('Model rejected');
           }
@@ -141,6 +144,7 @@ Confirm only if you intend to switch now.''';
           writes.add(Map.of(params));
           await configSetDelay?.future;
           if (failFast) throw StateError('Fast rejected');
+          if (fastFailure != null) throw fastFailure!;
           fastMode = params['value'] as String;
           onAcceptedWrite?.call(params);
           return {'status': 'ok', 'value': params['value']};

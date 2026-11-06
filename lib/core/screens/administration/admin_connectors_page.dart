@@ -104,10 +104,13 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
         listenable: _session,
         builder: (context, _) {
           final state = _session.state;
-          return StudioLoadingRegion(
-            available: state.checked,
-            busy: state.phase == ConnectorPhase.reading,
-            label: 'Loading connectors',
+          return StudioPageLoading(
+            active:
+                state.phase == ConnectorPhase.reading ||
+                state.phase == ConnectorPhase.reconnecting,
+            label: state.phase == ConnectorPhase.reconnecting
+                ? 'Reconnecting MCP tools'
+                : 'Loading connectors',
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -128,18 +131,26 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
                         const AdminNotice(
                           'Manage the external tools available to this profile.',
                         ),
-                        StudioButtonPress(
-                          child: IconButton.filled(
-                            tooltip: 'Add connector',
-                            onPressed: state.canMutate ? _add : null,
-                            icon: const Icon(Icons.add),
-                          ),
-                        ),
-                        StudioButtonPress(
-                          child: TextButton(
-                            onPressed: state.busy ? null : _session.refresh,
-                            child: const Text('Refresh list'),
-                          ),
+                        if (state.runtimeError case final error?)
+                          AdminNotice(error),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            StudioButtonPress(
+                              child: IconButton.filled(
+                                tooltip: 'Add connector',
+                                onPressed: state.canMutate ? _add : null,
+                                icon: const Icon(Icons.add),
+                              ),
+                            ),
+                            StudioButtonPress(
+                              child: IconButton(
+                                tooltip: 'Refresh connectors',
+                                onPressed: state.busy ? null : _session.refresh,
+                                icon: const Icon(Icons.refresh),
+                              ),
+                            ),
+                          ],
                         ),
                         if (state.connectors.isEmpty)
                           const AdminNotice(
@@ -159,7 +170,12 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
                                           row.name,
                                         )
                                         ? 'Failed health check · ${row.transport}'
-                                        : row.transport,
+                                        : [
+                                            row.transport,
+                                            if (state.runtime?.forConnector(row)
+                                                case final runtime?)
+                                              'Cached: ${runtime.label}',
+                                          ].join(' · '),
                                   ),
                                   leading:
                                       widget.failedConnectorNames.contains(
@@ -358,6 +374,15 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
+            if (_configuration case final configuration?) ...[
+              if (_session.state.runtime?.forConnector(configuration)
+                  case final runtime?)
+                AdminNotice(
+                  'Cached runtime: ${runtime.label}${runtime.tools > 0 ? ' · ${runtime.tools} tools' : ''}. This is separate from Test connection.',
+                ),
+              if (_session.state.runtimeError case final error?)
+                AdminNotice(error),
+            ],
             Semantics(
               liveRegion: true,
               child: Padding(
@@ -680,7 +705,8 @@ class AdminReloadConnectorsButton extends StatelessWidget {
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: session,
     builder: (context, _) => StudioButtonPress(
-      child: OutlinedButton.icon(
+      child: IconButton.outlined(
+        tooltip: 'Reconnect MCP tools',
         onPressed: session.state.busy
             ? null
             : () async {
@@ -693,10 +719,6 @@ class AdminReloadConnectorsButton extends StatelessWidget {
                 }
               },
         icon: const Icon(Icons.refresh),
-        label: StudioActionLabel(
-          'Reconnect MCP tools',
-          busy: session.state.phase == ConnectorPhase.reconnecting,
-        ),
       ),
     ),
   );

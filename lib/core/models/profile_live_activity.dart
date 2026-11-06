@@ -4,7 +4,9 @@ enum ProfileLiveActivityState { running, needsInput }
 
 class ProfileLiveActivity {
   final WorkspaceScope workspace;
-  final String runtimeId;
+
+  /// Detached presence has no attached runtime or session control authority.
+  final String? runtimeId;
   final String sessionId;
   final String title;
   final String? source;

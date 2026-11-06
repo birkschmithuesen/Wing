@@ -16,6 +16,11 @@ Feature ID: `notifications`.
   Initialization alone never starts work monitoring. A validated live-session
   snapshot retires watches for runtimes that have disappeared without inventing
   a completion alert; failed reads retain previously verified work.
+  Detached child tasks and background processes reported for a connected
+  profile also keep monitoring alive, without opening their parent chat.
+  The same conversation appears once across live and detached observations.
+  Failed roster reads retain its last known work as reconnecting; a successful
+  empty roster retires that observation without generating a reply alert.
 
 ## How to get to it (user POV)
 
@@ -56,6 +61,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   idle loaded chat starts no watch, disappeared/replaced runtimes retire, and
   an unrelated metadata failure cannot retain an absent runtime. Invalid
   snapshots and unknown states preserve verified work.
+  `test/detached_work_test.dart` covers profile-scoped detached discovery,
+  transport reuse, overlap, failed versus empty rosters, metadata isolation,
+  late responses and obsolete connection retention. It also opens the
+  production Recents row in both themes at normal and enlarged text.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

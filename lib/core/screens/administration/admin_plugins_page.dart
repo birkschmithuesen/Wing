@@ -55,21 +55,44 @@ class _AdminPluginsPageState extends State<AdminPluginsPage> {
         listenable: _session,
         builder: (context, _) {
           final state = _session.state;
-          return StudioLoadingRegion(
-            available: state.hasObservation,
-            busy: state.busy,
-            label: 'Loading plugins',
+          return StudioPageLoading(
+            active: state.busy,
+            label: switch (state.phase) {
+              ProfilePluginsPhase.updating => 'Updating installed plugins',
+              ProfilePluginsPhase.saving => 'Saving plugin setting',
+              _ => 'Refreshing plugins',
+            },
             child: ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                if (state.error != null)
-                  AdminNotice.error(
-                    state.error!,
-                    retry: state.canRefresh ? _session.refresh : null,
-                  ),
-                const AdminNotice(
-                  'Backend capabilities for this profile. Desktop plugin screens are not Android screens.',
+                if (state.error != null) AdminNotice.error(state.error!),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Update installed plugins',
+                        onPressed: state.canUpdate
+                            ? _session.updateInstalled
+                            : null,
+                        icon: const Icon(Icons.system_update_alt),
+                      ),
+                    ),
+                    StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Refresh plugins',
+                        onPressed: state.canRefresh ? _session.refresh : null,
+                        icon: const Icon(Icons.refresh),
+                      ),
+                    ),
+                  ],
                 ),
+                if (state.maintenance == null)
+                  const AdminNotice(
+                    'Held installs stay unchanged. Updates needing review are skipped.',
+                  ),
+                if (state.maintenance case final result?)
+                  _MaintenanceResults(result: result),
                 if (state.verified && state.rows.isEmpty)
                   const AdminNotice('No agent plugins reported.'),
                 AdminGroup(
@@ -78,7 +101,17 @@ class _AdminPluginsPageState extends State<AdminPluginsPage> {
                       CompactSwitchListTile(
                         title: Text(row.name),
                         subtitle: Text(
-                          '${row.source} · ${row.status.label}\n${row.description}',
+                          [
+                            '${row.source} · ${row.status.label}',
+                            if (row.version.isNotEmpty)
+                              'Version ${row.version}',
+                            if (row.updateAvailable == true)
+                              'Update available${(row.catalogVersion ?? row.updateTarget) == null ? '' : ': ${row.catalogVersion ?? row.updateTarget}'}',
+                            if (row.pinnedSha case final pin?
+                                when pin.isNotEmpty)
+                              'Pinned to $pin',
+                            row.description,
+                          ].join('\n'),
                         ),
                         value: row.enabled,
                         onChanged: state.canToggle
@@ -87,17 +120,56 @@ class _AdminPluginsPageState extends State<AdminPluginsPage> {
                       ),
                   ],
                 ),
-                StudioButtonPress(
-                  child: TextButton(
-                    onPressed: state.canRefresh ? _session.refresh : null,
-                    child: const Text('Refresh'),
-                  ),
-                ),
               ],
             ),
           );
         },
       ),
     ),
+  );
+}
+
+class _MaintenanceResults extends StatelessWidget {
+  const _MaintenanceResults({required this.result});
+  final PluginMaintenanceResult result;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Semantics(
+        liveRegion: true,
+        child: AdminNotice(
+          '${result.updated} updated · ${result.alreadyCurrent} already current',
+        ),
+      ),
+      AdminGroup(
+        children: [
+          for (final row in result.results)
+            ListTile(
+              title: Text(row.name),
+              subtitle: Text(
+                [
+                  row.status.label,
+                  if (row.detail.isNotEmpty) row.detail,
+                ].join('\n'),
+              ),
+            ),
+          for (final row in result.skipped)
+            ListTile(
+              title: Text(row.name),
+              subtitle: Text('Skipped · ${row.reason}'),
+            ),
+        ],
+      ),
+      if (result.needsReview)
+        const AdminNotice(
+          'Review these updates with hermes plugins update <name> on the server.',
+        ),
+      if (result.updated > 0)
+        const AdminNotice(
+          'Updated plugins were reloaded. New Python tools apply to new sessions.',
+        ),
+    ],
   );
 }

@@ -157,10 +157,9 @@ class _AdminSettingsPageState extends State<AdminSettingsPage> {
       return;
     }
     if (result == SettingsSaveOutcome.confirmed) {
-      adminMessage(
-        context,
-        'Defaults saved for ${session.profileName}. Existing sessions may keep their current settings.',
-      );
+      // Scope and the existing-chat caveat are already visible in the page.
+      // Keep completion feedback compact above the fixed keyboard-safe footer.
+      adminMessage(context, 'Settings saved.');
     } else if (_error != null) {
       revealAdminNotice(context, _noticeAnchor);
     }
