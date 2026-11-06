@@ -47,7 +47,11 @@ answers remain editable. Answers from another device and expired requests retire
 the matching controls. Skip clarification cancels the request while retaining answers already locked by Hermes.
 With the keyboard open, pending input keeps room for its actions while a tall
 composer scrolls. On short screens, the input-navigation control uses a separate
-side gutter so it cannot cover the form's actions.
+side gutter so it cannot cover the form's actions. The clarification heading,
+questions and partial-answer error share a scroll area above the fixed action
+footer, keeping failure recovery reachable at enlarged text. The minimum and
+landscape cases in `profile_question_delivery_test.dart` verify error reveal,
+retained answers, held retry feedback and the unchanged composer draft.
 
 A cut-off reply or exhausted turn budget offers an explicit Continue action.
 It submits a new continuation while preserving the composer draft. Model and

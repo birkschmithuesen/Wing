@@ -200,6 +200,17 @@ void main() {
           await until(
             () => find.byKey(const Key('clarify-error')).evaluate().isNotEmpty,
           );
+          await until(
+            () => find
+                .text('Send failed. Try again.')
+                .hitTestable()
+                .evaluate()
+                .isNotEmpty,
+          );
+          await captureFormFamily(
+            tester,
+            'clarify-native-keyboard-error-$geometry-${brightness.name}',
+          );
           expect(chat.runtime.questions!.answeredIds, {'q1'});
           await dragTranscriptToControl(tester, confirm);
           expect(tester.view.viewInsets.bottom, keyboardHeight);
