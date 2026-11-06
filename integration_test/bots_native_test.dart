@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:async';
 import 'dart:io';
 
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -73,7 +74,10 @@ void main() {
         FlutterError.onError = (details) {
           // Preserve the originating stack before the polling helper consumes
           // the exception and reports which native control was being awaited.
-          FlutterError.presentError(details);
+          debugPrintSynchronously(
+            'Native Bots framework error: ${details.exceptionAsString()}\n'
+            '${details.stack}',
+          );
           priorErrorHandler?.call(details);
         };
         addTearDown(() => FlutterError.onError = priorErrorHandler);
@@ -793,6 +797,23 @@ void main() {
         await tester.tap(find.byTooltip('Group options'));
         await tester.pump(const Duration(milliseconds: 300));
         await tester.tap(find.text('Refresh group'));
+        // Returning from the Android picker preserves the earlier attachment.
+        // Follow the ordinary latest control to the newly received discussion.
+        final latest = find.byKey(const ValueKey('jump-to-latest'));
+        await until(
+          () =>
+              visible(latest) &&
+              find.byTooltip('Refreshing group').evaluate().isEmpty,
+          'settled group refresh and latest navigation',
+        );
+        final latestRect = tester.getRect(latest);
+        final screen =
+            Offset.zero &
+            (tester.view.physicalSize / tester.view.devicePixelRatio);
+        expect(latestRect.width, greaterThanOrEqualTo(48));
+        expect(latestRect.height, greaterThanOrEqualTo(48));
+        expect(screen.intersect(latestRect), latestRect);
+        await tester.tap(latest.hitTestable());
         final discard = find.byTooltip('Discard unknown group attempt');
         await until(
           () => discard.evaluate().isNotEmpty,

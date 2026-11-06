@@ -4580,6 +4580,48 @@ void main() {
           await tester.pumpAndSettle();
           await tester.settleMarkdown();
           expect(find.byType(BotGroupScreen), findsOneWidget);
+          bots.pending.add({
+            'kind': 'retry',
+            'task_id': 'hosted-refresh-retry',
+            'member_id': 'atlas',
+            'execution_generation': 7,
+          });
+          await tester.tap(find.byTooltip('Group options'));
+          await tester.pumpAndSettle();
+          final refresh = find.text('Refresh group');
+          final popup = ModalRoute.of(tester.element(refresh))!;
+          var popupRetired = false;
+          unawaited(popup.completed.then((_) => popupRetired = true));
+          await tester.tap(refresh);
+          for (var frame = 0; frame < 60; frame++) {
+            await tester.pump(const Duration(milliseconds: 50));
+            if (popupRetired &&
+                find.byTooltip('Retry group attempt').evaluate().isNotEmpty &&
+                find.byTooltip('Refreshing group').evaluate().isEmpty) {
+              break;
+            }
+          }
+          await _capture(
+            tester,
+            frame,
+            'group-refresh-menu-${brightness.name}-$scale',
+          );
+          expect(popupRetired, isTrue);
+          expect(find.byTooltip('Retry group attempt'), findsOneWidget);
+          expect(find.byTooltip('Refreshing group'), findsNothing);
+          expect(
+            find.byTooltip('Retry group attempt').hitTestable(),
+            findsOneWidget,
+            reason:
+                'Retry ${tester.getRect(find.byTooltip('Retry group attempt'))} '
+                'in transcript ${tester.getRect(find.byKey(const ValueKey('profile-transcript')))}',
+          );
+          bots.pending.clear();
+          await tester.tap(find.byTooltip('Group options'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Refresh group'));
+          await tester.pumpAndSettle();
+          expect(find.byTooltip('Retry group attempt'), findsNothing);
           final input = find.byKey(const ValueKey('group-message-composer'));
           await tester.enterText(input, 'Keep my group draft');
           await tester.pumpAndSettle();
