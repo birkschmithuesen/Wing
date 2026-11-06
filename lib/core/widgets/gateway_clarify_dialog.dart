@@ -101,19 +101,19 @@ class _GatewayClarifyDialogState extends State<GatewayClarifyDialog>
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            'Your input',
-            style: theme.textTheme.labelLarge?.copyWith(
-              color: theme.colorScheme.primary,
-            ),
-          ),
-          const SizedBox(height: 12),
           Flexible(
             child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Text(
+                    'Your input',
+                    style: theme.textTheme.labelLarge?.copyWith(
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
                   for (
                     var index = 0;
                     index < widget.requests.length;
@@ -139,17 +139,20 @@ class _GatewayClarifyDialogState extends State<GatewayClarifyDialog>
                       }),
                     ),
                   ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 12),
+                    KeyedSubtree(
+                      key: _errorAnchor,
+                      child: StudioError(
+                        _error!,
+                        key: const Key('clarify-error'),
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),
           ),
-          if (_error != null) ...[
-            const SizedBox(height: 12),
-            KeyedSubtree(
-              key: _errorAnchor,
-              child: StudioError(_error!, key: const Key('clarify-error')),
-            ),
-          ],
           const SizedBox(height: 12),
           StudioFormActions(
             onCancel: _submitting ? null : () => _respond(skip: true),
