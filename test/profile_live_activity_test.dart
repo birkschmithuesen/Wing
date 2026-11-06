@@ -93,6 +93,7 @@ class ActivityHost {
     },
     rpc: (method, params) async {
       calls.add((scope.profileName, method, params));
+      if (method == 'subagent.roster') return {'sessions': <Object>[]};
       if (method == 'projects.tree') return {'projects': []};
       if (method == 'session.active_list') {
         if (failedProfiles.contains(scope.profileName)) {

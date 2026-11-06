@@ -122,6 +122,7 @@ class _ActivityHost {
             },
           },
     rpc: (method, params) async {
+      if (method == 'subagent.roster') return {'sessions': <Object>[]};
       if (method == 'session.active_list') {
         if (failed.contains(scope.profileName)) throw StateError('offline');
         return {'sessions': live[scope.profileName] ?? []};
@@ -287,6 +288,7 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
+        expect(controller.activityProfileErrors, isEmpty);
         expect(find.byType(FilterChip), findsNothing);
         expect(find.text('Ongoing'), findsNothing);
         expect(find.text('Last 24 hours'), findsNothing);

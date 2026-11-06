@@ -30,6 +30,14 @@ class NotificationCoverageHost {
     'b': <Map<String, dynamic>>[],
   };
   List<Map<String, dynamic>> active = [];
+  final rosters = <String, Map<String, dynamic>>{};
+  final rosterReads = <({String source, String profile})>[];
+  final failedRosters = <String>{};
+  Completer<void>? rosterDelay;
+  final rosterDelays = <String, Completer<void>>{};
+  final metadataDelays = <(String, String), Completer<void>>{};
+  final connectProfiles = <String>[];
+  final profileNames = ['a', 'b'];
   List<Map<String, dynamic>> groups = [];
   final groupStates = <String, Map<String, dynamic>>{};
   final groupLogs = <String, List<Map<String, dynamic>>>{};
@@ -56,10 +64,7 @@ class NotificationCoverageHost {
   final failedMetadataProfiles = <String>{};
 
   Future<ProfileDiscovery> discover() async => ProfileDiscovery(
-    profiles: const [
-      HermesProfile(name: 'a'),
-      HermesProfile(name: 'b'),
-    ],
+    profiles: profileNames.map((name) => HermesProfile(name: name)).toList(),
     currentName: 'a',
     activeName: 'a',
   );
@@ -69,6 +74,7 @@ class NotificationCoverageHost {
   ) => gateways[scope.profileName] = ProfileGateway(
     scope: scope,
     discover: discover,
+    connect: () async => connectProfiles.add(scope.profileName),
     get: (path, query) async {
       if (path == 'sessions/search') {
         if (failedMetadataProfiles.contains(scope.profileName)) {
@@ -92,6 +98,7 @@ class NotificationCoverageHost {
           throw StateError('profile unavailable');
         }
         final id = Uri.decodeComponent(path.split('/')[1]);
+        await metadataDelays[(scope.profileName, id)]?.future;
         final rows =
             (saved[scope.profileName] ?? const <Map<String, dynamic>>[])
                 .where((row) => row['id'] == id)
@@ -112,18 +119,29 @@ class NotificationCoverageHost {
       await historyDelay?.future;
       if (historyFails) throw StateError('history unavailable');
       final savedHistory = historyByProfile[scope.profileName] ?? history;
+      final offset = int.tryParse(query['offset'] ?? '') ?? 0;
+      final limit = int.tryParse(query['limit'] ?? '') ?? 50;
+      final page = savedHistory.skip(offset).take(limit).toList();
       return {
         'session_id': path.split('/')[1],
-        'messages': savedHistory,
+        'messages': page,
         'pagination': {
-          'offset': 0,
-          'limit': 50,
-          'returned': savedHistory.length,
+          'offset': offset,
+          'limit': limit,
+          'returned': page.length,
           'order': 'latest',
         },
       };
     },
     rpc: (method, params) async {
+      if (method == 'subagent.roster') {
+        final profile = params['profile'] as String;
+        rosterReads.add((source: scope.profileName, profile: profile));
+        final snapshot = rosters[profile] ?? {'sessions': <Object>[]};
+        await (rosterDelays[profile] ?? rosterDelay)?.future;
+        if (failedRosters.contains(profile)) throw StateError('Roster offline');
+        return snapshot;
+      }
       if (method.startsWith('groups.') && groupFails) {
         throw StateError('group unavailable');
       }

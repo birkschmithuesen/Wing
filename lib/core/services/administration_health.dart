@@ -6,6 +6,7 @@ import '../models/health_finding.dart';
 import '../models/administration_operation.dart';
 import 'administration_operation_session.dart';
 import '../models/provider_access.dart';
+import '../models/profile_connectors.dart';
 import 'administration_overview.dart';
 import 'administration_repository.dart';
 import 'scheduled_tasks_controller.dart';
@@ -508,7 +509,11 @@ class AdministrationHealth extends ChangeNotifier {
           title,
           status,
           detail,
-          at: observation?.checkedAt,
+          at:
+              key == 'connectors' &&
+                  _overview!.connectorRuntimeIssues.isNotEmpty
+              ? _overview!.connectorRuntime?.receivedAt
+              : observation?.checkedAt,
           loading: observation?.loading == true,
           error: observation?.error,
           destination: destination,
@@ -615,7 +620,38 @@ class AdministrationHealth extends ChangeNotifier {
     return null;
   }
 
+  /// Explicit probe findings keep their own identity in Health alerts. The
+  /// displayed row also includes independently observed cached runtime issues.
+  AdministrationHealthFinding? get connectorProbeFinding {
+    final observation = _overview?.observations['connectors'];
+    final data = observation?.data;
+    if (data == null) return null;
+    final (status, detail) = _connectorProbes(data);
+    return _finding(
+      'Connector settings',
+      status,
+      detail,
+      at: observation?.checkedAt,
+      loading: observation?.loading == true,
+      error: observation?.error,
+      destination: 'MCP connectors',
+    );
+  }
+
   (AdministrationHealthStatus, String) _connectors(Map<String, dynamic> data) {
+    final probes = _connectorProbes(data);
+    final issues = _overview!.connectorRuntimeIssues;
+    return issues.isEmpty
+        ? probes
+        : (
+            AdministrationHealthStatus.warning,
+            '${ConnectorRuntimeObservation.describeIssues(issues.values)} · ${probes.$2}',
+          );
+  }
+
+  (AdministrationHealthStatus, String) _connectorProbes(
+    Map<String, dynamic> data,
+  ) {
     final rows = administrationRows(data['servers']);
     if (rows.any((r) => r['name'] is! String || r['enabled'] is! bool)) {
       return (

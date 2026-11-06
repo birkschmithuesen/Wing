@@ -28,6 +28,7 @@ class ProfileBrowserFixture {
   final searchDelays = <String, Completer<void>>{};
   final sessionMetadataDelays = <(String, String), Completer<void>>{};
   final liveSessions = <String, List<Map<String, dynamic>>>{};
+  final detachedSessions = <String, List<Map<String, dynamic>>>{};
   final hiddenSessions = <String, List<Map<String, dynamic>>>{};
   final compressionTips = <String, String>{};
   final botMetadata = <String, Map<String, dynamic>>{};
@@ -317,6 +318,9 @@ class ProfileBrowserFixture {
         return {
           'sessions': liveSessions.values.expand((rows) => rows).toList(),
         };
+      }
+      if (method == 'subagent.roster') {
+        return {'sessions': detachedSessions[params['profile']] ?? <Object>[]};
       }
       if (method == 'session.list') {
         final rows = [

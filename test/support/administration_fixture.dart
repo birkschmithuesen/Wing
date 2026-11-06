@@ -136,6 +136,13 @@ class AdministrationFixture {
           return {'plugins': []};
         }
         if (method == 'reload.mcp') return {'status': 'reloaded'};
+        if (method == 'mcp.servers.status' && override == null) {
+          // This fixture's unoverridden configuration has no MCP servers.
+          return {
+            'servers': [],
+            'checked_at': DateTime.now().millisecondsSinceEpoch,
+          };
+        }
         throw StateError('Unexpected fixture RPC $method $params');
       },
       discover: () => server.discover(),

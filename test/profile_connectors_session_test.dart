@@ -164,7 +164,7 @@ void main() {
       release.complete();
       expect(await pending, isNull);
       expect(fixture.requests.where((request) => request.$1 != 'GET'), isEmpty);
-      expect(fixture.rpcRequests, isEmpty);
+      expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
       hold = false;
       await parent.refresh();
       expect(parent.state.canMutate, isTrue);

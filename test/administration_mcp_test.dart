@@ -424,30 +424,38 @@ void main() {
           await tester.pumpAndSettle();
           if (reconnect) {
             await tester.scrollUntilVisible(
-              find.text('Reconnect MCP tools'),
+              find.byTooltip('Reconnect MCP tools'),
               200,
             );
             await tester.ensureVisible(
-              find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Reconnect MCP tools',
+              ),
             );
             await tester.pumpAndSettle();
             if (operation == 'reconnect-confirm') {
-              await tester.tap(find.text('Reconnect MCP tools'));
+              await tester.tap(find.byTooltip('Reconnect MCP tools'));
               await tester.pumpAndSettle();
               expect(find.byType(AlertDialog), findsOneWidget);
               expect(
                 find.textContaining('all profiles on this server'),
                 findsWidgets,
               );
-              expect(fixture.rpcRequests, isEmpty);
+              expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
             }
           } else if (reload) {
             await tester.scrollUntilVisible(
-              find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Reconnect MCP tools',
+              ),
               200,
             );
             await tester.pumpAndSettle();
-            await tester.tap(find.text('Reconnect MCP tools'));
+            await tester.tap(find.byTooltip('Reconnect MCP tools'));
             await tester.pumpAndSettle();
             await tester.tap(find.byTooltip('Reconnect tools'));
             await tester.pumpAndSettle();
@@ -517,7 +525,10 @@ void main() {
             await tester.tap(find.byTooltip('Reconnect tools'));
             await tester.pumpAndSettle();
             expect(find.byType(AlertDialog), findsNothing);
-            expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+            expect(fixture.rpcRequests, [
+              ('personal', 'mcp.servers.status'),
+              ('default', 'reload.mcp'),
+            ]);
             expect(find.text('MCP tools reconnected.'), findsOneWidget);
           }
           await tester.pumpAndSettle();

@@ -7,6 +7,9 @@ Feature ID: `chat-browser`.
 ## Sub-features
 
 - `chat-browser.find` — Search and filter chats and projects.
+  Working status includes detached child tasks and background processes known
+  to the connected gateway. Recents uses the same captured profile and saved
+  conversation when opening that work; discovery does not attach the chat.
 - `chat-browser.open` — Enter the captured row immediately.
 - `chat-browser.organize` — Change a chat or project and retain browser state. The current-project card in Move to project has an icon-only cross to remove a chat from its project. Confirmation moves it to the captured profile's default folder, keeping messages and drafts. New projects start in the captured profile's default folder and propose a kebab-case subfolder as the name changes; typing or choosing a location keeps that override.
 

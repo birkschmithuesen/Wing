@@ -176,7 +176,14 @@ void main() {
         },
         'mcp/servers' => {
           'servers': [
-            {'name': 'local', 'enabled': true},
+            {
+              'name': 'local',
+              'enabled': true,
+              'transport': 'stdio',
+              'auth': null,
+              'source': 'config',
+              'plugin': null,
+            },
           ],
         },
         _ => {'data': []},

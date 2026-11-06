@@ -18,6 +18,7 @@ class ProfilePluginsSession extends ChangeNotifier {
     error: null,
     retryable: false,
     acknowledgement: null,
+    maintenance: null,
   );
   ProfilePluginsState get state => _state;
   bool _disposed = false;
@@ -63,6 +64,7 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: null,
           retryable: false,
           acknowledgement: previous.acknowledgement,
+          maintenance: previous.maintenance,
         ),
       );
       if (!_active(generation)) {
@@ -81,6 +83,7 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: null,
           retryable: false,
           acknowledgement: previous.acknowledgement,
+          maintenance: previous.maintenance,
         ),
       );
     } catch (error) {
@@ -96,6 +99,7 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: _readError(error),
           retryable: isTemporaryWorkspaceFailure(error),
           acknowledgement: previous.acknowledgement,
+          maintenance: previous.maintenance,
         ),
       );
     } finally {
@@ -125,6 +129,7 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: null,
           retryable: false,
           acknowledgement: previous.acknowledgement,
+          maintenance: previous.maintenance,
         ),
       );
       if (!_active(generation)) {
@@ -186,6 +191,7 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: null,
           retryable: false,
           acknowledgement: acknowledgement ?? previous.acknowledgement,
+          maintenance: previous.maintenance,
         ),
       );
     } catch (error) {
@@ -208,6 +214,89 @@ class ProfilePluginsSession extends ChangeNotifier {
           error: message,
           retryable: false,
           acknowledgement: acknowledgement ?? previous.acknowledgement,
+          maintenance: previous.maintenance,
+        ),
+      );
+    } finally {
+      _profile.server.release();
+    }
+  }
+
+  Future<void> updateInstalled() async {
+    if (_disposed || !_state.canUpdate) return;
+    final generation = ++_generation;
+    final previous = _state;
+    var rows = previous.rows;
+    var dispatched = false;
+    PluginMaintenanceResult? result;
+    _profile.server.retain();
+    _publish(
+      ProfilePluginsState(
+        hasObservation: previous.hasObservation,
+        rows: rows,
+        phase: ProfilePluginsPhase.updating,
+        verified: false,
+        error: null,
+        retryable: false,
+        acknowledgement: previous.acknowledgement,
+        maintenance: previous.maintenance,
+      ),
+    );
+    try {
+      if (!_active(generation)) return;
+      await _profile.requireProfile();
+      if (!_active(generation)) return;
+      final response = await _profile.gateway.updateInstalledPlugins(
+        canDispatch: () => _active(generation),
+        onDispatched: () => dispatched = true,
+      );
+      result = PluginMaintenanceResult.decode(response);
+      if (!_active(generation)) return;
+      // Publish the received mixed outcome while retaining pending feedback
+      // through readback. A later read failure must not erase this receipt.
+      _publish(
+        ProfilePluginsState(
+          hasObservation: previous.hasObservation,
+          rows: rows,
+          phase: ProfilePluginsPhase.updating,
+          verified: false,
+          error: null,
+          retryable: false,
+          acknowledgement: previous.acknowledgement,
+          maintenance: result,
+        ),
+      );
+      if (!_active(generation)) return;
+      rows = await _read();
+      if (!_active(generation)) return;
+      _publish(
+        ProfilePluginsState(
+          hasObservation: true,
+          rows: rows,
+          phase: ProfilePluginsPhase.idle,
+          verified: true,
+          error: null,
+          retryable: false,
+          acknowledgement: previous.acknowledgement,
+          maintenance: result,
+        ),
+      );
+    } catch (error) {
+      if (!_active(generation)) return;
+      _publish(
+        ProfilePluginsState(
+          hasObservation: previous.hasObservation,
+          rows: rows,
+          phase: ProfilePluginsPhase.idle,
+          verified: false,
+          error: result != null
+              ? 'Update results received. Current inventory is unavailable; refresh to check it.'
+              : dispatched
+              ? 'Plugin updates could not be confirmed. Refresh before trying again.'
+              : _readError(error),
+          retryable: false,
+          acknowledgement: previous.acknowledgement,
+          maintenance: result ?? previous.maintenance,
         ),
       );
     } finally {

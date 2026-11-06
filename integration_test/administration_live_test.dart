@@ -369,7 +369,7 @@ void main() {
         );
         await tap(tester, 'Save changes', icon: true);
         expect(
-          find.textContaining('Defaults saved'),
+          find.text('Settings saved.'),
           findsOneWidget,
           reason: find
               .byType(Text)
@@ -472,7 +472,7 @@ void main() {
     await back(tester);
     await tap(tester, 'Access and connectors');
     await tap(tester, 'MCP connectors');
-    await tap(tester, 'Reconnect MCP tools');
+    await tap(tester, 'Reconnect MCP tools', icon: true);
     await tap(tester, 'Reconnect tools', icon: true);
     expect(find.text('MCP tools reconnected.'), findsOneWidget);
   });

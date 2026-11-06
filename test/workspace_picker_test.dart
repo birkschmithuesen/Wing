@@ -705,6 +705,25 @@ void main() {
           ],
         };
       };
+      administration.rpcOverride = (method, params) async {
+        expectSync(method, 'mcp.servers.status');
+        return {
+          'checked_at': DateTime.now().millisecondsSinceEpoch,
+          'servers': [
+            {
+              'name': 'docs',
+              'transport': 'http',
+              'source': 'config',
+              'plugin': null,
+              'tools': 0,
+              'connected': false,
+              'disabled': false,
+              'status': 'configured',
+              'needs_auth': false,
+            },
+          ],
+        };
+      };
       await show(tester, destination: AppDestination.health);
       adminPushProfile(
         tester.element(find.byType(ServerConnectionLabel)),
@@ -741,7 +760,12 @@ void main() {
         administration.requests.every((request) => request.$1 == 'GET'),
         isTrue,
       );
-      expect(administration.rpcRequests, isEmpty);
+      expect(administration.rpcRequests, [
+        ('personal', 'mcp.servers.status'),
+        ('personal', 'mcp.servers.status'),
+        ('work', 'mcp.servers.status'),
+        ('personal', 'mcp.servers.status'),
+      ]);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pumpAndSettle();
     },

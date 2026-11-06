@@ -39,6 +39,7 @@ import 'package:wing/main.dart';
 import 'support/profile_browser_fixture.dart';
 import 'support/administration_fixture.dart';
 import 'support/loopback_http_fixtures.dart';
+import 'support/gateway_application_requests.dart';
 import 'home_config_restore_test.dart'
     show createHomeFixture, homeEntryFactory, profileController;
 
@@ -743,10 +744,59 @@ void main() {
       const directory = '/fixture/profiles/work';
       const metadataPath = '$directory/profile.yaml';
       final requests = <(String, Uri)>[];
+      final sockets = <WebSocket>[];
+      final rpcReads = <(String, Map<String, dynamic>)>[];
       final transport = (await tester.runAsync(() async {
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         final subscription = server.listen((request) async {
           requests.add((request.method, request.uri));
+          if (request.uri.path == '/api/ws') {
+            final socket = await WebSocketTransformer.upgrade(request);
+            sockets.add(socket);
+            gatewayApplicationRequests(socket).listen((raw) {
+              final rpc = jsonDecode(raw as String) as Map<String, dynamic>;
+              final params = rpc['params'] as Map<String, dynamic>;
+              rpcReads.add((rpc['method'] as String, params));
+              final result = switch (rpc['method']) {
+                'session.list' => <String, dynamic>{'sessions': []},
+                'mcp.servers.status' => <String, dynamic>{
+                  'servers': [
+                    {
+                      'name': 'docs',
+                      'transport': 'http',
+                      'tools': 0,
+                      'connected': false,
+                      'disabled': false,
+                      'status': 'configured',
+                      'source': 'config',
+                      'plugin': null,
+                      'needs_auth': false,
+                    },
+                  ],
+                  'checked_at': DateTime.now().millisecondsSinceEpoch,
+                },
+                _ => throw StateError('Unexpected RPC: ${rpc['method']}'),
+              };
+              socket.add(
+                jsonEncode({
+                  'jsonrpc': '2.0',
+                  'id': rpc['id'],
+                  'result': result,
+                }),
+              );
+            });
+            socket.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'method': 'event',
+                'params': {
+                  'type': 'gateway.ready',
+                  'payload': {'session_authority': true},
+                },
+              }),
+            );
+            return;
+          }
           request.response.headers.contentType = ContentType.json;
           Map<String, dynamic>? response;
           if (request.method == 'GET') {
@@ -765,7 +815,18 @@ void main() {
               '/api/tools/toolsets' ||
               '/api/cron/jobs' => {'data': []},
               '/api/providers/oauth' => {'providers': []},
-              '/api/mcp/servers' => {'servers': []},
+              '/api/mcp/servers' => {
+                'servers': [
+                  {
+                    'name': 'docs',
+                    'enabled': true,
+                    'transport': 'http',
+                    'auth': 'none',
+                    'source': 'config',
+                    'plugin': null,
+                  },
+                ],
+              },
               '/api/profiles' => {
                 'profiles': [
                   {'name': 'personal', 'path': '/fixture/profiles/personal'},
@@ -792,6 +853,11 @@ void main() {
               _ => null,
             };
           }
+          if (request.method == 'POST' &&
+              request.uri.path == '/api/auth/ws-ticket') {
+            await request.drain<void>();
+            response = {'ticket': 'fixture-ticket'};
+          }
           if (response == null) {
             request.response.statusCode = 404;
           }
@@ -815,6 +881,9 @@ void main() {
         controllerDisposed = true;
         controller.dispose();
         await tester.runAsync(() async {
+          for (final socket in sockets) {
+            await socket.close();
+          }
           await subscription.cancel();
           await server.close(force: true);
         });
@@ -863,6 +932,7 @@ void main() {
         await tester.pump();
         final seen = requests.map((request) => request.$2.path).toSet();
         if (seen.containsAll(parentPaths) &&
+            rpcReads.any((read) => read.$1 == 'mcp.servers.status') &&
             find.text('Work model').evaluate().isNotEmpty &&
             find.textContaining('Loading').evaluate().isEmpty) {
           break;
@@ -882,6 +952,20 @@ void main() {
         expect(read.$2.queryParameters, {'profile': 'work'});
       }
       await tester.pumpAndSettle();
+      expect(rpcReads.map((read) => read.$1), [
+        'session.list',
+        'mcp.servers.status',
+      ]);
+      expect(rpcReads[0].$2, {'profile': 'work', 'limit': 1});
+      expect(rpcReads[1].$2, {'profile': 'work'});
+      expect(sockets, hasLength(1));
+      expect(
+        requests
+            .where((request) => request.$1 != 'GET')
+            .map((request) => (request.$1, request.$2.path)),
+        [('POST', '/api/auth/ws-ticket')],
+      );
+      final identityRpcStart = rpcReads.length;
       final identityStart = requests.length;
       await tester.tap(find.text('Identity'));
       final descriptionField = find.byKey(
@@ -919,11 +1003,8 @@ void main() {
         ('GET', '/api/profiles/work/soul'),
       ]);
       expect(identityReads[2].$2.queryParameters, {'path': metadataPath});
-      expect(requests.where((request) => request.$1 != 'GET'), isEmpty);
-      expect(
-        requests.where((request) => request.$2.path == '/api/ws'),
-        isEmpty,
-      );
+      expect(rpcReads, hasLength(identityRpcStart));
+      expect(sockets, hasLength(1));
       expect(
         fixture.calls.where(
           (call) =>

@@ -242,6 +242,56 @@ class HealthAlertEvaluator {
     }
   }
 
+  /// Runtime-only recovery can retire runtime incidents, never failed probes.
+  /// Missing/configured/connecting rows leave prior failures unconfirmed.
+  void connectorRuntime(
+    String profile,
+    ConnectorRuntimeObservation? runtime,
+    ConnectorInventoryObservation? inventory,
+  ) {
+    final key = '$connectionIdentity:profile:$profile:Connector runtime';
+    if (runtime == null || inventory == null) {
+      unknown(key);
+      return;
+    }
+    final previous = _alerts[key];
+    if (previous != null && runtime.receivedAt.isBefore(previous.observedAt)) {
+      return;
+    }
+    final issues = runtime.issuesFor(inventory.connectors.values);
+    final remaining = <String>{
+      if (previous != null)
+        for (final name in previous.connectorNames)
+          if (inventory.enabled[name] == true &&
+              runtime.forConnector(inventory.connectors[name])?.recovered !=
+                  true)
+            name,
+      ...issues.keys,
+    };
+    if (remaining.isEmpty) {
+      remove(key);
+    } else if (issues.isEmpty) {
+      if (previous != null) {
+        _alerts[key] = previous.copyWith(
+          connectorNames: remaining.toList(),
+          lastKnown: true,
+        );
+      }
+    } else {
+      _put(
+        key,
+        'Connector runtime',
+        '${ConnectorRuntimeObservation.describeIssues(issues.values)}${remaining.length > issues.length ? ' · Earlier failures still unconfirmed' : ''}',
+        HealthAlertScope.profile,
+        HealthAlertSeverity.warning,
+        runtime.receivedAt,
+        profileName: profile,
+        destination: 'MCP connectors',
+        connectorNames: remaining.toList(),
+      );
+    }
+  }
+
   void unknown(String key) {
     _periods.remove(key);
     if (_alerts[key] case final alert?) {

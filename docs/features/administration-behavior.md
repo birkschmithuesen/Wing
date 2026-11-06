@@ -9,6 +9,8 @@ Feature ID: `administration-behavior`.
 - `administration-behavior.draft` — Edit identity instructions or settings.
 - `administration-behavior.conflict` — Compare current and edited values.
 - `administration-behavior.save` — Confirm intended fields while retaining failed drafts.
+- `administration-behavior.refusal` — Read the server's refusal while keeping the
+  settings draft editable. An uncertain write remains blocked pending readback.
 - `administration-behavior.prepared-compression` — Explicitly enable or disable
   preparing a compression summary ahead of need. The stock default remains off.
 - `administration-behavior.subagent-route` — Choose the default provider/model for
@@ -35,6 +37,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```sh
   flutter test --no-pub test/settings_edit_session_test.dart test/settings_edit_lifetime_test.dart test/profile_identity_edit_session_test.dart
   flutter test --no-pub test/delegation_model_session_test.dart test/upstream_capabilities_ui_test.dart
+  flutter test --no-pub test/settings_owned_transport_test.dart test/administration_screens_test.dart
   ```
 
 - **Android `administration`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -46,6 +49,12 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 ## Gotchas
 
 Unsaved text is local to the editor. Refresh, save/readback and another client changing the same field are distinct transitions. Close must retain or discard only what the current form permits.
+
+A definite validation, origin, conflict or administrator-policy refusal displays
+Hermes' safe explanation and allows an explicit corrected save. A timeout,
+disconnect or failed readback cannot establish whether the write applied; refresh
+and review the current values before another save. The HTTP refusal does not
+always identify its policy category, so Wing does not invent a lock indicator.
 
 The subagent editor treats provider, model and direct endpoint fields as one
 route for conflict checking. Keep my choice explicitly rebases that route;

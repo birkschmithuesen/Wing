@@ -21,7 +21,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart
+  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart test/connector_runtime_test.dart
   ```
 
 - **Android `health-normal`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -58,3 +58,11 @@ checks never run connection probes or launch connector programs.
 The host suites above cover the real alert → connector → Remove connector path
 in both themes and text scales, automatic cross-profile checks, unavailable
 reads, resume, saved-incident recovery and late inventory completions.
+
+Cached authentication/runtime problems use a distinct Connector runtime incident
+inside the same alert owner. Fresh connected, disabled or ready-on-first-use
+runtime can clear that incident; it cannot clear an explicit probe failure.
+Configured, connecting, missing or unavailable runtime retains an earlier issue
+as last known. Confirmed membership removal/disable still retires the appropriate
+target, including when another profile is selected. An older pending read cannot
+revive the target after a configuration mutation.

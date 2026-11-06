@@ -155,7 +155,9 @@ class ProfileVoiceRepository {
       active,
       () {},
     );
-    if (result['ok'] == false) throw const SettingsWriteRejected();
+    if (result['ok'] == false) {
+      throw const SettingsWriteRejected('The server rejected this change.');
+    }
     if (result['ok'] != true) throw const SettingsSaveUnconfirmed();
     onAcknowledged(target.voice);
     await verify(saved);

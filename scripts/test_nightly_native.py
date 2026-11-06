@@ -397,11 +397,13 @@ class Runner:
                 self.shell('input', 'text', 'Please%suse%s/a-')
             elif name.endswith('-type-suffix'):
                 self.shell('input', 'text', 'for%sthis%stask')
+            elif name.endswith('-type-post-compression'):
+                self.shell('input', 'text', 'Keep%sthis%snewer%sdraft')
             elif name.endswith('-backspace'):
                 self.shell('input', 'keyevent', 'KEYCODE_DEL')
-            elif not name.endswith(('-picker-ready', '-selected', '-suffix-ready')):
+            elif not name.endswith(('-picker-ready', '-selected', '-suffix-ready', '-post-compression-ready')):
                 raise ValueError('Unknown slash native checkpoint: ' + name)
-            if name.endswith(('-picker-ready', '-selected', '-suffix-ready')):
+            if name.endswith(('-picker-ready', '-selected', '-suffix-ready', '-post-compression-ready')):
                 keyboard = self.shell('dumpsys', 'input_method')
                 (self.output / (name + '-input-method.txt')).write_text(keyboard)
                 if not input_view_visible(keyboard):

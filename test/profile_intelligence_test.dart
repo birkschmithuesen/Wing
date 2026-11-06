@@ -21,6 +21,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'support/profile_intelligence_fixture.dart';
 
@@ -602,6 +603,59 @@ void main() {
       expect(chat.fastMode, ChatFastMode.fast);
     },
   );
+  for (final part in ['model', 'fast']) {
+    test(
+      'canonical $part refusal keeps exact reason and accepted scope',
+      () async {
+        final chat = controller.current!.chat!;
+        await controller.loadIntelligence(chat);
+        chat.composer.editText('Keep this draft');
+        final failure = JsonRpcError(
+          part == 'fast' ? 'config.set' : 'session.mutate',
+          'permission_denied',
+          code: 4001,
+          reason: 'permission_denied',
+          data: {'field': part, 'detail': 'managed by your administrator'},
+        );
+        if (part == 'fast') {
+          host.fastFailure = failure;
+        } else {
+          host.modelFailure = failure;
+        }
+        await expectLater(
+          controller.setIntelligence(
+            chat,
+            ChatIntelligenceSelection(
+              choice: selection.choice,
+              reasoningEffort: selection.reasoningEffort,
+              fastMode: ChatFastMode.fast,
+            ),
+            confirmModelChange: (_) async => true,
+          ),
+          throwsA(
+            isA<StateError>().having(
+              (e) => e.message,
+              'explanation',
+              allOf([
+                contains('managed by your administrator'),
+                contains(part),
+                if (part == 'fast') contains('choice was accepted'),
+              ]),
+            ),
+          ),
+        );
+        expect(chat.composer.observation.text, 'Keep this draft');
+        expect(chat.fastMode, ChatFastMode.normal);
+        expect(
+          chat.model,
+          part == 'fast' ? selection.choice.model : 'gpt-6-astra',
+        );
+        expect(host.writes.length, part == 'fast' ? 2 : 1);
+        expect(chat.changingIntelligence, isFalse);
+      },
+    );
+  }
+
   test('ultrafast survives an unchanged Apply without a write', () async {
     host.fastMode = 'ultrafast';
     final chat = controller.current!.chat!;

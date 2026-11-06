@@ -20,6 +20,12 @@ Long-press a profile pill to choose its color. This device preference also color
 
 Settings and Identity show unsaved changes and offer Save and Close. If another client changed a field, compare **Current server value** with **Your value**, choose which to keep, then save. A failed or incomplete save keeps the form available for review. Refresh failures retain the last confirmed observation with its check time.
 
+An explicit server refusal keeps the draft editable and shows its explanation,
+including administrator restrictions when supplied. A timeout or failed readback
+leaves the result uncertain; refresh and review before saving again. A conversation
+model change can succeed while a separate Fast change is refused; Wing reports
+both parts.
+
 ## Skills, tools and provider access
 
 **Skills and tools** groups capabilities into Needs setup, Enabled capabilities and Not enabled. Enabling a capability may start setup on Hermes; enablement alone does not prove it is ready.
@@ -27,6 +33,12 @@ Settings and Identity show unsaved changes and offer Save and Close. If another 
 Installed skills offers instruction reading, recorded usage and available edit, archive or uninstall actions. Use the skill reader’s action menu to lock or unlock agent edits. A lock preserves
 your existing manual editing rights and does not change the skill’s origin.
 Bundled instructions are read-only. The instruction reader supports raw/formatted views, copying, sharing and Contents. Hold or drag its grip to browse sections and release to jump. Skill discovery, the library and agent plugins have separate destinations.
+
+In Agent plugins, **Update installed plugins** checks and updates eligible installed
+plugins in the selected profile. The receipt separates updated, current, failed,
+review-required and skipped items. Held or pinned installs stay under Hermes'
+policy; changes needing review remain for the operator. Refresh reads the current
+inventory after an uncertain result. This action does not enable automatic updates.
 
 Provider access belongs to the selected profile. Depending on the provider and credential source, Wing offers key management, sign-in, renewal, status checks and removal. Some external CLI logins must be completed on the server. Removing a saved sign-in does not revoke the provider account or necessarily clear credentials already in use.
 
@@ -36,6 +48,17 @@ showing its credential actions. The header Wing pulses during that check; a
 failed check offers Retry.
 
 Retained memory can be searched and read. Memory entry editing and deletion are unavailable. See [MCP connectors](MCP_CONNECTORS.md) for connector setup, sign-in and reconnection.
+
+### Refreshing saved prompts
+
+On the Hermes host, an operator can run
+`hermes -p PROFILE sessions refresh-prompts --session SESSION_ID --json` to request
+a saved conversation's system-prompt rebuild on its next turn. Omit `--session`
+to request it profile-wide. The command retains conversation history and identity;
+the next turn can incur a prompt-cache miss. Inspect the JSON receipt for the
+resolved target. Stock Hermes has no remote API for this operation, so Wing has
+no corresponding action. Refresh skills only reloads skill information and does
+not perform this saved-prompt refresh.
 
 ## Scheduled tasks
 
@@ -67,6 +90,10 @@ Server contains Doctor, security audit and Logs. Its refresh runs both diagnosti
 Doctor findings can offer **Ask Hermes**, which opens an editable draft containing the finding and available log. Review and send it yourself. Wing does not perform Doctor repairs. Logs supports source, severity and submitted text search, with up to 100 lines.
 
 Profile checks cover model access, tool setup, connectors and scheduled tasks. Saved results are reused for up to 24 hours; refresh runs them again. These checks do not send a model prompt, execute tools or run jobs. A connector test can start its configured program. Resolved credentials do not prove available quota or successful model inference. **What's checked?** explains each result's limits.
+
+MCP connector pages also show Hermes' cached runtime observation. Reading or
+refreshing it does not run a connector test. Runtime recovery clears its own
+runtime finding while preserving separate explicit probe results and timestamps.
 
 Reported access problems offer the relevant recovery action, such as **Fix access**, **Review access**, **Retry** or **Review connection**. Routine model selection and account management remain in Administration. A failed refresh retains the previous result and time, qualified as last known.
 

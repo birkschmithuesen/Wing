@@ -36,6 +36,9 @@ class ProfileConnectorsSession extends ChangeNotifier {
     error: _error,
     notice: _notice,
     failureScope: _failureScope,
+    runtime:
+        _profile.server.connectorInventory.runtimeObservations[profileName],
+    runtimeError: _profile.server.connectorInventory.runtimeError(profileName),
   );
   bool get canRecoverRead => !_disposed && !state.busy && _retryable;
   bool _live(int generation) => !_disposed && generation == _generation;

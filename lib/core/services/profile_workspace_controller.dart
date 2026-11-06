@@ -56,6 +56,7 @@ import '../models/gateway_insight.dart';
 import '../models/gateway_process.dart';
 import '../models/gateway_todo.dart';
 import '../models/profile_live_activity.dart';
+import '../models/detached_work.dart';
 import '../models/composer_work.dart';
 import 'composer_session.dart';
 import '../models/transcript_reading.dart';
@@ -495,11 +496,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
                 item.sessionId == key.sessionId,
           )
           .firstOrNull
-          ?.state;
+          ?.state ??
+      _detachedActivity[key]?.state;
 
   /// Unsorted identities whose live state can affect the browser. Saved chats
   /// without a runtime do not need to be visited on an activity notification.
   Iterable<ProfileSessionKey> get browserRuntimeKeys sync* {
+    yield* _detachedActivity.keys;
     for (final item in _liveActivity) {
       yield ProfileSessionKey(item.workspace, item.sessionId);
     }
@@ -666,6 +669,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
   bool _openingSavedDraft = false;
   Future<void> _journalQueue = Future.value();
   List<ProfileLiveActivity> _liveActivity = const [];
+  Map<ProfileSessionKey, ProfileLiveActivity> _detachedActivity = const {};
+  final _uncertainDetachedWork = <ProfileSessionKey>{};
+  Map<String, String> _detachedWorkErrors = const {};
+  Future<void>? _detachedWorkRefresh;
+  int _detachedWorkGeneration = 0;
   Map<String, String> _activityProfileErrors = const {};
   bool _activityLoading = false;
   bool get activityLoading => _activityLoading;
@@ -739,9 +747,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _notificationTarget != null ||
       _notificationOpening != null ||
       _notificationReconciliation != null ||
+      _detachedWorkRefresh != null ||
       _pendingWorkspaceOperations > 0 ||
       _unrestoredPending.isNotEmpty ||
       _liveActivity.isNotEmpty ||
+      _detachedActivity.isNotEmpty ||
       hasActiveChats ||
       _resources.values.any(
         (resource) =>
@@ -816,6 +826,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// Failed snapshot reads do not prove previously active chats have finished.
   bool get hasActiveChats =>
       _groupNotifications.hasActiveGroups ||
+      _detachedActivity.values.any((item) => item.source != 'bot_room') ||
       _pendingNotifications > 0 ||
       _pendingCompletions > _pendingPrivateCompletions ||
       _resources.values.any(
@@ -1128,6 +1139,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     // Live events can report work before the global active-session snapshot.
     // Merge by the owned chat identity so both sources produce one row.
     final items = {
+      ..._detachedActivity,
       for (final item in _liveActivity)
         ProfileSessionKey(item.workspace, item.sessionId): item,
     };
@@ -1783,7 +1795,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   Map<String, String> get activityProfileErrors =>
-      Map.unmodifiable(_activityProfileErrors);
+      Map.unmodifiable({..._activityProfileErrors, ..._detachedWorkErrors});
   bool get switching => _pendingProfile != null;
   String get _journalKey => 'profile_pending_v2_$connectionIdentity';
 
@@ -2475,6 +2487,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
           _invalidateProjectMembership(resource);
           // Losing transport does not erase work already verified as unfinished.
           _uncertainNotificationRuntimes.addAll(_backgroundChats.keys);
+          _detachedWorkGeneration++;
+          _uncertainDetachedWork.addAll(_detachedActivity.keys);
           for (final chat in resource._chats.values.where(
             (c) => c.runtime.blocksTurnAdmission,
           )) {
@@ -2648,6 +2662,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
       return;
     }
     connectionStatus.accessFailed(const SocketException('Network unavailable'));
+    _detachedWorkGeneration++;
+    _uncertainDetachedWork.addAll(_detachedActivity.keys);
+    _changed();
     for (final resource in _resources.values.where(_needsLiveRecovery)) {
       resource.gateway.disconnect();
       resource.gateway.onConnectionChanged?.call(false);
@@ -2869,8 +2886,138 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_unrestoredPending.isNotEmpty) await _restorePending();
   }
 
+  Future<void> _refreshDetachedWork(
+    ProfileWorkspaceData source, {
+    ProfileDiscovery? discovery,
+  }) {
+    if (_closed) return Future.value();
+    return _detachedWorkRefresh ??= _readDetachedWork(source, discovery)
+        .whenComplete(() {
+          _detachedWorkRefresh = null;
+          _changed();
+        });
+  }
+
+  Future<void> _readDetachedWork(
+    ProfileWorkspaceData source,
+    ProfileDiscovery? discovery,
+  ) async {
+    final generation = _detachedWorkGeneration;
+    try {
+      final profiles = discovery ?? await source.gateway.discover();
+      // Borrow the source socket. Passive observation must not open transport
+      // or bypass the workspace's bounded recovery attempts. Explicit refresh
+      // and recovery establish it; an unavailable socket preserves uncertainty.
+      // Target resources below supply scoped metadata, never attachments.
+      if (_closed || generation != _detachedWorkGeneration) return;
+      final names = profiles.profiles.map((profile) => profile.name).toSet();
+      // Catalog retirement is independent of any slow profile's roster read.
+      _detachedActivity = Map.unmodifiable({
+        for (final entry in _detachedActivity.entries)
+          if (names.contains(entry.key.workspace.profileName))
+            entry.key: entry.value,
+      });
+      _uncertainDetachedWork.removeWhere(
+        (key) => !names.contains(key.workspace.profileName),
+      );
+      _detachedWorkErrors = Map.unmodifiable({
+        for (final entry in _detachedWorkErrors.entries)
+          if (names.contains(entry.key)) entry.key: entry.value,
+      });
+      _changed();
+      await Future.wait(
+        profiles.profiles.map((profile) async {
+          final resource = _resource(profile.name);
+          final scope = resource.scope;
+          final prior = {
+            for (final entry in _detachedActivity.entries)
+              if (entry.key.workspace == scope) entry.key: entry.value,
+          };
+          final next = <ProfileSessionKey, ProfileLiveActivity>{};
+          final uncertain = <ProfileSessionKey>{};
+          var failed = false;
+          try {
+            final rows = DetachedWork.parseRoster(
+              await source.gateway.detachedWorkRoster(profile.name),
+            );
+            final running = rows.where((row) => row.isRunning).toList();
+            for (var offset = 0; offset < running.length; offset += 4) {
+              await Future.wait(
+                running.skip(offset).take(4).map((row) async {
+                  final key = ProfileSessionKey(scope, row.sessionId);
+                  try {
+                    final metadata = await resource.gateway.sessionMetadata(
+                      row.sessionId,
+                    );
+                    if (metadata == null) return;
+                    final title = metadata['title'];
+                    final sourceName = metadata['source'];
+                    final lastActive = metadata['last_active'];
+                    final shortId = row.sessionId.length <= 8
+                        ? row.sessionId
+                        : row.sessionId.substring(row.sessionId.length - 8);
+                    next[key] = ProfileLiveActivity(
+                      workspace: scope,
+                      runtimeId: null,
+                      sessionId: row.sessionId,
+                      title: title is String && title.trim().isNotEmpty
+                          ? title.trim()
+                          : 'Hermes session · $shortId',
+                      source: sourceName is String ? sourceName : null,
+                      lastActive: lastActive is num && lastActive.isFinite
+                          ? lastActive.toDouble()
+                          : 0,
+                      state: ProfileLiveActivityState.running,
+                    );
+                  } catch (_) {
+                    failed = true;
+                    final previous = prior[key];
+                    if (previous != null) {
+                      next[key] = previous;
+                      uncertain.add(key);
+                    }
+                  }
+                }),
+              );
+              if (_closed || generation != _detachedWorkGeneration) return;
+            }
+          } catch (_) {
+            failed = true;
+            next.addAll(prior);
+            uncertain.addAll(prior.keys);
+          }
+          if (_closed || generation != _detachedWorkGeneration) return;
+          // Publish this profile as soon as it settles. Another profile's
+          // roster or metadata cannot delay its presence or retirement.
+          _detachedActivity = Map.unmodifiable({
+            for (final entry in _detachedActivity.entries)
+              if (entry.key.workspace != scope) entry.key: entry.value,
+            ...next,
+          });
+          _uncertainDetachedWork
+            ..removeWhere((key) => key.workspace == scope)
+            ..addAll(uncertain);
+          _detachedWorkErrors = Map.unmodifiable({
+            for (final entry in _detachedWorkErrors.entries)
+              if (entry.key != profile.name) entry.key: entry.value,
+            if (failed)
+              profile.name: 'Background work unavailable for ${profile.label}.',
+          });
+          _changed();
+        }),
+      );
+    } catch (_) {
+      if (_closed || generation != _detachedWorkGeneration) return;
+      _uncertainDetachedWork.addAll(_detachedActivity.keys);
+      _detachedWorkErrors = const {
+        'detached': 'Background work could not be loaded.',
+      };
+    }
+  }
+
   Future<void> refreshActivity() async {
     final generation = ++_activityGeneration;
+    Future<void>? detachedRefresh;
     _activityLoading = true;
     _activityProfileErrors = const {};
     _changed();
@@ -2889,6 +3036,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         await activeResource.gateway.connect();
       }
       if (_closed || generation != _activityGeneration) return;
+      detachedRefresh = _refreshDetachedWork(
+        activeResource,
+        discovery: profiles,
+      );
       final response = await activeResource.gateway.call('session.active_list');
       if (response['sessions'] is! List) {
         throw const FormatException('Missing active sessions');
@@ -3050,6 +3201,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'server': 'Live status could not be loaded.',
       };
     } finally {
+      // Publish canonical activity immediately, while the existing explicit
+      // refresh feedback remains active until detached reads also settle.
+      if (!_closed && generation == _activityGeneration) _changed();
+      await detachedRefresh;
       if (!_closed && generation == _activityGeneration) {
         _activityLoading = false;
         _changed();
@@ -3082,6 +3237,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Future<void> refreshHistory(
     ProfileChat chat, {
     bool propagateFailure = false,
+  }) => _refreshHistory(
+    chat,
+    propagateFailure: propagateFailure,
+    awaitContext: false,
+  );
+
+  Future<void> _refreshHistory(
+    ProfileChat chat, {
+    required bool propagateFailure,
+    required bool awaitContext,
   }) async {
     final resource = _owned(chat);
     final key = chat._key;
@@ -3109,7 +3274,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
     );
     if (refreshed && currentRead()) {
       chat._runtime.reconcileHistoricalActivity();
-      unawaited(refreshContext(chat));
+      final contextRead = refreshContext(chat);
+      if (awaitContext) {
+        await contextRead;
+      } else {
+        unawaited(contextRead);
+      }
       unawaited(_saveReadingSnapshot());
     }
   }
@@ -6762,6 +6932,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         (pending?.choice.model ?? chat.model) != selection.choice.model ||
         (pending?.choice.provider ?? chat.provider) !=
             selection.choice.provider;
+    var modelChangeAccepted = false;
     if (routeChanged ||
         (pending?.reasoningEffort ?? chat.reasoningEffort) !=
             selection.reasoningEffort) {
@@ -6810,6 +6981,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat._reasoningEffort = selection.reasoningEffort;
       }
       chat._intelligenceRevision++;
+      modelChangeAccepted = true;
     }
     if (chat.fastMode != selection.fastMode) {
       final Map<String, dynamic> fast;
@@ -6819,7 +6991,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
           'key': 'fast',
           'value': selection.fastMode.name,
         });
-      } catch (_) {
+      } catch (error) {
+        final refusal = SettingsWriteRejected.fromFailure(error);
+        if (refusal != null) {
+          throw StateError(
+            '${modelChangeAccepted ? 'The model and reasoning choice was accepted. ' : ''}'
+            'Fast mode was refused. ${refusal.message}',
+          );
+        }
         throw StateError('Fast mode could not be confirmed. Try again.');
       }
       requireCurrent();
@@ -6872,6 +7051,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         unawaited(refreshContext(chat));
       }
       return true;
+    } on JsonRpcError catch (error) {
+      final refusal = SettingsWriteRejected.fromFailure(error);
+      if (refusal != null) throw StateError(refusal.message);
+      rethrow;
     } finally {
       _observeCanonicalPending(chat);
       chat._changingIntelligence = false;
@@ -7001,6 +7184,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     final resource = _commandOwner(chat);
     final original = chat.composer.observation.text;
     final draftRevision = chat.composer.observation.revision;
+    final commandRuntime = chat.runtime.runtimeId;
     chat._commandNotification = null;
     chat._runtime.beginCommand();
     _changed();
@@ -7016,6 +7200,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
       while (true) {
         if (!visited.add(name) || visited.length > 16) {
           throw StateError('Command alias cycle');
+        }
+        if (name == 'compress' || name == 'compact') {
+          final unavailable = catalog.unavailable(name);
+          if (unavailable != null) throw StateError(unavailable);
+          await _compressCommand(chat, resource, commandRuntime, argument);
+          await chat.composer.finishCommand(draftRevision);
+          break;
         }
         // Session navigation belongs to the phone; slash workers own a different
         // CLI session and must never create, rename or select it on our behalf.
@@ -7144,6 +7335,95 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat._runtime.finishCommand();
       await chat.composer.saveWork();
       _changed();
+    }
+  }
+
+  /// Canonical compression owns its parser and history mutation. The ordinary
+  /// command lifetime owns pending feedback, draft revision and uncertain errors.
+  Future<void> _compressCommand(
+    ProfileChat chat,
+    ProfileWorkspaceData resource,
+    String runtime,
+    String argument,
+  ) async {
+    void requireCaptured() {
+      if (!identical(_commandOwner(chat), resource) ||
+          !identical(current, resource) ||
+          !identical(resource.chat, chat) ||
+          switching ||
+          chat.runtime.runtimeId != runtime) {
+        throw StateError(
+          'Chat changed. Check its compression result before running the command again.',
+        );
+      }
+    }
+
+    requireCaptured();
+    await resource.gateway.connect();
+    requireCaptured();
+    if (chat.readOnlyReason != null ||
+        !chat._runtime.canContinueCommandPrompt) {
+      throw StateError(
+        'Wait for this chat to be writable and idle before compressing.',
+      );
+    }
+    chat._runtime.beginCommandDispatch();
+    final Map<String, dynamic> result;
+    try {
+      result = await resource.gateway.mutateSession(runtime, 'compress', {
+        'focus': argument,
+      });
+    } finally {
+      chat._runtime.finishCommandDispatch();
+    }
+    requireCaptured();
+    if (result['session_id'] != runtime || result['operation'] != 'compress') {
+      throw const FormatException(
+        'Hermes did not confirm this compression request.',
+      );
+    }
+    final status = result['status'];
+    final List<String> lines;
+    if (status == 'preview') {
+      final report = result['lines'];
+      if (report is! List ||
+          report.isEmpty ||
+          report.any((line) => line is! String)) {
+        throw const FormatException(
+          'Hermes returned an invalid compression preview.',
+        );
+      }
+      lines = report.cast<String>();
+    } else {
+      final summary = result['summary'];
+      if ((status != null && status != 'noop') ||
+          summary is! Map ||
+          summary['headline'] is! String ||
+          (summary['headline'] as String).trim().isEmpty ||
+          (status != 'noop' &&
+              (result['revision'] is! int ||
+                  result['execution_generation'] is! int))) {
+        throw const FormatException(
+          'Hermes did not return a confirmed compression result.',
+        );
+      }
+      lines = [
+        summary['headline'] as String,
+        for (final key in ['token_line', 'note'])
+          if (summary[key] case final String line when line.isNotEmpty) line,
+      ];
+    }
+    chat.reading.appendCommandNotice(lines.join('\n'), command: '/compress');
+    if (status == 'preview' || status == 'noop') return;
+    _invalidateContextDetails(chat);
+    try {
+      await _refreshHistory(chat, propagateFailure: true, awaitContext: true);
+      requireCaptured();
+    } catch (_) {
+      requireCaptured();
+      chat.reading.appendCommandNotice(
+        'Compression finished. Refresh to reload history and context.',
+      );
     }
   }
 
@@ -9327,6 +9607,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
     };
     try {
       final profiles = await source.gateway.discover();
+      unawaited(_refreshDetachedWork(source, discovery: profiles));
+      if (_closed) return;
       final response = await source.gateway.call('session.active_list');
       if (response['sessions'] is! List) {
         throw const FormatException('Missing active sessions');

@@ -38,7 +38,18 @@ void main() {
             'servers': [{}],
           };
         }
-        return {'servers': servers};
+        return {
+          'servers': [
+            for (final row in servers)
+              {
+                'transport': 'http',
+                'auth': null,
+                'source': 'config',
+                'plugin': null,
+                ...row,
+              },
+          ],
+        };
       }
       expect(method, 'POST');
       return probe(path);
@@ -232,7 +243,14 @@ void main() {
     await inventory.refresh('work');
     oldResponse.complete({
       'servers': [
-        {'name': 'grokbot', 'enabled': true},
+        {
+          'name': 'grokbot',
+          'enabled': true,
+          'transport': 'http',
+          'auth': null,
+          'source': 'config',
+          'plugin': null,
+        },
       ],
     });
     await oldRead;

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../models/model_choice.dart';
+import '../models/profile_connectors.dart';
 import '../models/provider_access.dart';
 import 'administration_repository.dart';
 import 'health_snapshot.dart';
@@ -118,17 +119,32 @@ class AdministrationOverview extends ChangeNotifier {
   /// request did not establish a result; false means Hermes reported failure.
   Map<String, bool?> _connectorChecks = const {};
   Map<String, bool?> get connectorChecks => _connectorChecks;
-  bool _disposed = false;
-  void _inventoryChanged() {
-    if (_disposed || _connectorChecks.isEmpty) return;
+  String? get connectorRuntimeError =>
+      profile.server.connectorInventory.runtimeError(profile.name);
+  ConnectorRuntimeObservation? get connectorRuntime =>
+      profile.server.connectorInventory.runtimeObservations[profile.name];
+  Map<String, ConnectorRuntime> get connectorRuntimeIssues {
     final inventory =
         profile.server.connectorInventory.observations[profile.name];
-    if (inventory == null) return;
+    final runtime = connectorRuntime;
+    return inventory == null || runtime == null
+        ? const {}
+        : runtime.issuesFor(inventory.connectors.values);
+  }
+
+  bool _disposed = false;
+  void _inventoryChanged() {
+    if (_disposed) return;
+    final inventory =
+        profile.server.connectorInventory.observations[profile.name];
+    if (inventory == null) {
+      notifyListeners();
+      return;
+    }
     final retained = <String, bool?>{
       for (final entry in _connectorChecks.entries)
         if (inventory.enabled[entry.key] == true) entry.key: entry.value,
     };
-    if (mapEquals(retained, _connectorChecks)) return;
     _connectorChecks = Map.unmodifiable(retained);
     notifyListeners();
   }
@@ -281,12 +297,14 @@ class AdministrationOverview extends ChangeNotifier {
           }
         }
         if (_disposed || generation != _generations[key]) return;
-        _connectorChecks = Map.unmodifiable(results);
+        if (testConnectors) _connectorChecks = Map.unmodifiable(results);
         _inventoryChanged();
       }
       _observations[key] = AdministrationObservation._retained(
         data,
-        DateTime.now(),
+        key == 'connectors' && !testConnectors && _connectorChecks.isNotEmpty
+            ? observation.checkedAt
+            : DateTime.now(),
         null,
         true,
       );
