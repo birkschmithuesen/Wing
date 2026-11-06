@@ -1666,6 +1666,10 @@ void main() {
       ),
     );
     await _journeyStep('identity.soul-frame', () => tester.pump());
+    await _journeyStep(
+      'identity.keyboard-visible',
+      () => _pumpUntil(tester, () => tester.view.viewInsets.bottom > 0),
+    );
     expect(
       tester
           .widget<TextField>(

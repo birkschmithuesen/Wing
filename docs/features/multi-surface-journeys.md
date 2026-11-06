@@ -27,8 +27,10 @@ python3 scripts/test_nightly_native.py voice --output build/feature-verification
 
 The first command requires all four critical journeys, all twelve roadmap journeys and actual outbox process-death recovery. Its named outcomes cover uncertain Send beside a newer draft; native clarification from composer text; local Git review; live progress and plan recovery; profile/project navigation; model/reference/find/output controls; approval/queue ownership; child/parent work; saved-answer edit/regenerate/fork; and scoped administration/update refusal. Read those outcomes rather than inferring coverage from the suite title.
 Roadmap actions wait for route completion and reveal controls before tapping,
-including when the Android keyboard reduces the viewport. Roadmap failures export
-their exact failure-time Flutter frame and keyboard metrics under `<suite>-frames/`
+including when the Android keyboard reduces the viewport.
+The Identity save journey waits for Android's keyboard inset before checking and
+tapping Save, so its keyboard-open assertion does not race the native show animation.
+Roadmap failures export their exact failure-time Flutter frame and keyboard metrics under `<suite>-frames/`
 and in the suite log. Native foreground, window and keyboard diagnostics at failed
 suite completion are retained under `<suite>-failure/` before cleanup; later tests
 may have changed that native state.
