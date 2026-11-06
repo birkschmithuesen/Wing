@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -70,24 +71,35 @@ void main() {
         ),
       );
       Future<void> tap(Finder control) async {
+        void trace(String stage) => debugPrintSynchronously(
+          '[secure-setup-native] ${control.description}: $stage',
+        );
+        trace('pre-settle started');
         await tester.pumpAndSettle(
           const Duration(milliseconds: 100),
           EnginePhase.sendSemanticsUpdate,
           const Duration(seconds: 15),
         );
+        trace('pre-settle completed');
         final deadline = DateTime.now().add(const Duration(seconds: 5));
         do {
+          trace('ensure-visible started');
           await tester.ensureVisible(control);
+          trace('ensure-visible completed; frame started');
           await tester.pump(const Duration(milliseconds: 100));
+          trace('frame completed');
         } while (control.hitTestable().evaluate().isEmpty &&
             DateTime.now().isBefore(deadline));
         expect(control.hitTestable(), findsOneWidget);
+        trace('tap started');
         await tester.tap(control);
+        trace('tap completed; post-settle started');
         await tester.pumpAndSettle(
           const Duration(milliseconds: 100),
           EnginePhase.sendSemanticsUpdate,
           const Duration(seconds: 15),
         );
+        trace('post-settle completed');
       }
 
       await tap(find.text('Use an address'));
@@ -100,10 +112,12 @@ void main() {
         find.byKey(const Key('connection-username')),
         'qa-user',
       );
+      debugPrintSynchronously('[secure-setup-native] password entry started');
       await tester.enterText(
         find.byKey(const Key('connection-password')),
         password,
       );
+      debugPrintSynchronously('[secure-setup-native] password entry completed');
       await tap(find.text('Check connection'));
       expect(find.text('Connection verified'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('connection-name')), label);
