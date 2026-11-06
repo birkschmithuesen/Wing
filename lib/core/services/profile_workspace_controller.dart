@@ -3213,9 +3213,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
     ContextOccupancy? value;
     String? error;
     try {
+      final observations = await Future.wait([
+        gateway.call('session.context_breakdown', {'session_id': runtime}),
+        gateway.call('session.stats', {'session_id': runtime}),
+      ]);
       value = ContextOccupancy.fromJson(
-        await gateway.call('session.context_breakdown', {
-          'session_id': runtime,
+        _contextUsage({
+          ...observations[0],
+          ...observations[1],
+          'config_context_length': observations[1]['config_context_length'],
         }),
       );
     } catch (_) {
@@ -3789,7 +3795,27 @@ class ProfileWorkspaceController extends ChangeNotifier {
   static const _sessionContinuationError =
       'The session changed, but its continuation was not accepted. Check this chat and refresh session controls before trying again.';
 
+  Map<String, dynamic> _contextUsage(Map usage) {
+    final used = usage['context_tokens'], maximum = usage['context_length'];
+    if (used is num &&
+        used.isFinite &&
+        used >= 0 &&
+        maximum is num &&
+        maximum.isFinite &&
+        maximum > 0) {
+      return {
+        ...usage,
+        'context_used': used.clamp(0, maximum),
+        'context_max': maximum,
+        'context_percent': (used / maximum * 100).clamp(0, 100),
+        'context_estimated': usage['context_source'] != 'provider_usage',
+      };
+    }
+    return Map<String, dynamic>.from(usage);
+  }
+
   void _updateContext(ProfileChat chat, Map usage) {
+    usage = _contextUsage(usage);
     if (usage.containsKey('plan_gauge') || usage.containsKey('calls')) {
       chat._planGauge = CurrentPlanGauge.parse(usage['plan_gauge']);
     }
@@ -3818,6 +3844,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'context_max': previous.max,
         'context_percent': previous.percent,
         'context_estimated': previous.estimated,
+        'config_context_length': previous.configuredMax,
       },
       ...Map<String, dynamic>.from(usage),
     })?.withCategories(previous?.categories ?? const []);
@@ -4576,11 +4603,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       if (!replacedExpiredDraft && !read.owned()) return null;
       if (response != null && read.current()) {
-        final partial = chat.reading.streaming;
         _hydrate(chat, response);
-        if (chat.reading.streaming.isEmpty && partial.isNotEmpty) {
-          chat.reading.updateStreaming(partial);
-        }
         chat._parentSessionId = response.containsKey('parent_session_id')
             ? _serverParent(response['parent_session_id'], key.sessionId)
             : parentSessionId(chat);
@@ -6108,6 +6131,33 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'profile_mismatch',
       }.contains(error.reason);
 
+  Future<void> continueFailedTurn(
+    ProfileChat chat,
+    TurnFailure expected,
+  ) async {
+    final gateway = _commandOwner(chat).gateway;
+    if (!identical(chat.runtime.failure, expected) ||
+        !expected.canContinue ||
+        gateway.canonical.session(chat.runtime.runtimeId)?.pending.isNotEmpty ==
+            true ||
+        chat.runtime.blocksTurnAdmission ||
+        chat.composer.observation.sending ||
+        chat.composer.observation.preparing ||
+        _current?.chat != chat) {
+      throw StateError('Review the current conversation before continuing.');
+    }
+    await _submitRevisionPrompt(chat, 'continue');
+    if (identical(chat.runtime.failure, expected) &&
+        gateway.canonical
+                .session(chat.runtime.runtimeId)
+                ?.pending
+                .any((row) => !row.queued) ==
+            true) {
+      chat._runtime.beginTurn(submitting: false);
+      _changed();
+    }
+  }
+
   Future<void> _submitRevisionPrompt(ProfileChat chat, String text) async {
     final gateway = _commandOwner(chat).gateway;
     final runtime = chat.runtime.runtimeId;
@@ -6121,6 +6171,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'session_id': runtime,
         'submission_id': ticket.submissionId,
         'text': text,
+        if (gateway.canonicalClarifyBatch) 'clarify_batch': true,
       };
       await chat.composer.prepareDispatch(ticket, payload: payload);
       _commandOwner(chat);
@@ -6534,7 +6585,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
       final pending = chat._pendingIntelligence;
       if (pending != null &&
           chat.model == pending.choice.model &&
-          chat.provider == pending.choice.provider &&
+          (pending.useProfileDefault ||
+              chat.provider == pending.choice.provider) &&
           chat.reasoningEffort == pending.reasoningEffort) {
         chat._pendingIntelligence = null;
       }
@@ -6677,6 +6729,34 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
     await gateway.requireProfile();
     requireCurrent();
+    if (selection.useProfileDefault) {
+      final result = await gateway.mutateSession(runtime, 'model', {
+        'model': 'reset',
+      });
+      requireCurrent();
+      if (result['status'] == 'deferred') {
+        final model = result['model'];
+        if (model is! String || model.isEmpty) {
+          throw const FormatException('Missing deferred profile model');
+        }
+        chat._pendingIntelligence = ChatIntelligenceSelection(
+          choice: ModelChoice(provider: '', model: model),
+          reasoningEffort: chat.reasoningEffort ?? selection.reasoningEffort,
+          fastMode: chat.fastMode ?? selection.fastMode,
+          useProfileDefault: true,
+        );
+      } else {
+        // Read the resolved session policy; never paint the literal reset token
+        // or assume the profile catalog is still current.
+        final observed = await gateway.resume(runtime);
+        requireCurrent();
+        chat._pendingIntelligence = null;
+        _hydrateIntelligence(chat, observed);
+      }
+      chat._intelligenceRevision++;
+      chat._intelligenceRuntime = runtime;
+      return true;
+    }
     final pending = chat.pendingIntelligence;
     final routeChanged =
         (pending?.choice.model ?? chat.model) != selection.choice.model ||
@@ -7563,6 +7643,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'submission_id': ticket.submissionId,
         if (admittingQueue) 'queued': true,
         'text': submittedText,
+        if (resource.gateway.canonicalClarifyBatch) 'clarify_batch': true,
         if (images.isNotEmpty) 'attachments': images,
       };
       await chat.composer.prepareDispatch(ticket, payload: payload);
@@ -7699,16 +7780,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   void _appendAcceptedSteer(ProfileChat chat, String text) {
-    if (chat.reading.streaming.isNotEmpty) {
-      chat.reading.appendAssistant(
-        chat.reading.streaming,
-        turnGeneration: chat._runtime.turnRevision,
-        reasoning: '',
-        responseReused: false,
-        interim: true,
-      );
-      chat.reading.updateStreaming('');
-    }
+    chat.reading.splitReplyForSteering(
+      turnGeneration: chat._runtime.turnRevision,
+    );
     chat._runtime.finishSegment();
     chat.reading.appendPrompt(
       text: PreparedComposerMessage.parse(text)?.message ?? text,
@@ -7780,6 +7854,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat,
     ).gateway.canonical.session(chat.runtime.runtimeId);
     if (state == null) return;
+    chat.reading.observePendingReplyAdmissions(
+      state.pending.where((row) => !row.queued).map((row) => row.id),
+    );
     chat._readOnlyReason = state.readOnlyReason;
     chat.composer.observePending(state.pending, notify: notify);
   }
@@ -8321,6 +8398,84 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
+  Future<void> skipClarification(
+    ProfileChat chat,
+    ChatQuestions expected,
+  ) async {
+    if (chat._answeringQuestion) return;
+    final resource = _commandOwner(chat);
+    final question = chat.runtime.pendingQuestion;
+    final capture = chat._runtime.beginQuestionAnswer(expected);
+    if (capture == null || question == null) return;
+    chat._answeringQuestion = true;
+    _changed();
+    try {
+      if (expected.nativeGeneration != null || question.questionId == null) {
+        await _clarify(chat, '', expectedRequest: expected);
+      } else {
+        final result = await resource.gateway.call('request.answer', {
+          'id': question.requestId,
+          'result': <String, dynamic>{},
+        });
+        if (result['status'] == 'expired') {
+          await _expireClarification(
+            chat,
+            resource,
+            question.requestId,
+            capture,
+          );
+          return;
+        }
+        if (capture.runtimeId == chat.runtime.runtimeId &&
+            chat.runtime.pendingQuestion?.requestId == question.requestId) {
+          chat._runtime.cancelQuestion(question.requestId);
+        }
+      }
+    } finally {
+      chat._answeringQuestion = false;
+      _changed();
+    }
+  }
+
+  /// Locks the reviewed set sequentially: the final lock completes the waiter.
+  /// A partial failure leaves confirmed locks in runtime and unsent form drafts.
+  Future<void> clarifySet(
+    ProfileChat chat,
+    Map<String, String?> answers, {
+    required ChatQuestions expectedRequest,
+  }) async {
+    if (chat._answeringQuestion) return;
+    final runtime = chat.runtime.runtimeId;
+    final requestId = expectedRequest.pending?.requestId;
+    if (requestId == null ||
+        chat.runtime.questions?.pending?.requestId != requestId) {
+      throw StateError(
+        'This clarification has changed. Review the current request.',
+      );
+    }
+    chat._answeringQuestion = true;
+    _changed();
+    try {
+      while (chat.runtime.runtimeId == runtime) {
+        final current = chat.runtime.questions;
+        final pending = current?.pending;
+        if (current == null ||
+            pending == null ||
+            pending.requestId != requestId) {
+          return;
+        }
+        final id = pending.questionId ?? pending.requestId;
+        if (!answers.containsKey(id)) return;
+        if (!await _clarify(chat, answers[id], expectedRequest: current)) {
+          return;
+        }
+      }
+    } finally {
+      chat._answeringQuestion = false;
+      _changed();
+    }
+  }
+
   Future<void> clarify(
     ProfileChat chat,
     String answer, {
@@ -8371,9 +8526,25 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
+  Future<void> _expireClarification(
+    ProfileChat chat,
+    ProfileWorkspaceData resource,
+    String requestId,
+    execution.ChatRuntimeAnswer capture,
+  ) async {
+    if (capture.runtimeId != chat.runtime.runtimeId ||
+        chat.runtime.pendingQuestion?.requestId != requestId) {
+      return;
+    }
+    chat._runtime.closeQuestion(requestId);
+    _changed();
+    await reconnect(resource.scope);
+    chat._runtime.reportQuestionExpiry(capture);
+  }
+
   Future<bool> _clarify(
     ProfileChat chat,
-    String answer, {
+    String? answer, {
     ChatQuestions? expectedRequest,
   }) async {
     final resource = _commandOwner(chat);
@@ -8391,7 +8562,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'session_id': capture.runtimeId,
         'execution_generation': nativeGeneration,
         'prompt_id': question.requestId,
-        'answer': answer,
+        'answer': answer ?? '',
       });
       if (result['prompt_id'] != question.requestId ||
           !{'resolved', 'already_resolved'}.contains(result['status'])) {
@@ -8409,7 +8580,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       chat._runtime.finishQuestionAnswer(
         capture,
-        answer: answer,
+        answer: answer ?? '',
         remaining: null,
       );
       _changed();
@@ -8427,25 +8598,18 @@ class ProfileWorkspaceController extends ChangeNotifier {
             }
           : {
               'id': question.requestId,
-              'result': {'answer': answer},
+              'result': {'answer': answer ?? ''},
             },
     );
     if (result['status'] == 'expired') {
       // This receipt closes the whole request, even if another surface has
       // advanced its batch. It cannot close a different request or runtime.
-      if (capture.runtimeId != chat.runtime.runtimeId ||
-          chat.runtime.pendingQuestion?.requestId != question.requestId) {
-        return false;
-      }
-      chat._runtime.closeQuestion(question.requestId);
-      _changed();
-      await reconnect(resource.scope);
-      chat._runtime.reportQuestionExpiry(capture);
+      await _expireClarification(chat, resource, question.requestId, capture);
     } else {
       if (!capture.current) return false;
       chat._runtime.finishQuestionAnswer(
         capture,
-        answer: answer,
+        answer: answer ?? '',
         remaining: result['remaining'] is List
             ? (result['remaining'] as List).whereType<String>().toList()
             : null,
@@ -8544,6 +8708,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
     // Only facts a resume snapshot can replace invalidate its read. Independent
     // usage/control/review observations must not hold execution in recovery.
+    if (event.data['turn_id'] is String) {
+      chat.reading.observeReplyAdmission(
+        event.envelope['admission_id'],
+        turn: event.data['turn_id'],
+      );
+    }
     final compactingBefore = chat.runtime.compacting;
     chat._runtime.observeEvent(event.type, event.data);
     final activityBefore = chat.runtime.mainActivity;
@@ -8627,9 +8797,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
           chat._sessionControlError = null;
         }
       case 'session.usage':
-        if (event.data['usage'] is Map) {
-          _updateContext(chat, event.data['usage'] as Map);
-        }
+        _updateContext(chat, {
+          if (event.data['usage'] is Map)
+            ...Map<String, dynamic>.from(event.data['usage'] as Map),
+          ...event.data,
+        });
       case 'message.start':
         final admissionId = event.envelope['admission_id'];
         final pending = resource.gateway.canonical
@@ -8785,6 +8957,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
       case 'error':
       case 'turn.error':
+        chat.reading.retireReply();
         chat._runtime.failTurn(
           event.data['message']?.toString() ?? 'Turn failed',
         );
@@ -8894,10 +9067,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
             : '',
         persistedTurn: completion['persisted_turn'],
         responsePreviewed: completion['response_previewed'] == true,
+        responseTransformed: completion['response_transformed'] == true,
         responseReused:
             !failed && !cancelled && completion['response_reused'] == true,
       );
     }
+    chat.reading.retireReply();
     chat.reading.updateStreaming('');
     // The received result is authoritative before optional history/list/project
     // enrichment. Publish it now so a held read cannot delay another chat's cue.
@@ -9696,11 +9871,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         if (_closed || resource._restartReconnect) return;
         if (!read.owned()) continue;
         final applied = result != null && read.current();
-        final partial = chat.reading.streaming;
         if (applied) _hydrate(chat, result);
-        if (chat.reading.streaming.isEmpty && partial.isNotEmpty) {
-          chat.reading.updateStreaming(partial);
-        }
         final continuation = _captureResume(resource, chat, startRead: false);
         try {
           await refreshHistory(chat, propagateFailure: true);
@@ -10029,7 +10200,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     unawaited(_observeModelControls(chat));
     _applyTodoSnapshot(chat, result['todo_state']);
     final inflight = result['inflight'] as Map?;
-    chat.reading.updateStreaming(inflight?['assistant']?.toString() ?? '');
+    chat.reading.applyReplySnapshot(inflight?['assistant']?.toString());
     unawaited(_refreshApprovals(chat, notifyNew: false));
     if (result.containsKey('side_tasks')) {
       _hydrateSideTasks(chat, result['side_tasks']);

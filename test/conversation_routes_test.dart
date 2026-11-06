@@ -518,12 +518,19 @@ void main() {
                   for (final event in [
                     {
                       'type': 'message.start',
-                      'payload': <String, dynamic>{},
+                      'payload': <String, dynamic>{
+                        'turn_id': 'route-worker-turn',
+                      },
                       'seq': 1,
                     },
                     {
                       'type': 'message.delta',
-                      'payload': {'text': 'The shared renderer keeps'},
+                      'payload': {
+                        'text': 'The shared renderer keeps',
+                        'turn_id': 'route-worker-turn',
+                        'segment': 0,
+                        'offset': 0,
+                      },
                       'seq': 2,
                     },
                     {

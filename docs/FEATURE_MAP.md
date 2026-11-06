@@ -132,7 +132,7 @@ Use the order below for a broad pass; finish with [connected journeys](features/
 
 <a id="administration-skills-tools"></a>
 
-- [Inspect and configure skills and tools](features/administration-skills-tools.md) — `administration-skills-tools`.
+- [Inspect and configure skills and tools](features/administration-skills-tools.md) — `administration-skills-tools`; includes locks against agent edits.
 
 <a id="scheduled-tasks"></a>
 
@@ -144,7 +144,7 @@ Use the order below for a broad pass; finish with [connected journeys](features/
 
 <a id="versions-updates"></a>
 
-- [Inspect versions and control updates](features/versions-updates.md) — `versions-updates`.
+- [Inspect versions and control updates](features/versions-updates.md) — `versions-updates`; Cloud-managed identity and self-hosted update controls.
 
 <a id="app-preferences-backup"></a>
 

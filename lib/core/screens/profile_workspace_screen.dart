@@ -2005,18 +2005,18 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Widget _questionPanel(ProfileChat chat) {
     final payload = chat.runtime.questions!;
     final question = payload.pending!;
-    final index = payload.pendingNumber - 1;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         GatewayClarifyDialog(
-          key: ValueKey((chat.key, question.requestId, question.questionId)),
-          request: question,
-          number: index + 1,
-          total: payload.questions.length,
-          onRespond: (answer) =>
-              controller.clarify(chat, answer, expectedRequest: payload),
+          key: ValueKey((chat.key, question.requestId)),
+          requests: payload.questions,
+          answeredIds: payload.answeredIds,
+          lockedAnswers: payload.lockedAnswers,
+          onSkip: () => controller.skipClarification(chat, payload),
+          onRespond: (answers) =>
+              controller.clarifySet(chat, answers, expectedRequest: payload),
         ),
         Align(
           alignment: Alignment.centerRight,
@@ -2465,6 +2465,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         chat.key.workspace.profileName,
       ),
       child: ConversationLayout(
+        needsInput: chat.runtime.needsInput,
         transcript: ProfileTranscript(
           key: ValueKey((
             chat.key,
@@ -3297,6 +3298,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     return TurnFailureView(
       key: ValueKey(('failure', chat.key, failure)),
       failure: failure,
+      onContinue: () => controller.continueFailedTurn(chat, failure),
       onChooseModel: () => _chooseIntelligence(chat, context),
       onReviewProvider: () => openProfileProviderAccess(
         context,

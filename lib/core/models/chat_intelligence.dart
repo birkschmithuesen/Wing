@@ -19,6 +19,7 @@ class ChatIntelligenceSelection {
   final ModelChoice choice;
   final String reasoningEffort;
   final ChatFastMode fastMode;
+  final bool useProfileDefault;
 
   /// Switching routes keeps only controls the new catalog route offers.
   ChatIntelligenceSelection withChoice(
@@ -40,5 +41,6 @@ class ChatIntelligenceSelection {
     required this.choice,
     required this.reasoningEffort,
     required this.fastMode,
+    this.useProfileDefault = false,
   });
 }

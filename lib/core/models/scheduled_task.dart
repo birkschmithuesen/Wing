@@ -21,6 +21,8 @@ class ScheduledTask {
         value['schedule'] is! Map) {
       throw const FormatException('Invalid scheduled task');
     }
+    TaskExecution.decode(value['live_execution']);
+    TaskExecution.decode(value['latest_execution']);
   }
 
   final Map<String, dynamic> data;
@@ -32,7 +34,24 @@ class ScheduledTask {
   String get prompt => text('prompt');
   String get state => text('state');
   bool get enabled => data['enabled'] == true;
-  bool get running => state == 'running';
+  TaskExecution? get liveExecution =>
+      TaskExecution.decode(data['live_execution']);
+  TaskExecution? get latestExecution =>
+      TaskExecution.decode(data['latest_execution']);
+  bool get running => liveExecution?.live == true;
+  bool get canStop => running;
+  String get timezoneLabel =>
+      text('timezone').isEmpty ? 'Hermes profile timezone' : text('timezone');
+  String get catchUpLabel => switch (data['catch_up']) {
+    true => 'Run one catch-up',
+    false => 'Skip missed runs',
+    _ => 'Hermes default',
+  };
+  String get graceLabel => data['grace_minutes'] == null
+      ? 'Computed window'
+      : data['grace_minutes'] == 0
+      ? 'No grace window'
+      : '${data['grace_minutes']} minutes';
   bool get paused => state == 'paused';
   bool get knownState => const {
     'scheduled',
@@ -43,24 +62,29 @@ class ScheduledTask {
     'disabled',
     'enabled',
   }.contains(state);
-  bool get canRun => knownState && !running && state != 'completed';
+  bool get canRun =>
+      knownState && !running && state != 'running' && state != 'completed';
   bool get canPause => knownState && enabled && state != 'completed';
   bool get canResume => paused || state == 'disabled';
   bool get scriptOnly => data['no_agent'] == true;
   bool get hasServerExecution =>
       text('script').isNotEmpty ||
       (data['skills'] is List && (data['skills'] as List).isNotEmpty);
-  String get statusLabel => switch (state) {
-    'scheduled' || 'enabled' => 'Scheduled',
-    'paused' => 'Paused',
-    'disabled' => 'Disabled',
-    'running' => 'Running',
-    'error' => 'Needs attention',
-    'completed' => 'Completed',
-    _ => 'Status unavailable',
-  };
+  String get statusLabel => running
+      ? 'Running'
+      : switch (state) {
+          'scheduled' || 'enabled' => 'Scheduled',
+          'paused' => 'Paused',
+          'disabled' => 'Disabled',
+          'running' => 'Run status unavailable',
+          'error' => 'Needs attention',
+          'completed' => 'Completed',
+          _ => 'Status unavailable',
+        };
   String get error => text('last_error');
-  bool get needsAttention => error.isNotEmpty || state == 'error';
+  bool get needsAttention =>
+      !const {'cancelled', 'missed'}.contains(text('last_status')) &&
+      (error.isNotEmpty || state == 'error');
   DateTime? get nextRun => DateTime.tryParse(text('next_run_at'));
   DateTime? get lastRun => DateTime.tryParse(text('last_run_at'));
   String get failureInvestigationPrompt {
@@ -85,7 +109,9 @@ class ScheduledTask {
   List<String> get destinations => text(
     'deliver',
   ).split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toSet().toList();
-  String? get listStatusText => !knownState
+  String? get listStatusText => running
+      ? 'Working on it now'
+      : !knownState
       ? 'Status unavailable'
       : state == 'completed'
       ? 'No further runs'
@@ -93,25 +119,22 @@ class ScheduledTask {
       ? 'Schedule disabled'
       : paused
       ? 'Schedule paused'
-      : running
-      ? 'Working on it now'
       : null;
-  String get nextRunHeading =>
-      !knownState || state == 'completed' || state == 'disabled'
-      ? statusLabel.toUpperCase()
-      : running
+  String get nextRunHeading => running
       ? 'IN PROGRESS'
+      : !knownState || state == 'completed' || state == 'disabled'
+      ? statusLabel.toUpperCase()
       : paused
       ? 'ON PAUSE'
       : 'NEXT RUN';
-  String? get nextRunText => !knownState
+  String? get nextRunText => running
+      ? 'Your agent is working'
+      : !knownState
       ? 'Schedule status unavailable'
       : state == 'completed'
       ? 'No further runs'
       : state == 'disabled'
       ? 'Schedule disabled'
-      : running
-      ? 'Your agent is working'
       : !enabled
       ? 'Ready when you are'
       : null;
@@ -198,6 +221,46 @@ class ScheduledTask {
   }
 }
 
+/// Independent ledger observations: latest attempt need not be the live attempt.
+class TaskExecution {
+  const TaskExecution(this.id, this.status, this.reason);
+  final String id, status, reason;
+  bool get live => status == 'claimed' || status == 'running';
+  String get label => switch (status) {
+    'claimed' => 'Starting',
+    'running' => 'Running',
+    'completed' => 'Completed',
+    'failed' => 'Failed',
+    'cancelled' => 'Cancelled',
+    'missed' => 'Missed',
+    'rejected' => 'Rejected',
+    _ => 'Outcome unavailable',
+  };
+  static TaskExecution? decode(Object? value) {
+    if (value == null) return null;
+    if (value is! Map ||
+        value['id'] is! String ||
+        (value['id'] as String).isEmpty ||
+        value['status'] is! String) {
+      throw const FormatException('Invalid scheduled execution');
+    }
+    return TaskExecution(
+      value['id'] as String,
+      value['status'] as String,
+      value['error'] is String ? value['error'] as String : '',
+    );
+  }
+}
+
+class TaskCancellation {
+  const TaskCancellation(this.requested, this.executionId);
+  final bool requested;
+  final String? executionId;
+  String get notice => requested
+      ? 'Stop requested. The run stops at its next cancellation check. The schedule is unchanged.'
+      : 'No run is in flight. The schedule is unchanged.';
+}
+
 enum TaskListFilter {
   all('All'),
   active('Active'),
@@ -208,7 +271,7 @@ enum TaskListFilter {
   final String label;
 }
 
-enum TaskAction { edit, pause, resume, trigger, remove }
+enum TaskAction { edit, pause, resume, trigger, cancel, remove }
 
 class TaskConfirmation {
   const TaskConfirmation(this.title, this.message, this.buttonLabel);
@@ -294,12 +357,15 @@ Object? _immutableTaskValue(Object? value) => switch (value) {
 };
 
 class TaskDeliveryTarget {
+  const TaskDeliveryTarget.room({required this.id, required this.name})
+    : configured = true;
   TaskDeliveryTarget.fromJson(Map<String, dynamic> json)
     : id = json['id'] as String,
       name = json['name'] as String,
       configured = json['home_target_set'] == true;
   final String id, name;
   final bool configured;
+  bool get isRoom => id.startsWith('room:');
   String get label => id == 'local' ? 'Save on server' : name;
 }
 

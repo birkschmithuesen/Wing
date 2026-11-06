@@ -147,7 +147,7 @@ void main() {
         final events = <Map<String, dynamic>>[];
         void event(String type, Map<String, dynamic> payload) => events.add({
           'type': type,
-          'payload': payload,
+          'payload': stockWorkerReply(events, type, payload),
           'session_id': 'atlas-live',
           'seq': events.length + 1,
         });
@@ -500,7 +500,7 @@ void main() {
           final events = <Map<String, dynamic>>[];
           void event(String type, Map<String, dynamic> payload) => events.add({
             'type': type,
-            'payload': payload,
+            'payload': stockWorkerReply(events, type, payload),
             'session_id': 'atlas-live',
             'seq': events.length + 1,
           });

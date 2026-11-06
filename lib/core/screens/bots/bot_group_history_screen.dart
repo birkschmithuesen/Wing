@@ -191,6 +191,7 @@ class _BotGroupHistoryScreenState extends State<BotGroupHistoryScreen>
               ? 'Refreshing working history'
               : 'Loading working history',
           child: ConversationLayout(
+            needsInput: false,
             contextHeader: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,

@@ -261,6 +261,58 @@ class ProfileSkillsSession extends ChangeNotifier {
       identical(_detail, route) &&
       state.canMutate &&
       currentSkill(route)?.uninstallable == true;
+  bool canSetLocked(SkillDetailRoute route) =>
+      identical(_detail, route) &&
+      state.canMutate &&
+      currentSkill(route) != null;
+
+  Future<bool> setLocked(SkillDetailRoute route, bool locked) async {
+    final before = currentSkill(route);
+    if (!canSetLocked(route) || before == null || before.locked == locked) {
+      return false;
+    }
+    return _mutation(
+      confirm: () async => true,
+      child: () => identical(_detail, route),
+      preflight: () async {
+        final current = (await _readInstalled())
+            .where((s) => s.name == before.name)
+            .firstOrNull;
+        if (current == null ||
+            current.provenance != before.provenance ||
+            current.locked != before.locked) {
+          throw const AdministrationFailure(
+            'This skill changed. Refresh and review its lock.',
+          );
+        }
+      },
+      method: 'PUT',
+      path: 'skills/lock',
+      body: {'name': before.name, 'locked': locked},
+      ack: (result) =>
+          result['ok'] == true &&
+          result['name'] == before.name &&
+          result['locked'] == locked,
+      notice: locked
+          ? 'Skill locked against agent edits.'
+          : 'Skill unlocked for agent edits.',
+      after: () async {
+        final rows = await _readInstalled();
+        final confirmed = rows.where((s) => s.name == before.name).firstOrNull;
+        if (confirmed == null || confirmed.locked != locked) {
+          throw const AdministrationFailure(
+            'The skill lock could not be verified. Refresh to check it.',
+          );
+        }
+        return () {
+          _installed = rows;
+          _libraryChecked = true;
+          _notice = null;
+        };
+      },
+    );
+  }
+
   SkillEditorRoute openEditor(SkillDetailRoute route) {
     if (!canEdit(route)) {
       throw const AdministrationFailure(

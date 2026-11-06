@@ -44,6 +44,8 @@ class _AdminScheduledTaskEditorPageState
   late final prompt = TextEditingController(text: state.prompt);
   late final custom = TextEditingController(text: state.schedule.custom);
   late final minutes = TextEditingController(text: state.schedule.minutes);
+  late final timezone = TextEditingController(text: state.timezone);
+  late final grace = TextEditingController(text: state.graceMinutes);
   bool allowPop = false;
   ScheduledTasksController get controller => widget.controller;
   bool get editing => state.editing;
@@ -78,6 +80,8 @@ class _AdminScheduledTaskEditorPageState
     prompt.dispose();
     custom.dispose();
     minutes.dispose();
+    timezone.dispose();
+    grace.dispose();
     super.dispose();
   }
 
@@ -243,7 +247,9 @@ class _AdminScheduledTaskEditorPageState
               ),
               TaskSection(
                 'Schedule',
-                description: 'Recurring times follow Hermes’ timezone.',
+                description: state.timezone.isEmpty
+                    ? 'Recurring times follow the Hermes profile timezone.'
+                    : 'Recurring times follow ${state.timezone}.',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -272,7 +278,7 @@ class _AdminScheduledTaskEditorPageState
                           onPressed: saving ? null : chooseTime,
                           icon: const Icon(Icons.schedule_outlined),
                           label: Text(
-                            'At ${time.format(context)} · Hermes time',
+                            'At ${time.format(context)} · ${state.timezone.isEmpty ? 'Hermes time' : state.timezone}',
                           ),
                         ),
                       ),
@@ -377,6 +383,60 @@ class _AdminScheduledTaskEditorPageState
                           ),
                         ),
                       ),
+                    const SizedBox(height: 16),
+                    viewportSelection(
+                      TextFormField(
+                        controller: timezone,
+                        enabled: !saving,
+                        onChanged: session.setTimezone,
+                        decoration: const InputDecoration(
+                          labelText: 'Schedule timezone',
+                          hintText: 'Asia/Singapore',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Timezone: IANA name, or empty for the Hermes profile timezone. One-time phone dates remain exact instants.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 16),
+                    StudioSelect<TaskCatchUp>(
+                      label: 'Missed runs',
+                      value: state.catchUp,
+                      options: const [
+                        (value: TaskCatchUp.inherit, label: 'Hermes default'),
+                        (value: TaskCatchUp.runOnce, label: 'Run one catch-up'),
+                        (value: TaskCatchUp.skip, label: 'Skip missed runs'),
+                      ],
+                      onChanged: saving
+                          ? null
+                          : (value) {
+                              if (value != null) session.setCatchUp(value);
+                            },
+                    ),
+                    const SizedBox(height: 16),
+                    viewportSelection(
+                      TextFormField(
+                        controller: grace,
+                        enabled: !saving,
+                        onChanged: session.setGrace,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(
+                          labelText: 'Late window (min)',
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Cron window: 0–1440 minutes, or empty for the computed window. Run one catch-up also permits work beyond this window.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'External schedulers control their own delivery and retry timing.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
                     if (kind != TaskScheduleKind.custom)
                       Padding(
                         padding: const EdgeInsets.only(top: 16),
@@ -398,7 +458,7 @@ class _AdminScheduledTaskEditorPageState
                   'Keep the result on your server or send it to a configured server destination.',
               child: StudioLoadingRegion(
                 available: true,
-                busy: session.loadingDestinations,
+                busy: session.loadingDestinations || session.loadingRooms,
                 label: 'Loading destinations',
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -415,6 +475,20 @@ class _AdminScheduledTaskEditorPageState
                         ),
                       ),
 
+                    if (state.roomError != null)
+                      TaskMessage(
+                        'Group destinations could not be loaded. Existing destinations are kept.',
+                        error: true,
+                        action: StudioButtonPress(
+                          child: IconButton(
+                            tooltip: 'Refresh group destinations',
+                            onPressed: session.loadingRooms
+                                ? null
+                                : () => session.load(TaskEditCatalog.rooms),
+                            icon: const Icon(Icons.refresh),
+                          ),
+                        ),
+                      ),
                     if (state.deliveryChoices.any(
                       (choice) => choice.discovered,
                     ))
@@ -558,6 +632,9 @@ class _AdminScheduledTaskEditorPageState
                               TaskConflictField.prompt => 'Instructions',
                               TaskConflictField.schedule => 'Schedule',
                               TaskConflictField.delivery => 'Results',
+                              TaskConflictField.timezone => 'Timezone',
+                              TaskConflictField.grace => 'Late-run window',
+                              TaskConflictField.catchUp => 'Missed runs',
                               TaskConflictField.modelRouting => 'Model routing',
                             },
                             child: Column(
@@ -630,6 +707,8 @@ class _AdminScheduledTaskEditorPageState
       prompt.text = state.prompt;
       custom.text = state.schedule.custom;
       minutes.text = state.schedule.minutes;
+      timezone.text = state.timezone;
+      grace.text = state.graceMinutes;
     }
   }
 
@@ -637,7 +716,8 @@ class _AdminScheduledTaskEditorPageState
     final value = await showTimePicker(
       context: context,
       initialTime: time,
-      helpText: 'Time in Hermes’ timezone',
+      helpText:
+          'Time in ${state.timezone.isEmpty ? 'the Hermes profile timezone' : state.timezone}',
     );
     if (value != null && mounted) {
       session.setSchedule(

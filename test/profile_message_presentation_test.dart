@@ -109,7 +109,11 @@ void main() {
 
   void emit(String type, Map<String, dynamic> data) {
     controller.current!.gateway.onEvent!(
-      StreamEvent(type: type, sessionId: chat.runtime.runtimeId, data: data),
+      StreamEvent(
+        type: type,
+        sessionId: chat.runtime.runtimeId,
+        data: stockChatReply(controller.current!.gateway, type, data),
+      ),
     );
   }
 
@@ -289,8 +293,8 @@ void main() {
     'interim seals its live segment and the next segment gets a new token',
     () {
       chat.reading.installSavedHistory([]);
-      runtime.beginTurn(submitting: false);
-      chat.reading.updateStreaming('Tool commentary');
+      emit('message.start', {});
+      emit('message.delta', {'text': 'Tool commentary'});
       final first = chat.reading.streamingMessage!;
       final firstToken = chat.reading.messagePresentationId(first);
 
@@ -303,7 +307,7 @@ void main() {
         chat.reading.messagePresentationId(chat.reading.messages.single),
         same(firstToken),
       );
-      expect(first, {'role': 'assistant', 'content': 'Tool commentary'});
+      expect(first['content'], 'Tool commentary');
       expect(
         chat.reading.messagePresentationId(chat.reading.messages.single),
         same(firstToken),

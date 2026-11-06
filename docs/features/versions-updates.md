@@ -6,7 +6,9 @@ Feature ID: `versions-updates`.
 
 ## Sub-features
 
-- `versions-updates.check` — Read current and available versions.
+- `versions-updates.check` — Read current and available versions. Cloud-managed
+  instances show installed identity with Refresh server version; host update and
+  channel controls are omitted and cannot dispatch.
 - `versions-updates.channel` — Use the tune icon beside the channel to choose Stable releases or Main branch. The editor stays reachable after a failed update/channel check and can retry reading the current channel before saving.
 - `versions-updates.confirm` — Admit only the exact confirmed update target.
 - `versions-updates.follow` — Follow progress automatically and scroll newest-first logs in a viewer capped at 16 text rows. The single rightmost sync control checks progress while an update is outstanding and availability otherwise.
@@ -46,3 +48,8 @@ Channel verification targets the current stock Hermes source-check protocol (3).
 The controller suite verifies that fresh stock metadata enables the exact target
 and channel controls, while older/unknown protocols, stale records and mismatched
 installation identities leave updates unavailable.
+
+Cloud ownership follows the captured saved instance or stock Cloud hostname,
+including staging. A model provider name never determines update ownership.
+`hermes023_administration_test.dart` checks that Cloud reads only health and keeps
+the installed version visible in both themes and enlarged text.

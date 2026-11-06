@@ -68,3 +68,7 @@ button offers **Check for updates**.
 Leaving the screen does not cancel an accepted server update. If acknowledgement is lost, the outcome stays uncertain; check its status and version before repeating the request. Request acceptance alone does not mean the update completed.
 
 When updating several configured hosts, review the targets and each host's result separately. Different addresses can refer to the same physical server. A messaging-gateway restart is separate from a TUI restart; Wing does not offer a verified remote TUI restart action.
+
+Hermes Cloud manages updates for its instances. Wing still shows the installed
+server version and lets you refresh it, while omitting host updater and channel
+controls. Self-hosted connections retain the exact-target update flow.

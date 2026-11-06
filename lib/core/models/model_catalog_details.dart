@@ -150,16 +150,19 @@ final class PlanUsage {
     required Iterable<PlanUsageGauge> gauges,
     required Iterable<String> featuredModelIds,
     Iterable<String> topTierModelIds = const [],
+    Iterable<String> subscriptionModelIds = const [],
     this.pausedReason,
     this.creditsPay,
   }) : gauges = List.unmodifiable(gauges),
        featuredModelIds = Set.unmodifiable(featuredModelIds),
-       topTierModelIds = Set.unmodifiable(topTierModelIds);
+       topTierModelIds = Set.unmodifiable(topTierModelIds),
+       subscriptionModelIds = Set.unmodifiable(subscriptionModelIds);
   final String kind;
   final String? plan;
   final List<PlanUsageGauge> gauges;
   final Set<String> featuredModelIds;
   final Set<String> topTierModelIds;
+  final Set<String> subscriptionModelIds;
   final String? pausedReason;
   final bool? creditsPay;
   String? get pauseLabel => switch (pausedReason) {
@@ -186,6 +189,9 @@ final class PlanUsage {
           : const [],
       topTierModelIds: value['top_tier_model_ids'] is List
           ? (value['top_tier_model_ids'] as List).whereType<String>()
+          : const [],
+      subscriptionModelIds: value['subscription_model_ids'] is List
+          ? (value['subscription_model_ids'] as List).whereType<String>()
           : const [],
       gauges: [
         if (gauges is List)

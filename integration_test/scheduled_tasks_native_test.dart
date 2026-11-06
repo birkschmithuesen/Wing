@@ -87,7 +87,7 @@ void main() {
       );
       await tester.tap(find.text('Android acceptance'));
       await tester.pumpAndSettle();
-      expect(find.text('Resume and run'), findsOneWidget);
+      expect(find.byTooltip('Resume and run').hitTestable(), findsOneWidget);
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(find.text('Scheduled tasks'), findsOneWidget);

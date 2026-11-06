@@ -101,7 +101,7 @@ class _AdminSkillLibraryPageState extends State<AdminSkillLibraryPage> {
                 child: ListTile(
                   title: Text(skill.name),
                   subtitle: Text(
-                    '${skill.provenance} · ${skill.usage} recorded uses',
+                    '${skill.provenance} · ${skill.usage} recorded uses${skill.locked ? ' · Locked against agent edits' : ''}',
                   ),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: state.canMutate ? () => _open(skill) : null,
@@ -233,6 +233,19 @@ class _AdminSkillDetailState extends State<AdminSkillDetail> {
         document: document,
         createReader: () => _session.reader(document.readerTarget),
         actions: [
+          ActivityDetailAction(
+            label: current.locked
+                ? 'Unlock agent edits'
+                : 'Lock against agent edits',
+            icon: current.locked
+                ? Icons.lock_outline
+                : Icons.lock_open_outlined,
+            onPressed: _session.canSetLocked(_route)
+                ? () async {
+                    await _session.setLocked(_route, !current.locked);
+                  }
+                : null,
+          ),
           if (current.editable) ...[
             ActivityDetailAction(
               label: 'Edit instructions',
@@ -257,17 +270,32 @@ class _AdminSkillDetailState extends State<AdminSkillDetail> {
             onPressed: state.busy ? null : () => _session.loadDetail(_route),
           ),
         ],
-        bodyBuilder: (context, body) => Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: _SkillsRead(
-                session: _session,
-                retry: () => _session.loadDetail(_route),
-                builder: (_) => body,
+        bodyBuilder: (context, body) => StudioPageLoading(
+          active: state.saving || state.phase == SkillsPhase.reading,
+          label: state.saving ? 'Saving skill' : 'Refreshing skill',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: WingSpacing.md,
+                  vertical: WingSpacing.xs,
+                ),
+                child: Text(
+                  current.locked
+                      ? 'Locked against agent edits'
+                      : 'Agent edits are not locked',
+                ),
               ),
-            ),
-          ],
+              Expanded(
+                child: _SkillsRead(
+                  session: _session,
+                  retry: () => _session.loadDetail(_route),
+                  builder: (_) => body,
+                ),
+              ),
+            ],
+          ),
         ),
       );
     },
@@ -626,11 +654,13 @@ class _SkillsRead extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (state.error case final error?)
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: AdminNotice.error(
-                    error,
-                    retry: state.busy ? null : retry,
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: AdminNotice.error(
+                      error,
+                      retry: state.busy ? null : retry,
+                    ),
                   ),
                 ),
               if (state.notice case final notice?)

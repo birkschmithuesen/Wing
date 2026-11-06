@@ -9,6 +9,7 @@ import 'workspace_connection_failure.dart';
 
 class BackendUpdateController extends ChangeNotifier {
   final ProfileGateway gateway;
+  final bool cloudManaged;
 
   BackendUpdateCheck? check;
   BackendUpdateChannel? channel;
@@ -50,10 +51,11 @@ class BackendUpdateController extends ChangeNotifier {
   String? _actionId;
   int? _actionPid;
 
-  BackendUpdateController(this.gateway);
+  BackendUpdateController(this.gateway, {this.cloudManaged = false});
 
   bool get requestOutstanding => _requestOutstanding;
   bool get canStart =>
+      !cloudManaged &&
       !checking &&
       !statusLoading &&
       !channelSaving &&
@@ -65,6 +67,7 @@ class BackendUpdateController extends ChangeNotifier {
       channel?.targetSha != null;
 
   bool get canOpenChannelEditor =>
+      !cloudManaged &&
       !checking &&
       !statusLoading &&
       !starting &&
@@ -148,6 +151,10 @@ class BackendUpdateController extends ChangeNotifier {
   }
 
   Future<void> checkForUpdate() async {
+    if (cloudManaged) {
+      await _readInstalledVersion();
+      return;
+    }
     if (checking ||
         channelSaving ||
         starting ||
@@ -192,7 +199,8 @@ class BackendUpdateController extends ChangeNotifier {
     required BackendUpdateChannel approvedChannel,
     required bool Function() canDispatch,
   }) async {
-    if (_disposed ||
+    if (cloudManaged ||
+        _disposed ||
         !canDispatch() ||
         channelSaving ||
         starting ||
@@ -378,7 +386,9 @@ class BackendUpdateController extends ChangeNotifier {
   }
 
   Future<void> refreshStatus({bool background = false}) {
-    if (_disposed || starting || channelSaving) return Future.value();
+    if (cloudManaged || _disposed || starting || channelSaving) {
+      return Future.value();
+    }
     if (!background && !statusLoading) {
       statusLoading = true;
       _notify();

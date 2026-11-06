@@ -34,6 +34,8 @@ class ContextOccupancy {
   final int max;
   final double percent;
   final bool estimated;
+  final int? configuredMax;
+  bool get pinned => configuredMax != null && configuredMax == max;
   final List<ContextCategory> categories;
 
   ContextOccupancy({
@@ -41,6 +43,7 @@ class ContextOccupancy {
     required this.max,
     required this.percent,
     this.estimated = false,
+    this.configuredMax,
     Iterable<ContextCategory> categories = const [],
   }) : categories = List.unmodifiable(categories);
 
@@ -52,6 +55,7 @@ class ContextOccupancy {
         max: max,
         percent: percent,
         estimated: estimated,
+        configuredMax: configuredMax,
         categories: categories,
       );
 
@@ -76,6 +80,10 @@ class ContextOccupancy {
       max: max.round(),
       percent: percent.clamp(0, 100).toDouble(),
       estimated: value['context_estimated'] == true,
+      configuredMax: switch (value['config_context_length']) {
+        final int length when length > 0 => length,
+        _ => null,
+      },
       categories: value['categories'] is List
           ? (value['categories'] as List)
                 .map(ContextCategory.fromJson)

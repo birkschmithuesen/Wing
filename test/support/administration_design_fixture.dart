@@ -247,6 +247,7 @@ class AdministrationDesignFixture extends AdministrationFixture {
             'enabled': true,
             'category': 'Research',
             'provenance': 'Installed',
+            'locked': false,
             'description': 'Investigate a question and compare sources.',
           },
         ],

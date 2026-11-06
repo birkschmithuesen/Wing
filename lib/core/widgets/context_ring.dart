@@ -197,7 +197,7 @@ class _ContextRingState extends State<ContextRing>
                                     ),
                                     if (value != null)
                                       Text(
-                                        '${numbers.formatDecimal(value.used)} / ${numbers.formatDecimal(value.max)}',
+                                        '${numbers.formatDecimal(value.used)} / ${numbers.formatDecimal(value.max)}${value.pinned ? ' (pinned)' : ''}',
                                         style: tokens.typography.label.copyWith(
                                           color: tokens.muted,
                                           letterSpacing: 0,

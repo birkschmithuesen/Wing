@@ -4,6 +4,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'support/composer_fixture.dart';
+import 'support/form_family_capture.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/connection_access.dart';
@@ -25,6 +26,7 @@ import 'support/profile_intelligence_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  setUpAll(loadFormFamilyFonts);
   const capture = bool.fromEnvironment('CAPTURE_INTELLIGENCE');
   setUpAll(() async {
     if (!capture) return;
@@ -73,6 +75,118 @@ void main() {
     host = ProfileIntelligenceFixture();
     controller = await open();
   });
+
+  test(
+    'context pin follows full stats and survives sparse usage only',
+    () async {
+      final chat = controller.current!.chat!;
+      host.contextResponse = Completer()
+        ..complete({
+          'context_used': 10,
+          'context_max': 100,
+          'context_percent': 10,
+        });
+      host.contextStats = {
+        'context_tokens': 30,
+        'context_length': 200,
+        'config_context_length': 200,
+        'context_source': 'provider_usage',
+      };
+      await controller.refreshContext(chat);
+      expect(chat.context!.max, 200);
+      expect(chat.context!.used, 30);
+      expect(chat.context!.pinned, isTrue);
+      emitChatEvent(controller, chat, 'session.usage', {
+        'usage': {'context_used': 40, 'context_percent': 20},
+      });
+      expect(chat.context!.configuredMax, 200);
+      host.contextStats = {};
+      await controller.refreshContext(chat);
+      expect(chat.context!.configuredMax, isNull);
+    },
+  );
+
+  test(
+    'profile default reset sends only reset and adopts observed session model',
+    () async {
+      final chat = controller.current!.chat!;
+      await controller.setIntelligence(
+        chat,
+        const ChatIntelligenceSelection(
+          choice: ModelChoice(
+            provider: 'ignored-provider',
+            model: 'ignored-model',
+          ),
+          reasoningEffort: 'high',
+          fastMode: ChatFastMode.fast,
+          useProfileDefault: true,
+        ),
+        confirmModelChange: (_) async =>
+            throw StateError('Reset cannot ask for model confirmation'),
+      );
+      expect(host.writes, hasLength(1));
+      expect(host.writes.single['operation'], 'model');
+      expect(host.writes.single['payload'], {'model': 'reset'});
+      expect(chat.model, 'gpt-6-astra');
+      expect(chat.reasoningEffort, 'high');
+      expect(chat.fastMode, ChatFastMode.normal);
+    },
+  );
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('profile reset menu holds feedback $brightness $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: formFamilyCapture,
+            child: MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: ProfileWorkspaceScreen(
+                controller: controller,
+                createBotsSession: () => BotsSession((_) async => const []),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const Key('chat-intelligence-button')));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('More model options'));
+        await tester.pumpAndSettle();
+        expect(find.text('Use profile default'), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'model-reset-menu-${brightness.name}-$scale',
+        );
+        final held = Completer<void>();
+        host.configSetDelay = held;
+        await tester.tap(find.text('Use profile default'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(find.byType(CircularProgressIndicator), findsWidgets);
+        await captureFormFamily(
+          tester,
+          'model-reset-pending-${brightness.name}-$scale',
+        );
+        held.complete();
+        await tester.pumpAndSettle();
+        expect(host.writes.single['payload'], {'model': 'reset'});
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
 
   for (final brightness in Brightness.values) {
     for (final (size, scale) in [

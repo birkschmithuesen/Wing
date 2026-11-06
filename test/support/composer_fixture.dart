@@ -143,6 +143,48 @@ Future<ComposerDraftSnapshot?> readComposerFixture({
 
 /// Delivers a stock event through the registered, captured controller callback.
 /// It does not expose the private runtime writer or bypass owner admission.
+int _fixtureReplySequence = 0;
+final _fixtureReplies = Expando<Map<String, Object>>();
+
+Map<String, dynamic> stockChatReply(
+  Object owner,
+  String type,
+  Map<String, dynamic> data,
+) {
+  if (!{'message.start', 'message.delta', 'message.interim'}.contains(type)) {
+    return data;
+  }
+  var state = _fixtureReplies[owner];
+  final explicit = data['turn_id'];
+  if (state == null ||
+      type == 'message.start' &&
+          (explicit == null || state['turn'] != explicit)) {
+    state = {
+      'turn': explicit is String
+          ? explicit
+          : 'chat-fixture-${++_fixtureReplySequence}',
+      'segment': 0,
+      'offset': 0,
+    };
+    _fixtureReplies[owner] = state;
+  }
+  final stamped = <String, dynamic>{
+    'turn_id': state['turn'],
+    if (type != 'message.start') 'segment': state['segment'],
+    if (type == 'message.delta') 'offset': state['offset'],
+    ...data,
+  };
+  if (type == 'message.delta') {
+    state['offset'] =
+        (stamped['offset'] as int) + (data['text']?.toString().length ?? 0);
+  }
+  if (type == 'message.interim') {
+    state['segment'] = (stamped['segment'] as int) + 1;
+    state['offset'] = 0;
+  }
+  return stamped;
+}
+
 void emitChatEvent(
   ProfileWorkspaceController controller,
   ProfileChat chat,
@@ -152,6 +194,7 @@ void emitChatEvent(
   final gateway = controller
       .browserResource(chat.key.workspace.profileName)
       .gateway;
+  data = stockChatReply(gateway, type, data);
   final deliver = gateway.onEvent;
   if (deliver == null) {
     throw StateError('The fixture gateway is not connected.');

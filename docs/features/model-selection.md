@@ -33,7 +33,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
-Free models do not inherit paid-model limits. Missing plan data is unknown;
+Free models do not inherit paid-model limits. Subscription-billed models also
+remain exempt from window allowances, but do not carry a Free label.
+The context-ring detail marks a server-confirmed configured maximum as pinned;
+estimated token occupancy is a separate fact. Missing plan data is unknown;
 Wing neither invents availability nor enables credit spending. A structured
 allowance failure can open the picker or select a supplied alternative through
 the normal confirmation flow, retaining the draft without resending it.
@@ -41,3 +44,9 @@ the normal confirmation flow, retaining the draft without resending it.
 `turn_failure_test.dart` covers held, failed and duplicate recovery actions.
 
 Conversation model changes and profile defaults have different scopes. A selected picker row is not a confirmed backend change; handle an explicit confirmation or rejection.
+
+In a conversation, open More model options → Use profile default to remove the
+conversation's explicit model selection. Hermes resolves the current profile
+default; the action retains history, draft, reasoning and fast settings and does
+not edit the profile default. A running turn keeps its current model while the
+resolved default is shown as Next turn. Rejection leaves the picker open.

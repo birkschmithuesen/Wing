@@ -13,9 +13,14 @@ class TurnFailureView extends StatefulWidget {
     this.onChooseModel,
     this.onReviewProvider,
     this.onSelectModel,
+    this.onContinue,
+    this.onReviewEndpoint,
   });
   final TurnFailure failure;
-  final Future<void> Function()? onChooseModel, onReviewProvider;
+  final Future<void> Function()? onChooseModel,
+      onReviewProvider,
+      onContinue,
+      onReviewEndpoint;
   final Future<bool> Function(TurnModelSuggestion)? onSelectModel;
 
   @override
@@ -83,7 +88,20 @@ class _TurnFailureViewState extends State<TurnFailureView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        StudioError(failure.title),
+        if (failure.blocking)
+          StudioError(failure.title)
+        else
+          Semantics(
+            liveRegion: true,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(Icons.info_outline, size: 20, color: colors.muted),
+                const SizedBox(width: 12),
+                Expanded(child: Text(failure.title)),
+              ],
+            ),
+          ),
         if (limit != null) Text(limit.message),
         if (failure.description case final description? when limit == null)
           Text(description),
@@ -125,6 +143,30 @@ class _TurnFailureViewState extends State<TurnFailureView> {
           ),
         Wrap(
           children: [
+            if (failure.canContinue && widget.onContinue != null)
+              _FailureAction(
+                label: 'Continue',
+                icon: Icons.play_arrow_outlined,
+                busy: _pending == 'continue',
+                onPressed: _pending == null && _selected == null
+                    ? () => _perform('continue', () async {
+                        await widget.onContinue!();
+                        return 'Continuation accepted. Your draft is unchanged.';
+                      })
+                    : null,
+              ),
+            if (failure.canReviewEndpoint && widget.onReviewEndpoint != null)
+              _FailureAction(
+                label: 'Review model endpoint',
+                icon: Icons.dns_outlined,
+                busy: _pending == 'endpoint',
+                onPressed: _pending == null
+                    ? () => _perform('endpoint', () async {
+                        await widget.onReviewEndpoint!();
+                        return null;
+                      })
+                    : null,
+              ),
             if (failure.canChooseModel && widget.onChooseModel != null)
               _FailureAction(
                 label: 'Choose model',
@@ -200,6 +242,7 @@ class _FailureAction extends StatelessWidget {
               dimension: 20,
               child: CircularProgressIndicator(
                 strokeWidth: 2,
+                backgroundColor: Theme.of(context).colorScheme.outlineVariant,
                 semanticsLabel: label,
                 value: MediaQuery.disableAnimationsOf(context) ? .75 : null,
               ),

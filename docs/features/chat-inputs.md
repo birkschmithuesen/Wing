@@ -40,6 +40,25 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
+A clarification set appears in one form. Stage every answer, including explicit
+per-question skips, then use the single confirmation action. Hermes locks answers
+in order; if a later lock fails, confirmed answers stay locked and remaining
+answers remain editable. Answers from another device and expired requests retire
+the matching controls. Skip clarification cancels the request while retaining answers already locked by Hermes.
+With the keyboard open, pending input keeps room for its actions while a tall
+composer scrolls. On short screens, the input-navigation control uses a separate
+side gutter so it cannot cover the form's actions.
+
+A cut-off reply or exhausted turn budget offers an explicit Continue action.
+It submits a new continuation while preserving the composer draft. Model and
+provider recovery never automatically resend the failed request. Local endpoint
+failures offer model recovery and endpoint guidance, without provider sign-in.
+
+```sh
+flutter test --no-pub test/gateway_clarify_test.dart test/profile_question_delivery_test.dart test/profile_prompt_reply_transport_test.dart test/turn_failure_test.dart
+```
+
+
 Accepted steering stays compact only until Hermes adds the message to saved
 history. It then becomes a normal user bubble with formatted text and Copy;
 reopened chats show saved steering in that same form. The `steer becomes a

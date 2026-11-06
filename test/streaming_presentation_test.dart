@@ -135,7 +135,12 @@ void main() {
         messages.map((row) => row['content']),
         contains('Saved interim answer'),
       );
-      expect(encoded, isNot(contains('Unfinished live answer')));
+      final pending = messages.singleWhere(
+        (row) => row['_reply_streaming'] == true,
+      );
+      expect(pending['content'], contains('Unfinished live answer'));
+      expect(pending['_reply_turn'], isNotEmpty);
+      expect(pending['_reply_segment'], 1);
     },
   );
 

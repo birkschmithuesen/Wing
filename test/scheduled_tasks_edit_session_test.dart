@@ -30,6 +30,111 @@ void main() {
   });
 
   test(
+    'unrelated edit preserves raw inherited policy without sending defaults',
+    () async {
+      fixture.jobs['morning']!.addAll({
+        'timezone': null,
+        'grace_minutes': '05',
+        'catch_up': null,
+      });
+      await controller.refresh();
+      final session = ScheduledTaskEditSession(
+        controller,
+        original: controller.task('morning'),
+      );
+      addTearDown(session.dispose);
+      session.setText(TaskEditText.name, 'Renamed');
+      expect(await session.save(), TaskEditOutcome.confirmed);
+      final write = fixture.admin.requests.singleWhere((r) => r.$1 == 'PUT');
+      expect(write.$4!['updates'], {'name': 'Renamed'});
+      expect(fixture.jobs['morning']!['grace_minutes'], '05');
+    },
+  );
+
+  test(
+    'policy resets are explicit null and false and zero remain real choices',
+    () async {
+      fixture.jobs['morning']!.addAll({
+        'timezone': 'Europe/Paris',
+        'grace_minutes': 60,
+        'catch_up': true,
+      });
+      await controller.refresh();
+      final session = ScheduledTaskEditSession(
+        controller,
+        original: controller.task('morning'),
+      );
+      addTearDown(session.dispose);
+      session.setTimezone('');
+      session.setGrace('0');
+      session.setCatchUp(TaskCatchUp.skip);
+      expect(await session.save(), TaskEditOutcome.confirmed);
+      final updates = fixture.admin.requests
+          .singleWhere((r) => r.$1 == 'PUT')
+          .$4!['updates'];
+      expect(updates, {
+        'timezone': null,
+        'grace_minutes': 0,
+        'catch_up': false,
+      });
+    },
+  );
+
+  test(
+    'invalid grace is retained and non-cron switch requires explicit clearing',
+    () async {
+      final session = ScheduledTaskEditSession(
+        controller,
+        original: controller.task('morning'),
+      );
+      addTearDown(session.dispose);
+      session.setGrace('1441');
+      expect(await session.save(), TaskEditOutcome.invalid);
+      expect(session.state.graceMinutes, '1441');
+      session.setGrace('0');
+      session.setSchedule(
+        session.state.schedule.copyWith(kind: TaskScheduleKind.interval),
+      );
+      expect(await session.save(), TaskEditOutcome.invalid);
+      expect(fixture.mutations, 0);
+      session.setGrace('');
+      expect(await session.save(), TaskEditOutcome.confirmed);
+    },
+  );
+
+  test(
+    'failed room discovery does not hide platform delivery or change selected room',
+    () async {
+      fixture.jobs['morning']!['deliver'] = 'local,room:old@work';
+      await controller.refresh();
+      fixture.admin.rpcOverride = (_, _) async => throw StateError('offline');
+      final session = ScheduledTaskEditSession(
+        controller,
+        original: controller.task('morning'),
+      );
+      addTearDown(session.dispose);
+      await session.load(TaskEditCatalog.delivery);
+      await session.load(TaskEditCatalog.rooms);
+      expect(session.state.roomError, isNotNull);
+      expect(
+        session.state.deliveryChoices.any(
+          (c) => c.id == 'telegram' && c.discovered,
+        ),
+        isTrue,
+      );
+      expect(
+        session.state.deliveryChoices
+            .singleWhere((c) => c.id == 'room:old@work')
+            .selected,
+        isTrue,
+      );
+      session.setText(TaskEditText.name, 'Keep target');
+      expect(await session.save(), TaskEditOutcome.confirmed);
+      expect(fixture.jobs['morning']!['deliver'], 'local,room:old@work');
+    },
+  );
+
+  test(
     'name edit preserves an untouched expired one-shot expression exactly',
     () async {
       fixture.jobs['morning']!['schedule'] = {

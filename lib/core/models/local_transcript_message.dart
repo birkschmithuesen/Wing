@@ -13,16 +13,24 @@ List<Map<String, dynamic>> retainLocalTranscriptMessages(
   final result = refreshed
       .where((row) => !isLocalTranscriptMessage(row))
       .toList();
-  int locate(Map<String, dynamic> row) => result.indexWhere((candidate) {
-    if (isLocalReviewMessage(row)) {
-      return isLocalReviewMessage(candidate)
-          ? candidate['_review_notice'] == row['_review_notice']
-          : reviewMessageText(candidate) == reviewMessageText(row);
-    }
-    if (row['id'] != null) return candidate['id'] == row['id'];
-    return candidate['role'] == row['role'] &&
-        answerMessageText(candidate) == answerMessageText(row);
-  });
+  int locate(Map<String, dynamic> row) {
+    // Retained reply segments remain the same owned rows. Equal prose in two
+    // segments must not move a notice to the earlier occurrence.
+    final retained = result.indexWhere(
+      (candidate) => identical(candidate, row),
+    );
+    if (retained >= 0) return retained;
+    return result.indexWhere((candidate) {
+      if (isLocalReviewMessage(row)) {
+        return isLocalReviewMessage(candidate)
+            ? candidate['_review_notice'] == row['_review_notice']
+            : reviewMessageText(candidate) == reviewMessageText(row);
+      }
+      if (row['id'] != null) return candidate['id'] == row['id'];
+      return candidate['role'] == row['role'] &&
+          answerMessageText(candidate) == answerMessageText(row);
+    });
+  }
 
   for (var i = 0; i < previous.length; i++) {
     final local = previous[i];

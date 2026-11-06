@@ -266,6 +266,7 @@ class TaskMenu extends StatelessWidget {
                           TaskAction.pause => Icons.pause_rounded,
                           TaskAction.resume => Icons.play_arrow_rounded,
                           TaskAction.trigger => Icons.bolt_outlined,
+                          TaskAction.cancel => Icons.stop_rounded,
                           TaskAction.remove => Icons.delete_outline,
                         },
                         choice.enabled,

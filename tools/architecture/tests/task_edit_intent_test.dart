@@ -401,7 +401,14 @@ void main() {
       row(extra: {'id': 'paused', 'state': 'paused', 'enabled': false}),
       row(extra: {'id': 'later', 'next_run_at': '2026-10-05T09:00:00Z'}),
       row(extra: {'id': 'attention', 'last_error': 'failed'}),
-      row(extra: {'id': 'running', 'state': 'running'}),
+      row(
+        extra: {
+          'id': 'running',
+          'state': 'scheduled',
+          'live_execution': {'id': 'live-run', 'status': 'running'},
+          'latest_execution': {'id': 'rejected-trigger', 'status': 'rejected'},
+        },
+      ),
       row(extra: {'id': 'earlier', 'next_run_at': '2026-10-04T09:00:00Z'}),
     ],
     '',

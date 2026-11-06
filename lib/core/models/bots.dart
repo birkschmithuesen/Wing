@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'hermes_profile.dart';
@@ -506,6 +507,11 @@ class BotGroupEditConflict implements Exception {
   String toString() => message;
 }
 
+final class BotGroupSendRefused implements Exception {
+  const BotGroupSendRefused(this.message);
+  final String message;
+}
+
 /// Canonical room manifest. Storage paths and upload receipts never enter Send.
 @immutable
 final class BotGroupAttachment {
@@ -573,6 +579,11 @@ class BotGroupEvent {
     required this.text,
     this.passedMemberId,
     this.attachments = const [],
+    this.threadId = '',
+    this.discussionEventId = '',
+    this.activityStatus = '',
+    this.cancelId = '',
+    this.continueGrant = 0,
   });
   final int sequence;
   final String eventId, kind, actor, actorId, actorName, text;
@@ -581,6 +592,8 @@ class BotGroupEvent {
   /// Passed turns are gateway-authored; their speaker lives in the payload.
   final String? passedMemberId;
   final List<BotGroupAttachment> attachments;
+  final String threadId, discussionEventId, activityStatus, cancelId;
+  final int continueGrant;
   bool get isMessage => kind == 'message.user' || kind == 'message.member';
   bool get isPass => kind == 'turn.settled' && passedMemberId != null;
   bool get isTranscriptEntry => isMessage || isPass;
@@ -624,9 +637,75 @@ class BotGroupAction {
 
 @immutable
 final class BotGroupMemberActivity {
-  const BotGroupMemberActivity({required this.memberId, required this.status});
+  const BotGroupMemberActivity({
+    required this.memberId,
+    required this.status,
+    this.tool,
+    this.startedAt,
+    this.progressAt,
+    this.threadId = '',
+    this.roundIndex,
+  });
   final String memberId;
   final String status;
+  final String? tool;
+  final DateTime? startedAt, progressAt;
+  final String threadId;
+  final int? roundIndex;
+}
+
+@immutable
+final class BotGroupContext {
+  const BotGroupContext({
+    this.purpose = '',
+    this.notes = '',
+    this.routing = 'everyone',
+    this.leadMemberId = '',
+  });
+  final String purpose, notes, routing, leadMemberId;
+  String? validate(BotGroup group, Iterable<String> routingModes) {
+    if (purpose.runes.length > 500) {
+      return 'Purpose allows up to 500 characters.';
+    }
+    if (utf8.encode(notes).length > 4096) {
+      return 'Shared notes allow up to 4 KB of text.';
+    }
+    if (!routingModes.contains(routing)) {
+      return 'This routing mode is unavailable.';
+    }
+    if (routing == 'lead' && !group.members.any((m) => m.id == leadMemberId)) {
+      return 'Choose a lead from this group.';
+    }
+    return null;
+  }
+
+  Map<String, dynamic> toJson() => {
+    'purpose': purpose,
+    'notes': notes,
+    'routing': routing,
+    'lead_member_id': routing == 'lead' ? leadMemberId : '',
+  };
+  @override
+  bool operator ==(Object other) =>
+      other is BotGroupContext &&
+      purpose == other.purpose &&
+      notes == other.notes &&
+      routing == other.routing &&
+      leadMemberId == other.leadMemberId;
+  @override
+  int get hashCode => Object.hash(purpose, notes, routing, leadMemberId);
+}
+
+@immutable
+final class BotGroupContinuation {
+  const BotGroupContinuation(
+    this.discussionEventId,
+    this.grant, {
+    this.text = '',
+  });
+  final String discussionEventId;
+  final int grant;
+  final String text;
 }
 
 @immutable
@@ -636,11 +715,37 @@ class BotGroupRuntime {
     required this.blocked,
     required Iterable<BotGroupAction> actions,
     Iterable<BotGroupMemberActivity> memberActivity = const [],
+    this.context,
+    Iterable<String> methods = const [],
+    Iterable<String> routingModes = const [],
+    this.maxRounds,
+    this.maxContinues,
+    this.lastError,
   }) : actions = List.unmodifiable(actions),
+       methods = Set.unmodifiable(methods),
+       routingModes = List.unmodifiable(routingModes),
        memberActivity = List.unmodifiable(memberActivity);
   final bool working, blocked;
   final List<BotGroupAction> actions;
   final List<BotGroupMemberActivity> memberActivity;
+  final BotGroupContext? context;
+  final Set<String> methods;
+  final List<String> routingModes;
+  final int? maxRounds, maxContinues;
+  final String? lastError;
+  bool supports(String action) => methods.contains('groups.$action');
+  BotGroupRuntime withActions(Iterable<BotGroupAction> next) => BotGroupRuntime(
+    working: working,
+    blocked: blocked,
+    actions: next,
+    memberActivity: memberActivity,
+    context: context,
+    methods: methods,
+    routingModes: routingModes,
+    maxRounds: maxRounds,
+    maxContinues: maxContinues,
+    lastError: lastError,
+  );
 }
 
 @immutable

@@ -10,7 +10,9 @@ import 'scheduled_tasks_repository.dart';
 
 enum TaskEditText { name, prompt }
 
-enum TaskEditCatalog { delivery, models, blueprints }
+enum TaskCatchUp { inherit, runOnce, skip }
+
+enum TaskEditCatalog { delivery, rooms, models, blueprints }
 
 enum TaskEditOutcome {
   confirmed,
@@ -77,13 +79,18 @@ class ScheduledTaskEditState {
     required this.error,
     required this.conflicts,
     required this.targetError,
+    required this.roomError,
     required this.modelError,
     required this.templateError,
     required this.editing,
     required this.scriptOnly,
     required this.customEndpoint,
+    required this.timezone,
+    required this.graceMinutes,
+    required this.catchUp,
   });
-  final String name, prompt;
+  final String name, prompt, timezone, graceMinutes;
+  final TaskCatchUp catchUp;
   final TaskScheduleDraft schedule;
   final ModelSelection selection;
   final List<TaskDestinationChoice> deliveryChoices;
@@ -99,7 +106,7 @@ class ScheduledTaskEditState {
       editing,
       scriptOnly,
       customEndpoint;
-  final String? error, targetError, modelError, templateError;
+  final String? error, targetError, roomError, modelError, templateError;
   final List<String> conflicts;
 }
 
@@ -132,6 +139,7 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     }
     controller.addListener(_emit);
     unawaited(load(TaskEditCatalog.delivery));
+    unawaited(load(TaskEditCatalog.rooms));
     unawaited(load(TaskEditCatalog.models));
     if (original == null) unawaited(load(TaskEditCatalog.blueprints));
   }
@@ -140,14 +148,21 @@ class ScheduledTaskEditSession extends ChangeNotifier {
   final DateTime Function() _now;
   String _name, _prompt;
   TaskScheduleDraft _schedule;
+  final _policyEdits = <String, dynamic>{};
+  String? _graceInput;
+  Object? _policy(String key) =>
+      _policyEdits.containsKey(key) ? _policyEdits[key] : _baseline?.data[key];
   Set<String> _selected;
   ModelSelection _selection;
   List<TaskDeliveryTarget>? _targets;
+  List<TaskDeliveryTarget>? _rooms;
+  Iterable<TaskDeliveryTarget> get _allTargets => [...?_targets, ...?_rooms];
   List<ModelChoice>? _models;
   List<TaskTemplate>? _templates;
   TaskTemplate? _template;
   Map<String, String> _templateValues = const {};
   final _loads = <TaskEditCatalog, int>{};
+  final _pendingLoads = <TaskEditCatalog>{};
   final _loadErrors = <TaskEditCatalog, String>{};
   bool _disposed = false, _dirty = false, _saving = false, _reviewing = false;
   int _saveGeneration = 0;
@@ -190,16 +205,25 @@ class ScheduledTaskEditSession extends ChangeNotifier {
   }
 
   ScheduledTaskEditState get state => ScheduledTaskEditState(
+    timezone: _policy('timezone')?.toString() ?? '',
+    graceMinutes: _graceInput ?? _policy('grace_minutes')?.toString() ?? '',
+    catchUp: switch (_policy('catch_up')) {
+      true => TaskCatchUp.runOnce,
+      false => TaskCatchUp.skip,
+      _ => TaskCatchUp.inherit,
+    },
     name: _name,
     prompt: _prompt,
     schedule: _schedule,
     selection: _selection,
     deliveryChoices: List.unmodifiable([
-      for (final target in _targets ?? <TaskDeliveryTarget>[])
+      for (final target in _allTargets)
         TaskDestinationChoice(
           id: target.id,
           label: target.label,
-          description: target.id == 'local'
+          description: target.isRoom
+              ? 'Group chat · Output @mentions wake those bots; no mention posts information only.'
+              : target.id == 'local'
               ? 'Saved by Hermes; not downloaded to this phone.'
               : target.configured
               ? 'Connected server destination'
@@ -212,7 +236,7 @@ class ScheduledTaskEditSession extends ChangeNotifier {
               (!_selected.contains(target.id) || _selected.length > 1),
         ),
       for (final id in _selected.where(
-        (id) => _targets?.any((target) => target.id == id) != true,
+        (id) => !_allTargets.any((target) => target.id == id),
       ))
         TaskDestinationChoice(
           id: id,
@@ -248,14 +272,16 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     error: _error,
     conflicts: _conflicts,
     targetError: _loadErrors[TaskEditCatalog.delivery],
+    roomError: _loadErrors[TaskEditCatalog.rooms],
     modelError: _loadErrors[TaskEditCatalog.models],
     templateError: _loadErrors[TaskEditCatalog.blueprints],
     editing: _baseline != null,
     scriptOnly: _baseline?.scriptOnly == true,
     customEndpoint: _baseline?.text('base_url').isNotEmpty == true,
   );
+  bool get loadingRooms => _pendingLoads.contains(TaskEditCatalog.rooms);
   bool get loadingDestinations =>
-      _targets == null && !_loadErrors.containsKey(TaskEditCatalog.delivery);
+      _pendingLoads.contains(TaskEditCatalog.delivery);
 
   void _emit() {
     if (!_disposed) notifyListeners();
@@ -288,6 +314,49 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     if (_disposed || _saving) return;
     _schedule = value;
     _changed();
+  }
+
+  void setTimezone(String value) {
+    if (_disposed || _saving) return;
+    _policyEdits['timezone'] = value.trim().isEmpty ? null : value.trim();
+    _changed();
+  }
+
+  void setGrace(String value) {
+    if (_disposed || _saving) return;
+    _graceInput = value;
+    _policyEdits['grace_minutes'] = value.trim().isEmpty
+        ? null
+        : int.tryParse(value.trim());
+    _changed();
+  }
+
+  void setCatchUp(TaskCatchUp value) {
+    if (_disposed || _saving) return;
+    _policyEdits['catch_up'] = switch (value) {
+      TaskCatchUp.inherit => null,
+      TaskCatchUp.runOnce => true,
+      TaskCatchUp.skip => false,
+    };
+    _changed();
+  }
+
+  String? _validatePolicy() {
+    if (_graceInput != null &&
+        _graceInput!.trim().isNotEmpty &&
+        (int.tryParse(_graceInput!.trim()) == null ||
+            int.parse(_graceInput!.trim()) < 0 ||
+            int.parse(_graceInput!.trim()) > 1440)) {
+      return 'Use 0–1440 whole minutes for the late-run window, or leave it empty.';
+    }
+    final expression = _schedule.expression.trim();
+    final cron = expression.split(RegExp(r'\s+')).length == 5;
+    if ((_policyEdits.containsKey('grace_minutes') || _schedule.changed) &&
+        _policy('grace_minutes') != null &&
+        !cron) {
+      return 'A late-run window applies only to cron schedules. Clear it before choosing an interval or one-time run.';
+    }
+    return null;
   }
 
   void setDestination(String id, bool selected) {
@@ -357,12 +426,18 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     if (_disposed) return;
     final generation = (_loads[catalog] ?? 0) + 1;
     _loads[catalog] = generation;
+    _pendingLoads.add(catalog);
+    _emit();
     try {
       switch (catalog) {
         case TaskEditCatalog.delivery:
           final result = await controller.repository.destinations();
           if (_disposed || _loads[catalog] != generation) return;
           _targets = List.unmodifiable(result);
+        case TaskEditCatalog.rooms:
+          final result = await controller.repository.roomDestinations();
+          if (_disposed || _loads[catalog] != generation) return;
+          _rooms = List.unmodifiable(result);
         case TaskEditCatalog.models:
           final result = (await controller.repository.profile.modelCatalog.load(
             explicitOnly: true,
@@ -379,14 +454,19 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     } catch (error) {
       if (_disposed || _loads[catalog] != generation) return;
       _loadErrors[catalog] = taskFailure(error);
+    } finally {
+      if (!_disposed && _loads[catalog] == generation) {
+        _pendingLoads.remove(catalog);
+        _emit();
+      }
     }
-    _emit();
   }
 
   Map<String, dynamic> _values() => {
     'name': _name.trim(),
     'schedule': _schedule.expression,
     'deliver': _selected.join(','),
+    ..._policyEdits,
     if (_baseline?.scriptOnly != true) 'prompt': _prompt.trim(),
     if (_baseline?.scriptOnly != true && !state.customEndpoint) ...{
       'model': _selection.choice?.model,
@@ -481,6 +561,12 @@ class ScheduledTaskEditSession extends ChangeNotifier {
               ),
             );
     }
+    for (final key in ['timezone', 'grace_minutes', 'catch_up']) {
+      if (!retained.containsKey(key)) {
+        _policyEdits.remove(key);
+        if (key == 'grace_minutes') _graceInput = null;
+      }
+    }
     _baseline = current;
     _dirty = retained.isNotEmpty;
     _error = null;
@@ -497,7 +583,10 @@ class ScheduledTaskEditSession extends ChangeNotifier {
     if (!state.canSubmit) return TaskEditOutcome.blocked;
     String? problem;
     if (_template == null) {
-      problem = validatePrompt(_prompt) ?? _schedule.validate(_now());
+      problem =
+          validatePrompt(_prompt) ??
+          _schedule.validate(_now()) ??
+          _validatePolicy();
     } else {
       for (final field in _template!.inputFields) {
         problem = field.validate(_templateValues[field.name] ?? '');

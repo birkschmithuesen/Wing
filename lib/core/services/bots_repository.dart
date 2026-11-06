@@ -17,6 +17,7 @@ import '../models/bot_display.dart';
 import 'recent_conversation_snapshots.dart';
 import 'server_connection_status.dart';
 import 'group_observations.dart';
+import 'ws_client.dart';
 
 typedef BotsRead =
     Future<Map<String, dynamic>> Function(
@@ -628,12 +629,15 @@ class BotsRepository {
     }
   }
 
+  Set<String> _groupMethods = const {};
   Future<bool> groupsReady() async {
-    final driver = (await _read(
-      'default',
-      'groups.capabilities',
-      {},
-    ))['driver'];
+    final capabilities = await _read('default', 'groups.capabilities', {});
+    final driver = capabilities['driver'];
+    final methods = capabilities['methods'];
+    _groupMethods =
+        methods is List && methods.every((method) => method is String)
+        ? Set.unmodifiable(methods.cast<String>())
+        : const {};
     if (driver is! bool) {
       throw const FormatException('Invalid group driver readiness');
     }
@@ -730,17 +734,22 @@ class BotsRepository {
     return revision + 1;
   }
 
-  /// Catalog discovery carries identities and pictures, never runtime or logs.
-  Future<List<BotGroup>> groupCatalog() async {
-    final profiles = await _profileRows(joinPending: true);
+  /// Shared stock room discovery for group routes and room-delivery pickers.
+  static Future<List<BotGroup>> readRoomCatalog({
+    required BotsRead read,
+    required WorkspaceScope scope,
+    required String instance,
+  }) async {
     final groups = <BotGroup>[];
     var offset = 0;
     do {
-      final result = await _read('default', 'groups.list', {
+      final result = await read('default', 'groups.list', {
         'limit': 100,
         'offset': offset,
       });
-      groups.addAll(_rows(result['rooms']).map(_group));
+      groups.addAll(
+        _rows(result['rooms']).map((row) => decodeGroup(scope, instance, row)),
+      );
       final next = result['next_offset'];
       if (next == null) break;
       if (next is! int || next <= offset) {
@@ -748,6 +757,17 @@ class BotsRepository {
       }
       offset = next;
     } while (true);
+    return List.unmodifiable(groups);
+  }
+
+  /// Catalog discovery carries identities and pictures, never runtime or logs.
+  Future<List<BotGroup>> groupCatalog() async {
+    final profiles = await _profileRows(joinPending: true);
+    final groups = await readRoomCatalog(
+      read: _read,
+      scope: scope,
+      instance: instance,
+    );
     if (groups.isEmpty) return List.unmodifiable(groups);
     try {
       final row = profiles.where((row) => row['name'] == 'default').firstOrNull;
@@ -1145,6 +1165,11 @@ class BotsRepository {
             (created * 1000).round(),
           ),
           text: _text(payload['text']),
+          threadId: _text(payload['thread_id']),
+          discussionEventId: _text(payload['discussion_event_id']),
+          activityStatus: _text(payload['status']),
+          cancelId: _text(payload['cancel_id']),
+          continueGrant: payload['grant'] is int ? payload['grant'] as int : 0,
           passedMemberId: passedMemberId,
           attachments: List.unmodifiable([
             for (final item in _rows(payload['attachments'] ?? const []))
@@ -1271,22 +1296,30 @@ class BotsRepository {
     List<BotGroupAttachment> attachments = const [],
   }) async {
     _ownsGroup(group);
-    final result = await _command(
-      'default',
-      'groups.send',
-      {
-        'room_id': group.id,
-        'event_id': event,
-        'payload': {
-          'text': text,
-          'thread_id': group.id,
-          if (attachments.isNotEmpty)
-            'attachments': attachments.map((item) => item.toJson()).toList(),
+    final Map<String, dynamic> result;
+    try {
+      result = await _command(
+        'default',
+        'groups.send',
+        {
+          'room_id': group.id,
+          'event_id': event,
+          'payload': {
+            'text': text,
+            'thread_id': event,
+            if (attachments.isNotEmpty)
+              'attachments': attachments.map((item) => item.toJson()).toList(),
+          },
         },
-      },
-      canDispatch,
-      onDispatched,
-    );
+        canDispatch,
+        onDispatched,
+      );
+    } on JsonRpcError catch (error) {
+      if (error.method == 'groups.send' && error.data['admitted'] == false) {
+        throw BotGroupSendRefused(error.message);
+      }
+      rethrow;
+    }
     if (result['accepted'] != true || result['client_event_id'] != event) {
       throw StateError('Group message was not confirmed');
     }
@@ -1360,10 +1393,17 @@ class BotsRepository {
     BotGroup group,
   ) async {
     _ownsGroup(group);
+    await groupsReady();
     final result = await _read('default', 'groups.state', {
       'room_id': group.id,
     });
-    final decoded = decodeGroupState(scope, instance, group.id, result);
+    final decoded = decodeGroupState(
+      scope,
+      instance,
+      group.id,
+      result,
+      methods: _groupMethods,
+    );
     final runtime = decoded.runtime;
     if (runtime == null) {
       throw const FormatException('Group runtime unavailable');
@@ -1376,8 +1416,9 @@ class BotsRepository {
     WorkspaceScope scope,
     String instance,
     String roomId,
-    Map<String, dynamic> result,
-  ) {
+    Map<String, dynamic> result, {
+    Set<String> methods = const {},
+  }) {
     final row = _map(result['room']);
     if (row['room_id'] != roomId) {
       throw const FormatException('Wrong group state owner');
@@ -1396,14 +1437,17 @@ class BotsRepository {
     }
     BotGroupRuntime? runtime;
     try {
-      runtime = _decodeGroupRuntime(result);
+      runtime = _decodeGroupRuntime(result, methods);
     } on FormatException {
       /* Room facts remain usable. */
     }
     return (room: room, latestSequence: latest, runtime: runtime);
   }
 
-  static BotGroupRuntime _decodeGroupRuntime(Map<String, dynamic> result) {
+  static BotGroupRuntime _decodeGroupRuntime(
+    Map<String, dynamic> result,
+    Set<String> methods,
+  ) {
     final status = _map(result['driver_status']);
     if (status['working'] is! bool || status['blocked'] is! bool) {
       throw const FormatException('Invalid group runtime status');
@@ -1411,7 +1455,7 @@ class BotsRepository {
     final actions = <BotGroupAction>[];
     for (final action in _rows(status['pending_actions'])) {
       final kind = _requiredText(action['kind']);
-      if (kind == 'retry') {
+      if (kind == 'retry' || kind == 'discard') {
         final generation = action['execution_generation'];
         if (generation is! int || generation < 1) {
           throw const FormatException('Invalid group retry attempt');
@@ -1452,6 +1496,28 @@ class BotsRepository {
       working: status['working'] == true,
       blocked: status['blocked'] == true,
       actions: actions,
+      methods: methods,
+      context: result['context'] is Map
+          ? _decodeGroupContext(_map(result['context']))
+          : null,
+      routingModes: [
+        for (final mode
+            in status['routing_modes'] is List
+                ? status['routing_modes'] as List
+                : const [])
+          if (mode is String &&
+              const {'everyone', 'lead', 'auto'}.contains(mode))
+            mode,
+      ],
+      maxRounds: status['max_rounds'] is int
+          ? status['max_rounds'] as int
+          : null,
+      maxContinues: status['max_continues'] is int
+          ? status['max_continues'] as int
+          : null,
+      lastError: status['last_error'] is String
+          ? status['last_error'] as String
+          : null,
       memberActivity: [
         for (final activity in _rows(status['member_activity'] ?? const []))
           if (const {
@@ -1462,11 +1528,85 @@ class BotsRepository {
             BotGroupMemberActivity(
               memberId: _requiredText(activity['member_id']),
               status: _requiredText(activity['status']),
+              tool: activity['tool'] is String
+                  ? activity['tool'] as String
+                  : null,
+              startedAt: _groupTime(activity['started_at']),
+              progressAt: _groupTime(activity['progress_at']),
+              threadId: _text(activity['thread_id']),
+              roundIndex: activity['round_index'] is int
+                  ? activity['round_index'] as int
+                  : null,
             )
           else
             throw const FormatException('Invalid group member activity'),
       ],
     );
+  }
+
+  static DateTime? _groupTime(Object? value) =>
+      value is num && value.isFinite && value.abs() < 8640000000000
+      ? DateTime.fromMillisecondsSinceEpoch((value * 1000).round())
+      : null;
+
+  static BotGroupContext _decodeGroupContext(Map<String, dynamic> value) {
+    if (value['purpose'] is! String ||
+        value['notes'] is! String ||
+        value['lead_member_id'] is! String ||
+        !const {'everyone', 'lead', 'auto'}.contains(value['routing'])) {
+      throw const FormatException('Invalid shared group settings');
+    }
+    return BotGroupContext(
+      purpose: value['purpose'] as String,
+      notes: value['notes'] as String,
+      routing: value['routing'] as String,
+      leadMemberId: value['lead_member_id'] as String,
+    );
+  }
+
+  Future<BotGroupContext> saveGroupContext(
+    BotGroup group,
+    BotGroupContext value,
+    String event,
+    bool Function() canDispatch,
+  ) async {
+    _ownsGroup(group);
+    final result = await _command(
+      'default',
+      'groups.context',
+      {'room_id': group.id, 'event_id': event, ...value.toJson()},
+      canDispatch,
+      () {},
+    );
+    final receipt = _map(result['event']);
+    if (receipt['room_id'] != group.id ||
+        receipt['event_id'] != event ||
+        receipt['kind'] != 'room.context_set') {
+      throw const FormatException('Group settings were not confirmed');
+    }
+    return _decodeGroupContext(_map(result['context']));
+  }
+
+  Future<void> continueGroup(
+    BotGroup group,
+    String discussionEventId,
+    bool Function() canDispatch,
+  ) async {
+    _ownsGroup(group);
+    final result = await _command(
+      'default',
+      'groups.continue',
+      {'room_id': group.id, 'discussion_event_id': discussionEventId},
+      canDispatch,
+      () {},
+    );
+    final event = _map(result['event']);
+    if (result['continued'] != true ||
+        event['room_id'] != group.id ||
+        event['kind'] != 'room.continued' ||
+        _map(event['payload'])['discussion_event_id'] != discussionEventId) {
+      throw const FormatException('Continue was not confirmed');
+    }
   }
 
   Future<List<BotGroupMember>> groupMembers(BotGroup group) async {
@@ -1489,7 +1629,7 @@ class BotsRepository {
     void Function() onDispatched,
   ) async {
     _ownsGroup(group);
-    if (action.kind == 'retry') {
+    if (action.kind == 'retry' || action.kind == 'discard') {
       if (action.member.isEmpty ||
           action.task.isEmpty ||
           action.generation < 1) {
@@ -1497,7 +1637,7 @@ class BotsRepository {
       }
       final result = await _command(
         'default',
-        'groups.retry',
+        'groups.${action.kind}',
         {
           'room_id': group.id,
           'task_id': action.task,
@@ -1508,7 +1648,7 @@ class BotsRepository {
         onDispatched,
       );
       final task = _map(result['task']);
-      if (result['retried'] != true ||
+      if (result[action.kind == 'retry' ? 'retried' : 'discarded'] != true ||
           task['room_id'] != group.id ||
           task['task_id'] != action.task) {
         throw const FormatException('Group retry was not confirmed');

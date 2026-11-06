@@ -6,13 +6,34 @@ Feature ID: `scheduled-tasks`.
 
 ## Sub-features
 
-- `scheduled-tasks.create` — Create or edit a typed schedule and delivery.
+- `scheduled-tasks.create` — Create or edit a typed schedule, its timezone,
+  missed-run policy, late-run window and delivery, including discovered groups.
 - `scheduled-tasks.inspect` — Read task details and recent runs.
-- `scheduled-tasks.control` — Pause resume or request an explicitly admitted run.
+- `scheduled-tasks.control` — Pause future runs, resume, run now, or stop the
+  current execution without changing its schedule.
 
 ## How to get to it (user POV)
 
 Open Hermes administration → Profile → Scheduled tasks, or use the selected bot settings. Choose New task, use a server template if available, set instructions/time/delivery and create. Open a task or its Actions menu to inspect, pause or resume it.
+
+See the [scheduled-task guide](../SCHEDULED_TASKS.md) for timing and delivery semantics.
+
+In the ordinary editor, Schedule timezone accepts an IANA name; empty inherits
+the Hermes profile timezone. Missed runs can inherit, run one catch-up or skip.
+Late-run window applies to cron schedules and accepts 0–1440 minutes or empty
+for the computed window. Run one catch-up permits a catch-up beyond that window.
+Templates retain their own settings; edit the created task to change its policy.
+
+Results lists discovered group chats alongside platform destinations. A result's
+`@mentions` wake the named bots (`@all` addresses all); without mentions the
+result is informational. Failure notices do not start a round. A group's hosting
+profile remains distinct from the task's profile.
+
+A live task offers the icon-only Stop run action in its detail and Actions menu.
+Stop requested is an acknowledgement, not proof of completion: the running state
+remains until Hermes reports settlement. A newer rejected Run now attempt cannot
+hide an older execution that is still running. Latest attempt and recent history
+retain cancelled/missed outcomes and their supplied reasons.
 
 ## Driving it with Wing harnesses
 
@@ -22,6 +43,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/scheduled_tasks_edit_session_test.dart test/scheduled_tasks_screens_test.dart test/scheduled_tasks_blueprint_contract_test.dart
+  flutter test --no-pub test/scheduled_tasks_repository_test.dart test/scheduled_tasks_controller_test.dart test/scheduled_tasks_schedule_projection_test.dart
   ```
 
 - **Android `scheduled-tasks`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -34,4 +56,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
-Hermes owns schedule time; the phone displays run timestamps locally. Run now can execute real work and leaving does not cancel it. A paused task requires Resume and run. The native fixture creates tasks but never runs a provider or production scheduler.
+Hermes owns schedule time; the phone displays run timestamps locally. Unedited
+policy values and exact schedule expressions are preserved. Clear a late-run
+window explicitly before switching to an interval or one-time schedule. External
+schedulers control their own delivery/retry timing. Run now can execute real work
+and leaving does not cancel it. A paused task requires Resume and run. The native
+fixture creates tasks but never runs a provider or production scheduler.
+
+Deleting a task also requests cancellation of running work in current Hermes.
+Lost cancellation responses remain uncertain and are never automatically repeated.
+Unavailable room discovery keeps existing selections and platform destinations.

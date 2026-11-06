@@ -190,6 +190,9 @@ class WorkspaceStreamingReplayState extends State<WorkspaceStreamingReplay>
   var _prepared = false;
   var _collecting = false;
   var _run = 0;
+  var _replyTurn = 0;
+  var _replySegment = 0;
+  var _replyOffset = 0;
   ProfileWorkspaceController? _probeOwner;
   Stopwatch? _probeWatch;
   var _probeNotifications = 0;
@@ -510,6 +513,10 @@ class WorkspaceStreamingReplayState extends State<WorkspaceStreamingReplay>
     // The workspace's passive monitoring reads must observe the same synthetic
     // turn as its event stream, including while keyboard preparation settles.
     if (type == 'message.start') {
+      _replyTurn++;
+      _replySegment = 0;
+      _replyOffset = 0;
+      data = {...data, 'turn_id': 'offline-replay-turn-$_replyTurn'};
       _fixture!.liveSource = '';
       _fixture!.liveSessions[_chat!.key.workspace.profileName] = [
         {
@@ -520,7 +527,26 @@ class WorkspaceStreamingReplayState extends State<WorkspaceStreamingReplay>
         },
       ];
     } else if (type == 'message.delta') {
+      final text = data['text'];
+      if (text is String) {
+        data = {
+          ...data,
+          'turn_id': 'offline-replay-turn-$_replyTurn',
+          'segment': _replySegment,
+          'offset': _replyOffset,
+        };
+        // Stock offsets and Dart String.length both count UTF-16 code units.
+        _replyOffset += text.length;
+      }
       _fixture!.liveSource = '${_fixture!.liveSource ?? ''}${data['text']}';
+    } else if (type == 'message.interim') {
+      data = {
+        ...data,
+        'turn_id': 'offline-replay-turn-$_replyTurn',
+        'segment': _replySegment,
+      };
+      _replySegment++;
+      _replyOffset = 0;
     } else if (type == 'message.complete') {
       _fixture!.liveSource = null;
       _fixture!.liveSessions.clear();
@@ -529,6 +555,9 @@ class WorkspaceStreamingReplayState extends State<WorkspaceStreamingReplay>
       StreamEvent(type: type, sessionId: _chat!.runtime.runtimeId, data: data),
     );
   }
+
+  /// Host-driven chunks share the timed replay's stock identity cursor.
+  void appendReply(String text) => _emit('message.delta', {'text': text});
 
   // The same stock completion receipt used by the timed replay. Host checks
   // can seal a prepared answer without waiting through the token schedule.

@@ -14,8 +14,16 @@ class TaskEditIntent {
             'deliver',
             'model',
             'provider',
+            'timezone',
+            'grace_minutes',
+            'catch_up',
           }.contains(entry.key) ||
-          entry.value != null && entry.value is! String,
+          entry.value != null &&
+              !(switch (entry.key) {
+                'catch_up' => entry.value is bool,
+                'grace_minutes' => entry.value is int,
+                _ => entry.value is String,
+              }),
     )) {
       throw ArgumentError('Task edits require scalar editable fields');
     }
@@ -92,6 +100,9 @@ enum TaskConflictField {
   prompt,
   schedule,
   delivery,
+  timezone,
+  grace,
+  catchUp,
   modelRouting;
 
   Set<String> get keys => switch (this) {
@@ -99,6 +110,9 @@ enum TaskConflictField {
     prompt => const {'prompt'},
     schedule => const {'schedule'},
     delivery => const {'deliver'},
+    timezone => const {'timezone'},
+    grace => const {'grace_minutes'},
+    catchUp => const {'catch_up'},
     modelRouting => const {'model', 'provider', 'base_url'},
   };
 }
@@ -162,10 +176,12 @@ class TaskEditReview {
   String _display(TaskConflictField field, {required bool desired}) {
     String value(String key) {
       if (desired && _intent.values.containsKey(key)) {
-        return _intent.values[key] as String? ?? '';
+        return _intent.values[key]?.toString() ?? 'Hermes default';
       }
       final task = desired ? _intent.baseline : current;
-      return key == 'schedule' ? task.scheduleInput : task.text(key);
+      return key == 'schedule'
+          ? task.scheduleInput
+          : task.data[key]?.toString() ?? 'Hermes default';
     }
 
     return switch (field) {
@@ -173,6 +189,9 @@ class TaskEditReview {
       TaskConflictField.prompt => value('prompt'),
       TaskConflictField.schedule => value('schedule'),
       TaskConflictField.delivery => value('deliver'),
+      TaskConflictField.timezone => value('timezone'),
+      TaskConflictField.grace => value('grace_minutes'),
+      TaskConflictField.catchUp => value('catch_up'),
       TaskConflictField.modelRouting =>
         value('model').isEmpty
             ? 'Profile default'

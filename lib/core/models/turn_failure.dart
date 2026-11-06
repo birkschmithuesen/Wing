@@ -57,6 +57,8 @@ final class TurnFailure {
           'launch_credentials_unavailable' => 'Launch credentials changed',
           'max_iterations_no_summary' => 'Turn budget reached',
           'context_overflow' => 'Context limit reached',
+          'truncated' => 'Reply cut short',
+          'local_runtime_unavailable' => 'Local model unavailable',
           _ => switch (layer) {
             'auth' => 'Provider access needs attention',
             'billing' => 'Provider allowance needs attention',
@@ -73,7 +75,10 @@ final class TurnFailure {
     'launch_credentials_unavailable' =>
       'Review this profile’s credentials, then start a new chat. This chat retains its original launch credentials.',
     'max_iterations_no_summary' =>
-      'Send continue to resume, or adjust the turn budget in profile settings.',
+      'Continue the work, or adjust the turn budget in profile settings.',
+    'truncated' => 'Continue the reply when you are ready.',
+    'local_runtime_unavailable' =>
+      'Start the local model server or choose another model.',
     'context_overflow' =>
       'Compact the conversation or choose a model with a larger context window.',
     _ => switch (layer) {
@@ -90,11 +95,23 @@ final class TurnFailure {
     },
   };
 
+  bool get canContinue =>
+      const {'truncated', 'max_iterations_no_summary'}.contains(code);
+  bool get blocking =>
+      !canContinue &&
+      !(retryable == true &&
+          !const {'auth', 'billing', 'endpoint'}.contains(layer)) &&
+      code != 'free_tier_model_not_free';
+  bool get canReviewEndpoint =>
+      layer == 'endpoint' || code == 'local_runtime_unavailable';
+
   bool get canChooseModel =>
+      code == 'local_runtime_unavailable' ||
       usageLimit != null ||
       const {'provider', 'auth', 'billing', 'endpoint'}.contains(layer);
   bool get canReviewProvider =>
-      const {'auth', 'endpoint', 'billing'}.contains(layer);
+      const {'auth', 'billing'}.contains(layer) &&
+      code != 'local_runtime_unavailable';
 }
 
 final class TurnUsageLimit {

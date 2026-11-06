@@ -24,7 +24,9 @@ Settings and Identity show unsaved changes and offer Save and Close. If another 
 
 **Skills and tools** groups capabilities into Needs setup, Enabled capabilities and Not enabled. Enabling a capability may start setup on Hermes; enablement alone does not prove it is ready.
 
-Installed skills offers instruction reading, recorded usage and available edit, archive or uninstall actions. Bundled instructions are read-only. The instruction reader supports raw/formatted views, copying, sharing and Contents. Hold or drag its grip to browse sections and release to jump. Skill discovery, the library and agent plugins have separate destinations.
+Installed skills offers instruction reading, recorded usage and available edit, archive or uninstall actions. Use the skill reader’s action menu to lock or unlock agent edits. A lock preserves
+your existing manual editing rights and does not change the skill’s origin.
+Bundled instructions are read-only. The instruction reader supports raw/formatted views, copying, sharing and Contents. Hold or drag its grip to browse sections and release to jump. Skill discovery, the library and agent plugins have separate destinations.
 
 Provider access belongs to the selected profile. Depending on the provider and credential source, Wing offers key management, sign-in, renewal, status checks and removal. Some external CLI logins must be completed on the server. Removing a saved sign-in does not revoke the provider account or necessarily clear credentials already in use.
 

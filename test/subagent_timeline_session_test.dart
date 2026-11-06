@@ -19,13 +19,35 @@ void main() {
   late List<int> offsets;
   late String epoch, mountedId, storedId;
   late bool current, failRead, failHistory, truncated;
+  late int replyTurn, replySegment, replyOffset;
   Future<void>? held;
-  Map<String, dynamic> event(String type, Map<String, dynamic> payload) => {
-    'session_id': 'child-session',
-    'seq': events.length + 1,
-    'type': type,
-    'payload': payload,
-  };
+  Map<String, dynamic> event(String type, Map<String, dynamic> payload) {
+    final stamped = Map<String, dynamic>.of(payload);
+    if (type == 'message.start') {
+      replyTurn++;
+      replySegment = 0;
+      replyOffset = 0;
+      stamped['turn_id'] = 'child-turn-$replyTurn';
+    } else if (type == 'message.delta' || type == 'message.interim') {
+      stamped.addAll({
+        'turn_id': 'child-turn-$replyTurn',
+        'segment': replySegment,
+        'offset': replyOffset,
+      });
+      if (type == 'message.interim') {
+        replySegment++;
+        replyOffset = 0;
+      } else if (payload['text'] case final String text) {
+        replyOffset += text.length;
+      }
+    }
+    return {
+      'session_id': 'child-session',
+      'seq': events.length + 1,
+      'type': type,
+      'payload': stamped,
+    };
+  }
 
   setUp(() {
     calls = [];
@@ -39,6 +61,9 @@ void main() {
     failRead = false;
     failHistory = false;
     truncated = false;
+    replyTurn = 0;
+    replySegment = 0;
+    replyOffset = 0;
     held = null;
     session = SubagentTimelineSession(
       scope: scope,

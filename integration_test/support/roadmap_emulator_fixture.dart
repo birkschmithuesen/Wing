@@ -31,6 +31,10 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
   final approvalResponses = <Map<String, dynamic>>[];
   final clarificationResponses = <Map<String, dynamic>>[];
   Completer<void>? clarificationGate;
+  final clarificationLocks = <Map<String, dynamic>>[];
+  Completer<void>? clarificationLockGate;
+  Completer<void>? clarificationRetryGate;
+  bool failClarificationSecond = true;
   final commandDispatches = <Map<String, dynamic>>[];
   final projectCreates = <Map<String, dynamic>>[];
   final projectUpdates = <Map<String, dynamic>>[];
@@ -406,6 +410,25 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
               'type': 'exec',
               'output': 'Roadmap fixture command complete',
             };
+          case 'clarify.lock':
+            if (params['request_id'] != 'native-batch' ||
+                !{'q1', 'q2'}.contains(params['question_id']) ||
+                params['answer'] is! String) {
+              throw StateError('Expected the captured whole-set clarification');
+            }
+            clarificationLocks.add(Map.of(params));
+            if (params['question_id'] == 'q1') {
+              await clarificationLockGate?.future;
+              return {
+                'status': 'ok',
+                'remaining': ['q2'],
+              };
+            }
+            if (failClarificationSecond) {
+              throw StateError('Second answer was not accepted');
+            }
+            await clarificationRetryGate?.future;
+            return {'status': 'ok', 'remaining': []};
           case 'clarify.respond':
             if (params['prompt_id'] is! String ||
                 params['execution_generation'] is! int ||

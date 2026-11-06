@@ -6726,6 +6726,33 @@
       "source": "internal/docs/TESTING.md; test/journey_controls_test.dart",
       "status": "supported",
       "selector": "main"
+    },
+    {
+      "id": "host-test-test/bot_group_controls_test.dart",
+      "kind": "host-test",
+      "path": "test/bot_group_controls_test.dart",
+      "selector": "main",
+      "purpose": "Hermes 0.23 stock contract and UI regression",
+      "source": "internal/plans/2026-11-06-hermes023-implementation.md",
+      "status": "supported"
+    },
+    {
+      "id": "host-test-test/hermes023_administration_test.dart",
+      "kind": "host-test",
+      "path": "test/hermes023_administration_test.dart",
+      "selector": "main",
+      "purpose": "Hermes 0.23 stock contract and UI regression",
+      "source": "internal/plans/2026-11-06-hermes023-implementation.md",
+      "status": "supported"
+    },
+    {
+      "id": "host-test-test/reply_segment_identity_test.dart",
+      "kind": "host-test",
+      "path": "test/reply_segment_identity_test.dart",
+      "selector": "main",
+      "purpose": "Hermes 0.23 stock contract and UI regression",
+      "source": "internal/plans/2026-11-06-hermes023-implementation.md",
+      "status": "supported"
     }
   ],
   "files": [
@@ -15818,6 +15845,31 @@
       "path": "test/journey_controls_test.dart",
       "area": "test",
       "provenance": "tracked"
+    },
+    {
+      "path": "lib/core/screens/bots/bot_group_context_sheet.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/bot_group_controls_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/hermes023_administration_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/reply_segment_identity_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "docs/SCHEDULED_TASKS.md",
+      "area": "docs",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {

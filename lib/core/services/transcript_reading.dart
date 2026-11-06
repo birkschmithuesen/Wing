@@ -66,6 +66,144 @@ final class TranscriptReading implements TranscriptReader {
   Map<String, dynamic>? _streamingMessage;
   Map<String, dynamic>? _lastInterimMessage;
   int _lastInterimTurn = -1;
+  String? _replyTurn;
+  int _replySegment = 0;
+  int _replyDisplayedOffset = 0;
+  final _replyFragments = <int, String>{};
+  final _sealedReplySegments = <(String, int)>{};
+  final _completedReplyTurns = <String>{};
+  String? _replyAdmission;
+  final _replyReceipts = <String, Set<int>>{};
+  Set<String>? _pendingReplyAdmissions;
+
+  void observePendingReplyAdmissions(Iterable<String> ids) {
+    _pendingReplyAdmissions = ids.toSet();
+  }
+
+  void retireReply() {
+    if (_replyTurn != null) _completedReplyTurns.add(_replyTurn!);
+  }
+
+  /// Envelope admission identifies the execution independently of its queued
+  /// successor. A start replay must not clear the active segment's buffer.
+  void observeReplyAdmission(Object? admission, {Object? turn}) {
+    if (turn is String && _completedReplyTurns.contains(turn)) return;
+    if (admission is String && admission.isNotEmpty) {
+      _replyAdmission = admission;
+    }
+  }
+
+  bool startReply(Map<String, dynamic> data) {
+    final turn = data['turn_id'];
+    if (turn is! String ||
+        turn.isEmpty ||
+        _completedReplyTurns.contains(turn)) {
+      return false;
+    }
+    if (_replyTurn != turn) {
+      if (_replyTurn != null) _completedReplyTurns.add(_replyTurn!);
+      _replyTurn = turn;
+      _replySegment = 0;
+      _replyDisplayedOffset = 0;
+      _replyFragments.clear();
+      updateStreaming('');
+    }
+    return true;
+  }
+
+  /// Dart strings index UTF-16 code units, exactly the stock wire offset unit.
+  /// Hold gaps rather than fabricating text; overlapping replay contributes only
+  /// its not-yet-seen suffix. A seal supplies the authoritative complete body.
+  bool appendReplyDelta(Map<String, dynamic> data) {
+    final turn = data['turn_id'],
+        segment = data['segment'],
+        offset = data['offset'];
+    final text = data['text'];
+    if (turn is! String ||
+        segment is! int ||
+        segment < 0 ||
+        offset is! int ||
+        offset < 0 ||
+        text is! String ||
+        _completedReplyTurns.contains(turn) ||
+        _sealedReplySegments.contains((turn, segment))) {
+      return false;
+    }
+    if (_replyTurn != turn) {
+      if (!startReply(data)) return false;
+    }
+    if (segment < _replySegment) return false;
+    if (segment != _replySegment) {
+      _replySegment = segment;
+      _replyDisplayedOffset = 0;
+      _replyFragments.clear();
+      updateStreaming('');
+    }
+    final previous = _replyFragments[offset];
+    if (previous == null || previous.length < text.length) {
+      _replyFragments[offset] = text;
+    }
+    var body = _streaming;
+    for (final start in _replyFragments.keys.toList()..sort()) {
+      if (start > body.length + _replyDisplayedOffset) break;
+      final part = _replyFragments.remove(start)!;
+      final overlap = body.length + _replyDisplayedOffset - start;
+      if (overlap < part.length) body += part.substring(overlap);
+    }
+    final changed = body != _streaming;
+    if (changed) updateStreaming(body);
+    return changed;
+  }
+
+  /// Steering splits display order, not the server's wire segment identity.
+  void splitReplyForSteering({required int turnGeneration}) {
+    if (_streaming.isEmpty) return;
+    final length = _streaming.length;
+    appendAssistant(
+      _streaming,
+      turnGeneration: turnGeneration,
+      reasoning: '',
+      responseReused: false,
+      interim: true,
+    );
+    _replyDisplayedOffset += length;
+  }
+
+  bool sealReply(Map<String, dynamic> data, {required int turnGeneration}) {
+    final turn = data['turn_id'], segment = data['segment'];
+    if (turn is! String ||
+        segment is! int ||
+        segment < 0 ||
+        _completedReplyTurns.contains(turn) ||
+        _sealedReplySegments.contains((turn, segment))) {
+      return false;
+    }
+    if (_replyTurn != turn && !startReply(data)) return false;
+    if (segment < _replySegment) return false;
+    if (segment != _replySegment) _replyDisplayedOffset = 0;
+    _replySegment = segment;
+    final body = data['text'];
+    final text = body is String
+        ? body.substring(_replyDisplayedOffset.clamp(0, body.length))
+        : _streaming;
+    if (text.isNotEmpty) {
+      appendAssistant(
+        text,
+        turnGeneration: turnGeneration,
+        reasoning: '',
+        responseReused: false,
+        interim: true,
+        wireSealed: true,
+      );
+    }
+    _sealedReplySegments.add((turn, segment));
+    _replySegment = segment + 1;
+    _replyDisplayedOffset = 0;
+    _replyFragments.clear();
+    updateStreaming('');
+    return true;
+  }
+
   final _messagePresentations = Expando<Object>();
   final _displayedPromptInputs = <String>{};
   final _ownedRows = Expando<bool>();
@@ -272,12 +410,28 @@ final class TranscriptReading implements TranscriptReader {
     if (text.isEmpty) {
       _streamingMessage = null;
     } else {
-      final row = _freezeRow({'role': 'assistant', 'content': text});
+      final row = _freezeRow({
+        'role': 'assistant',
+        'content': text,
+        '_reply_turn': ?_replyTurn,
+        '_reply_segment': _replySegment,
+        '_reply_offset': _replyDisplayedOffset,
+        '_reply_admission': ?_replyAdmission,
+      });
       if (previous != null) {
         _messagePresentations[row] = messagePresentationId(previous);
       }
       _streamingMessage = row;
     }
+  }
+
+  /// Resume has no authority to erase an admission still owned by the server.
+  void applyReplySnapshot(String? text) {
+    if (text == null || text.isEmpty) return;
+    updateStreaming(
+      text.substring(_replyDisplayedOffset.clamp(0, text.length)),
+    );
+    _replyFragments.clear();
   }
 
   void appendStreaming(String text) => updateStreaming('$_streaming$text');
@@ -373,7 +527,38 @@ final class TranscriptReading implements TranscriptReader {
     cancelReads();
     // An index write can finish before its preview write. A stale preview must
     // not replace a newer independently persisted measurement after a restart.
-    installSavedHistory(snapshot.messages.map(_snapshotToolDuration));
+    final rows = snapshot.messages.map(_snapshotToolDuration).toList();
+    final streaming = rows
+        .where((row) => row['_reply_streaming'] == true)
+        .lastOrNull;
+    installSavedHistory(rows.where((row) => row['_reply_streaming'] != true));
+    for (final row in rows) {
+      final turn = row['_reply_turn'], segment = row['_reply_segment'];
+      if (turn is String && segment is int) {
+        _replyTurn = turn;
+        _replySegment = segment;
+        _replyAdmission = row['_reply_admission'] as String?;
+        final offset = row['_reply_offset'] is int
+            ? row['_reply_offset'] as int
+            : 0;
+        _replyDisplayedOffset = offset;
+        if (row['_reply_streaming'] != true) {
+          if (row['_reply_sealed'] == true) {
+            _sealedReplySegments.add((turn, segment));
+            _replySegment = segment + 1;
+            _replyDisplayedOffset = 0;
+          } else if (row['content'] is String) {
+            _replyDisplayedOffset += (row['content'] as String).length;
+          }
+        }
+      }
+    }
+    if (streaming != null && streaming['content'] is String) {
+      final text = streaming['content'] as String;
+      _replyFragments.clear();
+      updateStreaming(text);
+    }
+
     _historySessionId = snapshot.historySessionId;
     _nextHistoryOffset = null;
   }
@@ -403,11 +588,29 @@ final class TranscriptReading implements TranscriptReader {
       ...page.rows.map(_freezeRow),
     ];
     _retainMessagePresentations(refreshed, page.sessionId);
+    final committedIds = refreshed.map((row) => row['id']).toSet();
+    final journal = _messages.where((row) {
+      final turn = row['_reply_turn'];
+      final admission = row['_reply_admission'];
+      if (turn is! String || admission is! String) return false;
+      final receipt = _replyReceipts[turn];
+      if (receipt != null && receipt.every(committedIds.contains)) return false;
+      // A queued successor cannot keep a finished predecessor's journal alive.
+      // Retire only after this successful canonical read, never on a failed read.
+      return _pendingReplyAdmissions == null ||
+          _pendingReplyAdmissions!.contains(admission);
+    }).toList();
+    final projected = [...refreshed, ...journal];
     _messages = List.unmodifiable(
       _historySessionId == page.sessionId
-          ? retainLocalTranscriptMessages(_messages, refreshed)
-          : refreshed,
+          ? retainLocalTranscriptMessages(_messages, projected)
+          : projected,
     );
+    if (_replyAdmission != null &&
+        _pendingReplyAdmissions != null &&
+        !_pendingReplyAdmissions!.contains(_replyAdmission)) {
+      updateStreaming('');
+    }
     _historySessionId = page.sessionId;
     _nextHistoryOffset = page.nextOffset == null ? null : refreshed.length;
   }
@@ -419,9 +622,11 @@ final class TranscriptReading implements TranscriptReader {
   captureSnapshot() => (
     historySessionId: _historySessionId,
     messages: List<Map<String, dynamic>>.unmodifiable(
-      _messages
-          .skip(_messages.length > 60 ? _messages.length - 60 : 0)
-          .map(_captureSnapshotRow),
+      [
+        ..._messages.skip(_messages.length > 60 ? _messages.length - 60 : 0),
+        if (_streamingMessage != null)
+          {..._streamingMessage!, '_reply_streaming': true},
+      ].map(_captureSnapshotRow),
     ),
   );
 
@@ -489,27 +694,60 @@ final class TranscriptReading implements TranscriptReader {
     Object? persistedTurn,
     bool interim = false,
     bool responsePreviewed = false,
+    bool wireSealed = false,
+    bool responseTransformed = false,
   }) {
     if (_closed) return;
-    final preview = responsePreviewed ? _lastInterimMessage : null;
+    var preview = responsePreviewed || responseReused
+        ? _lastInterimMessage
+        : null;
+    if (responseTransformed && _replyTurn != null) {
+      final segment = preview?['_reply_segment'] ?? _replySegment;
+      _messages = List.unmodifiable(
+        _messages.where(
+          (row) =>
+              row['_reply_turn'] != _replyTurn ||
+              row['_reply_segment'] != segment,
+        ),
+      );
+      preview = null;
+    }
     final reusePreview =
         preview != null &&
         _lastInterimTurn == turnGeneration &&
         _streaming.isEmpty &&
-        _messages.contains(preview) &&
-        preview['content'] == text;
+        _messages.contains(preview);
     // Stock reuse names text already delivered in this turn. Keep the complete
     // visible buffer across tool rounds; a reconnect with missing text still
     // needs the authoritative final body.
-    final content =
-        responseReused && _streaming.isNotEmpty && _streaming.contains(text)
+    final previewOffset = reusePreview && preview['_reply_offset'] is int
+        ? preview['_reply_offset'] as int
+        : interim
+        ? 0
+        : _replyDisplayedOffset;
+    final content = responseTransformed
+        ? text
+        : responseReused && _streaming.isNotEmpty
         ? _streaming
+        : previewOffset > 0
+        ? text.substring(previewOffset.clamp(0, text.length))
         : text;
     final previous = reusePreview ? preview : _streamingMessage;
     final row = _freezeRow({
       ...?previous,
       'role': 'assistant',
       'content': content,
+      '_reply_turn': ?_replyTurn,
+      '_reply_segment': reusePreview
+          ? preview['_reply_segment']
+          : _replySegment,
+      '_reply_admission': ?_replyAdmission,
+      '_reply_offset': responseTransformed
+          ? 0
+          : reusePreview
+          ? preview['_reply_offset']
+          : _replyDisplayedOffset,
+      if (wireSealed) '_reply_sealed': true,
       'timestamp': DateTime.now().millisecondsSinceEpoch / 1000,
       if (reasoning.isNotEmpty) '_gateway_reasoning': reasoning,
     });
@@ -529,6 +767,11 @@ final class TranscriptReading implements TranscriptReader {
     if (persistedTurn is Map) {
       final id = persistedTurn['final_assistant_row_id'];
       final ids = persistedTurn['row_ids'];
+      if (_replyTurn != null &&
+          persistedTurn['complete'] == true &&
+          ids is List) {
+        _replyReceipts[_replyTurn!] = ids.whereType<int>().toSet();
+      }
       if (id is int &&
           id > 0 &&
           ids is List &&
@@ -538,6 +781,7 @@ final class TranscriptReading implements TranscriptReader {
           ..[id] = messagePresentationId(row);
       }
     }
+    if (!interim && _replyTurn != null) _completedReplyTurns.add(_replyTurn!);
     updateStreaming('');
   }
 

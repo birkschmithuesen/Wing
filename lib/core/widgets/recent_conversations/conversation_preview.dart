@@ -145,6 +145,7 @@ class ConversationPreview extends StatelessWidget {
           ],
         ),
         body: ConversationLayout(
+          needsInput: false,
           transcript: ListView.builder(
             reverse: true,
             scrollCacheExtent: const ScrollCacheExtent.pixels(0),

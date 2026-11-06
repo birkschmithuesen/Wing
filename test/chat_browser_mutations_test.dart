@@ -343,9 +343,14 @@ void main() {
       );
       controller.removeListener(workspaceChanged);
     });
-    host.event(streamGateway, streaming.runtime.runtimeId, 'message.start', {});
+    host.event(streamGateway, streaming.runtime.runtimeId, 'message.start', {
+      'turn_id': 'unrelated-recovery-turn',
+    });
     for (var n = 0; n < 5; n++) {
       host.event(streamGateway, streaming.runtime.runtimeId, 'message.delta', {
+        'turn_id': 'unrelated-recovery-turn',
+        'segment': 0,
+        'offset': n,
         'text': '$n',
       });
       await tester.pump(const Duration(milliseconds: 100));

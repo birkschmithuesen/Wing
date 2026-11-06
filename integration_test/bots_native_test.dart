@@ -8,6 +8,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/bots/bot_profile_editor.dart';
 import 'package:wing/core/screens/bots/bot_group_screen.dart';
+import 'package:wing/core/screens/bots/bot_group_context_sheet.dart';
 import 'package:wing/core/screens/bots/bots_content.dart';
 import 'package:wing/core/screens/bots/bots_create_screen.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
@@ -17,6 +18,8 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_form_actions.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 
 import '../test/support/administration_fixture.dart';
 import '../test/support/bots_fixture.dart';
@@ -613,6 +616,227 @@ void main() {
           () => visible(find.byTooltip('Download wing-group-notes.txt')),
           'cancelled native save leaves group attachment readable',
         );
+
+        // Exercise the new group controls after the existing attachment journey
+        // so their durable events do not change its exact message-count checks.
+        final state = await fixture.read('default', 'groups.state', {
+          'room_id': 'room-1',
+        });
+        var contextGate = Completer<void>();
+        final discardGate = Completer<void>();
+        final continueGate = Completer<void>();
+        var rejectContext = true;
+        Map<String, dynamic> appendGroupEvent(
+          String id,
+          String kind,
+          Map<String, dynamic> payload,
+        ) {
+          final event = <String, dynamic>{
+            'room_id': 'room-1',
+            'seq': (fixture.events.last['seq'] as int) + 1,
+            'event_id': id,
+            'kind': kind,
+            'actor': {'kind': 'gateway', 'id': 'gateway-1'},
+            'payload': payload,
+            'created_at': 1791756000.0,
+          };
+          fixture.events.add(event);
+          return event;
+        }
+
+        fixture.readHook = (_, method, _) async => method == 'groups.state'
+            ? {
+                ...state,
+                'room': {
+                  ...fixture.room,
+                  'latest_seq': fixture.events.last['seq'],
+                },
+              }
+            : null;
+        fixture.commandHook = (_, method, params) async {
+          if (method == 'groups.context') {
+            await contextGate.future;
+            if (rejectContext) throw StateError('Save refused');
+            state['context'] = {
+              for (final key in [
+                'purpose',
+                'notes',
+                'routing',
+                'lead_member_id',
+              ])
+                key: params[key],
+            };
+            final event = appendGroupEvent(
+              params['event_id'] as String,
+              'room.context_set',
+              state['context'] as Map<String, dynamic>,
+            );
+            return {'context': state['context'], 'event': event};
+          }
+          if (method == 'groups.discard') {
+            await discardGate.future;
+            fixture.pending.clear();
+            return {
+              'discarded': true,
+              'task': {'room_id': 'room-1', 'task_id': params['task_id']},
+            };
+          }
+          if (method == 'groups.continue') {
+            await continueGate.future;
+            return {
+              'continued': true,
+              'event': appendGroupEvent('native-continued', 'room.continued', {
+                'discussion_event_id': params['discussion_event_id'],
+                'thread_id': 'native-discussion-thread',
+                'grant': 1,
+              }),
+            };
+          }
+          throw StateError('Unexpected group control $method');
+        };
+
+        await tester.tap(find.byTooltip('Group options'));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('Shared settings'));
+        final purpose = find.widgetWithText(TextField, 'Purpose');
+        await until(() => visible(purpose), 'the shared group settings');
+        await tester.tap(purpose);
+        await _native(
+          tester,
+          '$label-group-purpose',
+          action: 'type',
+          text: 'Review the release together',
+          keyboard: true,
+        );
+        await until(
+          () =>
+              tester.widget<TextField>(purpose).controller!.text ==
+              'Review the release together',
+          'native group purpose input',
+        );
+        await _native(tester, '$label-group-purpose-back', action: 'back');
+        await keyboardClosed();
+        await tester.tap(find.byTooltip('Save shared settings'));
+        await until(
+          () => tester
+              .widget<StudioFormActions>(find.byType(StudioFormActions))
+              .busy,
+          'held group settings save feedback',
+        );
+        await _native(tester, '$label-group-settings-pending', keyboard: false);
+        contextGate.complete();
+        await until(
+          () => !tester
+              .widget<StudioFormActions>(find.byType(StudioFormActions))
+              .busy,
+          'failed settings save retaining the editor',
+        );
+        expect(
+          tester.widget<TextField>(purpose).controller!.text,
+          'Review the release together',
+        );
+        expect(
+          find.descendant(
+            of: find.byType(BotGroupContextSheet),
+            matching: find.text(
+              'Shared settings could not be confirmed. Review your draft and retry.',
+            ),
+          ),
+          findsOneWidget,
+        );
+        final firstContext = fixture.commands.last.$3;
+        rejectContext = false;
+        contextGate = Completer<void>();
+        await tester.tap(find.byTooltip('Save shared settings'));
+        await until(
+          () =>
+              fixture.commands
+                  .where((call) => call.$2 == 'groups.context')
+                  .length ==
+              2,
+          'retry of the exact settings save',
+        );
+        expect(fixture.commands.last.$3, firstContext);
+        contextGate.complete();
+        await until(
+          () => purpose.evaluate().isEmpty,
+          'confirmed settings save closes the editor',
+        );
+        expect(
+          (state['context'] as Map)['purpose'],
+          'Review the release together',
+        );
+
+        fixture.pending.add({
+          'kind': 'discard',
+          'task_id': 'native-unknown',
+          'member_id': 'atlas',
+          'execution_generation': 9,
+        });
+        appendGroupEvent('native-discussion', 'message.user', {
+          'text': 'Continue this bounded discussion',
+          'thread_id': 'native-discussion-thread',
+        });
+        appendGroupEvent('native-bounded', 'room.activity', {
+          'discussion_event_id': 'native-discussion',
+          'thread_id': 'native-discussion-thread',
+          'status': 'bounded',
+        });
+        await tester.tap(find.byTooltip('Group options'));
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(find.text('Refresh group'));
+        final discard = find.byTooltip('Discard unknown group attempt');
+        await until(
+          () => discard.evaluate().isNotEmpty,
+          'exact Discard control',
+        );
+        await tester.ensureVisible(discard);
+        await tester.pump();
+        await tester.tap(discard.hitTestable());
+        await until(
+          () => visible(find.byTooltip('Discard unknown attempt')),
+          'unknown-outcome confirmation',
+        );
+        expect(find.text('Discard unknown attempt?'), findsOneWidget);
+        await tester.tap(find.byTooltip('Discard unknown attempt'));
+        await until(
+          () => find.byType(StudioLoading).evaluate().isNotEmpty,
+          'held Discard feedback',
+        );
+        await _native(tester, '$label-group-discard-pending');
+        expect(fixture.commands.last.$2, 'groups.discard');
+        expect(fixture.commands.last.$3, {
+          'room_id': 'room-1',
+          'task_id': 'native-unknown',
+          'member_id': 'atlas',
+          'execution_generation': 9,
+        });
+        discardGate.complete();
+        await until(() => discard.evaluate().isEmpty, 'settled exact Discard');
+        final continuation = find.byTooltip('Continue discussion');
+        await until(
+          () => continuation.evaluate().isNotEmpty,
+          'bounded Continue control',
+        );
+        await tester.ensureVisible(continuation);
+        await tester.pump();
+        await tester.tap(continuation.hitTestable());
+        await until(
+          () => find.byType(StudioLoading).evaluate().isNotEmpty,
+          'held Continue feedback',
+        );
+        await _native(tester, '$label-group-continue-pending');
+        expect(fixture.commands.last.$2, 'groups.continue');
+        expect(fixture.commands.last.$3, {
+          'room_id': 'room-1',
+          'discussion_event_id': 'native-discussion',
+        });
+        continueGate.complete();
+        await until(
+          () => continuation.evaluate().isEmpty,
+          'settled bounded Continue',
+        );
+        await _native(tester, '$label-group-controls-settled');
         await _native(tester, '$label-group-back', action: 'back');
         await until(
           () =>

@@ -190,6 +190,15 @@ class BotGroupHistorySession extends ChangeNotifier
         reading._sequence = skipMissing ? cursor.sequence : 0;
         reading._runtime.replaceRuntime(id);
         reading._runtime.observeExecutionSnapshot(snapshot);
+        if (snapshot['pending'] is List) {
+          reading._reading.observePendingReplyAdmissions(
+            (snapshot['pending'] as List)
+                .whereType<Map>()
+                .where((row) => row['status'] != 'queued')
+                .map((row) => row['admission_id'])
+                .whereType<String>(),
+          );
+        }
       }
 
       Future<Map<String, dynamic>> readReplay() => repository
@@ -264,9 +273,17 @@ class BotGroupHistorySession extends ChangeNotifier
         last = seq;
       }
       final cold = reading._sequence == 0;
-      final start = received.lastIndexWhere(
-        (e) => e['type'] == 'message.start',
-      );
+      var start = received.lastIndexWhere((e) => e['type'] == 'message.start');
+      if (start >= 0) {
+        final turn = (received[start]['payload'] as Map?)?['turn_id'];
+        if (turn is String) {
+          start = received.indexWhere(
+            (event) =>
+                event['type'] == 'message.start' &&
+                (event['payload'] as Map?)?['turn_id'] == turn,
+          );
+        }
+      }
       if (replay['truncated'] == true && (!cold || start < 0)) {
         reading._partialLive = true;
       }
@@ -281,6 +298,12 @@ class BotGroupHistorySession extends ChangeNotifier
         if (type == 'message.start') {
           reading._partialLive = false;
           terminal = false;
+        }
+        if (data['turn_id'] is String) {
+          reading._reading.observeReplyAdmission(
+            event['admission_id'],
+            turn: data['turn_id'],
+          );
         }
         terminal |= reading.observeExecution(type, data);
       }
@@ -705,9 +728,11 @@ final class _BotGroupHistoryReading implements TranscriptReader {
             responseReused:
                 !failed && !cancelled && data['response_reused'] == true,
             responsePreviewed: data['response_previewed'] == true,
+            responseTransformed: data['response_transformed'] == true,
             persistedTurn: data['persisted_turn'],
           );
         }
+        _reading.retireReply();
         _runtime.completeTurn(
           failed: failed,
           cancelled: cancelled,
@@ -716,6 +741,7 @@ final class _BotGroupHistoryReading implements TranscriptReader {
         return true;
       case 'error':
       case 'turn.error':
+        _reading.retireReply();
         _runtime.failTurn(data['message']?.toString() ?? 'Turn failed');
         return true;
     }
