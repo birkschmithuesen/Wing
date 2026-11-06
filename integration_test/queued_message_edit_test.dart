@@ -1,4 +1,5 @@
 import '../test/support/composer_fixture.dart';
+import '../test/helpers/journey_controls.dart' show tapJourneyControl;
 import '../test/support/canonical_gateway_fixture.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/bots_session.dart';
@@ -177,11 +178,8 @@ void main() {
   }
 
   Future<void> tapReady(WidgetTester tester, Finder control) async {
-    // The keyboard reduces the queue viewport; reveal the actual row action.
-    await tester.ensureVisible(control);
-    await frames(tester);
-    expect(control.hitTestable(), findsOneWidget);
-    await tester.tap(control);
+    // Route dismissal and the keyboard can move the action after a first frame.
+    await tapJourneyControl(tester, control);
   }
 
   Future<void> capture(
