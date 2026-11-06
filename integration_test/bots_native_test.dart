@@ -69,6 +69,14 @@ void main() {
     for (final large in [false, true]) {
       final label = '${brightness.name}-${large ? 'large' : 'normal'}';
       testWidgets('Android Bots $label', (tester) async {
+        final priorErrorHandler = FlutterError.onError;
+        FlutterError.onError = (details) {
+          // Preserve the originating stack before the polling helper consumes
+          // the exception and reports which native control was being awaited.
+          FlutterError.presentError(details);
+          priorErrorHandler?.call(details);
+        };
+        addTearDown(() => FlutterError.onError = priorErrorHandler);
         await _native(tester, '$label-configure', action: 'configure');
         final metricsDeadline = DateTime.now().add(const Duration(seconds: 10));
         while (((tester.view.physicalSize.width /

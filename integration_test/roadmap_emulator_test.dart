@@ -429,6 +429,43 @@ void main() {
         () => tapJourneyControl(tester, composer),
       );
       await _pumpUntil(tester, () => tester.view.viewInsets.bottom > 0);
+      // The IME changes the reading viewport. Use its visible input navigation
+      // to recover the form through the same control available to the user.
+      final inputNavigation = find.byKey(const ValueKey('jump-to-latest'));
+      await _pumpUntil(
+        tester,
+        () => inputNavigation.hitTestable().evaluate().isNotEmpty,
+      );
+      final navigationBounds = tester.getRect(inputNavigation);
+      final screen = tester.view.physicalSize / tester.view.devicePixelRatio;
+      final usableScreen = Rect.fromLTWH(
+        0,
+        0,
+        screen.width,
+        screen.height -
+            tester.view.viewInsets.bottom / tester.view.devicePixelRatio,
+      );
+      expect(navigationBounds.width, greaterThanOrEqualTo(48));
+      expect(navigationBounds.height, greaterThanOrEqualTo(48));
+      expect(usableScreen.contains(navigationBounds.topLeft), isTrue);
+      expect(
+        usableScreen.contains(
+          navigationBounds.bottomRight - const Offset(.1, .1),
+        ),
+        isTrue,
+      );
+      await tester.tap(inputNavigation);
+      await _pumpUntil(tester, () {
+        if (confirm.hitTestable().evaluate().isEmpty) return false;
+        final viewport = tester.getRect(
+          find.byKey(const ValueKey('profile-transcript')),
+        );
+        final bounds = tester.getRect(confirm);
+        return viewport.contains(bounds.topLeft) &&
+            viewport.contains(bounds.bottomRight - const Offset(.1, .1));
+      });
+      expect(tester.view.viewInsets.bottom, greaterThan(0));
+      expect(tester.getSize(confirm).height, greaterThanOrEqualTo(48));
       expect(confirm.hitTestable(), findsOneWidget);
       final visibleTranscript = tester.getRect(
         find.byKey(const ValueKey('profile-transcript')),
