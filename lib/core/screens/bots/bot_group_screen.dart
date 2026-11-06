@@ -87,6 +87,8 @@ class _BotGroupScreenState extends State<BotGroupScreen>
   bool _capturing = false, _foreground = true;
   bool _launchingCamera = false;
   bool _inspectingDetails = false, _refreshingGroup = false;
+  bool _optionsMenuOpen = false;
+  ModalRoute<dynamic>? _optionsMenuRoute;
   Object? _inspectedAvatarMessage;
   bool _presentationVisible = true, _restoreComposerFocus = false;
   bool get _visible =>
@@ -94,6 +96,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       _foreground &&
       !_capturing &&
       !_inspectingDetails &&
+      !_optionsMenuOpen &&
       ModalRoute.isCurrentOf(context) != false;
   void _syncVisibility() {
     _session.setVisible(_visible);
@@ -120,10 +123,23 @@ class _BotGroupScreenState extends State<BotGroupScreen>
     _changed();
   }
 
-  Future<void> _refreshGroup() async {
+  Future<void> _retireOptionsMenu() async {
+    final route = _optionsMenuRoute;
+    await route?.completed;
+    if (!mounted || _optionsMenuRoute != route) return;
+    _optionsMenuRoute = null;
+    _optionsMenuOpen = false;
+    _syncVisibility();
+  }
+
+  Future<void> _refreshGroup({Future<void>? menuClosed}) async {
     if (_refreshingGroup) return;
     setState(() => _refreshingGroup = true);
     try {
+      // Selection starts dismissal; the popup still owns its semantics scope
+      // until completed. Resume automatic and explicit reads after retirement.
+      await menuClosed;
+      if (!mounted || !_visible) return;
       await _session.refresh();
     } finally {
       if (mounted) setState(() => _refreshingGroup = false);
@@ -854,12 +870,19 @@ class _BotGroupScreenState extends State<BotGroupScreen>
           child: PopupMenuButton<String>(
             tooltip: 'Group options',
             icon: const Icon(Icons.more_horiz),
+            onOpened: () {
+              _optionsMenuRoute = null;
+              _optionsMenuOpen = true;
+              _syncVisibility();
+            },
+            onCanceled: () => unawaited(_retireOptionsMenu()),
             onSelected: (action) async {
+              final menuClosed = _retireOptionsMenu();
               switch (action) {
                 case 'histories':
                   await _openWorkingHistories();
                 case 'refresh':
-                  await _refreshGroup();
+                  await _refreshGroup(menuClosed: menuClosed);
                 case 'stop':
                   await _session.stop();
                 case 'context':
@@ -892,7 +915,12 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               StudioPopupMenuItem(
                 value: 'refresh',
                 enabled: !_session.loading && !_refreshingGroup,
-                child: const Text('Refresh group'),
+                child: Builder(
+                  builder: (menuContext) {
+                    _optionsMenuRoute = ModalRoute.of(menuContext);
+                    return const Text('Refresh group');
+                  },
+                ),
               ),
               if (_session.canStopGroupWork)
                 const StudioPopupMenuItem(

@@ -138,6 +138,116 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     groupPreferences = await BotsPreferences.load();
   });
+  testWidgets('group refresh preserves semantics through popup retirement', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final semantics = tester.ensureSemantics();
+    try {
+      final fixture = BotsFixture();
+      fixture.events.add(_event(1, 'message.user', 'you', 'Review the plan'));
+      final group = (await fixture.repository.groupCatalog()).single;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: wingTheme(Brightness.dark),
+          home: BotGroupScreen(
+            createSession: () => BotGroupSession(
+              fixture.repository,
+              group,
+              reads: BotGroupReadState(),
+              preferences: groupPreferences,
+              groupMessages: null,
+              appearances: FixedGroupAppearances(const []),
+            ),
+            stopVoicePlayback: () async {},
+            voiceInputSettings: () => null,
+          ),
+        ),
+      );
+      await _settleGroupMarkdown(tester);
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Group options'));
+      await tester.pumpAndSettle();
+      final refresh = find.text('Refresh group');
+      final popup = ModalRoute.of(tester.element(refresh))!;
+      var retired = false;
+      unawaited(popup.completed.then((_) => retired = true));
+      final readGate = Completer<void>();
+      var reads = 0;
+      var readBeforeRetirement = false;
+      fixture.readHook = (_, method, _) async {
+        if (method == 'groups.state') {
+          reads++;
+          readBeforeRetirement |= !retired;
+          await readGate.future;
+        }
+        return null;
+      };
+      fixture.pending.add({
+        'kind': 'discard',
+        'task_id': 'unknown',
+        'member_id': 'atlas',
+        'execution_generation': 9,
+      });
+      await tester.tap(refresh);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(retired, isFalse);
+      expect(
+        reads,
+        0,
+        reason: 'The closing popup still owns its semantics scope.',
+      );
+      expect(find.byTooltip('Refreshing group'), findsOneWidget);
+      expect(find.byType(StudioLoading), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.pump();
+      expect(retired, isTrue);
+      expect(
+        reads,
+        1,
+        reason: 'Explicit refresh joins the resumed visible read.',
+      );
+      expect(readBeforeRetirement, isFalse);
+      expect(find.byTooltip('Refreshing group'), findsOneWidget);
+      readGate.complete();
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Discard unknown group attempt'), findsOneWidget);
+      expect(find.byTooltip('Refreshing group'), findsNothing);
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.byTooltip('Group options'));
+      await tester.pumpAndSettle();
+      final cancelledPopup = ModalRoute.of(tester.element(refresh))!;
+      reads = 0;
+      retired = false;
+      unawaited(cancelledPopup.completed.then((_) => retired = true));
+      await tester.binding.handlePopRoute();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 16));
+      expect(retired, isFalse);
+      expect(reads, 0);
+      await tester.pumpAndSettle();
+      expect(retired, isTrue);
+      expect(reads, 1, reason: 'Cancelling restores normal visible polling.');
+      expect(readBeforeRetirement, isFalse);
+      await tester.tap(find.byTooltip('Group options'));
+      await tester.pumpAndSettle();
+      reads = 0;
+      await tester.tap(refresh);
+      await tester.pumpWidget(const SizedBox());
+      await tester.pumpAndSettle();
+      expect(
+        reads,
+        0,
+        reason: 'A departed screen must not start a delayed read.',
+      );
+      expect(tester.takeException(), isNull);
+    } finally {
+      semantics.dispose();
+    }
+  });
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(

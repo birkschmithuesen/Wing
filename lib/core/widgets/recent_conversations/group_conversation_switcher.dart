@@ -74,7 +74,10 @@ class _GroupConversationSwitcherState extends State<GroupConversationSwitcher>
           setState(() => _obscured = obscured);
         },
         child: ConversationPresentationScope(
-          visible: !_obscured && _foreground && current,
+          // A popup disables gestures without hiding the discussion. Opaque
+          // routes already disable its TickerMode; only the card presentation
+          // and app lifecycle hide it here.
+          visible: !_obscured && _foreground,
           onRecordingChanged: (recording) {
             if (mounted && recording != _recording) {
               setState(() {
