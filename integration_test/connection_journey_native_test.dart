@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart' show debugPrintSynchronously;
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/connection_setup_session.dart';
 import 'package:wing/core/services/hermes_cloud.dart';
@@ -16,6 +17,7 @@ import 'support/journey_capture.dart';
 /// Production setup on Android; synthetic probes and storage never contact a host.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
+  WidgetController.hitTestWarningShouldBeFatal = true;
   for (final brightness in Brightness.values) {
     testWidgets(
       '${brightness.name} setup recovers and saves verified connection',
@@ -49,7 +51,7 @@ void main() {
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await _settle(tester);
         await captureJourney(tester, 'connection-${brightness.name}-choices');
         await _tap(tester, 'Use an address');
         await captureJourney(tester, 'connection-${brightness.name}-address');
@@ -75,10 +77,7 @@ void main() {
           'synthetic password',
         );
         fixture.discoveryGate = Completer<ProfileDiscovery>();
-        final check = find.text('Check connection');
-        await tester.ensureVisible(check);
-        await tester.pumpAndSettle();
-        await tester.tap(check);
+        await _tap(tester, 'Check connection', settleAfter: false);
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         final progress = find.byType(CircularProgressIndicator);
@@ -98,7 +97,7 @@ void main() {
           'connection-${brightness.name}-inline-pending',
         );
         fixture.discoveryGate!.complete(connectionDiscovery);
-        await tester.pumpAndSettle();
+        await _settle(tester);
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         expect(saved, isNull);
         expect(find.byTooltip('Save and open'), findsNothing);
@@ -123,7 +122,7 @@ void main() {
           'Home',
         );
         FocusManager.instance.primaryFocus?.unfocus();
-        await tester.pumpAndSettle();
+        await _settle(tester);
         await _swipe(tester, 150);
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         await _tap(tester, 'Next');
@@ -168,9 +167,19 @@ Future<void> _tap(
   WidgetTester tester,
   String label, {
   bool iconAction = false,
+  bool settleAfter = true,
 }) async {
   final target = iconAction ? find.byTooltip(label) : find.text(label);
-  await tester.pumpAndSettle();
+  _trace('waiting to tap $label');
+  await _ready(tester, target);
+  _trace('tapping $label');
+  await tester.tap(target);
+  if (settleAfter) await _settle(tester);
+  _trace('tapped $label');
+}
+
+Future<void> _ready(WidgetTester tester, Finder target) async {
+  await _settle(tester);
   final deadline = DateTime.now().add(const Duration(seconds: 5));
   do {
     await tester.ensureVisible(target);
@@ -178,8 +187,6 @@ Future<void> _tap(
   } while (target.hitTestable().evaluate().isEmpty &&
       DateTime.now().isBefore(deadline));
   expect(target.hitTestable(), findsOneWidget);
-  await tester.tap(target);
-  await tester.pumpAndSettle();
 }
 
 Future<void> _swipe(WidgetTester tester, double distance) async {
@@ -191,9 +198,21 @@ Future<void> _swipe(WidgetTester tester, double distance) async {
     find.text('Sign in to Hermes'),
     find.text('Where’s your Hermes?'),
   ].firstWhere((finder) => finder.evaluate().isNotEmpty);
-  await tester.ensureVisible(target);
-  await tester.pumpAndSettle();
-  expect(target.hitTestable(), findsOneWidget);
+  _trace(
+    'waiting to swipe $distance from ${target.describeMatch(Plurality.many)}',
+  );
+  await _ready(tester, target);
+  _trace('swiping $distance');
   await tester.drag(target, Offset(distance, 0));
-  await tester.pumpAndSettle();
+  await _settle(tester);
+  _trace('swiped $distance');
 }
+
+Future<int> _settle(WidgetTester tester) => tester.pumpAndSettle(
+  const Duration(milliseconds: 100),
+  EnginePhase.sendSemanticsUpdate,
+  const Duration(seconds: 15),
+);
+
+void _trace(String stage) =>
+    debugPrintSynchronously('[connection-journey] $stage');

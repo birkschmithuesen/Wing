@@ -27,7 +27,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/studio_selection_test.dart test/connection_setup_screen_test.dart test/cloud_connection_journey_test.dart test/connection_manager_test.dart test/server_connection_status_test.dart test/live_chat_status_transport_test.dart test/administration_health_test.dart test/connection_setup_session_test.dart test/connection_setup_transport_test.dart test/connection_import_transaction_test.dart test/secure_connection_storage_test.dart test/connection_diagnostics_test.dart
   ```
 
-- **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
+- **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran. The setup driver waits for each control to be reachable after keyboard or card movement; step traces and bounded settling identify stalled native actions.
 
   ```sh
   python3 scripts/test_nightly_native.py journeys --output build/feature-verification/connections
