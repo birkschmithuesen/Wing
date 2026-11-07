@@ -204,7 +204,6 @@ summary:active { color: var(--teal); }
   .footer-top > p { flex-basis: 50%; }
 }
 @media (width < 35rem) {
-  .site-header .nav-link:first-child { display: none; }
   .site-header nav { gap: .5rem; }
   .brand-portrait { inline-size: 2.35rem; block-size: 2.35rem; }
   .brand-wordmark { inline-size: 5rem; block-size: 2.5rem; }
