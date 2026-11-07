@@ -8,22 +8,33 @@ import argparse
 import hashlib
 import os
 from pathlib import Path
+import re
 import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[3]
 SOURCE = Path(__file__).with_name('ProviderBoundaryGuard.kt')
 QA_SOURCE = SOURCE.with_name('QaIsolationGuard.kt')
-VERSION = '2.4.20'
+
+
+def kotlin_version():
+    settings = (ROOT / 'android/settings.gradle.kts').read_text()
+    versions = re.findall(
+        r'^\s*id\("org\.jetbrains\.kotlin\.android"\)\s+version\s+"([^"\r\n]+)"\s+apply\s+false\s*$',
+        settings, re.MULTILINE)
+    if len(versions) != 1:
+        raise ValueError('Expected one literal Android Kotlin plugin version')
+    return versions[0]
 
 
 def tooling():
+    compiler_version = kotlin_version()
     cache = Path(os.environ.get('GRADLE_USER_HOME', Path.home() / '.gradle')) / 'caches/modules-2/files-2.1'
     jars = []
     for group, module, version in [
-        ('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', VERSION),
-        ('org.jetbrains.kotlin', 'kotlin-stdlib', VERSION),
-        ('org.jetbrains.kotlin', 'kotlin-script-runtime', VERSION),
+        ('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', compiler_version),
+        ('org.jetbrains.kotlin', 'kotlin-stdlib', compiler_version),
+        ('org.jetbrains.kotlin', 'kotlin-script-runtime', compiler_version),
         ('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.8.0'),
         ('org.jetbrains', 'annotations', '13.0'),
     ]:
