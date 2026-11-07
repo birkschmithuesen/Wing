@@ -85,11 +85,12 @@ AttachmentImageInspection _inspection(
     _invalid('The image frames exceed the client processing limit.');
   }
   final decoded = pixels * sampleBytes * frames;
-  // Orientation may retain the original, clone, and rotated clone. PNG encode
-  // retains an image, filtered scanlines, compressed bytes and its output copy.
+  // Keep the original and transformed images reserved through encoding.
   final transform = inputBytes * 2 + decoded * 3;
   final scanlines = decoded + h * frames;
-  final encode = inputBytes * 2 + decoded + scanlines * 3 + 1024 * 1024;
+  final encode = format == AttachmentImageFormat.jpeg
+      ? inputBytes * 2 + decoded + scanlines * 3 + 1024 * 1024
+      : _pngEncodeCharge(w, h, frames, sampleBytes, inputBytes);
   final charged = [
     decodeCharge + inputBytes,
     transform,
@@ -107,6 +108,33 @@ AttachmentImageInspection _inspection(
     orientation: orientation,
     discardedMetadata: discardedMetadata,
   );
+}
+
+int _pngEncodeCharge(
+  int w,
+  int h,
+  int frames,
+  int sampleBytes,
+  int inputBytes,
+) {
+  // Reserve either orientation, including the extra filter byte on every row.
+  final side = w > h ? w : h;
+  final pixels = w * h * sampleBytes;
+  final filtered = pixels + side;
+  // zlib compressBound for the pinned native encoder's default window/memory.
+  final compressed =
+      filtered + (filtered >> 12) + (filtered >> 14) + (filtered >> 25) + 13;
+  // Each frame has its own zlib stream, 64 KiB IDAT/fdAT chunks and headers.
+  final encoded =
+      frames * (compressed + ((compressed + 65535) ~/ 65536) * 16 + 4096);
+  // OutputBuffer grows by max(old * 3, required + 8192). Old/new overlap and
+  // transferring the finished view each fit 4 * encoded + fixed headroom.
+  // Two full RGBA canvases also cover palette originals plus RGBA conversion.
+  return inputBytes * 2 +
+      pixels * frames * 2 +
+      encoded * 4 +
+      (side * sampleBytes + 1) * 3 +
+      1024 * 1024;
 }
 
 AttachmentImageInspection inspectAttachmentImage(Uint8List bytes) {
@@ -188,9 +216,8 @@ AttachmentImageInspection _jpeg(Uint8List b) {
           if (available < 0) _invalid('Invalid JPEG Huffman code lengths.');
         }
         if (count == 0 || count > 256 || count > end - q) _invalid();
-        // Locked decoder constructs at most 16 path nodes per symbol. Charge
-        // list/node headers and tagged references before its _readDHT runs.
-        tableBytes += count * 16 * 64 + 1024;
+        // Tree nodes plus the 512-entry Uint16 lookahead and table wrappers.
+        tableBytes += count * 16 * 64 + 2304;
         if (tableBytes > maxAttachmentImageChargedBytes) _invalid();
         q += count;
       }
@@ -241,8 +268,8 @@ AttachmentImageInspection _jpeg(Uint8List b) {
       for (final s in sampling) {
         coefficientBlocks += mx * my * s.$1 * s.$2;
       }
-      coefficientBytes = coefficientBlocks * 256;
-      // Check before image's readInfo/prepare, which allocates MCU coefficients.
+      coefficientBytes = coefficientBlocks * 128;
+      // Flat Int16 MCU coefficients are allocated only after this preflight.
       if (coefficientBytes > maxAttachmentImageChargedBytes) _invalid();
     } else if (marker >= 192 &&
         marker <= 207 &&
@@ -283,11 +310,14 @@ AttachmentImageInspection _jpeg(Uint8List b) {
   }
   final decode =
       b.length +
-      coefficientBytes +
-      tableBytes +
+      // A late APP14 or second scan can retain the streaming decoder while
+      // restarting a full decode: two coefficient sets, zero-band scratch,
+      // two component-line sets, both tables and both output canvases.
+      coefficientBytes * 4 +
+      tableBytes * 2 +
       coefficientBlocks * 48 +
-      coefficientBytes ~/ 4 +
-      width * height * 4;
+      width * height * 8 +
+      1024 * 1024;
   return _inspection(
     AttachmentImageFormat.jpeg,
     width,
@@ -481,9 +511,14 @@ AttachmentImageInspection _png(Uint8List b) {
     b.length,
     b.length +
         compressed * 2 +
-        totalInflated +
+        // Lazy inflation can fill its window from a whole compressed chunk.
+        // A doubled window overlaps the old allocation: at most 3 * output.
+        totalInflated * 3 +
         decoded +
-        w * h * (bits == 16 ? 8 : 4) * 2,
+        w * h * (bits == 16 ? 8 : 4) * 2 +
+        w * (bits == 16 ? 8 : 4) * 3 +
+        declaredFrames * 65536 +
+        1024 * 1024,
     discardedMetadata: discardedMetadata,
   );
 }

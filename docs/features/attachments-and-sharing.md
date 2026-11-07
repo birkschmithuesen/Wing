@@ -24,6 +24,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/attachment_draft_service_test.dart test/profile_attachment_parity_test.dart test/home_share_review_test.dart
   ```
 
+- **Image preparation:** exercise codec allocation refusal, JPEG restart,
+  PNG output growth, metadata removal and WebP pixel/frame parity.
+
+  ```sh
+  flutter test --no-pub test/attachment_image_worker_test.dart test/image_codec_provenance_test.dart test/image_codec_confinement_test.dart
+  ```
+
 - **Android `file-transfer`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
   ```sh
@@ -45,3 +52,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 ## Gotchas
 
 A file picker, external share and clipboard grant are separate OS entry points. A missing staged file must stop dispatch without discarding the newer draft. Its failed-file chip remains actionable at the restored reading point; use Latest to inspect the transcript warning. Real camera/OEM behaviour needs its own device evidence.
+
+An image can exceed processing limits even when its compressed file is small.
+Dimensions, animation frames and transformed output also affect admission. A
+refused image must leave the draft usable and must not become sendable content.
