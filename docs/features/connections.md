@@ -15,7 +15,7 @@ Feature ID: `connections`.
 
 ## How to get to it (user POV)
 
-Open connection setup at first launch or use Hermes instances to add or edit an instance. Use Next or swipe left/right between address, sign-in and name/save. Cards follow the swipe and settle into place; an unfinished swipe returns without changing the step. Next stays in a fixed footer. The normal phone layout fits on one screen, with scrolling retained for enlarged text and the keyboard. Check connection stays on sign-in with its results; Next or a forward swipe opens name/save after all checks pass. Returning from name/save retains verification until connection details change. Save explicitly, or import a shared connection, then reopen it.
+Open connection setup at first launch or use Hermes instances to add or edit an instance. Use Next or swipe left/right between address, sign-in and name/save. Cards follow the swipe and settle into place; an unfinished swipe returns without changing the step. Next stays in a fixed footer. The normal phone layout fits on one screen, with scrolling retained for enlarged text and the keyboard. Check connection stays on sign-in with its results; Next or a forward swipe opens name/save after all checks pass. Completed results remain available across all three cards for five minutes from completion, unless connection details change. Returning within that window allows forward swipes without checking again. Save explicitly, or import a shared connection, then reopen it.
 
 ## Driving it with Wing harnesses
 
@@ -58,4 +58,4 @@ existing origin-bound authentication owner.
 For deployed chat readiness, also run the [read-only saved-chat recipe](conversation.md).
 Fixture success does not prove the configured deployment can reopen chats.
 
-A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retires the prior check while preserving entered fields.
+A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.

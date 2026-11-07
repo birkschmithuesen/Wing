@@ -82,10 +82,12 @@ class ConnectionSetupSession extends ChangeNotifier {
     required ConnectionProbe Function(ConnectionAccess) createProbe,
     required Future<SavedConnection> Function(SavedConnection) onSave,
     required Future<void> Function(ConnectionIcon)? onSaveIcon,
+    DateTime Function()? now,
   }) : _initialAccess = initialAccess,
        _saved = savedConnections,
        _onSaveIcon = onSaveIcon,
-       _probe = ConnectionSetupProbe(createProbe: createProbe) {
+       _now = now ?? DateTime.now,
+       _probe = ConnectionSetupProbe(createProbe: createProbe, now: now) {
     _cloud = cloud;
     _onSave = onSave;
     if (initialAccess != null && onSaveIcon == null) {
@@ -139,6 +141,7 @@ class ConnectionSetupSession extends ChangeNotifier {
   late final Future<SavedConnection> Function(SavedConnection) _onSave;
   final Future<void> Function(ConnectionIcon)? _onSaveIcon;
   final ConnectionSetupProbe _probe;
+  final DateTime Function() _now;
   late ConnectionSetupDraft _draft;
   late ConnectionSetupStep _step;
   late bool _cloudRoute;
@@ -224,13 +227,22 @@ class ConnectionSetupSession extends ChangeNotifier {
     _publish();
   }
 
+  bool get _hasRecentCheck {
+    final checkedAt = _probe.checkedAt;
+    if (checkedAt == null || _probe.checking) return false;
+    final age = _now().difference(checkedAt);
+    return !age.isNegative && age < const Duration(minutes: 5);
+  }
+
   void continueVerified() {
     if (_closed ||
-        !_value.canAdvance ||
+        _saving ||
         (_step != ConnectionSetupStep.signIn &&
             _step != ConnectionSetupStep.check)) {
       return;
     }
+    if (!_hasRecentCheck && _probe.checkedAt != null) _probe.cancel();
+    if (!_value.canAdvance) return;
     _go(ConnectionSetupStep.review);
   }
 
@@ -250,20 +262,25 @@ class ConnectionSetupSession extends ChangeNotifier {
     if (target == ConnectionSetupStep.address && next < current) {
       // A continuous drag may cross the sign-in card before settling. Accept
       // that destination just as Back does when leaving sign-in.
-      _go(ConnectionSetupStep.address);
+      _go(ConnectionSetupStep.address, retainCheck: true);
     } else if (next < current) {
       back();
     } else if (_step == ConnectionSetupStep.address) {
-      continueAddress();
+      if (continueAddress() && target == ConnectionSetupStep.review) {
+        continueVerified();
+      }
     } else {
       continueVerified();
     }
   }
 
-  void _go(ConnectionSetupStep step) {
+  void _go(ConnectionSetupStep step, {bool retainCheck = false}) {
     _step = step;
     _saveError = null;
-    if (step != ConnectionSetupStep.review) _probe.cancel();
+    if (step != ConnectionSetupStep.review &&
+        !(retainCheck && _hasRecentCheck)) {
+      _probe.cancel();
+    }
     _publish();
   }
 
@@ -318,7 +335,7 @@ class ConnectionSetupSession extends ChangeNotifier {
       address: address.url,
       name: _draft.name.isEmpty ? address.host : _draft.name,
     );
-    _go(ConnectionSetupStep.signIn);
+    _go(ConnectionSetupStep.signIn, retainCheck: true);
     return true;
   }
 
@@ -594,12 +611,16 @@ class ConnectionSetupSession extends ChangeNotifier {
   }
 
   Future<void> save() async {
-    if (_closed ||
-        _saving ||
-        !_probe.verified ||
-        validateName(_draft.name) != null) {
+    if (_closed || _saving || validateName(_draft.name) != null) return;
+    if (!_hasRecentCheck) {
+      if (_probe.checkedAt != null) {
+        _go(
+          _cloudRoute ? ConnectionSetupStep.check : ConnectionSetupStep.signIn,
+        );
+      }
       return;
     }
+    if (!_probe.verified) return;
     final generation = _generation;
     SavedConnection candidate;
     try {
@@ -664,11 +685,10 @@ class ConnectionSetupSession extends ChangeNotifier {
       return ConnectionSetupBack.stay;
     }
     if (_step == ConnectionSetupStep.review) {
-      _step = _cloudRoute
-          ? ConnectionSetupStep.check
-          : ConnectionSetupStep.signIn;
-      _saveError = null;
-      _publish();
+      _go(
+        _cloudRoute ? ConnectionSetupStep.check : ConnectionSetupStep.signIn,
+        retainCheck: true,
+      );
       return ConnectionSetupBack.stay;
     }
     if (_step == ConnectionSetupStep.check) {
@@ -676,7 +696,7 @@ class ConnectionSetupSession extends ChangeNotifier {
       return ConnectionSetupBack.stay;
     }
     if (_step == ConnectionSetupStep.signIn) {
-      _go(ConnectionSetupStep.address);
+      _go(ConnectionSetupStep.address, retainCheck: true);
       return ConnectionSetupBack.stay;
     }
     if (!_editing &&

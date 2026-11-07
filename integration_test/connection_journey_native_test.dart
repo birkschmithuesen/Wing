@@ -165,9 +165,16 @@ void main() {
         await _settle(tester);
         expect(tester.widget<PageView>(cards).controller!.page, 0);
         expect(find.text('Where’s your Hermes?'), findsOneWidget);
-        await _tap(tester, 'Next');
-        await _tap(tester, 'Check connection');
-        await _tap(tester, 'Next');
+        await _swipe(tester, -150);
+        expect(
+          find.bySemanticsLabel(RegExp(r', Available$')),
+          findsNWidgets(3),
+        );
+        await captureJourney(
+          tester,
+          'connection-${brightness.name}-retained-results',
+        );
+        await _swipe(tester, -150);
         expect(
           tester
               .widget<TextFormField>(find.byKey(const Key('connection-name')))
@@ -197,8 +204,6 @@ void main() {
         expect(fixture.calls, [
           ConnectionCheck.profiles,
           ConnectionCheck.chat,
-          ...ConnectionCheck.values,
-          // Rechecking after the two-card return to the address.
           ...ConnectionCheck.values,
         ]);
         expect(tester.takeException(), isNull);

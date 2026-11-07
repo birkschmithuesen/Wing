@@ -566,6 +566,14 @@ void main() {
       expect(find.text('Where’s your Hermes?'), findsOneWidget);
       await tester.pump(const Duration(seconds: 2));
       expect(controller.page, 0);
+      await tester.drag(cards, const Offset(-280, 0));
+      await tester.pumpAndSettle();
+      expect(controller.page, 1);
+      expect(find.bySemanticsLabel(RegExp(r', Available$')), findsNWidgets(3));
+      await tester.drag(cards, const Offset(-280, 0));
+      await tester.pumpAndSettle();
+      expect(controller.page, 2);
+      expect(find.text('Connection verified'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
