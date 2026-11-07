@@ -9,7 +9,7 @@ import statistics
 import subprocess
 import tempfile
 import time
-from provider_boundary import ROOT, VERSION, command, tooling
+from provider_boundary import ROOT, command, kotlin_version, tooling
 
 
 def main():
@@ -38,7 +38,7 @@ def main():
         result[rule] = {'warm_seconds': timings,
                         'median_seconds': statistics.median(timings)}
     java, _ = tooling()
-    result.update({'host': platform.platform(), 'compiler': VERSION,
+    result.update({'host': platform.platform(), 'compiler': kotlin_version(),
                    'jdk': subprocess.check_output([str(java), '-version'],
                        stderr=subprocess.STDOUT, text=True),
                    'files': [{'path': str(path.relative_to(ROOT)),
