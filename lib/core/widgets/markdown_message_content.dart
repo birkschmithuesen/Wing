@@ -11,6 +11,7 @@ import 'package:markdown/markdown.dart' as md;
 import '../models/chat_output.dart';
 import '../models/deliverable_reference.dart';
 import '../services/file_open_error_message.dart';
+import '../services/email_composer.dart';
 import '../services/markdown_inline_parser.dart';
 import '../services/markdown_segments.dart';
 import '../services/markdown_qa_variant.dart';
@@ -18,6 +19,7 @@ import '../services/completion_diagnostics.dart';
 import '../services/web_preview.dart';
 import '../theme/profile_markdown_style.dart';
 import 'chat_inline_image.dart';
+import 'studio_loading.dart';
 import 'bot_mention_scope.dart';
 import 'markdown_code_block.dart';
 import 'block_reusing_markdown_body.dart';
@@ -58,6 +60,7 @@ class MarkdownMessageContent extends StatefulWidget {
 }
 
 class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
+  bool _openingEmail = false;
   // Retain only this mounted message's rendering. Unrelated stream/activity
   // updates must not split code fences, recreate styles and reparse its prose.
   Widget? _content;
@@ -189,6 +192,23 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   }
 
   Future<void> _open(BuildContext context, String href) async {
+    if (EmailComposer.accepts(href)) {
+      if (_openingEmail) return;
+      setState(() => _openingEmail = true);
+      final opened = await EmailComposer.open(href);
+      if (!mounted) return;
+      setState(() => _openingEmail = false);
+      if (!opened && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: StudioError(
+              'Could not open an email app. Install or enable one and try again.',
+            ),
+          ),
+        );
+      }
+      return;
+    }
     final uri = externalWebLink(href);
     var opened = false;
     if (uri != null) {
@@ -222,7 +242,7 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
         SnackBar(
           content: StudioError(
             uri == null
-                ? 'Only web links and linked Hermes files can be opened here.'
+                ? 'Only web links, email links and linked Hermes files can be opened here.'
                 : 'Could not open this link.',
           ),
         ),
@@ -273,6 +293,14 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
 
   @override
   Widget build(BuildContext context) {
+    return StudioPageLoading(
+      active: _openingEmail,
+      label: 'Opening email apps',
+      child: _buildCachedContent(context),
+    );
+  }
+
+  Widget _buildCachedContent(BuildContext context) {
     if (_content != null) {
       if (CompletionDiagnostics.enabled) {
         CompletionDiagnostics.event('markdown.message.cached');

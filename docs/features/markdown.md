@@ -8,12 +8,13 @@ Feature ID: `markdown`.
 
 - `markdown.render` — Read partial and completed formatted content.
 - `markdown.tables` — Read wide tables as stacked header/value rows on narrow screens; use the icon controls to choose rows or a wrapped grid. The latest explicit choice stays with the table through message updates, completion and rotation. Full screen enters the containing conversation’s reading mode.
+- `markdown.links` — Open web links, linked Hermes files and email drafts. Email addresses open Android’s email app chooser, preserving recipients and any subject/body supplied by the link.
 - `markdown.copy` — Select or copy exact code and output.
 - `markdown.reuse` — Retain current content through asynchronous rendering.
 
 ## How to get to it (user POV)
 
-Read a streamed reply, saved answer, Activity result or supported file preview. Open code actions to copy exact text, wrap lines or inspect a full view.
+Read a streamed reply, saved answer, Activity result or supported file preview. Open code actions to copy exact text, wrap lines or inspect a full view. Tap an email address or email link to choose an email app and compose a draft. Back dismisses the chooser and returns to the content.
 
 ## Driving it with Wing harnesses
 
@@ -22,7 +23,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/markdown_inline_parser_test.dart test/markdown_segment_correctness_test.dart test/markdown_parse_worker_test.dart test/markdown_phone_content_test.dart test/phone_reading_test.dart test/profile_conversation_ui_test.dart test/profile_markdown_style_test.dart test/growing_markdown_text_test.dart
+  flutter test --no-pub test/markdown_inline_parser_test.dart test/markdown_segment_correctness_test.dart test/markdown_parse_worker_test.dart test/markdown_phone_content_test.dart test/phone_reading_test.dart test/profile_conversation_ui_test.dart test/web_preview_test.dart test/profile_markdown_style_test.dart test/growing_markdown_text_test.dart
   ```
 
   Document assertions distinguish whole prose segments from the table cells'
@@ -50,3 +51,5 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 Partial streams can be plain until completion. Unsupported syntax must remain readable. A parser test alone does not prove Android selection or a WebView render.
 
 The Android `transcript-expansion` family also exercises the table-owned reading toggle, rotation, draft retention and compact composer through the production chat screen, in both themes and at normal/enlarged text. Run `python3 scripts/test_nightly_native.py transcript-expansion --output build/feature-verification/phone-reading`.
+
+The conversation UI suite taps email links, checks exact mailto handoff, held-launch feedback, repeat taps, failure, retry and departure. These platform-channel fixtures do not prove the Android chooser or an installed email app. On Android, tap an email link, select an installed email app and check the draft recipient; a link with subject/body must retain those fields. Back must return without sending. With no email app, Wing explains that one must be installed or enabled.

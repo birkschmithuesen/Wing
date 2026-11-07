@@ -1,4 +1,8 @@
+import 'dart:async';
+
 import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/email_composer.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/services/web_preview.dart';
 import 'support/composer_fixture.dart';
 import 'package:wing/core/models/transcript_message.dart';
@@ -180,10 +184,178 @@ void main() {
     await tester.tap(find.text('Unsafe link', findRichText: true));
     await tester.pump();
     expect(
-      find.text('Only web links and linked Hermes files can be opened here.'),
+      find.text(
+        'Only web links, email links and linked Hermes files can be opened here.',
+      ),
       findsOneWidget,
     );
   });
+
+  for (final content in [
+    '<nihonbashi_front@gardenhotels.co.jp>',
+    '[Email hotel](mailto:nihonbashi_front@gardenhotels.co.jp?subject=Luggage%20storage&body=Hello%0AThank%20you&cc=other%2Btrip@example.com)',
+  ]) {
+    testWidgets('email link opens the compose chooser: $content', (
+      tester,
+    ) async {
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        (call) async {
+          calls.add(call);
+          return true;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          EmailComposer.channel,
+          null,
+        ),
+      );
+      await message(tester, content);
+      await tester.tap(
+        find.text(
+          content.startsWith('<')
+              ? 'nihonbashi_front@gardenhotels.co.jp'
+              : 'Email hotel',
+          findRichText: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(calls.single.method, 'compose');
+      expect(
+        calls.single.arguments,
+        content.startsWith('<')
+            ? 'mailto:nihonbashi_front@gardenhotels.co.jp'
+            : content.substring(content.indexOf('(') + 1, content.length - 1),
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final fails in [false, true]) {
+    testWidgets('email handoff shows progress and settles (failure: $fails)', (
+      tester,
+    ) async {
+      final reply = Completer<bool>();
+      var calls = 0;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        (call) {
+          calls++;
+          return reply.future;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          EmailComposer.channel,
+          null,
+        ),
+      );
+      await tester.pumpMarkdownWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(actions: const [StudioLoadingSlot()]),
+            body: const MarkdownMessageContent(
+              data: '[Email](mailto:a@example.com)',
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Email', findRichText: true));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(StudioLoading), findsOneWidget);
+      await tester.tap(find.text('Email', findRichText: true));
+      await tester.pump();
+      expect(calls, 1);
+      if (fails) {
+        reply.completeError(PlatformException(code: 'unavailable'));
+      } else {
+        reply.complete(true);
+      }
+      await tester.pumpAndSettle();
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(
+        find.text(
+          'Could not open an email app. Install or enable one and try again.',
+        ),
+        fails ? findsOneWidget : findsNothing,
+      );
+      expect(find.text('Email', findRichText: true), findsOneWidget);
+    });
+  }
+
+  testWidgets('missing email app reports failure and permits another attempt', (
+    tester,
+  ) async {
+    var calls = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmailComposer.channel,
+      (call) async => ++calls > 1,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        null,
+      ),
+    );
+    await message(tester, '[Email](mailto:a@example.com)');
+    await tester.tap(find.text('Email', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Could not open an email app. Install or enable one and try again.',
+      ),
+      findsOneWidget,
+    );
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Email', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('departed message ignores a late failed email handoff', (
+    tester,
+  ) async {
+    final reply = Completer<bool>();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmailComposer.channel,
+      (_) => reply.future,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        null,
+      ),
+    );
+    await message(tester, '[Email](mailto:a@example.com)');
+    await tester.tap(find.text('Email', findRichText: true));
+    await tester.pump();
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: Text('Other page'))),
+    );
+    reply.complete(false);
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  test(
+    'email composer rejects non-email schemes without platform dispatch',
+    () async {
+      for (final link in [
+        'https://example.com',
+        'intent://launch',
+        'file:///tmp/a',
+      ]) {
+        expect(await EmailComposer.open(link), isFalse);
+      }
+    },
+  );
 
   testWidgets('assistant file links keep their exact remote target', (
     tester,

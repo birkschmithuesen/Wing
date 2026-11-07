@@ -1381,6 +1381,11 @@
       "feature": "administration-health",
       "library": "lib/core/services/doctor_finding_draft_session.dart"
     },
+    "lib/core/services/email_composer.dart": {
+      "role": "platform",
+      "feature": "markdown",
+      "library": "lib/core/services/email_composer.dart"
+    },
     "lib/core/services/file_open_error_message.dart": {
       "role": "utility",
       "feature": "outputs-and-viewers",

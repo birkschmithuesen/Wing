@@ -6816,6 +6816,17 @@
       "source": "docs/features/multi-surface-journeys.md; integration_test/hermes023_context_prod_test.dart",
       "status": "supported",
       "selector": "main"
+    },
+    {
+      "id": "channel-email-composer",
+      "kind": "platform-channel",
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/EmailComposerChannel.kt",
+      "purpose": "Open Android email chooser for mailto links without sending email",
+      "source": "lib/core/services/email_composer.dart; android/app/src/main/kotlin/com/tarkilhk/wing/MainActivity.kt",
+      "status": "supported",
+      "selector": [
+        "compose"
+      ]
     }
   ],
   "files": [
@@ -15983,6 +15994,16 @@
       "path": "integration_test/hermes023_context_prod_test.dart",
       "area": "integration_test",
       "provenance": "task-authored"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/EmailComposerChannel.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/email_composer.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {

@@ -50,6 +50,7 @@ class MainActivity : FlutterActivity() {
     private var voiceChannel: VoiceChannel? = null
     private var imageClipboardChannel: ImageClipboardChannel? = null
     private var botScreenChannel: BotScreenChannel? = null
+    private var emailComposerChannel: EmailComposerChannel? = null
     private var scrollCaptureChannel: ScrollCaptureChannel? = null
     private var intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
     @Volatile private var shareAuthority = Any()
@@ -83,6 +84,8 @@ class MainActivity : FlutterActivity() {
         scrollCaptureChannel = ScrollCaptureChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         botScreenChannel?.close()
         botScreenChannel = BotScreenChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        emailComposerChannel?.close()
+        emailComposerChannel = EmailComposerChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         intakeReplies.retire()
         intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
         shareAuthority = Any()
@@ -288,6 +291,8 @@ class MainActivity : FlutterActivity() {
         scrollCaptureChannel = null
         botScreenChannel?.close()
         botScreenChannel = null
+        emailComposerChannel?.close()
+        emailComposerChannel = null
         shareAuthorityActive = false
         intakeReplies.retire()
         providerWork.cancel(shareAuthority)
