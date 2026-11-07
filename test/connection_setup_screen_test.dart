@@ -67,6 +67,7 @@ Future<void> _pump(
   WorkspaceAccent accent = WorkspaceAccent.teal,
   double scale = 1,
   double keyboard = 0,
+  bool disableAnimations = false,
 }) async {
   await tester.pumpWidget(
     RepaintBoundary(
@@ -76,6 +77,7 @@ Future<void> _pump(
         theme: profileWorkspaceTheme(wingTheme(brightness), accent: accent),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
+            disableAnimations: disableAnimations,
             textScaler: TextScaler.linear(scale),
             viewInsets: EdgeInsets.only(bottom: keyboard),
           ),
@@ -108,7 +110,7 @@ Future<void> _signIn(WidgetTester tester) async {
     find.byKey(const Key('connection-address')),
     'https://hermes.example.com/agent/',
   );
-  await _tap(tester, 'Continue');
+  await _tap(tester, 'Next');
   await tester.pumpAndSettle();
   await tester.enterText(find.byKey(const Key('connection-username')), 'alex');
   await tester.enterText(
@@ -117,7 +119,11 @@ Future<void> _signIn(WidgetTester tester) async {
   );
 }
 
-Future<void> _capture(WidgetTester tester, String name) async {
+Future<void> _capture(
+  WidgetTester tester,
+  String name, {
+  bool pending = false,
+}) async {
   if (!_captureEnabled) return;
   final images = tester.widgetList<Image>(find.byType(Image)).toList();
   final context = tester.element(find.byKey(_frame));
@@ -126,7 +132,11 @@ Future<void> _capture(WidgetTester tester, String name) async {
       images.map((image) => precacheImage(image.image, context)),
     );
   });
-  await tester.pumpAndSettle();
+  if (pending) {
+    await tester.pump();
+  } else {
+    await tester.pumpAndSettle();
+  }
   final boundary = tester.renderObject<RenderRepaintBoundary>(
     find.byKey(_frame),
   );
@@ -167,6 +177,120 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'swipes and Next retain inline results ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final fixture = ConnectionProbeFixture()
+            ..discoveryGate = Completer<ProfileDiscovery>();
+          await _pump(
+            tester,
+            fixture: fixture,
+            brightness: brightness,
+            scale: scale,
+          );
+          Future<void> swipe(double distance) async {
+            await tester.dragFrom(
+              tester.getTopLeft(
+                    find
+                        .byWidgetPredicate(
+                          (widget) =>
+                              widget is GestureDetector &&
+                              widget.onHorizontalDragEnd != null,
+                        )
+                        .first,
+                  ) +
+                  const Offset(195, 8),
+              Offset(distance, 0),
+            );
+            await tester.pump();
+          }
+
+          await tester.enterText(
+            find.byKey(const Key('connection-address')),
+            'https://hermes.example.com',
+          );
+          await swipe(-150);
+          expect(find.byKey(const Key('connection-username')), findsOneWidget);
+          await swipe(150);
+          expect(find.byKey(const Key('connection-address')), findsOneWidget);
+          await _tap(tester, 'Next');
+          await tester.enterText(
+            find.byKey(const Key('connection-username')),
+            'alex',
+          );
+          await tester.enterText(
+            find.byKey(const Key('connection-password')),
+            'password',
+          );
+          await swipe(-150);
+          expect(find.byKey(const Key('connection-name')), findsNothing);
+          await _tap(tester, 'Check connection');
+          await tester.pump();
+          expect(find.byKey(const Key('connection-username')), findsOneWidget);
+          final progress = find.byType(CircularProgressIndicator);
+          expect(progress, findsOneWidget);
+          expect(
+            tester
+                .getRect(progress)
+                .overlaps(const Rect.fromLTWH(0, 0, 390, 844)),
+            isTrue,
+          );
+          expect(
+            tester
+                .widget<FilledButton>(
+                  find.byKey(const Key('connection-primary')),
+                )
+                .onPressed,
+            isNull,
+          );
+          await _capture(
+            tester,
+            '${brightness.name}-inline-pending-${scale}x',
+            pending: true,
+          );
+          await swipe(-150);
+          expect(find.byKey(const Key('connection-name')), findsNothing);
+          fixture.discoveryGate!.complete(connectionDiscovery);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('connection-username')), findsOneWidget);
+          expect(find.text('Available'), findsNWidgets(3));
+          await _capture(tester, '${brightness.name}-inline-success-${scale}x');
+          await swipe(-150);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('connection-name')), findsOneWidget);
+          await tester.enterText(
+            find.byKey(const Key('connection-name')),
+            'Home',
+          );
+          await swipe(150);
+          await tester.pumpAndSettle();
+          expect(find.byKey(const Key('connection-username')), findsOneWidget);
+          await _tap(tester, 'Next');
+          await tester.pumpAndSettle();
+          expect(
+            tester
+                .widget<TextFormField>(find.byKey(const Key('connection-name')))
+                .controller!
+                .text,
+            'Home',
+          );
+          expect(fixture.calls, ConnectionCheck.values);
+          await swipe(150);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const Key('connection-password')),
+            'changed password',
+          );
+          await swipe(-150);
+          expect(find.byKey(const Key('connection-name')), findsNothing);
+          expect(find.text('Available'), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+
       testWidgets('wrong endpoint recovery ${brightness.name} $scale', (
         tester,
       ) async {
@@ -203,7 +327,7 @@ void main() {
           find.byKey(const Key('connection-address')),
           'https://gateway.example.com',
         );
-        await _tap(tester, 'Continue');
+        await _tap(tester, 'Next');
         await tester.pumpAndSettle();
         expect(
           tester
@@ -257,7 +381,7 @@ void main() {
           savedIcon = icon;
         },
       );
-      await _tap(tester, 'Continue');
+      await _tap(tester, 'Next');
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Change connection icon'));
       await tester.pumpAndSettle();
@@ -296,6 +420,33 @@ void main() {
     },
   );
 
+  testWidgets('reduced motion keeps inline check feedback and explicit Next', (
+    tester,
+  ) async {
+    final fixture = ConnectionProbeFixture()
+      ..discoveryGate = Completer<ProfileDiscovery>();
+    await _pump(tester, fixture: fixture, disableAnimations: true);
+    await _signIn(tester);
+    await _tap(tester, 'Check connection');
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(
+      find.bySemanticsLabel('Profiles & access, Checking…'),
+      findsOneWidget,
+    );
+    expect(
+      find.text('Checking access to your Hermes. No message will be sent.'),
+      findsOneWidget,
+    );
+    expect(find.byKey(const Key('connection-name')), findsNothing);
+    fixture.discoveryGate!.complete(connectionDiscovery);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('connection-username')), findsOneWidget);
+    await _tap(tester, 'Next');
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('connection-name')), findsOneWidget);
+  });
+
   testWidgets('a new connection keeps its sign-in icon until final save', (
     tester,
   ) async {
@@ -315,6 +466,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(saved, isNull);
     await _tap(tester, 'Check connection');
+    await tester.pumpAndSettle();
+    await _tap(tester, 'Next');
     await tester.pumpAndSettle();
     await _tap(tester, 'Save and open');
     await tester.pumpAndSettle();
@@ -343,6 +496,10 @@ void main() {
       await _signIn(tester);
       expect(fixture.calls, isEmpty);
       await _tap(tester, 'Check connection');
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('connection-username')), findsOneWidget);
+      expect(find.byKey(const Key('connection-name')), findsNothing);
+      await _tap(tester, 'Next');
       await tester.pumpAndSettle();
       expect(find.text('Connection verified'), findsOneWidget);
       expect(checked?.port, 443);
@@ -375,7 +532,7 @@ void main() {
         find.byKey(const Key('connection-address')),
         'https://hermes.example.com',
       );
-      await _tap(tester, 'Continue');
+      await _tap(tester, 'Next');
       await tester.pumpAndSettle();
       await _tap(tester, 'Check connection');
       await tester.pumpAndSettle();
@@ -405,6 +562,9 @@ void main() {
     fixture.discoveryGate!.complete(connectionDiscovery);
     await tester.pumpAndSettle();
     expect(fixture.closed, isTrue);
+    expect(find.byKey(const Key('connection-address')), findsOneWidget);
+    await _tap(tester, 'Next');
+    await tester.pumpAndSettle();
     expect(find.text('Sign in to Hermes'), findsOneWidget);
     expect(find.text('Connection verified'), findsNothing);
     expect(
@@ -431,6 +591,8 @@ void main() {
       );
       await _signIn(tester);
       await _tap(tester, 'Check connection');
+      await tester.pumpAndSettle();
+      await _tap(tester, 'Next');
       await tester.pumpAndSettle();
       await _tap(tester, 'Save and open');
       await tester.pumpAndSettle();
@@ -494,7 +656,7 @@ void main() {
       );
       SavedConnection? checked;
       await _pump(tester, initial: initial, candidate: (c) => checked = c);
-      await _tap(tester, 'Continue');
+      await _tap(tester, 'Next');
       await tester.pumpAndSettle();
       await _tap(tester, 'Custom setup');
       await tester.pumpAndSettle();
@@ -507,6 +669,8 @@ void main() {
       expect(checked?.desktopGatewayUrl, isNull);
       expect(checked?.gatewayHeaders, initial.gatewayHeaders);
       expect(checked?.dashboardPassword, ' exact password ');
+      await _tap(tester, 'Next');
+      await tester.pumpAndSettle();
       expect(find.byTooltip('Save changes'), findsOneWidget);
     },
   );

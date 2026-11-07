@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/connection_setup_session.dart';
 import 'package:wing/core/services/hermes_cloud.dart';
 import 'package:flutter/material.dart';
@@ -55,7 +57,11 @@ void main() {
           find.byKey(const Key('connection-address')),
           'https://hermes.example.com/agent/',
         );
-        await _tap(tester, 'Continue');
+        await _swipe(tester, -150);
+        expect(find.byKey(const Key('connection-username')), findsOneWidget);
+        await _swipe(tester, 150);
+        expect(find.byKey(const Key('connection-address')), findsOneWidget);
+        await _tap(tester, 'Next');
         await _tap(tester, 'Check connection');
         expect(find.text('Enter your dashboard username.'), findsOneWidget);
         expect(find.text('Enter your dashboard password.'), findsOneWidget);
@@ -68,7 +74,32 @@ void main() {
           find.byKey(const Key('connection-password')),
           'synthetic password',
         );
-        await _tap(tester, 'Check connection');
+        fixture.discoveryGate = Completer<ProfileDiscovery>();
+        final check = find.text('Check connection');
+        await tester.ensureVisible(check);
+        await tester.pumpAndSettle();
+        await tester.tap(check);
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.byKey(const Key('connection-username')), findsOneWidget);
+        final progress = find.byType(CircularProgressIndicator);
+        expect(progress, findsOneWidget);
+        final viewport =
+            Offset.zero &
+            (tester.view.physicalSize / tester.view.devicePixelRatio);
+        expect(tester.getRect(progress).overlaps(viewport), isTrue);
+        expect(
+          tester
+              .widget<FilledButton>(find.byKey(const Key('connection-primary')))
+              .onPressed,
+          isNull,
+        );
+        await captureJourney(
+          tester,
+          'connection-${brightness.name}-inline-pending',
+        );
+        fixture.discoveryGate!.complete(connectionDiscovery);
+        await tester.pumpAndSettle();
+        expect(find.byKey(const Key('connection-username')), findsOneWidget);
         expect(saved, isNull);
         expect(find.byTooltip('Save and open'), findsNothing);
         expect(find.textContaining('private-server-detail'), findsNothing);
@@ -77,11 +108,30 @@ void main() {
           'connection-${brightness.name}-failed-check',
         );
         fixture.failAt = null;
-        await _tap(tester, 'Try again');
+        await _tap(tester, 'Check connection');
+        expect(find.byKey(const Key('connection-username')), findsOneWidget);
+        expect(find.text('Available'), findsNWidgets(3));
+        await captureJourney(
+          tester,
+          'connection-${brightness.name}-inline-success',
+        );
+        await _swipe(tester, -150);
         expect(find.text('Connection verified'), findsOneWidget);
         expect(saved, isNull);
         await tester.enterText(
           find.byKey(const Key('connection-name')),
+          'Home',
+        );
+        FocusManager.instance.primaryFocus?.unfocus();
+        await tester.pumpAndSettle();
+        await _swipe(tester, 150);
+        expect(find.byKey(const Key('connection-username')), findsOneWidget);
+        await _tap(tester, 'Next');
+        expect(
+          tester
+              .widget<TextFormField>(find.byKey(const Key('connection-name')))
+              .controller!
+              .text,
           'Home',
         );
         await captureJourney(tester, 'connection-${brightness.name}-verified');
@@ -129,5 +179,21 @@ Future<void> _tap(
       DateTime.now().isBefore(deadline));
   expect(target.hitTestable(), findsOneWidget);
   await tester.tap(target);
+  await tester.pumpAndSettle();
+}
+
+Future<void> _swipe(WidgetTester tester, double distance) async {
+  // A scrolled card can put an editable field below the app bar. Swipe an
+  // observed, non-editable card heading so native text gestures keep ownership.
+  final target = [
+    find.text('Profiles & access'),
+    find.text('Connection verified'),
+    find.text('Sign in to Hermes'),
+    find.text('Where’s your Hermes?'),
+  ].firstWhere((finder) => finder.evaluate().isNotEmpty);
+  await tester.ensureVisible(target);
+  await tester.pumpAndSettle();
+  expect(target.hitTestable(), findsOneWidget);
+  await tester.drag(target, Offset(distance, 0));
   await tester.pumpAndSettle();
 }

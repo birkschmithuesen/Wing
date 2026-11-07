@@ -218,6 +218,9 @@ class ConnectionSetupSession extends ChangeNotifier {
           !_saving &&
           !_cloudBusy &&
           !_leaving &&
+          ((_step != ConnectionSetupStep.signIn &&
+                  _step != ConnectionSetupStep.check) ||
+              (_probe.verified && !_probe.checking)) &&
           (_step != ConnectionSetupStep.cloud ||
               _discovery == null ||
               (_discovery!.organizations.isNotEmpty
@@ -232,12 +235,17 @@ class ConnectionSetupSession extends ChangeNotifier {
 
   void _probeChanged() {
     if (_closed) return;
-    if (_step == ConnectionSetupStep.check &&
-        !_probe.checking &&
-        _probe.verified) {
-      _step = ConnectionSetupStep.review;
-    }
     _publish();
+  }
+
+  void continueVerified() {
+    if (_closed ||
+        !_value.canAdvance ||
+        (_step != ConnectionSetupStep.signIn &&
+            _step != ConnectionSetupStep.check)) {
+      return;
+    }
+    _go(ConnectionSetupStep.review);
   }
 
   void _go(ConnectionSetupStep step) {
@@ -505,6 +513,7 @@ class ConnectionSetupSession extends ChangeNotifier {
 
   Future<void> check() async {
     if (_closed ||
+        _leaving ||
         _saving ||
         _cloudBusy ||
         _probe.checking ||
@@ -548,7 +557,12 @@ class ConnectionSetupSession extends ChangeNotifier {
       gatewayHeaders: _draft.access.headers,
     );
     final generation = _generation;
-    _go(ConnectionSetupStep.check);
+    if (_cloudRoute) {
+      _go(ConnectionSetupStep.check);
+    } else {
+      _probe.cancel();
+      _publish();
+    }
     if (!_owns(generation)) return;
     await _probe.check(
       ConnectionAccess(
@@ -643,8 +657,15 @@ class ConnectionSetupSession extends ChangeNotifier {
       }
       return ConnectionSetupBack.stay;
     }
-    if (_step == ConnectionSetupStep.check ||
-        _step == ConnectionSetupStep.review) {
+    if (_step == ConnectionSetupStep.review) {
+      _step = _cloudRoute
+          ? ConnectionSetupStep.check
+          : ConnectionSetupStep.signIn;
+      _saveError = null;
+      _publish();
+      return ConnectionSetupBack.stay;
+    }
+    if (_step == ConnectionSetupStep.check) {
       editSignIn();
       return ConnectionSetupBack.stay;
     }

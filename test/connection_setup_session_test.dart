@@ -124,6 +124,9 @@ void main() {
         ' exact synthetic password ',
       );
       expect(checked!.connection.dashboardUsername, 'alex');
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isTrue);
+      session.continueVerified();
       expect(session.value.step, ConnectionSetupStep.review);
       expect(writes, isEmpty);
       await session.save();
@@ -140,6 +143,7 @@ void main() {
     probe.discoveryGate!.complete(connectionDiscovery);
     await check;
     expect(session.value.check.verified, isFalse);
+    session.continueVerified();
     await session.save();
     expect(writes, isEmpty);
   });
@@ -159,6 +163,7 @@ void main() {
       local();
       await session.check();
       final calls = probe.calls.length;
+      session.continueVerified();
       await session.save();
       expect(writes, isEmpty);
       expect(session.value.saveError, isNotNull);
@@ -285,6 +290,7 @@ void main() {
     session = create(save: (_) => committed.future);
     local();
     await session.check();
+    session.continueVerified();
     final save = session.save();
     final candidate = checked!.connection;
     disposeSession();
@@ -297,7 +303,7 @@ void main() {
     () async {
       local();
       session.addListener(() {
-        if (session.value.step == ConnectionSetupStep.check &&
+        if (session.value.step == ConnectionSetupStep.signIn &&
             !disposedSessions.contains(session)) {
           disposeSession();
         }
@@ -316,6 +322,7 @@ void main() {
         disposeSession();
       }
     });
+    session.continueVerified();
     await session.save();
     expect(writes, isEmpty);
   });
@@ -341,6 +348,7 @@ void main() {
       await session.continueCloud();
       expect(cloud.signIns, 0);
       expect(identical(checked!.dashboardOAuth, owner), isTrue);
+      session.continueVerified();
       expect(session.value.step, ConnectionSetupStep.review);
       disposeSession();
       expect(owner.isActive, isTrue);
@@ -396,6 +404,7 @@ void main() {
       await session.continueCloud();
       final owner = checked!.dashboardOAuth!;
       expect(owner.isActive, isTrue);
+      session.continueVerified();
       await session.save();
       expect(writes.length, 1);
       expect(owner.isActive, isFalse);
@@ -423,6 +432,7 @@ void main() {
       );
       await session.check();
       owner.retire();
+      session.continueVerified();
       await session.save();
       expect(writes, isEmpty);
       expect(session.value.step, ConnectionSetupStep.cloud);
@@ -470,6 +480,7 @@ void main() {
       expect(session.value.leaving, isFalse);
       expect(cloud.signIns, 1);
       expect(session.value.check.verified, isTrue);
+      session.continueVerified();
       expect(session.value.step, ConnectionSetupStep.review);
       expect(probe.connectedProfile?.name, 'work');
       expect(writes, isEmpty);

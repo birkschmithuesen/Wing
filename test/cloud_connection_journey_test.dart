@@ -208,7 +208,7 @@ void main() {
           expect(find.text('Where’s your Hermes?'), findsOneWidget);
           expect(find.byType(PlayfulPortrait), findsOneWidget);
           await _capture(tester, '${theme.name}-$scale-cloud-sign-in');
-          await _tap(tester, 'Continue');
+          await _tap(tester, 'Next');
           expect(find.text('Research assistant'), findsOneWidget);
           expect(
             tester
@@ -230,7 +230,8 @@ void main() {
           );
           await _tap(tester, 'Research assistant');
           await _capture(tester, '${theme.name}-$scale-instances');
-          await _tap(tester, 'Continue');
+          await _tap(tester, 'Next');
+          await _tap(tester, 'Next');
           expect(find.text('Connection verified'), findsOneWidget);
           expect(saved, isNull);
           expect(cloud.signIns, 1);
@@ -254,9 +255,9 @@ void main() {
         final cloud = _Cloud();
         await _pump(tester, cloud);
         await _tap(tester, 'Hermes Cloud');
-        await _tap(tester, 'Continue');
+        await _tap(tester, 'Next');
         await _tap(tester, 'Research assistant');
-        await _tap(tester, 'Continue');
+        await _tap(tester, 'Next');
         final owner = cloud.lastOwner!;
         expect(owner.isActive, isTrue);
         if (dispose) {
@@ -278,9 +279,9 @@ void main() {
     final cloud = _Cloud()..signInResult = Completer<DashboardOAuthSession?>();
     await _pump(tester, cloud);
     await _tap(tester, 'Hermes Cloud');
-    await _tap(tester, 'Continue');
+    await _tap(tester, 'Next');
     await _tap(tester, 'Research assistant');
-    await tester.tap(find.text('Continue'));
+    await tester.tap(find.text('Next'));
     await tester.pump();
     expect(cloud.signIns, 1);
     await tester.pumpWidget(const SizedBox.shrink());
@@ -305,7 +306,7 @@ void main() {
       final cloud = _Cloud()..discovery = Completer<CloudDiscovery?>();
       await _pump(tester, cloud);
       await _tap(tester, 'Hermes Cloud');
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.text('Next'));
       await tester.pump();
       await tester.tap(find.byType(BackButton));
       await tester.pumpAndSettle();
@@ -340,7 +341,7 @@ void main() {
         onSave: (_) async => throw StateError('No duplicate save'),
       );
       await _tap(tester, 'Hermes Cloud');
-      await _tap(tester, 'Continue');
+      await _tap(tester, 'Next');
       await _tap(tester, 'Research assistant');
       expect(find.text('Open instance'), findsOneWidget);
       await _tap(tester, 'Open instance');
@@ -355,7 +356,7 @@ void main() {
       final cloud = _Cloud()..result = const CloudDiscovery();
       await _pump(tester, cloud);
       await _tap(tester, 'Hermes Cloud');
-      await _tap(tester, 'Continue');
+      await _tap(tester, 'Next');
       expect(find.text('No Cloud instances yet'), findsOneWidget);
       expect(find.text('Open Nous Portal'), findsOneWidget);
       expect(find.text('Refresh'), findsOneWidget);

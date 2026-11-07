@@ -36,6 +36,8 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   final _signInForm = GlobalKey<FormState>();
   final _nameForm = GlobalKey<FormState>();
   final _scroll = ScrollController();
+  final _checkResults = GlobalKey();
+  double _swipeDistance = 0;
   late final TextEditingController _address;
   late final TextEditingController _username;
   late final TextEditingController _password;
@@ -102,13 +104,34 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     if (_addressForm.currentState!.validate()) _session.continueAddress();
   }
 
+  void _swipeEnd(DragEndDetails details) {
+    if (_swipeDistance.abs() < 64 || _saving || _cloudBusy) return;
+    if (_swipeDistance > 0) {
+      if (_step == ConnectionSetupStep.signIn ||
+          _step == ConnectionSetupStep.review) {
+        _back();
+      }
+    } else if (_step == ConnectionSetupStep.address) {
+      _continue();
+    } else if (_step == ConnectionSetupStep.signIn ||
+        _step == ConnectionSetupStep.check) {
+      _session.continueVerified();
+    }
+  }
+
   Future<void> _check() async {
     if (!_cloudRoute &&
         _step == ConnectionSetupStep.signIn &&
         !_signInForm.currentState!.validate()) {
       return;
     }
-    await _session.check();
+    FocusManager.instance.primaryFocus?.unfocus();
+    final checking = _session.check();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final context = _checkResults.currentContext;
+      if (mounted && context != null) Scrollable.ensureVisible(context);
+    });
+    await checking;
   }
 
   Future<void> _save() async {
@@ -220,71 +243,78 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
                 ),
               )
             : null,
-        body: SafeArea(
-          top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  controller: _scroll,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Semantics(
-                                label: 'Connection setup, step $step of 3',
-                                child: Row(
-                                  children: [
-                                    for (var index = 0; index < 3; index++)
-                                      Expanded(
-                                        child: Padding(
-                                          padding: EdgeInsets.only(
-                                            right: index == 2 ? 0 : 6,
-                                          ),
-                                          child: ColoredBox(
-                                            color: index < step
-                                                ? Theme.of(
-                                                    context,
-                                                  ).colorScheme.primary
-                                                : Theme.of(
-                                                    context,
-                                                  ).colorScheme.outlineVariant,
-                                            child: const SizedBox(height: 3),
+        body: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onHorizontalDragStart: (_) => _swipeDistance = 0,
+          onHorizontalDragUpdate: (details) =>
+              _swipeDistance += details.primaryDelta ?? 0,
+          onHorizontalDragEnd: _swipeEnd,
+          child: SafeArea(
+            top: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: LayoutBuilder(
+                  builder: (context, constraints) => SingleChildScrollView(
+                    controller: _scroll,
+                    keyboardDismissBehavior:
+                        ScrollViewKeyboardDismissBehavior.onDrag,
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: constraints.maxHeight,
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                Semantics(
+                                  label: 'Connection setup, step $step of 3',
+                                  child: Row(
+                                    children: [
+                                      for (var index = 0; index < 3; index++)
+                                        Expanded(
+                                          child: Padding(
+                                            padding: EdgeInsets.only(
+                                              right: index == 2 ? 0 : 6,
+                                            ),
+                                            child: ColoredBox(
+                                              color: index < step
+                                                  ? Theme.of(
+                                                      context,
+                                                    ).colorScheme.primary
+                                                  : Theme.of(context)
+                                                        .colorScheme
+                                                        .outlineVariant,
+                                              child: const SizedBox(height: 3),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 24),
-                              switch (_step) {
-                                ConnectionSetupStep.choose => _chooseStep(),
-                                ConnectionSetupStep.cloud => _cloudStep(),
-                                ConnectionSetupStep.address => _addressStep(),
-                                ConnectionSetupStep.signIn => _signInStep(),
-                                ConnectionSetupStep.check => _checkStep(),
-                                ConnectionSetupStep.review => _reviewStep(),
-                              },
-                            ],
-                          ),
-                          if (_step != ConnectionSetupStep.review)
-                            Padding(
-                              padding: const EdgeInsets.only(top: 24),
-                              child: _footer(),
+                                const SizedBox(height: 24),
+                                switch (_step) {
+                                  ConnectionSetupStep.choose => _chooseStep(),
+                                  ConnectionSetupStep.cloud => _cloudStep(),
+                                  ConnectionSetupStep.address => _addressStep(),
+                                  ConnectionSetupStep.signIn => _signInStep(),
+                                  ConnectionSetupStep.check => _checkStep(),
+                                  ConnectionSetupStep.review => _reviewStep(),
+                                },
+                              ],
                             ),
-                        ],
+                            if (_step != ConnectionSetupStep.review)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 24),
+                                child: _footer(),
+                              ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -752,6 +782,17 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
               'Your dashboard authentication and access headers will also be sent to the chat address shown above.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+          const SizedBox(height: 16),
+          StudioButtonPress(
+            child: OutlinedButton(
+              onPressed: _probe.checking ? null : _check,
+              child: const Text('Check connection'),
+            ),
+          ),
+          if (_probe.checking || _probe.checkedAt != null) ...[
+            const SizedBox(height: 16),
+            _checkResultsPanel(),
+          ],
         ],
       ),
     ),
@@ -766,6 +807,14 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
             : 'One part needs attention',
       ),
       _destination(),
+      _checkResultsPanel(),
+    ],
+  );
+
+  Widget _checkResultsPanel() => Column(
+    key: _checkResults,
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
       _panel(
         Column(
           children: [
@@ -826,7 +875,9 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         ),
       ] else
         Text(
-          'Checking access to your Hermes. No message will be sent.',
+          _probe.verified
+              ? 'Connection verified. Select Next to name and save this instance.'
+              : 'Checking access to your Hermes. No message will be sent.',
           style: Theme.of(context).textTheme.bodySmall,
         ),
     ],
@@ -968,17 +1019,14 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   Widget _footer() {
     if (_step == ConnectionSetupStep.choose) return const SizedBox.shrink();
     final (label, action) = switch (_step) {
-      ConnectionSetupStep.choose => ('Continue', _continue),
+      ConnectionSetupStep.choose => ('Next', _continue),
       ConnectionSetupStep.cloud => (
-        _alreadySaved == null ? 'Continue' : 'Open instance',
+        _alreadySaved == null ? 'Next' : 'Open instance',
         _continueCloud,
       ),
-      ConnectionSetupStep.address => ('Continue', _continue),
-      ConnectionSetupStep.signIn => ('Check connection', _check),
-      ConnectionSetupStep.check =>
-        _probe.checking
-            ? ('Cancel check', _session.editSignIn)
-            : ('Try again', _check),
+      ConnectionSetupStep.address => ('Next', _continue),
+      ConnectionSetupStep.signIn ||
+      ConnectionSetupStep.check => ('Next', _session.continueVerified),
       ConnectionSetupStep.review => (
         _editing ? 'Save changes' : 'Save and open',
         _save,
@@ -995,13 +1043,23 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         progressLabel: 'Saving connection',
       );
     }
-    return StudioButtonPress(
-      child: FilledButton(
-        key: const Key('connection-primary'),
-        style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-        onPressed: _state.canAdvance ? action : null,
-        child: StudioActionLabel(label, busy: _saving || _cloudBusy),
-      ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_step == ConnectionSetupStep.check)
+          TextButton(
+            onPressed: _probe.checking ? _session.editSignIn : _check,
+            child: Text(_probe.checking ? 'Cancel check' : 'Check connection'),
+          ),
+        StudioButtonPress(
+          child: FilledButton(
+            key: const Key('connection-primary'),
+            style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
+            onPressed: _state.canAdvance ? action : null,
+            child: StudioActionLabel(label, busy: _saving || _cloudBusy),
+          ),
+        ),
+      ],
     );
   }
 

@@ -13,7 +13,7 @@ Open Wing and tap **Connect your agent**. Choose the route that matches your set
 - **Hermes Cloud:** sign in through Nous Portal, choose your organization if asked, and select your instance.
 - **Use an address:** enter your Hermes gateway Webapp address and sign-in details. A home or remote server must be reachable from your phone. See [Connecting a self-hosted Hermes server](SELF_HOSTING.md) for host and proxy setup.
 
-Wing checks profile access, live chat and history before you tap **Save and open**. You can correct a failed check without replacing a saved connection.
+Use **Next** or swipe left/right between the setup cards. **Check connection** checks profile access, live chat and history and keeps the results on screen. After a successful check, select **Next** to name the instance, then **Save and open**. You can correct a failed check without replacing a saved connection.
 
 ## 3. Start a conversation
 

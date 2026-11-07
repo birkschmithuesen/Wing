@@ -107,7 +107,7 @@ void main() {
         find.byKey(const Key('connection-address')),
         'https://setup-$nonce.invalid/agent/',
       );
-      await tap(find.text('Continue'));
+      await tap(find.text('Next'));
       await tester.enterText(
         find.byKey(const Key('connection-username')),
         'qa-user',
@@ -119,6 +119,8 @@ void main() {
       );
       debugPrintSynchronously('[secure-setup-native] password entry completed');
       await tap(find.text('Check connection'));
+      expect(find.byKey(const Key('connection-username')), findsOneWidget);
+      await tap(find.text('Next'));
       expect(find.text('Connection verified'), findsOneWidget);
       await tester.enterText(find.byKey(const Key('connection-name')), label);
       await tap(find.byTooltip('Save and open'));
