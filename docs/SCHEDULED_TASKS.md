@@ -26,8 +26,9 @@ policy values and the existing schedule; it does not re-anchor an interval.
 **Pause schedule** changes future scheduling. **Stop run** requests cancellation
 of the current execution and leaves the schedule unchanged. The run stops at its
 next cancellation check, so “Stop requested” can appear while it still shows
-Running. Current work remains stoppable even if a newer Run now attempt was
-rejected. Recent runs retain cancelled and missed outcomes.
+Running. Current work remains stoppable while its Run now request is waiting, or if a
+newer Run now attempt was rejected. Stop shows its own pending indicator and
+prevents a duplicate cancellation request. Recent runs retain cancelled and missed outcomes.
 
 **Run now** executes work immediately. A paused task offers **Resume and run**.
 Leaving Wing does not cancel an admitted run. Deleting the task removes its

@@ -79,3 +79,68 @@ authorized journey.
 For attachment refusal, the [conversation recovery recipe](conversation.md#gotchas)
 checks that saved messages remain visible, Send is unavailable, and Retry keeps
 the draft while attachment completes. History access does not grant write authority.
+
+### Selected Hermes features on an existing production gateway
+
+With operator authorization for isolated QA profile/chat creation, cleanup and
+real provider usage, run the dedicated production-connected Android recipe.
+Credentials are read at runtime from a private file containing `provider`,
+`username` and `password`; they are never compiled into the APK.
+
+```sh
+python3 scripts/test_existing_hermes_next.py --url http://GATEWAY:PORT --login-file /private/login.json --suite admin --output build/feature-verification/prod-admin-UNIQUE
+python3 scripts/test_existing_hermes_next.py --url http://GATEWAY:PORT --login-file /private/login.json --suite conversation --output build/feature-verification/prod-conversation-UNIQUE
+python3 scripts/test_existing_hermes_next.py --url http://GATEWAY:PORT --login-file /private/login.json --suite groups --output build/feature-verification/prod-groups-UNIQUE
+python3 scripts/test_existing_hermes_next.py --url http://GATEWAY:PORT --login-file /private/login.json --suite sessions --output build/feature-verification/prod-sessions-UNIQUE
+python3 scripts/test_existing_hermes_next.py --url http://GATEWAY:PORT --login-file /private/login.json --suite context --output build/feature-verification/prod-context-UNIQUE
+```
+
+Each run owns a disposable emulator, forwards bytes to the real canonical gateway,
+records app/backend identities and exact test outcomes, captures UI frames and
+retires the emulator. Use a new output directory for each run. The admin suite
+creates a blank uniquely named profile and one disabled MCP connector. It drives
+plugin maintenance with verified empty user inventory, nonempty cached connector
+status/refresh, QA-only skill lock/unlock, and a settings save with HTTP and reopened-editor readback,
+then removes that profile. It does not upgrade shared plugins or modify managed policy.
+
+The conversation suite creates uniquely identified QA chats in the default
+profile, sends real provider requests through the composer, verifies unchanged
+compression preview history and an actual compression commit, and checks detached
+work in a fresh observer without runtime attachment. The finite background QA
+calculation uses one process, constant memory and no files/network/sleeps. Owned
+chat manifests survive failures; a cleanup failure retains identity for review.
+
+The groups suite creates two blank profiles with the default profile's advertised
+provider/model; provider authentication must be available to those profiles.
+It saves and reopens owned group purpose, notes and routing, observes actual member
+work and stops it, saves task timezone/missed-run policy/group delivery, executes
+a real result into the owned group, and cancels another task execution without
+pausing its schedule. It removes exact owned tasks and groups before deleting the
+QA profiles. Unconfirmed cleanup retains the profiles and ownership manifests.
+A separate case requests a tiny, tool-free exchange between the two QA members,
+requires a reported bound of at most three rounds, and verifies one actual
+Continue grant followed by Stop. An unavailable bound or grant is a failed
+prerequisite, not a substituted passing scenario.
+
+The sessions suite requests a real two-question clarification batch, stages both
+answers and confirms them through the Android form, then verifies the provider's
+response and retained draft. A separate owned chat selects a different advertised
+model without running inference on it, then resets through Use profile default
+and checks resolved model, saved history, draft and unchanged profile settings.
+Missing provider clarification support or an alternate model leaves that path
+unverified; ordinary text or an already-default reset is insufficient.
+
+The context suite creates one blank QA profile on the configured provider/model,
+pins only that profile to 65,536 context tokens, and verifies the canonical stats
+and visible pinned limit after a real reply. It deletes the owned chat before
+removing the profile, retaining the profile if chat cleanup is uncertain.
+
+For a focused recovery, repeat `--case 'Exact named case'` to select only failed
+outcomes from that suite. Preserve the original failed aggregate receipt.
+
+An empty plugin-maintenance receipt proves dispatch and acknowledgement, not a
+plugin upgrade. A disabled cached connector proves that observation, not OAuth or
+connection recovery. Managed-lock refusals need an existing policy prerequisite;
+this recipe never installs instance-wide locks solely for a test. Retain focused
+native/host refusal proofs alongside these production outcomes and report the
+unexercised production branches explicitly.

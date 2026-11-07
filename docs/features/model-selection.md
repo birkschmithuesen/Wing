@@ -52,3 +52,10 @@ conversation's explicit model selection. Hermes resolves the current profile
 default; the action retains history, draft, reasoning and fast settings and does
 not edit the profile default. A running turn keeps its current model while the
 resolved default is shown as Next turn. Rejection leaves the picker open.
+
+For authorized Android + production acceptance, use the `sessions` suite in the
+[existing-gateway journey](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+It verifies real batch answers and a distinct model reset in owned QA chats.
+
+The same existing-gateway recipe’s `context` suite verifies a configured maximum
+with actual provider usage and the context detail’s visible pinned label.

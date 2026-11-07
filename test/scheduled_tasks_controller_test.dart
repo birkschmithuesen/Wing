@@ -3,6 +3,9 @@ import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:wing/core/models/scheduled_task.dart';
+import 'package:wing/core/models/health_finding.dart';
+import 'package:wing/core/services/administration_health.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/scheduled_tasks_controller.dart';
 import 'package:wing/core/services/scheduled_tasks_repository.dart';
@@ -26,6 +29,237 @@ void main() {
     await c.refresh();
   });
   tearDown(() => c.dispose());
+  test(
+    'Stop remains available during a synchronous trigger and owns its guard',
+    () async {
+      final triggerStarted = Completer<void>(),
+          triggerReply = Completer<void>();
+      final stopStarted = Completer<void>(), stopReply = Completer<void>();
+      var stops = 0;
+      f.admin.override = (method, path, query, body) async {
+        if (method == 'POST' && path.endsWith('/trigger')) {
+          f.jobs['morning'] = taskJson(state: 'running');
+          triggerStarted.complete();
+          await triggerReply.future;
+          return {...f.jobs['morning']!};
+        }
+        if (method == 'POST' && path.endsWith('/cancel')) {
+          stops++;
+          stopStarted.complete();
+          await stopReply.future;
+          return {
+            'success': true,
+            'cancelled': true,
+            'execution_id': 'execution-morning',
+            'job_id': 'morning',
+          };
+        }
+        return f.send(method, path, query, body);
+      };
+      final trigger = c.act(c.task('morning')!, 'trigger');
+      await triggerStarted.future;
+      await c.refresh();
+      final running = c.task('morning')!;
+      expect(c.actionChoice(running, TaskAction.cancel)!.enabled, isTrue);
+      final stale = ScheduledTask.fromJson({
+        ...taskJson(state: 'running'),
+        'live_execution': {
+          'id': 'previous-execution',
+          'status': 'running',
+          'job_id': 'morning',
+        },
+      });
+      expect(c.actionChoice(stale, TaskAction.cancel)!.enabled, isFalse);
+      await c.perform(stale, TaskAction.cancel);
+      expect(stops, 0);
+      expect(c.actionChoice(running, TaskAction.remove)!.enabled, isFalse);
+      final stop = c.perform(running, TaskAction.cancel);
+      expect(c.stopping('morning'), isTrue);
+      await stopStarted.future;
+      await c.perform(running, TaskAction.cancel);
+      expect(stops, 1);
+      expect(await c.act(running, 'trigger'), isNull);
+      expect(await c.delete(running), isNull);
+      stopReply.complete();
+      await stop;
+      expect(c.stopping('morning'), isFalse);
+      expect(c.busy, contains('morning'));
+      expect(c.uncertain['morning']!['action'], 'trigger');
+      expect(
+        c.actionChoice(c.task('morning')!, TaskAction.cancel)!.enabled,
+        isFalse,
+      );
+      f.jobs['morning']!['live_execution'] = null;
+      f.jobs['morning']!['latest_execution'] = {
+        'id': 'execution-morning',
+        'status': 'cancelled',
+        'job_id': 'morning',
+      };
+      await c.refresh();
+      triggerReply.complete();
+      await trigger;
+      expect(c.task('morning')!.latestExecution!.status, 'cancelled');
+      expect(c.busy, isEmpty);
+      expect(c.blocked('morning'), isFalse);
+      expect(stops, 1);
+    },
+  );
+
+  test('reviewing uncertain Stop never releases a pending trigger', () async {
+    final started = Completer<void>(), reply = Completer<void>();
+    f.admin.override = (method, path, query, body) async {
+      if (method == 'POST' && path.endsWith('/trigger')) {
+        f.jobs['morning'] = taskJson(state: 'running');
+        started.complete();
+        await reply.future;
+        return {...f.jobs['morning']!};
+      }
+      if (method == 'POST' && path.endsWith('/cancel')) {
+        throw TimeoutException('Stop acknowledgement lost');
+      }
+      return f.send(method, path, query, body);
+    };
+    final trigger = c.act(c.task('morning')!, 'trigger');
+    await started.future;
+    await c.refresh();
+    await expectLater(
+      c.perform(c.task('morning')!, TaskAction.cancel),
+      throwsA(isA<TimeoutException>()),
+    );
+    expect(await c.reviewPrompt('morning'), isNotNull);
+    await c.acknowledgeUncertainty('morning');
+    expect(c.pendingNotice('morning'), isNull);
+    expect(c.uncertain['morning']!['action'], 'trigger');
+    expect(c.busy, contains('morning'));
+    expect(c.blocked('morning'), isTrue);
+    expect(
+      c.actionChoice(c.task('morning')!, TaskAction.cancel)!.enabled,
+      isTrue,
+    );
+    expect(await c.act(c.task('morning')!, 'trigger'), isNull);
+    reply.complete();
+    await trigger;
+  });
+
+  test(
+    'uncertain Stop survives late trigger completion and owner recovery',
+    () async {
+      f.jobs['watch']!.remove('last_error');
+      final triggerStarted = Completer<void>(),
+          triggerReply = Completer<void>();
+      final stopStarted = Completer<void>(), stopReply = Completer<void>();
+      final owner = ScheduledTasksController.acquire(f.profile, preferences);
+      await owner.refresh();
+      var stops = 0;
+      f.admin.override = (method, path, query, body) async {
+        if (method == 'POST' && path.endsWith('/trigger')) {
+          f.jobs['morning'] = taskJson(state: 'running');
+          triggerStarted.complete();
+          await triggerReply.future;
+          return {...f.jobs['morning']!};
+        }
+        if (method == 'POST' && path.endsWith('/cancel')) {
+          stops++;
+          stopStarted.complete();
+          await stopReply.future;
+          throw TimeoutException('Stop acknowledgement lost');
+        }
+        return f.send(method, path, query, body);
+      };
+      final trigger = owner.act(owner.task('morning')!, 'trigger');
+      await triggerStarted.future;
+      await owner.refresh();
+      final stop = owner.perform(owner.task('morning')!, TaskAction.cancel);
+      final stopped = expectLater(stop, throwsA(isA<TimeoutException>()));
+      await stopStarted.future;
+      owner.release();
+      final reopened = ScheduledTasksController.acquire(f.profile, preferences);
+      expect(reopened, same(owner));
+      triggerReply.complete();
+      await trigger;
+      expect(reopened.busy, contains('morning'));
+      expect(reopened.stopping('morning'), isTrue);
+      stopReply.complete();
+      await stopped;
+      expect(
+        reopened.pendingNotice('morning'),
+        contains('Stop is not confirmed'),
+      );
+      expect(reopened.uncertain, isEmpty);
+      reopened.release();
+      final recovered = ScheduledTasksController.acquire(
+        f.profile,
+        preferences,
+      );
+      await recovered.refresh();
+      expect(recovered, isNot(same(owner)));
+      expect(recovered.blocked('morning'), isTrue);
+      final health = AdministrationHealth(f.admin.server);
+      addTearDown(health.dispose);
+      health.updateTasks(recovered);
+      expect(
+        health.scheduledTaskFindings['personal']!.status,
+        AdministrationHealthStatus.warning,
+      );
+      expect(
+        health.scheduledTaskFindings['personal']!.detail,
+        contains('A task action needs review'),
+      );
+      await recovered.perform(recovered.task('morning')!, TaskAction.cancel);
+      expect(stops, 1);
+      await recovered.acknowledgeUncertainty('morning');
+      health.updateTasks(recovered);
+      expect(
+        health.scheduledTaskFindings['personal']!.status,
+        AdministrationHealthStatus.healthy,
+      );
+      expect(
+        recovered
+            .actionChoice(recovered.task('morning')!, TaskAction.cancel)!
+            .enabled,
+        isTrue,
+      );
+      recovered.release();
+    },
+  );
+
+  test(
+    'unreadable Stop journal survives refresh and recreation until review',
+    () async {
+      final key =
+          'scheduled-task-actions:${f.profile.scope.storageNamespace}:stops';
+      await preferences.setString(key, '{');
+      final first = ScheduledTasksController(
+        ScheduledTasksRepository(f.profile),
+        preferences,
+      );
+      await first.refresh();
+      expect(first.blocked('morning'), isTrue);
+      expect(first.hasUnconfirmedActions, isTrue);
+      expect(preferences.getString(key), '{');
+      first.dispose();
+      final second = ScheduledTasksController(
+        ScheduledTasksRepository(f.profile),
+        preferences,
+      );
+      await second.refresh();
+      expect(
+        second.pendingNotice('morning'),
+        contains('Stop is not confirmed'),
+      );
+      await second.acknowledgeUncertainty('morning');
+      second.dispose();
+      final third = ScheduledTasksController(
+        ScheduledTasksRepository(f.profile),
+        preferences,
+      );
+      addTearDown(third.dispose);
+      await third.refresh();
+      expect(third.hasUnconfirmedActions, isFalse);
+      expect(third.blocked('morning'), isFalse);
+    },
+  );
+
   test('task observations cannot replace or mutate retained rows', () async {
     final rows = c.tasks!;
     final first = rows.first;

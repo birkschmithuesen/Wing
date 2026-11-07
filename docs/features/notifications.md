@@ -93,3 +93,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 ## Gotchas
 
 Use only the owned QA package. Android notification permission and battery policy are prerequisites. Opening, reading and dismissing are different actions; verify restore and cold entry separately.
+
+For detached work discovery through Android connected to an existing production gateway,
+use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+Its named outcomes and stated prerequisites distinguish real production actions
+from fixture recovery coverage.

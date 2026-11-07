@@ -6771,6 +6771,51 @@
       "source": "internal/docs/TESTING.md; test/connector_runtime_test.dart",
       "status": "supported",
       "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/hermes_next_admin_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/hermes_next_admin_prod_test.dart",
+      "purpose": "Explicit production Android acceptance; unique owned QA state and operator authorization required",
+      "source": "docs/features/multi-surface-journeys.md; integration_test/hermes_next_admin_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/hermes_next_conversation_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/hermes_next_conversation_prod_test.dart",
+      "purpose": "Explicit production Android acceptance; unique owned QA state and operator authorization required",
+      "source": "docs/features/multi-surface-journeys.md; integration_test/hermes_next_conversation_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/hermes023_groups_tasks_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/hermes023_groups_tasks_prod_test.dart",
+      "purpose": "Explicit production Android acceptance; unique owned QA state and operator authorization required",
+      "source": "docs/features/multi-surface-journeys.md; integration_test/hermes023_groups_tasks_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/hermes023_sessions_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/hermes023_sessions_prod_test.dart",
+      "purpose": "Explicit production Android acceptance; unique owned QA state and operator authorization required",
+      "source": "docs/features/multi-surface-journeys.md; integration_test/hermes023_sessions_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/hermes023_context_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/hermes023_context_prod_test.dart",
+      "purpose": "Explicit production Android acceptance; unique owned QA profile and operator authorization required",
+      "source": "docs/features/multi-surface-journeys.md; integration_test/hermes023_context_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -15902,6 +15947,36 @@
     {
       "path": "test/connector_runtime_test.dart",
       "area": "test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes_next_admin_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "integration_test/hermes_next_conversation_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "scripts/test_existing_hermes_next.py",
+      "area": "scripts",
+      "provenance": "tracked"
+    },
+    {
+      "path": "integration_test/hermes023_groups_tasks_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes023_sessions_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes023_context_prod_test.dart",
+      "area": "integration_test",
       "provenance": "task-authored"
     }
   ],

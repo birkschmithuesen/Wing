@@ -400,6 +400,80 @@ void main() {
     );
   }
 
+  test('applied compression receipt follows rewritten saved history', () async {
+    host.historyMessages = [
+      {'id': 1, 'role': 'user', 'content': 'Earlier question'},
+      {'id': 2, 'role': 'assistant', 'content': 'Newest answer'},
+    ];
+    await controller.refreshHistory(chat);
+    chat.reading.appendCommandNotice(
+      'Compression preview',
+      command: '/compress',
+    );
+    host.respond = (method, params) async {
+      expect(method, 'session.mutate');
+      // Canonical compression rewrites saved rows, including preserved content.
+      host.historyMessages = [
+        {'id': 101, 'role': 'user', 'content': 'Earlier question'},
+        {'id': 102, 'role': 'assistant', 'content': 'Newest answer'},
+      ];
+      return {
+        'session_id': params['session_id'],
+        'operation': 'compress',
+        'revision': 1,
+        'execution_generation': 1,
+        'summary': {'headline': 'Compressed: 28 → 12 messages'},
+      };
+    };
+    chat.composer.editText('/compress');
+    await controller.send(chat);
+
+    expect(chat.runtime.error, isNull);
+    expect(
+      chat.reading.messages
+          .where((row) => row['_command_notice'] != true)
+          .map((row) => row['id']),
+      [101, 102],
+    );
+    expect(
+      chat.reading.messages.last['content'],
+      'Compressed: 28 → 12 messages',
+    );
+    expect(chat.reading.messages.last['_command_notice'], isTrue);
+  });
+
+  test(
+    'applied compression keeps its receipt when history readback fails',
+    () async {
+      host.respond = (method, params) async {
+        expect(method, 'session.mutate');
+        host.heldHistoryStarted = Completer<void>();
+        host.heldHistoryDelay = Completer<void>()..complete();
+        host.heldHistoryFailure = StateError('History unavailable');
+        return {
+          'session_id': params['session_id'],
+          'operation': 'compress',
+          'revision': 1,
+          'execution_generation': 1,
+          'summary': {'headline': 'Compressed: 28 → 12 messages'},
+        };
+      };
+      chat.composer.editText('/compress');
+      await controller.send(chat);
+
+      expect(chat.runtime.error, isNull);
+      expect(chat.composer.observation.text, isEmpty);
+      expect(chat.reading.messages.map((row) => row['content']), [
+        'Compressed: 28 → 12 messages',
+        'Compression finished. Refresh to reload history and context.',
+      ]);
+      expect(
+        host.commandCalls.where((call) => call.$1 == 'session.mutate'),
+        hasLength(1),
+      );
+    },
+  );
+
   for (final reason in [
     'unsupported_compress_options',
     'compression_checkpoint_required',

@@ -72,7 +72,7 @@ void main() {
       );
       Future<void> tap(Finder control) async {
         void trace(String stage) => debugPrintSynchronously(
-          '[secure-setup-native] ${control.description}: $stage',
+          '[secure-setup-native] ${control.describeMatch(Plurality.many)}: $stage',
         );
         trace('pre-settle started');
         await tester.pumpAndSettle(

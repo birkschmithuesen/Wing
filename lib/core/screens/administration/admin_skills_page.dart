@@ -143,10 +143,17 @@ class AdminSkillDetail extends StatefulWidget {
 class _AdminSkillDetailState extends State<AdminSkillDetail> {
   late final _session = widget.session;
   late final _route = widget.route;
+  bool _initialReadPending = true;
   @override
   void initState() {
     super.initState();
-    _session.loadDetail(_route);
+    // The library still listens to this borrowed owner while Navigator builds
+    // the detail. Notify it only after that frame, keeping loading visible now.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _initialReadPending = false;
+      _session.loadDetail(_route);
+    });
   }
 
   @override
@@ -217,6 +224,7 @@ class _AdminSkillDetailState extends State<AdminSkillDetail> {
           scope: _session.scopeLabel,
           child: _SkillsRead(
             session: _session,
+            initialReadPending: _initialReadPending,
             retry: () => _session.loadDetail(_route),
             builder: (_) => const SizedBox.shrink(),
           ),
@@ -290,6 +298,7 @@ class _AdminSkillDetailState extends State<AdminSkillDetail> {
               Expanded(
                 child: _SkillsRead(
                   session: _session,
+                  initialReadPending: _initialReadPending,
                   retry: () => _session.loadDetail(_route),
                   builder: (_) => body,
                 ),
@@ -542,10 +551,16 @@ class AdminSkillPreview extends StatefulWidget {
 class _AdminSkillPreviewState extends State<AdminSkillPreview> {
   late final _session = widget.session;
   late final _route = widget.route;
+  bool _initialReadPending = true;
   @override
   void initState() {
     super.initState();
-    _session.loadPreview(_route);
+    // Hub and preview share the owner, just like library and installed detail.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _initialReadPending = false;
+      _session.loadPreview(_route);
+    });
   }
 
   @override
@@ -582,6 +597,7 @@ class _AdminSkillPreviewState extends State<AdminSkillPreview> {
           scope: _session.scopeLabel,
           child: _SkillsRead(
             session: _session,
+            initialReadPending: _initialReadPending,
             retry: () => _session.loadPreview(_route),
             builder: (_) => const SizedBox.shrink(),
           ),
@@ -617,6 +633,7 @@ class _AdminSkillPreviewState extends State<AdminSkillPreview> {
             Expanded(
               child: _SkillsRead(
                 session: _session,
+                initialReadPending: _initialReadPending,
                 retry: () => _session.loadPreview(_route),
                 builder: (_) => body,
               ),
@@ -634,10 +651,12 @@ class _SkillsRead extends StatelessWidget {
     required this.session,
     required this.retry,
     required this.builder,
+    this.initialReadPending = false,
   });
   final ProfileSkillsSession session;
   final Future<void> Function() retry;
   final Widget Function(ProfileSkillsState) builder;
+  final bool initialReadPending;
   @override
   Widget build(BuildContext context) => ReadRecovery(
     shouldRetry: () => session.canRecoverRead,
@@ -648,7 +667,10 @@ class _SkillsRead extends StatelessWidget {
         final state = session.state;
         return StudioLoadingRegion(
           available: state.hasObservation,
-          busy: state.phase == SkillsPhase.reading || state.saving,
+          busy:
+              initialReadPending ||
+              state.phase == SkillsPhase.reading ||
+              state.saving,
           label: 'Loading skills',
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
