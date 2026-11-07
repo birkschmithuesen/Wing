@@ -14,7 +14,8 @@ more control over what runs and where results go.
 Wing uses the current Hermes gateway Webapp for live chats and saved history.
 A standalone dashboard is not sufficient. Update your Hermes setup separately
 if needed, then use **Check connection** to verify the address. See the
-[self-hosting guide](docs/SELF_HOSTING.md). Fork now requires an idle source chat.
+[self-hosting guide](https://github.com/tarkilhk/Wing/blob/v1.4.0/docs/SELF_HOSTING.md).
+Fork now requires an idle source chat.
 
 ### Groups and scheduled work
 
