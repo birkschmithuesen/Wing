@@ -90,3 +90,8 @@ both themes at normal/enlarged text, plus cross-profile alert recovery.
 Cached status belongs to the configured connector's exact source and plugin owner,
 not just its name. A late observation for a replaced same-name connector cannot
 appear as the replacement's status or raise/clear its runtime Health incident.
+
+For cached connector observations through Android connected to an existing production gateway,
+use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+Its named outcomes and stated prerequisites distinguish real production actions
+from fixture recovery coverage.

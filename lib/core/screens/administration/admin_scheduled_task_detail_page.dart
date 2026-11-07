@@ -85,6 +85,7 @@ class _AdminScheduledTaskDetailPageState
             TaskMenu(
               task: task,
               controller: controller,
+              showStopProgress: false,
               onEdit: () => adminPushProfile(
                 context,
                 controller.repository.profile,
@@ -102,14 +103,14 @@ class _AdminScheduledTaskDetailPageState
               ),
             ),
         ],
-        bottom: missing
+        bottom: missing && !controller.stopping(task.id)
             ? null
             : Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 alignment: WrapAlignment.end,
                 children: [
-                  if (controller.busy.contains(task.id))
+                  if (controller.updating(task.id))
                     SizedBox.square(
                       dimension: 18,
                       child: CircularProgressIndicator(
@@ -121,7 +122,8 @@ class _AdminScheduledTaskDetailPageState
                             : null,
                       ),
                     ),
-                  for (final choice in [?toggle, ?cancel, trigger])
+                  for (final choice
+                      in missing ? [?cancel] : [?toggle, ?cancel, trigger])
                     StudioButtonPress(
                       child: IconButton.filledTonal(
                         tooltip: choice.label,
@@ -133,12 +135,16 @@ class _AdminScheduledTaskDetailPageState
                                 choice.kind,
                               )
                             : null,
-                        icon: Icon(switch (choice.kind) {
-                          TaskAction.pause => Icons.pause_rounded,
-                          TaskAction.cancel => Icons.stop_rounded,
-                          TaskAction.trigger => Icons.bolt_outlined,
-                          _ => Icons.play_arrow_rounded,
-                        }),
+                        icon:
+                            choice.kind == TaskAction.cancel &&
+                                controller.stopping(task.id)
+                            ? const TaskStopProgress()
+                            : Icon(switch (choice.kind) {
+                                TaskAction.pause => Icons.pause_rounded,
+                                TaskAction.cancel => Icons.stop_rounded,
+                                TaskAction.trigger => Icons.bolt_outlined,
+                                _ => Icons.play_arrow_rounded,
+                              }),
                       ),
                     ),
                 ],

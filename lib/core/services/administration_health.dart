@@ -352,7 +352,7 @@ class AdministrationHealth extends ChangeNotifier {
       'Scheduled tasks',
       count == null
           ? AdministrationHealthStatus.unknown
-          : count > 0 || source.uncertain.isNotEmpty
+          : count > 0 || source.hasUnconfirmedActions
           ? AdministrationHealthStatus.warning
           : AdministrationHealthStatus.healthy,
       count == null
@@ -363,7 +363,7 @@ class AdministrationHealth extends ChangeNotifier {
               else
                 '${source.tasks!.length} ${source.tasks!.length == 1 ? 'task' : 'tasks'} · '
                     '${count == 0 ? 'No reported errors' : '$count ${count == 1 ? 'has a reported error' : 'have reported errors'}'}',
-              if (source.uncertain.isNotEmpty) 'A task action needs review',
+              if (source.hasUnconfirmedActions) 'A task action needs review',
             ].join(' · '),
       at: source.checkedAt,
       destination: 'Scheduled tasks',

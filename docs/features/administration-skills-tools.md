@@ -79,3 +79,8 @@ switch acknowledgement. Updated plugins reload; new Python tools apply to new
 sessions. Host plugin tests cover held dispatch/readback, mixed outcomes,
 uncertain-result recovery and both themes at normal/enlarged text. They do not
 update production installations.
+
+For plugin maintenance through Android connected to an existing production gateway,
+use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+Its named outcomes and stated prerequisites distinguish real production actions
+from fixture recovery coverage.

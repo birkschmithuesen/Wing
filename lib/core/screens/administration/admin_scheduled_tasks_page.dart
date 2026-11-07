@@ -85,10 +85,16 @@ class _AdminScheduledTasksPageState extends State<AdminScheduledTasksPage>
         search.text,
         filter,
       );
+      final visibleIds = tasks.map((task) => task.id).toSet();
       return TaskPage(
         title: 'Scheduled tasks',
         scope: widget.profile.label,
         actions: [
+          if (controller.stoppingTaskIds.any((id) => !visibleIds.contains(id)))
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: TaskStopProgress(),
+            ),
           StudioButtonPress(
             child: IconButton(
               tooltip: 'Refresh tasks',
@@ -182,6 +188,9 @@ class _AdminScheduledTasksPageState extends State<AdminScheduledTasksPage>
                   ),
                 if (controller.notice != null) TaskMessage(controller.notice!),
                 TaskUncertainty(controller: controller, id: '__create__'),
+                for (final id in controller.stopReviewTaskIds)
+                  if (!visibleIds.contains(id))
+                    TaskUncertainty(controller: controller, id: id),
                 if (controller.tasks != null && tasks.isEmpty)
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 24),
@@ -300,13 +309,12 @@ class _AdminScheduledTasksPageState extends State<AdminScheduledTasksPage>
                         controller.checkedAt != null &&
                         controller.error == null,
                   ),
-                  if (controller.busy.contains(task.id))
+                  if (controller.updating(task.id))
                     const Padding(
                       padding: EdgeInsets.only(top: 8),
                       child: Text('Request in progress…'),
                     ),
-                  if (controller.uncertain.containsKey(task.id) &&
-                      !controller.busy.contains(task.id))
+                  if (controller.pendingNotice(task.id) != null)
                     const Text('Request outcome unknown'),
                 ],
               ),

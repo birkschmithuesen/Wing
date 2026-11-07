@@ -233,23 +233,41 @@ Future<void> performTaskAction(
   }
 }
 
+class TaskStopProgress extends StatelessWidget {
+  const TaskStopProgress({super.key});
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 18,
+    child: CircularProgressIndicator(
+      strokeWidth: 2,
+      semanticsLabel: 'Stopping run',
+      value: MediaQuery.disableAnimationsOf(context) ? .75 : null,
+    ),
+  );
+}
+
 class TaskMenu extends StatelessWidget {
   const TaskMenu({
     super.key,
     required this.task,
     required this.controller,
     required this.onEdit,
+    this.showStopProgress = true,
   });
   final ScheduledTask task;
   final ScheduledTasksController controller;
   final VoidCallback onEdit;
+  final bool showStopProgress;
   @override
   Widget build(BuildContext context) => Builder(
     builder: (anchor) => StudioButtonPress(
       child: IconButton(
         tooltip: 'Actions for ${task.title}',
-        icon: const Icon(Icons.more_horiz),
-        onPressed: controller.blocked(task.id)
+        icon: showStopProgress && controller.stopping(task.id)
+            ? const TaskStopProgress()
+            : const Icon(Icons.more_horiz),
+        onPressed: !controller.actions(task).any((choice) => choice.enabled)
             ? null
             : () async {
                 final result = await showWorkspaceActionMenu(
@@ -388,11 +406,19 @@ class _AdminTaskRouteState extends State<AdminTaskRoute> {
       return TaskPage(
         title: widget.title,
         scope: widget.profile.label,
+        actions: [
+          if (controller.stopping(widget.taskId!))
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: TaskStopProgress(),
+            ),
+        ],
         child: controller.loading
             ? StudioPageLoading.waiting(label: 'Loading task history')
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
+                  TaskUncertainty(controller: controller, id: widget.taskId!),
                   AdminNotice(
                     controller.error ??
                         'This task is not available in this profile.',

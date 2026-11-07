@@ -39,6 +39,19 @@ class ScheduledTasksController extends ChangeNotifier {
         _uncertain['__create__'] = const {'action': 'create'};
       }
     }
+    final savedStops = preferences.getString(_stopJournalKey);
+    if (savedStops != null) {
+      try {
+        final value = jsonDecode(savedStops) as Map;
+        for (final entry in value.entries) {
+          _stops[entry.key as String] =
+              _immutableJournalValue(entry.value as Map)
+                  as Map<String, dynamic>;
+        }
+      } on Object {
+        _stopRecoveryFailed = true;
+      }
+    }
   }
   static final _registry = <String, ScheduledTasksController>{};
 
@@ -76,6 +89,9 @@ class ScheduledTasksController extends ChangeNotifier {
   bool _loading = false;
   final _busy = <String>{};
   final _uncertain = <String, Map<String, dynamic>>{};
+  final _stopping = <String>{};
+  final _stops = <String, Map<String, dynamic>>{};
+  bool _stopRecoveryFailed = false;
 
   /// Passive snapshots never expose a second writer to cache or journal state.
   /// Busy and journal snapshots remain stable when an admitted command settles.
@@ -84,26 +100,58 @@ class ScheduledTasksController extends ChangeNotifier {
   String? get error => _error;
   String? get notice => _notice;
   bool get loading => _loading;
-  Set<String> get busy => Set.unmodifiable(_busy);
+  Set<String> get busy => Set.unmodifiable({..._busy, ..._stopping});
+  bool updating(String id) => _busy.contains(id);
+  bool stopping(String id) => _stopping.contains(id);
+  Set<String> get stoppingTaskIds => Set.unmodifiable(_stopping);
+  Set<String> get stopReviewTaskIds => Set.unmodifiable(
+    _stops.entries
+        .where(
+          (entry) =>
+              entry.value['requires_review'] == true && !stopping(entry.key),
+        )
+        .map((entry) => entry.key),
+  );
+  bool get hasUnconfirmedActions =>
+      _uncertain.isNotEmpty ||
+      _stopRecoveryFailed ||
+      _stops.values.any((record) => record['requires_review'] == true);
   Map<String, Map<String, dynamic>> get uncertain =>
       Map.unmodifiable(_uncertain);
 
   String get _journalKey =>
       'scheduled-task-actions:${repository.profile.scope.storageNamespace}';
-  bool blocked(String id) => _busy.contains(id) || _uncertain.containsKey(id);
+  String get _stopJournalKey => '$_journalKey:stops';
+  bool _stopUncertain(String id) =>
+      _stopRecoveryFailed || _stops[id]?['requires_review'] == true;
+  bool blocked(String id) =>
+      _busy.contains(id) ||
+      _uncertain.containsKey(id) ||
+      stopping(id) ||
+      _stopUncertain(id);
   String? get savedUnregisteredId =>
       _uncertain['__create__']?['job_id'] as String?;
   ScheduledTask? task(String id) =>
       _tasks?.where((t) => t.id == id).firstOrNull;
   List<TaskActionChoice> actions(ScheduledTask task) {
-    final enabled =
-        !blocked(task.id) &&
+    final owned =
         task.profileName == repository.profile.name &&
         (_tasks == null || this.task(task.id) != null);
+    final enabled = !blocked(task.id) && owned;
+    final live = this.task(task.id)?.liveExecution;
+    final canCancel =
+        owned &&
+        live?.live == true &&
+        live!.id == task.liveExecution?.id &&
+        !stopping(task.id) &&
+        !_stopUncertain(task.id) &&
+        _stops[task.id]?['execution_id'] != live.id &&
+        ((!_busy.contains(task.id) && !_uncertain.containsKey(task.id)) ||
+            _uncertain[task.id]?['action'] == 'trigger');
     return List.unmodifiable([
       TaskActionChoice(TaskAction.edit, 'Edit task', enabled),
-      if (task.canStop)
-        TaskActionChoice(TaskAction.cancel, 'Stop run', enabled),
+      if (task.canStop || stopping(task.id))
+        TaskActionChoice(TaskAction.cancel, 'Stop run', canCancel),
       if (task.canPause)
         TaskActionChoice(TaskAction.pause, 'Pause schedule', enabled),
       if (task.canResume)
@@ -142,6 +190,9 @@ class ScheduledTasksController extends ChangeNotifier {
       )
       .firstOrNull;
   String? pendingNotice(String id) {
+    if (_stopUncertain(id) && !stopping(id)) {
+      return 'Stop is not confirmed. Review the task and recent runs before requesting it again.';
+    }
     if (!_uncertain.containsKey(id) || _busy.contains(id)) return null;
     return _uncertain[id]?['action'] == 'registration'
         ? 'Your task was saved, but scheduler registration failed. Review the saved task before creating another.'
@@ -163,7 +214,7 @@ class ScheduledTasksController extends ChangeNotifier {
     if (action == TaskAction.remove) {
       await delete(task);
     } else if (action == TaskAction.cancel) {
-      await _mutate(task.id, 'cancel', () => repository.cancel(task.id));
+      await _stop(task);
     } else if (action != TaskAction.edit) {
       await act(task, action.name);
     }
@@ -175,7 +226,7 @@ class ScheduledTasksController extends ChangeNotifier {
   }
 
   void _collect() {
-    if (_managed && _leases == 0 && _busy.isEmpty) {
+    if (_managed && _leases == 0 && _busy.isEmpty && _stopping.isEmpty) {
       _registry.remove(repository.profile.scope.storageNamespace);
       repository.profile.server.release();
       dispose();
@@ -194,6 +245,78 @@ class ScheduledTasksController extends ChangeNotifier {
     }
   }
 
+  Future<void> _persistStops() async {
+    // An unreadable record remains durable until the user reviews it.
+    if (_stopRecoveryFailed) return;
+    if (!await _preferences.setString(_stopJournalKey, jsonEncode(_stops))) {
+      throw const AdministrationFailure(
+        'Could not save task request state on your phone.',
+      );
+    }
+  }
+
+  // Run now waits for the whole execution in stock Hermes. Stop has its own
+  // journal and lifetime: neither completion may release the other's guard.
+  Future<void> _stop(ScheduledTask task) async {
+    if (actionChoice(task, TaskAction.cancel)?.enabled != true) return;
+    final id = task.id, execution = task.liveExecution!.id;
+    _stopping.add(id);
+    _stops[id] = Map.unmodifiable({
+      'execution_id': execution,
+      'requires_review': true,
+    });
+    _error = null;
+    _notice = null;
+    _emit();
+    var sent = false;
+    try {
+      await _persistStops();
+      sent = true;
+      final result = await repository.cancel(id);
+      if (result.requested && result.executionId != execution) {
+        throw const TaskMutationUncertain();
+      }
+      if (result.requested) {
+        _stops[id] = Map.unmodifiable({
+          'execution_id': execution,
+          'requires_review': false,
+        });
+      } else {
+        _stops.remove(id);
+      }
+      try {
+        await _persistStops();
+      } catch (_) {
+        _notice =
+            'Stop was confirmed. Its local request record could not be cleared.';
+      }
+      await refresh();
+      _notice = _error == null
+          ? result.notice
+          : 'Stop was confirmed. Refresh to reload the task.';
+    } catch (e) {
+      final notSent = !sent || e is TaskPreflightFailure;
+      final definite =
+          notSent ||
+          e is AdministrationFailure ||
+          (e is CronHttpException && !e.uncertain);
+      if (definite) _stops.remove(id);
+      try {
+        await _persistStops();
+      } catch (_) {
+        // Retain the in-memory guard when persistence is unavailable.
+      }
+      _error = definite
+          ? '${taskFailure(e)}${notSent ? ' Nothing was sent.' : ''}'
+          : null; // The durable Stop review notice owns uncertain outcomes.
+      rethrow;
+    } finally {
+      _stopping.remove(id);
+      _emit();
+      _collect();
+    }
+  }
+
   Future<void> refresh() async {
     final generation = ++_generation;
     _loading = true;
@@ -204,10 +327,17 @@ class ScheduledTasksController extends ChangeNotifier {
       if (_disposed || generation != _generation) return;
       _tasks = List.unmodifiable(result);
       _checkedAt = DateTime.now();
+      _stops.removeWhere(
+        (id, record) =>
+            record['requires_review'] == false &&
+            !stopping(id) &&
+            task(id)?.liveExecution?.id != record['execution_id'],
+      );
       // A later list cannot establish which store an unconfirmed request
       // mutated. Only its authoritative acknowledgement or explicit review
       // releases the guard, including after recovery of its saved record.
       await _persist();
+      await _persistStops();
     } catch (e) {
       if (!_disposed && generation == _generation) _error = taskFailure(e);
     } finally {
@@ -256,11 +386,9 @@ class ScheduledTasksController extends ChangeNotifier {
             'The server confirmed the change. Its local request record could not be cleared.';
       }
       await refresh();
-      _notice = _error == null
-          ? value is TaskCancellation
-                ? value.notice
-                : _notice
-          : 'The change was confirmed. The list could not be refreshed.';
+      if (_error != null) {
+        _notice = 'The change was confirmed. The list could not be refreshed.';
+      }
       return value;
     } catch (e) {
       final notSent = !sent || e is TaskPreflightFailure;
@@ -314,9 +442,12 @@ class ScheduledTasksController extends ChangeNotifier {
 
   /// Called only after an explicit user review. This never repeats the request.
   Future<void> acknowledgeUncertainty(String id) async {
-    if (_busy.contains(id)) return;
-    _uncertain.remove(id);
+    if (stopping(id) || _busy.contains(id) && !_stopUncertain(id)) return;
+    if (!_busy.contains(id)) _uncertain.remove(id);
+    if (_stopUncertain(id)) _stops.remove(id);
+    _stopRecoveryFailed = false;
     await _persist();
+    await _persistStops();
     _emit();
   }
 

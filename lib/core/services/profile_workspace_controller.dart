@@ -7413,14 +7413,23 @@ class ProfileWorkspaceController extends ChangeNotifier {
           if (summary[key] case final String line when line.isNotEmpty) line,
       ];
     }
-    chat.reading.appendCommandNotice(lines.join('\n'), command: '/compress');
-    if (status == 'preview' || status == 'noop') return;
+    if (status == 'preview' || status == 'noop') {
+      chat.reading.appendCommandNotice(lines.join('\n'), command: '/compress');
+      return;
+    }
     _invalidateContextDetails(chat);
+    var refreshFailed = false;
     try {
       await _refreshHistory(chat, propagateFailure: true, awaitContext: true);
       requireCaptured();
     } catch (_) {
       requireCaptured();
+      refreshFailed = true;
+    }
+    // Compression can replace every saved row ID. Publish its receipt after
+    // readback so retaining old local notices cannot move this result to the top.
+    chat.reading.appendCommandNotice(lines.join('\n'), command: '/compress');
+    if (refreshFailed) {
       chat.reading.appendCommandNotice(
         'Compression finished. Refresh to reload history and context.',
       );

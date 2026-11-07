@@ -52,3 +52,8 @@ original test results and test timestamp; it cannot turn a failed probe into a
 passing one. Cached configured, connecting or ready-on-first-use states do not
 claim that a probe succeeded. Opening MCP connectors exposes these separate facts
 and the existing supported recovery actions.
+
+Scheduled-task health retains an action-needs-review warning for an unconfirmed
+Stop, including after a successful refresh or reopening Wing. Current execution
+status and cancellation acknowledgement are separate facts; explicit request
+review clears the uncertainty without sending another Stop.

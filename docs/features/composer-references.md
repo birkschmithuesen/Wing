@@ -53,3 +53,11 @@ Compression requires an idle, writable conversation. Hermes may refuse a runtime
 that requires checkpoint coordination, including some provider-managed sessions.
 A preview changes no history. Unsupported options, refusals and uncertain results
 keep the command draft; Wing never retries through a different command handler.
+
+For compression preview and commit through Android connected to an existing production gateway,
+use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+Its named outcomes and stated prerequisites distinguish real production actions
+from fixture recovery coverage.
+
+After applied compression, its confirmation follows the refreshed conversation.
+If readback fails, the confirmed result remains visible with the instruction to refresh.

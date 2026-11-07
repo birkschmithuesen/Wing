@@ -29,7 +29,10 @@ Results lists discovered group chats alongside platform destinations. A result's
 result is informational. Failure notices do not start a round. A group's hosting
 profile remains distinct from the task's profile.
 
-A live task offers the icon-only Stop run action in its detail and Actions menu.
+A live task offers the icon-only Stop run action in its detail and Actions menu,
+including while its Run now request is still waiting for execution to finish.
+Stop has its own pending feedback and duplicate-request guard; it does not
+release the pending Run now request or enable conflicting edits.
 Stop requested is an acknowledgement, not proof of completion: the running state
 remains until Hermes reports settlement. A newer rejected Run now attempt cannot
 hide an older execution that is still running. Latest attempt and recent history
@@ -65,4 +68,10 @@ fixture creates tasks but never runs a provider or production scheduler.
 
 Deleting a task also requests cancellation of running work in current Hermes.
 Lost cancellation responses remain uncertain and are never automatically repeated.
+Review that request before another Stop; refreshing observes execution state
+without resending the cancellation.
 Unavailable room discovery keeps existing selections and platform destinations.
+
+For authorized Android + production acceptance, use the `groups` suite in the
+[existing-gateway journey](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+It uses fresh owned profiles, exact group/task cleanup and real provider execution.

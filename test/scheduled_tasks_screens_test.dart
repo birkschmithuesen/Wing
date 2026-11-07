@@ -162,8 +162,237 @@ void main() {
     });
   }
 
+  for (final failed in [false, true]) {
+    testWidgets(
+      'list Stop has one pending cue and review recovery failure=$failed',
+      (tester) async {
+        fixture.jobs['morning'] = taskJson(state: 'running');
+        await show(
+          tester,
+          list(),
+          brightness: failed ? Brightness.dark : Brightness.light,
+        );
+        fixture.gate = Completer<void>();
+        if (failed) {
+          fixture.mutationError = TimeoutException('Stop acknowledgement lost');
+        }
+        await tester.tap(find.byTooltip('Actions for Morning briefing'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Stop run'));
+        await tester.pump();
+        expect(find.byType(TaskStopProgress), findsOneWidget);
+        expect(find.text('Request in progress…'), findsNothing);
+        await screenshot(tester, 'stop-list-held-$failed');
+        fixture.gate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(TaskStopProgress), findsNothing);
+        if (failed) {
+          expect(find.text('Request outcome unknown'), findsOneWidget);
+          await tester.tap(find.text('Morning briefing'));
+          await tester.pumpAndSettle();
+          expect(find.text('Review request'), findsOneWidget);
+          expect(find.textContaining('Stop is not confirmed'), findsWidgets);
+        }
+        await screenshot(tester, 'stop-list-settled-$failed');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final destination in [
+    'filtered-list',
+    'missing-list',
+    'missing-detail',
+  ]) {
+    testWidgets(
+      'Stop feedback survives $destination during its held response',
+      (tester) async {
+        fixture.jobs['morning'] = taskJson(state: 'running');
+        await show(tester, list());
+        final c = ScheduledTasksController.acquire(fixture.profile, prefs);
+        addTearDown(c.release);
+        if (destination == 'filtered-list') {
+          await tester.tap(find.widgetWithText(ChoiceChip, 'Active'));
+          await tester.pumpAndSettle();
+        }
+        if (destination == 'missing-detail') {
+          await tester.tap(find.text('Morning briefing'));
+          await tester.pumpAndSettle();
+          expect(find.byType(AdminTaskRoute), findsOneWidget);
+        }
+        fixture.gate = Completer<void>();
+        fixture.mutationError = TimeoutException('Stop acknowledgement lost');
+        if (destination == 'missing-detail') {
+          await tester.tap(find.byTooltip('Stop run'));
+        } else {
+          await tester.tap(find.byTooltip('Actions for Morning briefing'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Stop run'));
+        }
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(fixture.mutations, 1);
+        if (destination == 'filtered-list') {
+          fixture.jobs['morning']!['state'] = 'completed';
+          fixture.jobs['morning']!['live_execution'] = null;
+        } else {
+          fixture.jobs.remove('morning');
+        }
+        await c.refresh();
+        await tester.pump();
+        expect(find.byType(TaskStopProgress), findsOneWidget);
+        if (destination == 'missing-detail') {
+          expect(find.byType(AdminScheduledTaskDetailPage), findsNothing);
+        }
+        await screenshot(tester, 'stop-$destination-held');
+        fixture.gate!.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(TaskStopProgress), findsNothing);
+        expect(find.text('Review request'), findsWidgets);
+        expect(c.pendingNotice('morning'), contains('Stop is not confirmed'));
+        await screenshot(tester, 'stop-$destination-uncertain');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      for (final failStop in [false, true]) {
+        testWidgets(
+          'Stop held trigger ${brightness.name} $scale failure=$failStop',
+          (tester) async {
+            final triggerReply = Completer<void>();
+            final stopReply = Completer<void>();
+            var triggers = 0, stops = 0;
+            fixture.admin.override = (method, path, query, body) async {
+              if (method == 'POST' && path.endsWith('/trigger')) {
+                triggers++;
+                fixture.jobs['morning'] = taskJson(state: 'running');
+                await triggerReply.future;
+                return {
+                  ...(fixture.jobs['morning'] ?? taskJson(state: 'completed')),
+                };
+              }
+              if (method == 'POST' && path.endsWith('/cancel')) {
+                stops++;
+                await stopReply.future;
+                if (failStop) {
+                  throw TimeoutException('Stop acknowledgement lost');
+                }
+                return {
+                  'success': true,
+                  'cancelled': true,
+                  'execution_id': 'execution-morning',
+                  'job_id': 'morning',
+                };
+              }
+              return fixture.send(method, path, query, body);
+            };
+            final c = await controller();
+            await show(
+              tester,
+              AdminScheduledTaskDetailPage(
+                controller: c,
+                initial: c.task('morning')!,
+                onOpenSession: (_) async {},
+              ),
+              brightness: brightness,
+              scale: scale,
+              width: scale == 2 ? 320 : 390,
+            );
+            await tester.tap(find.byTooltip('Run now'));
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 100));
+            expect(triggers, 1);
+            await c.refresh();
+            await tester.pump();
+            expect(
+              tester
+                  .widget<IconButton>(
+                    find.byWidgetPredicate(
+                      (widget) =>
+                          widget is IconButton && widget.tooltip == 'Stop run',
+                    ),
+                  )
+                  .onPressed,
+              isNotNull,
+            );
+            if (failStop) {
+              await tester.tap(find.byTooltip('Actions for Morning briefing'));
+              await tester.pumpAndSettle();
+              await tester.tap(find.text('Stop run'));
+            } else {
+              await tester.tap(find.byTooltip('Stop run'));
+            }
+            await tester.pump();
+            expect(find.byType(TaskStopProgress), findsWidgets);
+            final pendingIcon = find.descendant(
+              of: find.byTooltip('Stop run'),
+              matching: find.byType(CircularProgressIndicator),
+            );
+            expect(pendingIcon, findsOneWidget);
+            expect(
+              tester.widget<CircularProgressIndicator>(pendingIcon).value,
+              .75,
+            );
+            await tester.pump(const Duration(milliseconds: 100));
+            expect(stops, 1);
+            expect(triggers, 1);
+            await screenshot(
+              tester,
+              'stop-trigger-held-${brightness.name}-$scale-$failStop',
+            );
+            if (!failStop) {
+              if (scale == 2) {
+                fixture.jobs.remove('morning');
+              } else {
+                fixture.jobs['morning']!['live_execution'] = null;
+                fixture.jobs['morning']!['state'] = 'scheduled';
+                fixture.jobs['morning']!['latest_execution'] = {
+                  'id': 'execution-morning',
+                  'status': 'cancelled',
+                  'job_id': 'morning',
+                };
+              }
+              await c.refresh();
+              await tester.pump();
+              expect(pendingIcon, findsOneWidget);
+              expect(c.stopping('morning'), isTrue);
+              await screenshot(
+                tester,
+                'stop-terminal-before-ack-${brightness.name}-$scale',
+              );
+            }
+            stopReply.complete();
+            await tester.pumpAndSettle();
+            expect(find.byType(TaskStopProgress), findsNothing);
+            expect(c.busy, contains('morning'));
+            if (failStop) {
+              expect(
+                c.pendingNotice('morning'),
+                contains('Stop is not confirmed'),
+              );
+              expect(
+                find.textContaining('Stop is not confirmed'),
+                findsWidgets,
+              );
+            } else {
+              expect(c.notice, contains('Stop requested'));
+            }
+            triggerReply.complete();
+            await tester.pumpAndSettle();
+            expect(c.busy, isEmpty);
+            expect(stops, 1);
+            expect(c.blocked('morning'), failStop);
+            await screenshot(
+              tester,
+              'stop-trigger-settled-${brightness.name}-$scale-$failStop',
+            );
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
       testWidgets('Stop run pending and settlement ${brightness.name} $scale', (
         tester,
       ) async {
@@ -191,7 +420,7 @@ void main() {
         await tester.tap(find.byTooltip('Stop run'));
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.bySemanticsLabel('Updating task'), findsWidgets);
+        expect(find.bySemanticsLabel('Stopping run'), findsWidgets);
         await screenshot(tester, 'cancel-held-${brightness.name}-$scale');
         expect(fixture.mutations, 1);
         fixture.gate!.complete();

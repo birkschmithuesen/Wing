@@ -64,3 +64,7 @@ automatic failures go to phone diagnostics without adding a conversation warning
 Clipboard, gesture and handoff tests use the production RFB parser and lease owner. Negotiation uses the stock RFB ExtendedClipboard identifier (0xC0A1E5CE), with a fixture that distinguishes it from ExtendedDesktopSize. They cover Unicode/multiline data, no automatic Enter, loss of control during clipboard read or the remote request, delayed/absent remote requests, visible pending operations and retained notes on failure. The native Bots family verifies Android entry paths; it does not exercise a deployed desktop. `integration_test/bot_screen_live_test.dart` remains opt-in with an explicitly approved live bot and owned emulator.
 
 Unsent uploaded attachments expire on Hermes after one hour. If a stale attachment is rejected, remove it and choose the file again. Group attachment IDs are scoped to the room and committed event; they cannot read member-bot files or arbitrary server paths. Incoming Android shares add content to the group draft and never send it automatically.
+
+For authorized Android + production acceptance, use the `groups` suite in the
+[existing-gateway journey](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+It uses fresh owned profiles, exact group/task cleanup and real provider execution.

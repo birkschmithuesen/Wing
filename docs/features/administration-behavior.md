@@ -60,3 +60,8 @@ The subagent editor treats provider, model and direct endpoint fields as one
 route for conflict checking. Keep my choice explicitly rebases that route;
 Use current route discards the local route and reads the current configuration.
 Neither choice displays endpoint credentials.
+
+For settings save and readback through Android connected to an existing production gateway,
+use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
+Its named outcomes and stated prerequisites distinguish real production actions
+from fixture recovery coverage.
