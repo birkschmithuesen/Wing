@@ -118,8 +118,8 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
     await export(tester, 'connection-address-dark');
-    await tester.ensureVisible(find.text('Continue'));
-    await tester.tap(find.text('Continue'));
+    await tester.ensureVisible(find.text('Next'));
+    await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const Key('connection-username')),
@@ -132,6 +132,13 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.ensureVisible(find.text('Check connection'));
     await tester.tap(find.text('Check connection'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Connection verified. Select Next to continue.'),
+      findsOneWidget,
+    );
+    await export(tester, 'connection-check-dark');
+    await tester.tap(find.text('Next'));
     await tester.pumpAndSettle();
     expect(find.text('Connection verified'), findsOneWidget);
     await tester.enterText(

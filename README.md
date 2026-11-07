@@ -38,7 +38,7 @@ Find running chats and conversations waiting for your input across profiles. Fro
 
 ## Bots and group discussions
 
-Find bots across your saved connections and return to each bot's continuing chat. Pin favorites and give each one a distinct name and appearance. Bring 2–6 bots into a shared discussion; Hermes coordinates their work on your server, so it can continue after Wing closes.
+Find bots across your saved connections and return to each bot's continuing chat. Pin favorites and give each one a distinct name and appearance. Bring 2–6 bots into a shared discussion with a shared purpose and routing choices. Follow member progress and extend a discussion when it needs more rounds. Hermes coordinates the work on your server, so it can continue after Wing closes.
 
 <p align="center">
   <a href="https://tarkilhk.github.io/Wing/bots.html">
@@ -56,7 +56,7 @@ Open a bot's screen, take control and use your phone's keyboard, touch gestures 
 
 ## Live work
 
-Follow reasoning and timed tool runs as an answer streams. Open Tasks or Subagents to inspect progress, read a child's conversation and use its supported controls. Steer or stop a run, queue a follow-up, or fork from a saved answer while the original chat keeps working. Add server files with @ and choose skills with / while composing.
+Follow reasoning and timed tool runs as an answer streams. Open Tasks or Subagents to inspect progress, read a child's conversation and use its supported controls. Steer or stop a run, queue a follow-up, or fork from a saved answer once the chat is idle. Add server files with @ and choose skills with / while composing.
 
 <p align="center">
   <a href="https://tarkilhk.github.io/Wing/live-work.html">
@@ -92,7 +92,7 @@ Manage models, instructions, skills, connectors and scheduled tasks for each pro
 
 ## Scheduled work
 
-Schedule recurring or one-off work on Hermes, choose where results go and inspect recent runs. When a task fails, open an investigation chat with the responsible profile.
+Schedule recurring or one-off work on Hermes, set its timezone and missed-run policy, and deliver results to a bot group. Stop a current run without disabling its schedule and inspect recent runs. When a task fails, open an investigation chat with the responsible profile.
 
 [Explore scheduled tasks](https://tarkilhk.github.io/Wing/scheduled-tasks.html)
 

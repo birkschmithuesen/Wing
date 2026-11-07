@@ -16,10 +16,9 @@ Use the pencil in a sent user message's footer to edit it. Editing needs a conne
 
 **Regenerate** replaces the answer in the same chat. **Branch/Fork** creates a separate conversation through the selected saved answer, preserving the original. These are saved-answer actions, rather than composer controls. If a created branch cannot be fully verified, Wing keeps it reachable and explains the incomplete result. See [Server chat relationships](SERVER_CHAT_RELATIONSHIPS.md).
 
-Fork remains available on older saved answers while the chat is working or
-waiting for your input. The original work continues; later replies are not
-included in the branch. Tapping Fork opens **New chat** immediately, with a Wing
-loading indicator until it is ready or an error with Retry. Regenerate requires
+Fork requires a connected, idle source chat. It copies history through the
+selected saved answer; later replies are not included in the branch. Tapping
+Fork opens **New chat** immediately, with a Wing loading indicator until it is ready or an error with Retry. Regenerate requires
 an idle chat.
 
 Find's historical context view is read-only. Edit and Restore apply to saved human prompts, not internal notices.

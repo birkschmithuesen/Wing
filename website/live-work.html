@@ -26,7 +26,8 @@
 <header class="site-header page-width">
 <a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
 <nav aria-label="Main navigation">
-<a class="nav-link" href="index.html#workspaces">Features</a>
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
 <a class="nav-link" href="get-started.html">Get connected</a>
 <a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
 <svg><use href="#github"/></svg></a>
@@ -58,6 +59,7 @@
 <a href="#steer">Steer, queue, stop or fork</a>
 <a href="#details">Inspect tool requests and results</a>
 <a href="#input">Compose with files, voice and skills</a>
+<a href="#context">Context, questions and code review</a>
 <a href="#draft">Return to your draft</a>
 <a href="#connection">Reconnect to ongoing work</a>
 </nav>
@@ -66,7 +68,7 @@
 <section id="activity" aria-labelledby="activity-title">
 <h2 id="activity-title">Watch tools and delegated agents</h2>
 <p>As an answer streams, readable reasoning separates collapsed <strong>Activity</strong> runs. Open a run to inspect its tools. Its elapsed timer counts upward until the next reasoning block arrives, then stays fixed.</p>
-<p>The <strong>Tasks / Subagents</strong> bar above your draft opens current work. Swipe between the drawers or expand either near full screen; its summary stays visible while the rows scroll.</p>
+<p>The <strong>Tasks / Subagents</strong> bar above your draft opens current work. Swipe up once to open compactly, up again to expand, and down to close. Swipe sideways between the drawers; the summary stays visible while rows scroll.</p>
 <figure class="guide-shot guide-inline-shot">
 <div class="app-frame">
 <a class="screenshot-link" data-screenshot href="assets/screenshots/activity-dark.png" aria-label="Enlarge screenshot: Wing Activity with Timeline selected beside Tasks and Agents tabs"><img src="assets/screenshots/activity-dark.png" width="780" height="1688" alt="Wing Activity with Timeline selected beside Tasks and Agents tabs" loading="lazy"></a>
@@ -82,14 +84,14 @@
 </section>
 <section id="steer" aria-labelledby="steer-title">
 <h2 id="steer-title">Steer, queue, stop or fork</h2>
-<p>To change direction while the agent is working, type an instruction and hold the send control. Slide to <strong>Steer</strong> to send it now, or <strong>Queue</strong> to save it for later. You can edit queued messages before they send.</p>
+<p>To change direction while the agent is working, type an instruction and hold the send control. Slide to <strong>Steer</strong> to send it now, or <strong>Queue</strong> to save it for later. Hermes runs accepted queued messages even after Wing disconnects. Edit a still-queued message to replace it at the tail, or use its supported steer and cancel controls.</p>
 <p><strong>Stop</strong> interrupts the active run. It appears in an empty composer; typing brings back Send and the held actions. You can also edit saved messages or regenerate answers. <strong>Restore</strong> in a saved user message's footer asks for confirmation, then removes later history and reruns that prompt. Your separate draft stays intact and queued follow-ups pause for review.</p>
 <figure class="guide-shot guide-inline-shot ">
 <div class="app-frame">
 <a class="screenshot-link" data-screenshot href="assets/screenshots/steer-dark.png" aria-label="Enlarge screenshot: Wing held composer menu with Steer selected during live work"><img src="assets/screenshots/steer-dark.png" width="780" height="1688" alt="Wing held composer menu with Steer selected during live work" loading="lazy"></a>
 </div>
 </figure>
-<p>To explore another direction, choose <strong>Fork</strong> from a selected saved answer's footer. Wing creates a separate chat through that answer, keeping the original conversation available. You can fork while the original chat is still working. The new chat opens immediately with loading feedback; later replies in the original are not included.</p>
+<p>To explore another direction, choose <strong>Fork</strong> from a selected saved answer's footer. Wing creates a separate chat through that answer, keeping the original conversation available. Fork is available once the source chat is idle. The new chat opens immediately with loading feedback; later replies in the original are not included.</p>
 </section>
 <section id="details" aria-labelledby="details-title">
 <h2 id="details-title">Inspect tool requests and results</h2>
@@ -110,6 +112,13 @@
 <p>Type <strong>/</strong> after a space or on a new line to choose a skill while writing. Wing highlights the inserted skill name and loads its instructions when you send the message.</p>
 <p>Preview a skill from the suggestions or open it in chat to read its instructions and reference documents. Type <strong>@</strong> to browse server files and folders; selected files are read when the message sends, and unavailable references pause it for correction.</p>
 </section>
+<section id="context" aria-labelledby="context-title">
+<h2 id="context-title">Make room in a long conversation</h2>
+<p>In an idle chat, send <code>/compress --preview</code> to inspect the plan, then <code>/compress</code> or <code>/compact</code> to apply it. Wing refreshes the conversation and shows what changed. The context popup identifies a configured maximum when Hermes supplies it.</p>
+<p>When the agent asks several questions, review and answer them together before confirming. Eligible cut-off replies offer <strong>Continue</strong>, so you decide when to ask for the next part.</p>
+<p>For code work in a supported local workspace, open <strong>Chat actions → Git review</strong> to inspect changed files and staged changes, then copy a line or hunk reference. Review is read-only.</p>
+</section>
+
 <section id="draft" aria-labelledby="draft-title">
 <h2 id="draft-title">Return to your draft</h2>
 <p>Unsent text and attachments stay with their conversation when you switch chats, open another screen or restart Wing.</p>

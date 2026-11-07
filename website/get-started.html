@@ -26,7 +26,8 @@
 <header class="site-header page-width">
 <a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
 <nav aria-label="Main navigation">
-<a class="nav-link" href="index.html#workspaces">Features</a>
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
 <a class="nav-link" href="get-started.html">Get connected</a>
 <a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
 <svg><use href="#github"/></svg></a>
@@ -81,15 +82,21 @@
 </figure>
 <figure class="guide-shot guide-inline-shot">
 <div class="app-frame">
-<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-address-dark.png" aria-label="Enlarge screenshot: Wing address step with an example dashboard URL"><img src="assets/screenshots/connection-address-dark.png" width="780" height="1688" alt="Wing address step with an example dashboard URL" loading="lazy"></a>
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-address-dark.png" aria-label="Enlarge screenshot: Wing setup asking for the Hermes gateway Webapp address"><img src="assets/screenshots/connection-address-dark.png" width="780" height="1688" alt="Wing setup asking for the Hermes gateway Webapp address" loading="lazy"></a>
 </div>
-<figcaption>Using your own server? Enter its dashboard address, then your login if required.</figcaption>
+<figcaption>Using your own server? Enter its gateway Webapp address, then your login if required.</figcaption>
 </figure>
 <figure class="guide-shot guide-inline-shot">
 <div class="app-frame">
-<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-verified-dark.png" aria-label="Enlarge screenshot: Wing successful connection check with Save and open"><img src="assets/screenshots/connection-verified-dark.png" width="780" height="1688" alt="Wing successful connection check with Save and open" loading="lazy"></a>
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-check-dark.png" aria-label="Enlarge screenshot: Wing showing successful profile, live chat and history checks"><img src="assets/screenshots/connection-check-dark.png" width="780" height="1688" alt="Wing showing successful profile, live chat and history checks" loading="lazy"></a>
 </div>
-<figcaption>Run Check connection, name it, then tap the checkmark to Save and open.</figcaption>
+<figcaption>Check connection shows each result. Completed results stay valid for five minutes as you move between cards, unless connection details change.</figcaption>
+</figure>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-verified-dark.png" aria-label="Enlarge screenshot: Wing verified connection ready to name and save"><img src="assets/screenshots/connection-verified-dark.png" width="780" height="1688" alt="Wing verified connection ready to name and save" loading="lazy"></a>
+</div>
+<figcaption>After the checks pass, use Next or swipe to the final card. Name the instance, then tap the checkmark to save and open it.</figcaption>
 </figure>
 </div>
 <p>Use an address that opens in your phone’s browser. Most setups can leave <strong>Custom setup</strong> alone.</p>
@@ -110,7 +117,7 @@
 <details>
 <summary>The connection check failed</summary>
 <p>Open the dashboard address in your phone’s browser and check your network or VPN. Use your Hermes dashboard login, not a model-provider API key.</p>
-<p>If profiles load but chat or history fails, check that the Hermes Desktop Gateway is running. The <a href="https://github.com/tarkilhk/Wing/blob/main/docs/SELF_HOSTING.md">server setup guide</a> covers the details.</p>
+<p>If profiles load but chat or history fails, use the current Hermes gateway Webapp address. A standalone dashboard can load profiles without supporting Wing's chat and history contract. The <a href="https://github.com/tarkilhk/Wing/blob/main/docs/SELF_HOSTING.md">server setup guide</a> covers the details.</p>
 </details>
 <details id="good-to-know">
 <summary>Notifications, offline use and backups</summary>

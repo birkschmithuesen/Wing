@@ -4,6 +4,76 @@ User-facing changes for Wing. Download published APKs from [GitHub Releases](htt
 
 ## Unreleased
 
+## [1.4.0] - 2026-11-07
+
+Keep work moving across bots, scheduled routines and long conversations, with
+more control over what runs and where results go.
+
+### Before updating
+
+Wing uses the current Hermes gateway Webapp for live chats and saved history.
+A standalone dashboard is not sufficient. Update your Hermes setup separately
+if needed, then use **Check connection** to verify the address. See the
+[self-hosting guide](https://github.com/tarkilhk/Wing/blob/v1.4.0/docs/SELF_HOSTING.md).
+Fork now requires an idle source chat.
+
+### Groups and scheduled work
+
+- Give a group a shared purpose and notes. Choose Everyone, Lead or Auto routing,
+  inspect member progress, and grant more rounds with Continue when Hermes allows it.
+- Stop group work while a send is pending, and recover refused or interrupted
+  attempts with clearer Retry and Discard choices.
+- Stop a scheduled task's current run without disabling its schedule, including
+  while Run now is waiting. Recent runs show cancelled and missed outcomes.
+- Set a schedule timezone, late-run window and missed-run catch-up policy.
+  Deliver results into a bot group; member mentions can start a discussion.
+
+### Conversations and supervision
+
+- Let Hermes run accepted queued follow-ups after Wing disconnects. Edit, steer
+  or cancel a still-queued message; editing accepted work moves it to the queue's tail.
+- Review several clarification questions together and submit the set once.
+  Partially confirmed answers remain visible if a later answer needs retrying.
+- Continue eligible cut-off replies, inspect model-plan allowances when supplied,
+  and return a conversation to its profile's default model.
+- Preview conversation compression with `/compress --preview`, then apply it with
+  `/compress` or `/compact`. Context details identify a configured maximum.
+- Discover detached agents and processes in Recents and background monitoring.
+  Follow tool progress and recurring-work wakeup times supplied by Hermes.
+- Open read-only Git review for a supported local workspace, inspect changed or
+  staged files, and copy a line or hunk reference.
+- Swipe Tasks and Subagents drawers up to expand and down to close. Review the
+  exact command in pending approvals and use supported connection requests in chat.
+
+### Profiles, skills and connections
+
+- Lock skills against agent edits while keeping your own editing rights.
+  Manually update installed plugins and inspect updated, skipped or review-needed results.
+- See cached MCP connection and sign-in status separately from explicit tests.
+  Manage named Connected apps accounts where your Hermes setup supports them.
+- Choose a default model for new subagents, or inherit the parent's model.
+  Optionally prepare compression summaries ahead of need; this can consume tokens.
+- Keep settings editable with the server's explanation after a definite refusal.
+  Cloud connections show version information without offering host update controls.
+- Swipe through sliding setup cards with a fixed footer and compact check results.
+  Fields stay in place during checks; completed results remain usable for five
+  minutes across cards unless you edit connection details. Name and save explicitly.
+
+### Organization and reliability
+
+- Create projects under the profile's default folder, replace a project's folder
+  associations, and move a chat out of a project with confirmation.
+- Save large files without Wing's former fixed download-size cap. Keep a chosen
+  table layout through conversation updates.
+- Open reply notifications at the beginning of the answer. Saved steering appears
+  as a normal message, and stream recovery avoids duplicate text and sent bubbles.
+- Keep saved history readable when live attachment is refused, retain reading
+  position across group refreshes, and retire stale background-work indicators.
+- Fix skill-reader opening, compression-result placement, short-screen question
+  recovery and connector alerts after confirmed removal or disabling.
+- Improve image-processing safety checks for unusually large or malformed
+  attachments, and update Flutter, Android build tools and app dependencies.
+
 ## [1.3.1] - 2026-10-23
 
 - Bugfixes.

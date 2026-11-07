@@ -2,27 +2,30 @@
 
 ## Follow-up queue
 
-Queue moves composer text and attachments into an unsent entry for that chat.
-Attachment-only entries are supported; Steer accepts text only. The separate
+Queue adds text and attachments as a follow-up for the selected chat. Wing keeps
+local unsent entries on the phone; once Hermes accepts a queued message, Hermes
+owns when it runs. Accepted messages can run after Wing disconnects. The separate
 composer draft remains available.
 
-Tap a queued row to open actions for that message: Edit, Steer and Delete.
-Steer needs a connected active turn and a text-only message. For messages with
-images or other attachments, Steer is dimmed; tap it to see why. The entry stays in
-the outbox until Hermes acknowledges it; rejection keeps it available to retry.
-A paused queue also offers Resume.
+Tap a queued row for its supported Edit, Steer and Delete actions. Steer needs a
+connected active turn and a text-only message. For a message with attachments,
+the dimmed Steer action explains why it is unavailable. A local paused queue also
+offers Resume.
 
-Edit, or hold the row, to change the message in the composer. The checkmark saves
-it in its original position. Steer sends the edited text into the active turn.
+Edit, or hold the row, to change the message in the composer. Saving a local
+unsent entry keeps its position. Editing a still-queued message already accepted
+by Hermes replaces it at the tail; steering transfers that exact accepted entry
+into the current turn. Unavailable server controls stay disabled.
+
 Cancel restores your separate draft; deletion requires confirmation. Back hides
-the keyboard first, then cancels editing. Sending the queue pauses while an edit
-is open.
+the keyboard first, then cancels editing. Local submission pauses while an edit
+is open; this does not pause work already accepted by Hermes.
 
-When connected, Wing sends one entry at a time after a completed turn. Restored
-work waits for a server-state check. Stop, upload or send failure, and uncertain
-delivery pause remaining entries for review and explicit resume. Restarting does
-not automatically repeat uncertain work. Failed saves preserve queued work and
-newer composer edits. See [Drafts and outbox](DRAFTS_OUTBOX.md).
+Local entries need Wing to reconnect before submission. Restored work waits for
+a server-state check. Stop, upload or send failure, and uncertain delivery pause
+remaining local entries for review and explicit resume. Restarting does not
+repeat uncertain work automatically. Failed saves preserve queued work and newer
+composer edits. See [Drafts and outbox](DRAFTS_OUTBOX.md).
 
 ## Recents
 
@@ -37,9 +40,10 @@ to switch to an adjacent conversation. Pinch inward to open the circular card
 stack; accessible icon controls and keyboard controls are also available. Back
 closes the stack first.
 
-Failed profile reads can leave coverage incomplete. Child-only work may be absent
-when its parent is idle; open [Subagents](SUBAGENT_SUPERVISION.md) to check a known
-parent's children. See [Chats](CHATS.md).
+Recents also observes detached children and processes reported by Hermes, even
+when the parent chat is idle or unopened. This indicates ongoing work; it does
+not grant live control of that chat. Failed profile reads can leave coverage
+incomplete. Open [Subagents](SUBAGENT_SUPERVISION.md) for a known parent's children.
 
 ## Sensitive input, approvals, and questions
 
