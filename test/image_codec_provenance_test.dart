@@ -6,8 +6,8 @@ import '../tools/architecture/rules/image_codec_provenance.dart' as provenance;
 import 'architecture_contract_test.dart' show FixtureWorkspace;
 
 FixtureWorkspace fixture({
-  String imageVersion = '4.10.1',
-  String imagePin = '4.10.1',
+  String imageVersion = '4.12.0',
+  String imagePin = '4.12.0',
   String? override,
   String? imageHash,
 }) {
@@ -28,10 +28,10 @@ FixtureWorkspace fixture({
 void main() {
   for (final entry in <String, FixtureWorkspace Function()>{
     'audited hosted artifacts': () => fixture(),
-    'codec upgrade': () => fixture(imageVersion: '4.10.2'),
-    'floating constraint': () => fixture(imagePin: '^4.10.1'),
+    'codec upgrade': () => fixture(imageVersion: '4.12.1'),
+    'floating constraint': () => fixture(imagePin: '^4.12.0'),
     'same version different bytes': () => fixture(imageHash: 'different'),
-    'package override': () => fixture(override: '4.10.1'),
+    'package override': () => fixture(override: '4.12.0'),
     'unrelated optional override': () {
       final workspace = fixture();
       File(

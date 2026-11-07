@@ -5,6 +5,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as image_lib;
+import 'package:image/src/util/output_buffer.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:wing/core/services/attachment_image_preflight.dart';
@@ -157,7 +158,219 @@ Uint8List _samsungTrailer() {
   ]);
 }
 
+// Observe the real pinned encoder's capacity changes, without reproducing its
+// growth formula in the test's expected values.
+class _ObservedOutput extends OutputBuffer {
+  _ObservedOutput() : super(bigEndian: true);
+  int peakOverlap = 0;
+
+  void _observe(int before) {
+    final after = getBytes().buffer.lengthInBytes;
+    final overlap = after > before ? before + after : after;
+    if (overlap > peakOverlap) peakOverlap = overlap;
+  }
+
+  @override
+  void writeByte(int value) {
+    final before = getBytes().buffer.lengthInBytes;
+    super.writeByte(value);
+    _observe(before);
+  }
+
+  @override
+  void writeBytes(List<int> bytes, [int? len]) {
+    final before = getBytes().buffer.lengthInBytes;
+    super.writeBytes(bytes, len);
+    _observe(before);
+  }
+}
+
+class _ObservedPngEncoder extends image_lib.PngEncoder {
+  _ObservedPngEncoder() : super(level: 6);
+  _ObservedOutput? _current;
+  late _ObservedOutput observed;
+
+  @override
+  OutputBuffer? get output => _current;
+
+  @override
+  set output(OutputBuffer? value) {
+    _current = value == null ? null : (observed = _ObservedOutput());
+  }
+}
+
+image_lib.Image _noiseImage(int width, int height) {
+  final image = image_lib.Image(width: width, height: height, numChannels: 4);
+  final bytes = image.toUint8List();
+  var state = 0x12345678;
+  for (var i = 0; i < bytes.length; i++) {
+    state = (state ^ (state << 13)) & 0xffffffff;
+    state ^= state >> 17;
+    state = (state ^ (state << 5)) & 0xffffffff;
+    bytes[i] = state & 255;
+  }
+  return image;
+}
+
 void main() {
+  for (var orientation = 1; orientation <= 8; orientation++) {
+    test(
+      'WebP orientation $orientation preserves every odd-sized pixel',
+      () async {
+        final source = image_lib.Image(width: 7, height: 3, numChannels: 4);
+        for (final pixel in source) {
+          pixel.setRgba(pixel.x * 40, pixel.y * 70, 25, 255);
+        }
+        source.exif.imageIfd.orientation = orientation;
+        final bytes = image_lib.encodeWebP(source);
+        final result = await AttachmentImageWorker.shared
+            .prepareBytes(bytes, maxOutputBytes: maxAttachmentImageOutputBytes)
+            .result;
+        final decoded = image_lib.decodePng(result.bytes)!;
+        expect((
+          decoded.width,
+          decoded.height,
+        ), orientation >= 5 ? (3, 7) : (7, 3));
+        for (final pixel in source) {
+          final (x, y) = switch (orientation) {
+            1 => (pixel.x, pixel.y),
+            2 => (6 - pixel.x, pixel.y),
+            3 => (6 - pixel.x, 2 - pixel.y),
+            4 => (pixel.x, 2 - pixel.y),
+            5 => (pixel.y, pixel.x),
+            6 => (2 - pixel.y, pixel.x),
+            7 => (2 - pixel.y, 6 - pixel.x),
+            _ => (pixel.y, 6 - pixel.x),
+          };
+          final actual = decoded.getPixel(x, y);
+          expect(
+            (actual.r, actual.g, actual.b, actual.a),
+            (pixel.r, pixel.g, pixel.b, pixel.a),
+          );
+        }
+        expect(decoded.exif.isEmpty, isTrue);
+      },
+    );
+  }
+
+  test(
+    '16-bit grayscale PNG transparency preserves independent pixels',
+    () async {
+      final bytes = Uint8List.fromList([
+        137,
+        80,
+        78,
+        71,
+        13,
+        10,
+        26,
+        10,
+        ..._chunk('IHDR', [..._word(2), ..._word(1), 16, 0, 0, 0, 0]),
+        ..._chunk('tRNS', [255, 255]),
+        ..._chunk('IDAT', ZLibCodec().encode([0, 255, 255, 0, 0])),
+        ..._chunk('IEND', []),
+      ]);
+      final result = await AttachmentImageWorker.shared
+          .prepareBytes(bytes, maxOutputBytes: maxAttachmentImageOutputBytes)
+          .result;
+      final decoded = image_lib.decodePng(result.bytes)!;
+      expect(decoded.getPixel(0, 0).a, 0);
+      expect(decoded.getPixel(1, 0).r, 0);
+      expect(decoded.getPixel(1, 0).aNormalized, 1);
+    },
+  );
+
+  test('PNG checksum damage is refused by preflight before lazy decode', () {
+    final bytes = _png(1, 1, [0, 1, 2, 3, 255]);
+    final compressedSize = ByteData.sublistView(bytes).getUint32(33);
+    bytes[41 + compressedSize - 1] ^= 1;
+    expect(
+      () => inspectAttachmentImage(bytes),
+      throwsA(isA<AttachmentImageException>()),
+    );
+  });
+
+  for (final frames in [1, 2]) {
+    test('PNG reserve covers actual output growth, frames=$frames', () async {
+      final source = _noiseImage(2304, frames == 1 ? 2048 : 1600);
+      if (frames == 2) source.addFrame(image_lib.Image.from(source));
+      final encoder = _ObservedPngEncoder();
+      final bytes = encoder.encode(source);
+      final inspection = inspectAttachmentImage(bytes);
+      final canvasBytes = source.width * source.height * 4 * frames;
+      expect(encoder.observed.peakOverlap, greaterThan(bytes.length));
+      expect(
+        inspection.chargedBytes,
+        greaterThanOrEqualTo(
+          bytes.length * 2 + canvasBytes * 2 + encoder.observed.peakOverlap,
+        ),
+      );
+      if (frames == 2) {
+        expect(bytes.length, greaterThan(maxAttachmentImageOutputBytes));
+        await expectLater(
+          AttachmentImageWorker.shared
+              .prepareBytes(
+                bytes,
+                maxOutputBytes: maxAttachmentImageOutputBytes,
+              )
+              .result,
+          throwsA(isA<AttachmentImageException>()),
+        );
+      }
+    });
+  }
+
+  test('compressible PNG is refused before oversized codec work', () async {
+    final bytes = image_lib.encodePng(
+      image_lib.Image(width: 4096, height: 3072, numChannels: 4),
+    );
+    expect(bytes.length, lessThan(1024 * 1024));
+    await expectLater(
+      AttachmentImageWorker.shared
+          .prepareBytes(bytes, maxOutputBytes: maxAttachmentImageOutputBytes)
+          .result,
+      throwsA(
+        isA<AttachmentImageException>().having(
+          (error) => error.message,
+          'processing refusal',
+          contains('memory'),
+        ),
+      ),
+    );
+  });
+
+  test('late Adobe JPEG marker survives streaming decode restart', () async {
+    final source = image_lib.Image(width: 17, height: 9);
+    image_lib.fill(source, color: image_lib.ColorRgb8(180, 40, 20));
+    final jpeg = image_lib.encodeJpg(source);
+    final lateAdobe = Uint8List.fromList([
+      ...jpeg.take(jpeg.length - 2),
+      255,
+      238,
+      0,
+      14,
+      ...ascii.encode('Adobe'),
+      0,
+      100,
+      0,
+      0,
+      0,
+      0,
+      1,
+      255,
+      217,
+    ]);
+    final result = await AttachmentImageWorker.shared
+        .prepareBytes(lateAdobe, maxOutputBytes: maxAttachmentImageOutputBytes)
+        .result;
+    final decoded = image_lib.decodeJpg(result.bytes)!;
+    expect((decoded.width, decoded.height), (17, 9));
+    final pixel = decoded.getPixel(8, 4);
+    expect(pixel.r, closeTo(180, 5));
+    expect(pixel.g, closeTo(40, 5));
+    expect(pixel.b, closeTo(20, 5));
+  });
+
   for (final indexed in [false, true]) {
     test('room PNG crop preserves clear and soft alpha, indexed=$indexed', () {
       final source = image_lib.Image(width: 32, height: 16, numChannels: 4);
