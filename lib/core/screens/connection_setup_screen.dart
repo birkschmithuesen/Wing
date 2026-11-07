@@ -1047,9 +1047,13 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_step == ConnectionSetupStep.check)
-          TextButton(
-            onPressed: _probe.checking ? _session.editSignIn : _check,
-            child: Text(_probe.checking ? 'Cancel check' : 'Check connection'),
+          StudioButtonPress(
+            child: TextButton(
+              onPressed: _probe.checking ? _session.editSignIn : _check,
+              child: Text(
+                _probe.checking ? 'Cancel check' : 'Check connection',
+              ),
+            ),
           ),
         StudioButtonPress(
           child: FilledButton(
