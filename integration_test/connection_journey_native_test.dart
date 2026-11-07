@@ -84,6 +84,8 @@ void main() {
         fixture.discoveryGate = Completer<ProfileDiscovery>();
         await _tap(tester, 'Check connection', settleAfter: false);
         await tester.pump(const Duration(milliseconds: 100));
+        // The header receives its loading state after the page's build.
+        await tester.pump();
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         final progress = find.byType(StudioLoading);
         expect(progress, findsOneWidget);
