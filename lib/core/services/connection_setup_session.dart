@@ -49,10 +49,12 @@ class ConnectionSetupState {
     required this.saveError,
     required this.result,
     required this.canAdvance,
+    required this.cards,
     required this.chatSocketUrl,
     required this.chatPath,
     required this.unencrypted,
   }) : organizations = List.unmodifiable(organizations);
+  final List<ConnectionSetupStep> cards;
   final ConnectionSetupDraft draft;
   final ConnectionSetupStep step;
   final ConnectionSetupCheck check;
@@ -226,6 +228,11 @@ class ConnectionSetupSession extends ChangeNotifier {
               (_discovery!.organizations.isNotEmpty
                   ? _organization != null
                   : _instance?.canConnect == true)),
+      cards: List.unmodifiable([
+        ConnectionSetupStep.address,
+        if (validateAddress(_draft.address) == null) ConnectionSetupStep.signIn,
+        if (_probe.verified) ConnectionSetupStep.review,
+      ]),
       chatSocketUrl: chat?.socketUrl ?? '',
       chatPath: chat?.path ?? '',
       unencrypted: _draft.address.startsWith('http:'),
@@ -246,6 +253,28 @@ class ConnectionSetupSession extends ChangeNotifier {
       return;
     }
     _go(ConnectionSetupStep.review);
+  }
+
+  /// A settled swipe uses the same transitions as Next and Back.
+  void selectCard(ConnectionSetupStep target) {
+    if (_closed ||
+        _saving ||
+        _cloudBusy ||
+        _leaving ||
+        _cloudRoute ||
+        !_value.cards.contains(target)) {
+      return;
+    }
+    final current = _value.cards.indexOf(_step);
+    final next = _value.cards.indexOf(target);
+    if (current < 0 || (next - current).abs() != 1) return;
+    if (next < current) {
+      back();
+    } else if (_step == ConnectionSetupStep.address) {
+      continueAddress();
+    } else {
+      continueVerified();
+    }
   }
 
   void _go(ConnectionSetupStep step) {

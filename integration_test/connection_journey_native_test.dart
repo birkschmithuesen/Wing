@@ -4,6 +4,7 @@ import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/connection_setup_session.dart';
 import 'package:wing/core/services/hermes_cloud.dart';
 import 'package:flutter/material.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:wing/core/screens/connection_setup_screen.dart';
@@ -59,7 +60,11 @@ void main() {
           find.byKey(const Key('connection-address')),
           'https://hermes.example.com/agent/',
         );
-        await _swipe(tester, -150);
+        await _swipe(
+          tester,
+          -150,
+          captureName: 'connection-${brightness.name}-swipe-motion',
+        );
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         await _swipe(tester, 150);
         expect(find.byKey(const Key('connection-address')), findsOneWidget);
@@ -80,7 +85,7 @@ void main() {
         await _tap(tester, 'Check connection', settleAfter: false);
         await tester.pump(const Duration(milliseconds: 100));
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
-        final progress = find.byType(CircularProgressIndicator);
+        final progress = find.byType(StudioLoading);
         expect(progress, findsOneWidget);
         final viewport =
             Offset.zero &
@@ -110,6 +115,14 @@ void main() {
         await _tap(tester, 'Check connection');
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
         expect(find.text('Available'), findsNWidgets(3));
+        final card = tester.widget<SingleChildScrollView>(
+          find.byKey(const ValueKey('connection-card-signIn')),
+        );
+        expect(
+          card.controller!.position.maxScrollExtent,
+          0,
+          reason: 'The normal Android form fits without scrolling',
+        );
         await captureJourney(
           tester,
           'connection-${brightness.name}-inline-success',
@@ -189,7 +202,11 @@ Future<void> _ready(WidgetTester tester, Finder target) async {
   expect(target.hitTestable(), findsOneWidget);
 }
 
-Future<void> _swipe(WidgetTester tester, double distance) async {
+Future<void> _swipe(
+  WidgetTester tester,
+  double distance, {
+  String? captureName,
+}) async {
   // A scrolled card can put an editable field below the app bar. Swipe an
   // observed, non-editable card heading so native text gestures keep ownership.
   final target = [
@@ -203,7 +220,18 @@ Future<void> _swipe(WidgetTester tester, double distance) async {
   );
   await _ready(tester, target);
   _trace('swiping $distance');
-  await tester.drag(target, Offset(distance, 0));
+  if (captureName == null) {
+    await tester.drag(target, Offset(distance.sign * 280, 0));
+  } else {
+    final gesture = await tester.startGesture(tester.getCenter(target));
+    await gesture.moveBy(Offset(distance.sign * 30, 0));
+    await tester.pump();
+    await gesture.moveBy(Offset(distance.sign * 80, 0));
+    await tester.pump();
+    await captureJourney(tester, captureName);
+    await gesture.moveBy(Offset(distance.sign * 170, 0));
+    await gesture.up();
+  }
   await _settle(tester);
   _trace('swiped $distance');
 }

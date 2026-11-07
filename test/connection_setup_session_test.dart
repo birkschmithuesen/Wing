@@ -110,6 +110,36 @@ void main() {
   }
 
   test(
+    'swipe cards use validation and verified transitions without bypassing save',
+    () async {
+      session.chooseSource(cloud: false);
+      expect(session.value.cards, [ConnectionSetupStep.address]);
+      session.selectCard(ConnectionSetupStep.signIn);
+      expect(session.value.step, ConnectionSetupStep.address);
+      session.editAddress('https://hermes.example');
+      expect(session.value.cards, [
+        ConnectionSetupStep.address,
+        ConnectionSetupStep.signIn,
+      ]);
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.address);
+      session.selectCard(ConnectionSetupStep.signIn);
+      session.editUsername('alex');
+      session.editPassword('password');
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      await session.check();
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.review);
+      expect(writes, isEmpty);
+      session.selectCard(ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isTrue);
+      session.editPassword('replacement');
+      expect(session.value.cards, isNot(contains(ConnectionSetupStep.review)));
+    },
+  );
+
+  test(
     'raw draft validation prevents probes and preserves exact password',
     () async {
       session.chooseSource(cloud: false);
