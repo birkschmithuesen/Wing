@@ -10,6 +10,8 @@ void main() {
     () async {
       expect(await rule.check(Directory.current), isEmpty);
     },
+    // Resolving the production view includes the Flutter SDK on a cold cache.
+    timeout: const Timeout(Duration(minutes: 2)),
   );
   test(
     'independent setup-view fixtures and source/AOT CLI exits pass',

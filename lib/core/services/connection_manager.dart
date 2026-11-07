@@ -1298,7 +1298,7 @@ class DashboardClient {
           },
         );
         _resetAuth(headers);
-        return apiGet(
+        return await apiGet(
           endpoint,
           queryParameters: queryParameters,
           retried: true,
