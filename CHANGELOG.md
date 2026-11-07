@@ -55,8 +55,9 @@ Fork now requires an idle source chat.
   Optionally prepare compression summaries ahead of need; this can consume tokens.
 - Keep settings editable with the server's explanation after a definite refusal.
   Cloud connections show version information without offering host update controls.
-- Swipe through connection setup, inspect check results, then proceed to naming
-  and saving the connection yourself.
+- Swipe through sliding setup cards with a fixed footer and compact check results.
+  Fields stay in place during checks; completed results remain usable for five
+  minutes across cards unless you edit connection details. Name and save explicitly.
 
 ### Organization and reliability
 
@@ -70,6 +71,8 @@ Fork now requires an idle source chat.
   position across group refreshes, and retire stale background-work indicators.
 - Fix skill-reader opening, compression-result placement, short-screen question
   recovery and connector alerts after confirmed removal or disabling.
+- Improve image-processing safety checks for unusually large or malformed
+  attachments, and update Flutter, Android build tools and app dependencies.
 
 ## [1.3.1] - 2026-10-23
 

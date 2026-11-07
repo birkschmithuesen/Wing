@@ -15640,6 +15640,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "website/assets/screenshots/connection-check-dark.png",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
       "path": "website/assets/screenshots/connection-choose-dark.png",
       "area": "website",
       "provenance": "tracked"
