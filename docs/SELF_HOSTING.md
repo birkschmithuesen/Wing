@@ -16,7 +16,7 @@ Choose **Connect your agent → Use an address** and enter the complete gateway 
 
 Enter the dashboard username and password if your server uses them. **Custom setup** is for deployments that need extra proxy headers, proxy-managed sign-in or a separate chat address. Review a separate chat address carefully: it receives your chat authentication and any configured access headers. Most setups can leave Custom setup alone.
 
-Tap **Check connection**. Wing checks profile access, canonical chat support on the authenticated connection and session history separately. Results stay on the sign-in screen. When all three pass, tap **Next** or swipe left, name the connection and tap **Save and open**. Send a message to verify your model provider too; a connection check does not run the model.
+Tap **Check connection**. Wing checks profile access, canonical chat support on the authenticated connection and session history separately. Results update in place on the sign-in screen, without moving the form. When all three pass, tap **Next** or swipe left, name the connection and tap **Save and open**. Send a message to verify your model provider too; a connection check does not run the model.
 
 ## Connection help
 

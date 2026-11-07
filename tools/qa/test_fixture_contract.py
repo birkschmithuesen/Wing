@@ -135,6 +135,9 @@ class NativeBenchmarkGuardTest(unittest.TestCase):
                 'import sys\nfrom pathlib import Path\n'
                 'ROOT = Path(__file__).parent\n'
                 "def command(): return [sys.executable, '-c', 'raise SystemExit(7)']\n")
+            (root / 'provider_boundary.py').write_text(
+                'def kotlin_version():\n'
+                "    raise AssertionError('Failed guard must not report compiler metadata')\n")
             native = root / 'android/app/src/main/kotlin/com/tarkilhk/wing'
             native.mkdir(parents=True)
             for name in ('VoiceChannel', 'VoiceCapture', 'VoicePlayback'):

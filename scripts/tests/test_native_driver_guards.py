@@ -26,6 +26,54 @@ DRIVERS = (
 )
 
 
+class NativeGuardCompilerSelection(unittest.TestCase):
+    def fixture(self, version='2.4.21'):
+        from tools.architecture.native_share import provider_boundary as guard
+        root = Path(self.enterContext(tempfile.TemporaryDirectory()))
+        settings = root / 'android/settings.gradle.kts'
+        settings.parent.mkdir()
+        settings.write_text(
+            f'plugins {{\n    id("org.jetbrains.kotlin.android") version "{version}" apply false\n}}\n')
+        java = root / 'jdk/bin/java'
+        java.parent.mkdir(parents=True)
+        java.touch()
+        self.enterContext(patch.object(guard, 'ROOT', root))
+        self.enterContext(patch.dict(os.environ, {
+            'JAVA_HOME': str(root / 'jdk'), 'GRADLE_USER_HOME': str(root / 'gradle'),
+        }))
+        for group, module, artifact_version in [
+            ('org.jetbrains.kotlin', 'kotlin-compiler-embeddable', version),
+            ('org.jetbrains.kotlin', 'kotlin-stdlib', version),
+            ('org.jetbrains.kotlin', 'kotlin-script-runtime', version),
+            ('org.jetbrains.kotlinx', 'kotlinx-coroutines-core-jvm', '1.8.0'),
+            ('org.jetbrains', 'annotations', '13.0'),
+        ]:
+            jar = root / 'gradle/caches/modules-2/files-2.1' / group / module / artifact_version / 'hash/artifact.jar'
+            jar.parent.mkdir(parents=True)
+            jar.touch()
+        return guard, settings
+
+    def test_guard_uses_the_compiler_selected_by_the_android_build(self):
+        guard, _ = self.fixture()
+        _, jars = guard.tooling()
+        self.assertEqual([jar.parents[1].name for jar in jars[:3]], ['2.4.21'] * 3)
+
+    def test_old_cached_compiler_cannot_satisfy_a_new_build_pin(self):
+        guard, settings = self.fixture('2.4.20')
+        settings.write_text(settings.read_text().replace('2.4.20', '2.4.21'))
+        with self.assertRaisesRegex(ValueError, 'kotlin-compiler-embeddable/2.4.21'):
+            guard.tooling()
+
+    def test_missing_or_ambiguous_build_pin_is_rejected(self):
+        guard, settings = self.fixture()
+        declaration = settings.read_text()
+        for content in ('plugins {}', declaration + declaration):
+            with self.subTest(content=content):
+                settings.write_text(content)
+                with self.assertRaisesRegex(ValueError, 'Kotlin plugin version'):
+                    guard.tooling()
+
+
 class NativeVoiceAdbdOwnership(unittest.TestCase):
     def driver(self, prior='2000', *, root_error=False, root_denied=False,
                restore_bad=False, unroot_error=False, root_reply_error=False):

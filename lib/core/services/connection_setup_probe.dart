@@ -66,10 +66,12 @@ class ConnectionSetupProbe extends ChangeNotifier {
   ConnectionSetupProbe({
     this.createProbe = DashboardConnectionProbe.new,
     this.deadline = const Duration(seconds: 15),
-  });
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
   final ConnectionProbe Function(ConnectionAccess) createProbe;
   final Duration deadline;
+  final DateTime Function() _now;
   final statuses = {
     for (final stage in ConnectionCheck.values)
       stage: ConnectionCheckStatus.waiting,
@@ -141,7 +143,7 @@ class ConnectionSetupProbe extends ChangeNotifier {
       if (generation == _generation) {
         _probe = null;
         checking = false;
-        checkedAt = DateTime.now();
+        checkedAt = _now();
         notifyListeners();
       }
     }

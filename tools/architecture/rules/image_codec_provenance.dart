@@ -10,12 +10,12 @@ const id = 'ARCH_IMAGE_CODEC_PROVENANCE';
 // requires re-auditing the allocation drivers and codec parity fixtures.
 const auditedCodecs = {
   'image': (
-    '4.10.1',
-    'a1e7f4951e538a568e14b856702afc9ae1d2f4b202daced8d22c1b9cd211ce89',
+    '4.12.0',
+    '89ed75b2f8231fe676808c5564f9590d728024ded7ac782a7ed8474f1c95b72a',
   ),
   'archive': (
-    '4.0.9',
-    'a96e8b390886ee8abb49b7bd3ac8df6f451c621619f52a26e815fdcf568959ff',
+    '4.6.0',
+    'de5ac590b8155e4e676088d714bd41ea620449a6adc0f7950c5073874b287ddb',
   ),
 };
 List<Finding> check(Snapshot snapshot) {

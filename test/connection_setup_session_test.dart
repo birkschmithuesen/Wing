@@ -58,6 +58,7 @@ void main() {
   late _Cloud cloud;
   late ConnectionProbeFixture probe;
   late ConnectionSetupSession session;
+  late DateTime now;
   final writes = <SavedConnection>[];
   ConnectionAccess? checked;
   ConnectionSetupSession create({
@@ -65,6 +66,7 @@ void main() {
     Future<SavedConnection> Function(SavedConnection)? save,
   }) => ConnectionSetupSession(
     initialAccess: initial,
+    now: () => now,
     savedConnections: () => const [],
     cloud: cloud,
     createProbe: (access) {
@@ -86,6 +88,7 @@ void main() {
 
   setUp(() {
     disposedSessions.clear();
+    now = DateTime.utc(2026, 11, 7, 12);
     cloud = _Cloud();
     probe = ConnectionProbeFixture();
     writes.clear();
@@ -108,6 +111,128 @@ void main() {
     await session.continueCloud();
     session.selectInstance(_instance.id);
   }
+
+  test(
+    'swipe cards use validation and verified transitions without bypassing save',
+    () async {
+      session.chooseSource(cloud: false);
+      expect(session.value.cards, [ConnectionSetupStep.address]);
+      session.selectCard(ConnectionSetupStep.signIn);
+      expect(session.value.step, ConnectionSetupStep.address);
+      session.editAddress('https://hermes.example');
+      expect(session.value.cards, [
+        ConnectionSetupStep.address,
+        ConnectionSetupStep.signIn,
+      ]);
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.address);
+      session.selectCard(ConnectionSetupStep.signIn);
+      session.editUsername('alex');
+      session.editPassword('password');
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      await session.check();
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.review);
+      expect(writes, isEmpty);
+      session.selectCard(ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isTrue);
+      session.editPassword('replacement');
+      expect(session.value.cards, isNot(contains(ConnectionSetupStep.review)));
+    },
+  );
+
+  test('a swipe can return from review directly to the address', () async {
+    local();
+    await session.check();
+    session.continueVerified();
+    expect(session.value.step, ConnectionSetupStep.review);
+    session.selectCard(ConnectionSetupStep.address);
+    expect(session.value.step, ConnectionSetupStep.address);
+    expect(session.value.check.verified, isTrue);
+    expect(session.value.draft.username, ' alex ');
+    expect(writes, isEmpty);
+  });
+
+  test(
+    'recent checks survive repeated card navigation without new probes',
+    () async {
+      local();
+      await session.check();
+      now = now.add(const Duration(minutes: 4, seconds: 59));
+      session.selectCard(ConnectionSetupStep.address);
+      expect(session.value.check.verified, isTrue);
+      session.selectCard(ConnectionSetupStep.signIn);
+      session.selectCard(ConnectionSetupStep.review);
+      session.selectCard(ConnectionSetupStep.address);
+      session.selectCard(ConnectionSetupStep.review);
+      expect(session.value.step, ConnectionSetupStep.review);
+      expect(session.value.check.verified, isTrue);
+      expect(probe.calls, ConnectionCheck.values);
+      // Navigation must not extend the original result's age.
+      now = now.add(const Duration(seconds: 1));
+      await session.back();
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isFalse);
+      expect(session.value.canAdvance, isFalse);
+      expect(
+        session.value.check.statuses.values,
+        everyElement(ConnectionCheckStatus.waiting),
+      );
+      session.continueVerified();
+      expect(session.value.step, ConnectionSetupStep.signIn);
+    },
+  );
+
+  test(
+    'expired results cannot advance or save and a new check renews them',
+    () async {
+      local();
+      await session.check();
+      now = now.add(const Duration(minutes: 5));
+      session.continueVerified();
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isFalse);
+      await session.check();
+      session.continueVerified();
+      expect(session.value.step, ConnectionSetupStep.review);
+      now = now.add(const Duration(minutes: 5));
+      await session.save();
+      expect(writes, isEmpty);
+      expect(session.value.step, ConnectionSetupStep.signIn);
+      expect(session.value.check.verified, isFalse);
+      await session.check();
+      session.continueVerified();
+      await session.save();
+      expect(writes, hasLength(1));
+    },
+  );
+
+  test(
+    'failed results survive navigation but connection edits retire them',
+    () async {
+      local();
+      probe.failAt = ConnectionCheck.chat;
+      await session.check();
+      final error = session.value.check.error;
+      session.selectCard(ConnectionSetupStep.address);
+      now = now.add(const Duration(minutes: 4));
+      session.selectCard(ConnectionSetupStep.signIn);
+      expect(session.value.check.error, error);
+      expect(
+        session.value.check.statuses[ConnectionCheck.chat],
+        ConnectionCheckStatus.failed,
+      );
+      expect(session.value.canAdvance, isFalse);
+      expect(probe.calls, [ConnectionCheck.profiles, ConnectionCheck.chat]);
+      session.editPassword('replacement');
+      expect(session.value.check.error, isNull);
+      expect(
+        session.value.check.statuses.values,
+        everyElement(ConnectionCheckStatus.waiting),
+      );
+    },
+  );
 
   test(
     'raw draft validation prevents probes and preserves exact password',

@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -29,8 +30,6 @@ Future<void> _tap(WidgetTester tester, String label) async {
   await tester.pumpAndSettle();
   final finder = switch (label) {
     'Save connection icon' ||
-    'Edit gateway address' ||
-    'Edit sign-in or custom setup' ||
     'Cancel' ||
     'Use connection settings' ||
     'Save and open' ||
@@ -192,20 +191,15 @@ void main() {
             scale: scale,
           );
           Future<void> swipe(double distance) async {
-            await tester.dragFrom(
-              tester.getTopLeft(
-                    find
-                        .byWidgetPredicate(
-                          (widget) =>
-                              widget is GestureDetector &&
-                              widget.onHorizontalDragEnd != null,
-                        )
-                        .first,
-                  ) +
-                  const Offset(195, 8),
-              Offset(distance, 0),
-            );
             await tester.pump();
+            await tester.dragFrom(
+              tester.getTopLeft(find.byKey(const Key('connection-cards'))) +
+                  const Offset(8, 8),
+              Offset(distance.sign * 260, 0),
+            );
+            for (var i = 0; i < 12; i++) {
+              await tester.pump(const Duration(milliseconds: 100));
+            }
           }
 
           await tester.enterText(
@@ -217,6 +211,7 @@ void main() {
           await swipe(150);
           expect(find.byKey(const Key('connection-address')), findsOneWidget);
           await _tap(tester, 'Next');
+          await tester.pumpAndSettle();
           await tester.enterText(
             find.byKey(const Key('connection-username')),
             'alex',
@@ -230,7 +225,7 @@ void main() {
           await _tap(tester, 'Check connection');
           await tester.pump();
           expect(find.byKey(const Key('connection-username')), findsOneWidget);
-          final progress = find.byType(CircularProgressIndicator);
+          final progress = find.byType(StudioLoading);
           expect(progress, findsOneWidget);
           expect(
             tester
@@ -256,7 +251,10 @@ void main() {
           fixture.discoveryGate!.complete(connectionDiscovery);
           await tester.pumpAndSettle();
           expect(find.byKey(const Key('connection-username')), findsOneWidget);
-          expect(find.text('Available'), findsNWidgets(3));
+          expect(
+            find.bySemanticsLabel(RegExp(r', Available$')),
+            findsNWidgets(3),
+          );
           await _capture(tester, '${brightness.name}-inline-success-${scale}x');
           await swipe(-150);
           await tester.pumpAndSettle();
@@ -286,7 +284,7 @@ void main() {
           );
           await swipe(-150);
           expect(find.byKey(const Key('connection-name')), findsNothing);
-          expect(find.text('Available'), findsNothing);
+          expect(find.bySemanticsLabel(RegExp(r', Available$')), findsNothing);
           expect(tester.takeException(), isNull);
         },
       );
@@ -307,7 +305,7 @@ void main() {
         await _signIn(tester);
         await _tap(tester, 'Check connection');
         await tester.pump();
-        expect(find.byType(CircularProgressIndicator), findsWidgets);
+        expect(find.byType(StudioLoading), findsWidgets);
         fixture.chatGate!.completeError(
           JsonRpcError(
             'gateway.ready',
@@ -317,10 +315,10 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.textContaining('Webapp address'), findsOneWidget);
-        await tester.ensureVisible(find.byTooltip('Edit gateway address'));
+        await tester.ensureVisible(find.byKey(const Key('connection-results')));
         await tester.pumpAndSettle();
         await _capture(tester, '${brightness.name}-wrong-endpoint-${scale}x');
-        await _tap(tester, 'Edit gateway address');
+        await tester.tap(find.byType(BackButton));
         await tester.pumpAndSettle();
         expect(find.byKey(const Key('connection-address')), findsOneWidget);
         await tester.enterText(
@@ -420,6 +418,299 @@ void main() {
     },
   );
 
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('check geometry stays fixed ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = scale == 1
+            ? const Size(360, 772)
+            : const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final fixture = ConnectionProbeFixture()
+          ..discoveryGate = Completer<ProfileDiscovery>()
+          ..chatGate = Completer<void>();
+        await _pump(
+          tester,
+          fixture: fixture,
+          brightness: brightness,
+          scale: scale,
+          initial: SavedConnection(
+            id: 'saved',
+            label: 'Home',
+            host: 'hermes.example.com',
+            port: 9120,
+            useHttps: false,
+            apiKey: '',
+            dashboardUsername: 'alex',
+            dashboardPassword: 'synthetic password',
+          ),
+        );
+        await _tap(tester, 'Next');
+        await tester.pumpAndSettle();
+        final check = find.text('Check connection');
+        await tester.ensureVisible(check);
+        await tester.pumpAndSettle();
+        final anchors = [
+          find.byType(BackButton),
+          find.byKey(const Key('connection-username')),
+          find.byKey(const Key('connection-password')),
+          find.text('Custom setup'),
+          find
+              .ancestor(of: check, matching: find.byType(StudioButtonPress))
+              .first,
+          find.byKey(const Key('connection-results')),
+          find.byKey(const Key('connection-primary')),
+          find.text('Profiles & access'),
+          find.text('Live chat'),
+          find.text('Chat history'),
+        ];
+        final before = anchors.map(tester.getRect).toList();
+        void expectStable() {
+          for (var i = 0; i < anchors.length; i++) {
+            expect(
+              tester.getRect(anchors[i]),
+              before[i],
+              reason: anchors[i].toString(),
+            );
+          }
+          expect(tester.takeException(), isNull);
+        }
+
+        if (scale == 1) {
+          final card = tester.widget<SingleChildScrollView>(
+            find.byKey(const ValueKey('connection-card-signIn')),
+          );
+          expect(
+            card.controller!.position.maxScrollExtent,
+            0,
+            reason: 'Normal phone form fits one screen',
+          );
+          expect(
+            tester.getRect(find.byKey(const Key('connection-results'))).bottom,
+            lessThan(
+              tester.getRect(find.byKey(const Key('connection-primary'))).top,
+            ),
+          );
+        }
+        await _capture(tester, '${brightness.name}-stable-idle-${scale}x');
+        await tester.tap(check);
+        await tester.pump();
+        expectStable();
+        await tester.pump();
+        expect(find.byType(StudioLoading), findsOneWidget);
+        fixture.discoveryGate!.complete(connectionDiscovery);
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 50));
+        expectStable();
+        fixture.chatGate!.completeError(StateError('synthetic failure'));
+        await tester.pumpAndSettle();
+        expectStable();
+        await _capture(tester, '${brightness.name}-stable-failure-${scale}x');
+        fixture.chatGate = null;
+        fixture.discoveryGate = Completer<ProfileDiscovery>();
+        await tester.tap(check);
+        await tester.pump();
+        expectStable();
+        fixture.discoveryGate!.complete(connectionDiscovery);
+        await tester.pumpAndSettle();
+        expectStable();
+        expect(
+          find.bySemanticsLabel(RegExp(r', Available$')),
+          findsNWidgets(3),
+        );
+        await _capture(tester, '${brightness.name}-stable-success-${scale}x');
+        await _tap(tester, 'Next');
+        await tester.pumpAndSettle();
+        if (scale == 1) {
+          final card = tester.widget<SingleChildScrollView>(
+            find.byKey(const ValueKey('connection-card-review')),
+          );
+          expect(
+            card.controller!.position.maxScrollExtent,
+            0,
+            reason: 'Name and save fit one screen',
+          );
+        }
+        await _capture(tester, '${brightness.name}-stable-review-${scale}x');
+      });
+    }
+  }
+
+  testWidgets(
+    'leaving verified card stays on the chosen card after a long swipe',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await _pump(tester, fixture: ConnectionProbeFixture());
+      await _signIn(tester);
+      await _tap(tester, 'Check connection');
+      await _tap(tester, 'Next');
+      await tester.pumpAndSettle();
+      final cards = find.byKey(const Key('connection-cards'));
+      final controller = tester.widget<PageView>(cards).controller!;
+      expect(controller.page, 2);
+      // Keep moving through the middle card before releasing the gesture.
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(cards) + const Offset(8, 8),
+      );
+      for (var i = 0; i < 8; i++) {
+        await gesture.moveBy(const Offset(100, 0));
+        await tester.pump(const Duration(milliseconds: 70));
+      }
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(controller.page, 0);
+      expect(find.text('Where’s your Hermes?'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 2));
+      expect(controller.page, 0);
+      await tester.drag(cards, const Offset(-280, 0));
+      await tester.pumpAndSettle();
+      expect(controller.page, 1);
+      expect(find.bySemanticsLabel(RegExp(r', Available$')), findsNWidgets(3));
+      await tester.drag(cards, const Offset(-280, 0));
+      await tester.pumpAndSettle();
+      expect(controller.page, 2);
+      expect(find.text('Connection verified'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'cards follow a drag, reverse without navigation, and ease on Next',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      final fixture = ConnectionProbeFixture()
+        ..discoveryGate = Completer<ProfileDiscovery>();
+      await _pump(tester, fixture: fixture);
+      await tester.enterText(
+        find.byKey(const Key('connection-address')),
+        'https://hermes.example.com',
+      );
+      FocusManager.instance.primaryFocus?.unfocus();
+      await tester.pumpAndSettle();
+      final address = find.byKey(const Key('connection-address'));
+      final origin = tester.getRect(address);
+      final page = find.byKey(const Key('connection-cards'));
+      final start = tester.getTopLeft(page) + const Offset(8, 8);
+      final drag = await tester.startGesture(start);
+      await drag.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      await drag.moveBy(const Offset(-80, 0));
+      await tester.pump();
+      expect(tester.getRect(address).left, lessThan(origin.left - 50));
+      await _capture(tester, 'swipe-mid-drag', pending: true);
+      await drag.moveBy(const Offset(110, 0));
+      await drag.up();
+      await tester.pumpAndSettle();
+      expect(tester.getRect(address), origin);
+      await _tap(tester, 'Next');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      final username = find.byKey(const Key('connection-username'));
+      expect(tester.getRect(username).left, greaterThan(16));
+      expect(tester.getRect(username).left, lessThan(390));
+      await tester.pumpAndSettle();
+      expect(tester.getRect(username).left, 16);
+      await tester.enterText(username, 'alex');
+      await tester.enterText(
+        find.byKey(const Key('connection-password')),
+        'password',
+      );
+      await _tap(tester, 'Check connection');
+      await tester.pump();
+      final backDrag = await tester.startGesture(start);
+      await backDrag.moveBy(const Offset(110, 0));
+      await tester.pump();
+      await backDrag.moveBy(const Offset(-110, 0));
+      await backDrag.up();
+      for (var i = 0; i < 10; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(fixture.closed, isFalse);
+      expect(find.byType(StudioLoading), findsOneWidget);
+      fixture.discoveryGate!.complete(connectionDiscovery);
+      await tester.pumpAndSettle();
+      expect(find.bySemanticsLabel(RegExp(r', Available$')), findsNWidgets(3));
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'full-width check action and status LEDs ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final fixture = ConnectionProbeFixture();
+          await _pump(
+            tester,
+            fixture: fixture,
+            brightness: brightness,
+            scale: scale,
+          );
+          await _signIn(tester);
+          await _tap(tester, 'Check connection');
+          await tester.pumpAndSettle();
+          expect(find.text('Available'), findsNothing);
+          expect(find.byIcon(Icons.edit_outlined), findsNothing);
+          for (final stage in ConnectionCheck.values) {
+            final dot = find.byKey(
+              ValueKey('connection-check-${stage.name}-led'),
+            );
+            final theme = Theme.of(
+              tester.element(dot),
+            ).extension<WingTokens>()!;
+            final decoration =
+                tester.widget<Container>(dot).decoration! as BoxDecoration;
+            expect(decoration.color, theme.success);
+          }
+          await _capture(tester, '${brightness.name}-led-success-${scale}x');
+          expect(find.byTooltip('Connection details'), findsNothing);
+          final check = tester.getRect(
+            find.ancestor(
+              of: find.text('Check connection'),
+              matching: find.byType(OutlinedButton),
+            ),
+          );
+          final field = tester.getRect(
+            find.byKey(const Key('connection-password')),
+          );
+          expect(check.left, field.left);
+          expect(check.right, field.right);
+          fixture.failAt = ConnectionCheck.chat;
+          await _tap(tester, 'Check connection');
+          await tester.pumpAndSettle();
+          expect(find.bySemanticsLabel('Live chat, Failed'), findsOneWidget);
+          final failedLed = find.byKey(const Key('connection-check-chat-led'));
+          expect(
+            (tester.widget<Container>(failedLed).decoration! as BoxDecoration)
+                .color,
+            Theme.of(tester.element(failedLed)).extension<WingTokens>()!.danger,
+          );
+          final waitingLed = find.byKey(
+            const Key('connection-check-history-led'),
+          );
+          expect(
+            (tester.widget<Container>(waitingLed).decoration! as BoxDecoration)
+                .color,
+            Theme.of(tester.element(waitingLed)).extension<WingTokens>()!.muted,
+          );
+          expect(find.byTooltip('Connection details'), findsNothing);
+          expect(find.byIcon(Icons.edit_outlined), findsNothing);
+          await _capture(tester, '${brightness.name}-led-failure-${scale}x');
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('reduced motion keeps inline check feedback and explicit Next', (
     tester,
   ) async {
@@ -429,7 +720,7 @@ void main() {
     await _signIn(tester);
     await _tap(tester, 'Check connection');
     await tester.pump();
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(StudioLoading), findsOneWidget);
     expect(
       find.bySemanticsLabel('Profiles & access, Checking…'),
       findsOneWidget,
@@ -445,6 +736,95 @@ void main() {
     await _tap(tester, 'Next');
     await tester.pumpAndSettle();
     expect(find.byKey(const Key('connection-name')), findsOneWidget);
+  });
+
+  testWidgets('check feedback remains visible while the keyboard closes', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final fixture = ConnectionProbeFixture()
+      ..discoveryGate = Completer<ProfileDiscovery>();
+    await _pump(tester, fixture: fixture, keyboard: 280);
+    await _signIn(tester);
+    final header = tester.getRect(find.byType(BackButton));
+    await _tap(tester, 'Check connection');
+    await tester.pump();
+    final pulse = find.byType(StudioLoading);
+    expect(pulse, findsOneWidget);
+    expect(tester.getRect(pulse).center.dy, lessThan(header.bottom));
+    expect(tester.getRect(find.byType(BackButton)), header);
+    fixture.discoveryGate!.complete(connectionDiscovery);
+    await tester.pumpAndSettle();
+    expect(find.byType(StudioLoading), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('rapid navigation and save remain valid during card motion', (
+    tester,
+  ) async {
+    var saves = 0;
+    await _pump(
+      tester,
+      save: (connection) async {
+        saves++;
+        return connection;
+      },
+    );
+    await _signIn(tester);
+    await tester.tap(find.byType(BackButton));
+    await tester.pump();
+    await tester.tap(find.text('Next'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    await _tap(tester, 'Check connection');
+    await _tap(tester, 'Next');
+    // The footer is available before the destination form finishes sliding in.
+    await tester.tap(find.byTooltip('Save and open'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(saves, 1);
+  });
+
+  testWidgets('compact review keeps edits blocked while saving', (
+    tester,
+  ) async {
+    final saving = Completer<SavedConnection>();
+    SavedConnection? candidate;
+    await _pump(
+      tester,
+      save: (connection) {
+        candidate = connection;
+        return saving.future;
+      },
+    );
+    await _signIn(tester);
+    await _tap(tester, 'Check connection');
+    await _tap(tester, 'Next');
+    await _tap(tester, 'Save and open');
+    await tester.pump();
+    expect(
+      tester
+          .widget<ConnectionIconButton>(find.byType(ConnectionIconButton))
+          .onPressed,
+      isNull,
+    );
+    expect(
+      tester
+          .widget<ListTile>(find.byKey(const Key('connection-appearance')))
+          .enabled,
+      isFalse,
+    );
+    expect(
+      tester
+          .widget<PageView>(find.byKey(const Key('connection-cards')))
+          .physics,
+      isA<NeverScrollableScrollPhysics>(),
+    );
+    saving.complete(candidate!);
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a new connection keeps its sign-in icon until final save', (
@@ -552,7 +932,7 @@ void main() {
     await _tap(tester, 'Check connection');
     await tester.pump();
     expect(find.text('Checking…'), findsNothing);
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(find.byType(StudioLoading), findsOneWidget);
     expect(
       find.bySemanticsLabel('Profiles & access, Checking…'),
       findsOneWidget,
@@ -722,8 +1102,6 @@ void main() {
             findsOneWidget,
           );
           await _capture(tester, '${brightness.name}-recovery-${scale}x');
-          await _tap(tester, 'Edit sign-in or custom setup');
-          await tester.pumpAndSettle();
           await _tap(tester, 'Custom setup');
           await tester.pumpAndSettle();
           await _tap(tester, 'Use a separate chat address');

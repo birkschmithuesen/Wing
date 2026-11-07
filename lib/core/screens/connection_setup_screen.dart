@@ -18,6 +18,7 @@ import '../widgets/gateway_headers_editor.dart';
 import '../widgets/playful_portrait.dart';
 import '../widgets/studio_action_label.dart';
 import '../widgets/studio_error.dart';
+import '../widgets/studio_loading.dart';
 import '../widgets/wing_wordmark.dart';
 import 'connection_guide_screen.dart';
 
@@ -35,9 +36,10 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   final _addressForm = GlobalKey<FormState>();
   final _signInForm = GlobalKey<FormState>();
   final _nameForm = GlobalKey<FormState>();
-  final _scroll = ScrollController();
-  final _checkResults = GlobalKey();
-  double _swipeDistance = 0;
+  final _pages = PageController(keepPage: false);
+  final _cardScrolls = {
+    for (final step in ConnectionSetupStep.values) step: ScrollController(),
+  };
   late final TextEditingController _address;
   late final TextEditingController _username;
   late final TextEditingController _password;
@@ -63,6 +65,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   bool _revealPassword = false;
   bool _confirmingExit = false;
   bool _popScheduled = false;
+  bool _draggingCards = false;
 
   @override
   void initState() {
@@ -89,7 +92,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     setState(() {});
     if (previousStep != _step) {
       FocusManager.instance.primaryFocus?.unfocus();
-      if (_scroll.hasClients) _scroll.jumpTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncPage());
     }
     if (_leaving && !_popScheduled) {
       _popScheduled = true;
@@ -101,22 +104,56 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
 
   ConnectionSetupStep? _renderedStep;
   void _continue() {
-    if (_addressForm.currentState!.validate()) _session.continueAddress();
+    // The fixed footer can be used before an incoming card mounts its form.
+    // The session still validates every command against the current draft.
+    if (_addressForm.currentState?.validate() != false) {
+      _session.continueAddress();
+    }
   }
 
-  void _swipeEnd(DragEndDetails details) {
-    if (_swipeDistance.abs() < 64 || _saving || _cloudBusy) return;
-    if (_swipeDistance > 0) {
-      if (_step == ConnectionSetupStep.signIn ||
-          _step == ConnectionSetupStep.review) {
-        _back();
+  void _syncPage() {
+    if (!mounted || !_pages.hasClients) return;
+    final index = _state.cards.indexOf(_step);
+    if (index < 0) return;
+    if ((_pages.page! - index).abs() < .001) {
+      // A rapid reversal can return to the current position before the previous
+      // animation's first tick. Cancel that outgoing animation as well.
+      if (_pages.position.isScrollingNotifier.value && !_draggingCards) {
+        _pages.jumpToPage(index);
       }
-    } else if (_step == ConnectionSetupStep.address) {
-      _continue();
-    } else if (_step == ConnectionSetupStep.signIn ||
-        _step == ConnectionSetupStep.check) {
-      _session.continueVerified();
+      return;
     }
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(index);
+    } else {
+      _pages.animateToPage(
+        index,
+        duration: WingMotion.standard,
+        curve: WingMotion.curve,
+      );
+    }
+  }
+
+  bool _pageSettled(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.horizontal) return false;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _draggingCards = true;
+    }
+    if (notification is! ScrollEndNotification || !_draggingCards) return false;
+    _draggingCards = false;
+    // Commit only a completed swipe. A reversed or cancelled drag must not
+    // retire a check or move the workflow halfway through the gesture.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pages.hasClients) return;
+      final index = _pages.page!.round();
+      if ((_pages.page! - index).abs() > .001 || index >= _state.cards.length) {
+        return;
+      }
+      _session.selectCard(_state.cards[index]);
+      _syncPage();
+    });
+    return false;
   }
 
   Future<void> _check() async {
@@ -126,16 +163,11 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       return;
     }
     FocusManager.instance.primaryFocus?.unfocus();
-    final checking = _session.check();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      final context = _checkResults.currentContext;
-      if (mounted && context != null) Scrollable.ensureVisible(context);
-    });
-    await checking;
+    await _session.check();
   }
 
   Future<void> _save() async {
-    if (_nameForm.currentState!.validate()) await _session.save();
+    if (_nameForm.currentState?.validate() != false) await _session.save();
   }
 
   Future<void> _customSetup() async {
@@ -186,7 +218,10 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     for (final controller in [_address, _username, _password, _name]) {
       controller.dispose();
     }
-    _scroll.dispose();
+    _pages.dispose();
+    for (final scroll in _cardScrolls.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
@@ -229,95 +264,85 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
               ),
           ],
         ),
-        bottomNavigationBar: _step == ConnectionSetupStep.review
-            ? SafeArea(
+        bottomNavigationBar: _step == ConnectionSetupStep.choose
+            ? null
+            : SafeArea(
                 top: false,
                 child: Padding(
                   padding: EdgeInsets.fromLTRB(
                     16,
                     8,
                     16,
-                    16 + MediaQuery.viewInsetsOf(context).bottom,
+                    12 + MediaQuery.viewInsetsOf(context).bottom,
                   ),
                   child: _footer(),
                 ),
-              )
-            : null,
-        body: GestureDetector(
-          behavior: HitTestBehavior.translucent,
-          onHorizontalDragStart: (_) => _swipeDistance = 0,
-          onHorizontalDragUpdate: (details) =>
-              _swipeDistance += details.primaryDelta ?? 0,
-          onHorizontalDragEnd: _swipeEnd,
+              ),
+        body: StudioPageLoading(
+          active: _probe.checking,
+          label: 'Checking connection',
           child: SafeArea(
             top: false,
             child: Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 480),
-                child: LayoutBuilder(
-                  builder: (context, constraints) => SingleChildScrollView(
-                    controller: _scroll,
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        minHeight: constraints.maxHeight,
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Semantics(
+                        label: 'Connection setup, step $step of 3',
+                        child: Row(
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                Semantics(
-                                  label: 'Connection setup, step $step of 3',
-                                  child: Row(
-                                    children: [
-                                      for (var index = 0; index < 3; index++)
-                                        Expanded(
-                                          child: Padding(
-                                            padding: EdgeInsets.only(
-                                              right: index == 2 ? 0 : 6,
-                                            ),
-                                            child: ColoredBox(
-                                              color: index < step
-                                                  ? Theme.of(
-                                                      context,
-                                                    ).colorScheme.primary
-                                                  : Theme.of(context)
-                                                        .colorScheme
-                                                        .outlineVariant,
-                                              child: const SizedBox(height: 3),
-                                            ),
-                                          ),
-                                        ),
-                                    ],
+                            for (var index = 0; index < 3; index++)
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    right: index == 2 ? 0 : 6,
+                                  ),
+                                  child: ColoredBox(
+                                    color: index < step
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.outlineVariant,
+                                    child: const SizedBox(height: 3),
                                   ),
                                 ),
-                                const SizedBox(height: 24),
-                                switch (_step) {
-                                  ConnectionSetupStep.choose => _chooseStep(),
-                                  ConnectionSetupStep.cloud => _cloudStep(),
-                                  ConnectionSetupStep.address => _addressStep(),
-                                  ConnectionSetupStep.signIn => _signInStep(),
-                                  ConnectionSetupStep.check => _checkStep(),
-                                  ConnectionSetupStep.review => _reviewStep(),
-                                },
-                              ],
-                            ),
-                            if (_step != ConnectionSetupStep.review)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 24),
-                                child: _footer(),
                               ),
                           ],
                         ),
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: !_cloudRoute && _state.cards.contains(_step)
+                          ? NotificationListener<ScrollNotification>(
+                              onNotification: _pageSettled,
+                              child: PageView.builder(
+                                key: const Key('connection-cards'),
+                                controller: _pages,
+                                physics: _saving
+                                    ? const NeverScrollableScrollPhysics()
+                                    : const BouncingScrollPhysics(),
+                                itemCount: _state.cards.length,
+                                itemBuilder: (context, index) {
+                                  final card = _state.cards[index];
+                                  return ExcludeSemantics(
+                                    excluding: card != _step,
+                                    child: ExcludeFocus(
+                                      excluding: card != _step,
+                                      child: IgnorePointer(
+                                        ignoring: card != _step,
+                                        child: _card(card),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : _card(_step),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -326,6 +351,21 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       ),
     );
   }
+
+  Widget _card(ConnectionSetupStep step) => SingleChildScrollView(
+    key: ValueKey('connection-card-${step.name}'),
+    controller: _cardScrolls[step],
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: switch (step) {
+      ConnectionSetupStep.choose => _chooseStep(),
+      ConnectionSetupStep.address => _addressStep(),
+      ConnectionSetupStep.signIn => _signInStep(),
+      ConnectionSetupStep.cloud => _cloudStep(),
+      ConnectionSetupStep.check => _checkStep(),
+      ConnectionSetupStep.review => _reviewStep(),
+    },
+  );
 
   Widget _heading(String title, [String? subtitle]) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -347,19 +387,23 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     ],
   );
 
-  Widget _artwork() => const Padding(
-    padding: EdgeInsets.only(bottom: 24),
+  Widget _artwork({double size = 112}) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
     child: Center(
       child: SizedBox(
-        width: 220,
-        height: 128,
+        width: 220 * size / 112,
+        height: 128 * size / 112,
         child: Stack(
           children: [
             Align(
               alignment: Alignment.bottomCenter,
-              child: PlayfulPortrait(size: 112, circular: true),
+              child: PlayfulPortrait(size: size, circular: true),
             ),
-            Positioned(right: 6, top: 0, child: WingFeathers(width: 58)),
+            Positioned(
+              right: 6,
+              top: 0,
+              child: WingFeathers(width: 58 * size / 112),
+            ),
           ],
         ),
       ),
@@ -639,6 +683,27 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     onSave: _session.setIcon,
   );
 
+  Widget _compactDestination() => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      children: [
+        ConnectionIconButton(
+          icon: _icon,
+          onPressed: _saving ? null : _pickIcon,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            _address.text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    ),
+  );
+
   Widget _destination() => Padding(
     padding: const EdgeInsets.only(bottom: 20),
     child: _panel(
@@ -694,12 +759,14 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _heading(
+          Text(
             _access.proxied
                 ? 'Connect through your proxy'
                 : 'Sign in to Hermes',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          _destination(),
+          const SizedBox(height: 4),
+          _compactDestination(),
           if (_access.proxied)
             const Text(
               'Your access proxy handles sign-in. Wing will check that it allows profiles, live chat and history.',
@@ -721,7 +788,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
                 validator: _session.validateUsername,
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 12),
             viewportSelection(
               TextFormField(
                 key: const Key('connection-password'),
@@ -754,45 +821,43 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
                 validator: _session.validatePassword,
               ),
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Use your dashboard login. Model-provider keys stay on Hermes.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
           ],
           if (_state.unencrypted) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Text(
-              'HTTP does not encrypt this connection. Use a trusted private network or an HTTPS address.',
+              'Unencrypted HTTP. Use a trusted network or HTTPS.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
-          const SizedBox(height: 24),
+          const SizedBox(height: 4),
           StudioButtonPress(
             child: ListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Custom setup'),
-              subtitle: Text(_accessDescription(_access)),
+              subtitle:
+                  _access.proxied ||
+                      _access.chatUrl.isNotEmpty ||
+                      _access.headers.isNotEmpty
+                  ? Text(_accessDescription(_access))
+                  : null,
               trailing: const Icon(Icons.chevron_right),
               onTap: _customSetup,
             ),
           ),
           if (_access.chatUrl.isNotEmpty)
             Text(
-              'Your dashboard authentication and access headers will also be sent to the chat address shown above.',
+              'Your dashboard authentication and access headers will also be sent to ${_access.chatUrl}.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 8),
           StudioButtonPress(
             child: OutlinedButton(
               onPressed: _probe.checking ? null : _check,
               child: const Text('Check connection'),
             ),
           ),
-          if (_probe.checking || _probe.checkedAt != null) ...[
-            const SizedBox(height: 16),
-            _checkResultsPanel(),
-          ],
+          const SizedBox(height: 8),
+          _checkResultsPanel(),
         ],
       ),
     ),
@@ -811,89 +876,54 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     ],
   );
 
-  Widget _checkResultsPanel() => Column(
-    key: _checkResults,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      _panel(
-        Column(
-          children: [
-            for (final stage in ConnectionCheck.values) ...[
-              if (stage != ConnectionCheck.profiles) const Divider(height: 28),
-              _checkRow(stage),
-            ],
-          ],
-        ),
-      ),
-      const SizedBox(height: 16),
-      if (_probe.error case final message?) ...[
-        StudioError(message),
-        if (_probe.failedStage == ConnectionCheck.chat &&
-            !_probe.chatEndpointUnsupported) ...[
-          const SizedBox(height: 12),
-          Text(
-            'If you use a reverse proxy, check WebSocket forwarding for ${_state.chatPath}/api/ws.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          title: const Text('Connection details'),
-          children: [
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: viewportSelection(
-                SelectableText(
-                  [
-                    'Gateway: ${_address.text}',
-                    'Live chat: ${_state.chatSocketUrl}',
-                    if (_probe.httpStatus != null) 'HTTP ${_probe.httpStatus}',
-                    if (_probe.checkedAt != null)
-                      'Checked: ${_probe.checkedAt!.toLocal()}',
-                  ].join('\n'),
-                  style: Theme.of(context).textTheme.bodySmall,
+  Widget _checkResultsPanel() => Container(
+    key: const Key('connection-results'),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      borderRadius: WingRadius.card,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final stage in ConnectionCheck.values) _checkRow(stage),
+        const Divider(height: 12),
+        SizedBox(
+          height: MediaQuery.textScalerOf(context).scale(48),
+          child: SingleChildScrollView(
+            primary: false,
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                _probe.error ??
+                    (_probe.verified
+                        ? 'Connection verified. Select Next to continue.'
+                        : _probe.checking
+                        ? 'Checking access to your Hermes. No message will be sent.'
+                        : 'Check access before continuing. No message will be sent.'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: _probe.error == null
+                      ? null
+                      : Theme.of(context).colorScheme.error,
                 ),
               ),
             ),
-          ],
-        ),
-        StudioButtonPress(
-          child: IconButton(
-            onPressed:
-                _probe.chatEndpointUnsupported &&
-                    !_cloudRoute &&
-                    _access.chatUrl.isEmpty
-                ? _session.reviewAddress
-                : _session.editSignIn,
-            icon: const Icon(Icons.edit_outlined),
-            tooltip: _cloudRoute
-                ? 'Sign in to Hermes Cloud again'
-                : _probe.chatEndpointUnsupported && _access.chatUrl.isEmpty
-                ? 'Edit gateway address'
-                : 'Edit sign-in or custom setup',
           ),
         ),
-      ] else
-        Text(
-          _probe.verified
-              ? 'Connection verified. Select Next to name and save this instance.'
-              : 'Checking access to your Hermes. No message will be sent.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-    ],
+      ],
+    ),
   );
 
   Widget _checkRow(ConnectionCheck stage) {
     final status = _probe.statuses[stage]!;
-    final failed = status == ConnectionCheckStatus.failed;
-    final available = status == ConnectionCheckStatus.available;
-    final pending = status == ConnectionCheckStatus.checking;
-    final colors = Theme.of(context).colorScheme;
-    final color = failed
-        ? colors.error
-        : available || pending
-        ? colors.primary
-        : colors.onSurfaceVariant;
+    final tokens = Theme.of(context).extension<WingTokens>()!;
+    final color = switch (status) {
+      ConnectionCheckStatus.available => tokens.success,
+      ConnectionCheckStatus.failed => tokens.danger,
+      ConnectionCheckStatus.checking => tokens.warning,
+      ConnectionCheckStatus.waiting => tokens.muted,
+    };
     final label = switch (stage) {
       ConnectionCheck.profiles => 'Profiles & access',
       ConnectionCheck.chat => 'Live chat',
@@ -904,49 +934,38 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         _probe.error == null ? 'Waiting' : 'Not checked',
       ConnectionCheckStatus.checking => 'Checking…',
       ConnectionCheckStatus.available => 'Available',
-      ConnectionCheckStatus.failed => 'Couldn’t connect',
+      ConnectionCheckStatus.failed => 'Failed',
     };
     return Semantics(
       liveRegion: true,
       label: '$label, $detail',
       child: ExcludeSemantics(
-        child: Row(
-          children: [
-            SizedBox(
-              width: 24,
-              height: 24,
-              child: pending && !MediaQuery.disableAnimationsOf(context)
-                  ? CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: color,
-                      semanticsLabel: 'Checking connection',
-                    )
-                  : Icon(
-                      failed
-                          ? Icons.error_outline
-                          : available
-                          ? Icons.link
-                          : Icons.more_horiz,
-                      color: color,
-                    ),
+        child: Tooltip(
+          message: '$label: $detail',
+          excludeFromSemantics: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  key: ValueKey('connection-check-${stage.name}-led'),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(label, style: Theme.of(context).textTheme.titleSmall),
-                  if (!pending)
-                    Text(
-                      detail,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: color),
-                    ),
-                ],
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -957,12 +976,12 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _artwork(),
+        _artwork(size: 72),
         _heading(
           'Connection verified',
           'Give this Hermes a name you’ll recognize.',
         ),
-        _destination(),
+        if (_cloudRoute) _destination() else _compactDestination(),
         viewportSelection(
           TextFormField(
             key: const Key('connection-name'),
@@ -979,7 +998,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
             validator: _session.validateName,
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 16),
         StudioButtonPress(
           child: ListTile(
             key: const Key('connection-appearance'),
@@ -1044,6 +1063,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       );
     }
     return Column(
+      mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         if (_step == ConnectionSetupStep.check)
