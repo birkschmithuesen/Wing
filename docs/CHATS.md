@@ -48,11 +48,26 @@ swipes follow the larger horizontal or vertical movement. Tapping the selected
 tab or outside also closes it.
 Your draft stays in place. Past answers keep their existing Activity layout.
 
-While Hermes is working, the composer can **Steer**, **Queue** or **Stop**. The default action is your choice in App settings; hold and slide the arrow for a one-time alternative. Queued follow-ups can be edited before they send and need Wing to be running and connected to drain.
+While Hermes is working, the composer can **Steer**, **Queue** or **Stop**. The default action is your choice in App settings; hold and slide the arrow for a one-time alternative. Hermes runs accepted queued follow-ups in order, even after Wing disconnects. Work still stored only on the phone needs Wing to reconnect before it can be submitted.
 
 The outbox above the composer appears whenever it contains queued messages.
 Tap a message for Edit, Steer and Delete; hold it to edit directly. Steer accepts
 text only and needs a connected active turn. Your separate draft stays in place.
+
+## Models, context and code review
+
+Open the model picker, then **More model options → Use profile default** to remove
+this chat's explicit model choice. It does not change the profile's settings.
+Model cards show applicable plan allowances and reset times when Hermes supplies
+them. The context popup identifies a configured maximum.
+
+In an idle chat, send `/compress --preview` to inspect the compression plan;
+`/compress` or `/compact` applies it. Wing refreshes history and shows the result.
+See [Slash commands](SLASH_COMMAND_SUPPORT.md) for focus and retained-message options.
+
+For a supported local terminal workspace, open **Chat actions → Git review**.
+Read changed files, compare All changes or Staged against HEAD, and copy a line
+or hunk reference. This view does not stage, revert, commit or push changes.
 
 ## Revisit the result
 
@@ -95,6 +110,11 @@ confirmation popup. Android may show its own clipboard confirmation.
 [Explore Wing](FEATURES.md) · [Conversation details](CONVERSATION_ACTIONS_AND_READING.md)
 
 ## Questions and approvals
+
+When Hermes asks several clarification questions together, stage all answers in
+one form and confirm once. If a later answer fails, confirmed answers stay locked
+and you can correct or retry those remaining. Eligible cut-off replies offer
+**Continue**; model or connection recovery does not automatically resend a prompt.
 
 Completed questions and approvals appear inside the conversation's usual
 **Activity** section as **Asked a question**. Both disclosures start collapsed.

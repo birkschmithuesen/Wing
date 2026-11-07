@@ -63,7 +63,7 @@
 <section id="profile" aria-labelledby="profile-title">
 <h2 id="profile-title">Set models and agent instructions</h2>
 <p>Choose a profile in the header, then edit its description and instructions. Choose model defaults, reasoning options where available, and memory settings.</p>
-<p>Profile defaults apply to new conversations. Change the model for an existing conversation in Chats.</p>
+<p>Profile defaults apply to new conversations. In a chat's model picker, <strong>Use profile default</strong> removes that chat's explicit choice. Set a separate default for new subagents or let them inherit their parent's model.</p>
 <p>You can open the same editors from <strong>Bot settings</strong>.</p>
 <figure class="guide-shot guide-inline-shot ">
 <div class="app-frame">
@@ -74,7 +74,7 @@
 </section>
 <section id="capabilities" aria-labelledby="capabilities-title">
 <h2 id="capabilities-title">Manage skills, providers and connectors</h2>
-<p>Open <strong>Skills and tools</strong> to browse installed skills and read their instructions. For a local or learned skill, open its actions and choose <strong>Edit instructions</strong>; use the checkmark to save. Bundled skills are read-only.</p>
+<p>Open <strong>Skills and tools</strong> to browse installed skills and read their instructions. For a local or learned skill, open its actions and choose <strong>Edit instructions</strong>; use the checkmark to save. Bundled skills are read-only. Use a skill's lock action to prevent agent edits while keeping your own editing rights.</p>
 <div class="setup-gallery">
 <figure class="guide-shot guide-inline-shot">
 <div class="app-frame">
@@ -89,13 +89,13 @@
 <figcaption>Edit your local or learned skills from your phone.</figcaption>
 </figure>
 </div>
-<p>Discover more skills through the official Hub, and check which skills and tools still need setup.</p>
-<p>Manage model-provider access and MCP connectors for the selected profile. Connectors give the agent access to external tools and data.</p>
+<p>Discover more skills through the official Hub, and check which skills and tools still need setup. In <strong>Agent plugins</strong>, manually update installed plugins and inspect each updated, skipped, failed or review-needed result.</p>
+<p>Manage model-provider access and MCP connectors for the selected profile. Connectors give the agent access to external tools and data. Cached runtime status shows reported connection or sign-in problems separately from <strong>Test connection</strong>. Supported hosted accounts appear in <strong>Connected apps</strong>, with separate names and authorization for each account.</p>
 </section>
 <section id="find" aria-labelledby="find-title">
 <h2 id="find-title">Find a setting and review changes</h2>
 <p>Search Administration to jump to a setting. Editors show the profile you are changing and keep unsaved edits if a save fails or its outcome is uncertain.</p>
-<p>Wing reads back settings to confirm changes. Controls depend on what the connected Hermes server makes available.</p>
+<p>Wing reads back settings to confirm changes. A definite refusal shows the server's explanation and keeps your edits available. After an uncertain response, refresh and review before saving again. Controls depend on what the connected Hermes server makes available.</p>
 <p>In connection details, <strong>Versions &amp; updates</strong> checks Hermes updates, lets you choose Stable releases or Main branch, and confirms the target before updating. Progress appears immediately; logs follow automatically with newest lines first and their own scroll area.</p>
 </section>
 </div>

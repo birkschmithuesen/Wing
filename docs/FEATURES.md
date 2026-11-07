@@ -35,6 +35,21 @@ decisions use their operation icon and error color.
 
 [Get started](GETTING_STARTED.md).
 
+## Coordinate ongoing work
+
+- Give [bot groups](BOTS.md) a shared purpose and notes, choose Everyone, Lead or
+  Auto routing, inspect member progress and continue eligible bounded discussions.
+- [Schedule tasks](SCHEDULED_TASKS.md) in a chosen timezone, decide how missed runs
+  are handled, deliver results to groups and stop a run without pausing its schedule.
+- Let Hermes run accepted queued follow-ups after Wing disconnects. Recents also
+  observes detached agents and processes; see [Queues and Recents](SUPERVISION_AND_QUEUES.md).
+- Answer clarification sets together, use the profile's default model in a chat,
+  preview or apply compression, and inspect read-only Git changes in a supported
+  local workspace. See [Chats](CHATS.md#models-context-and-code-review).
+- [Protect skills and maintain plugins](ADMINISTRATION.md#skills-tools-and-provider-access),
+  inspect [MCP runtime status](MCP_CONNECTORS.md#cached-runtime-status), and manage
+  supported Connected apps accounts.
+
 ## Pick up where you left off
 
 <p align="center">

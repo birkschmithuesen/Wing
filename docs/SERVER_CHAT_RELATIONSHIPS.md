@@ -5,9 +5,8 @@ session** creates a separate chat through the selected saved answer, preserving
 the original. The composer commands `/branch` and `/fork` branch through the
 latest saved assistant reply; an optional argument names the new chat.
 
-You can fork a saved answer while the original chat is working or waiting for
-your input. Its current work continues in the original chat. The branch includes
-only history through the selected saved answer. Tapping the answer's branch
+Fork requires a connected, idle source chat. The branch includes only history
+through the selected saved answer and leaves the original conversation intact. Tapping the answer's branch
 action opens **New chat** immediately, with the Wing loading indicator while
 the fork is prepared. If it fails, use Retry or Back.
 

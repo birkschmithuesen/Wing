@@ -16,6 +16,12 @@ Select the profile before opening an editor. Administration search takes you to 
 
 You can manage model defaults and supported reasoning options, identity and instructions, fallback models, memory settings, approval policy, compression, voice and scheduled tasks. Model defaults apply to new conversations; use the model selector inside a chat to change that conversation's model. [Profile voice](PROFILE_VOICE.md) explains speech synthesis settings.
 
+**Models and reasoning → Subagent model** chooses the default route for new
+subagents, or lets them inherit the parent model. Existing agents keep their
+current route. **Behavior → Compression → Prepare compression ahead** can reduce
+compression pauses, but preparing a summary can consume tokens even if it is
+never used. Manual chat compression is described in [Slash commands](SLASH_COMMAND_SUPPORT.md).
+
 Long-press a profile pill to choose its color. This device preference also colors the profile in Chats; it does not change settings on Hermes.
 
 Settings and Identity show unsaved changes and offer Save and Close. If another client changed a field, compare **Current server value** with **Your value**, choose which to keep, then save. A failed or incomplete save keeps the form available for review. Refresh failures retain the last confirmed observation with its check time.
@@ -66,13 +72,13 @@ Open **Profile → Scheduled tasks** to create, edit, pause, resume, run or dele
 
 When the last run has an error, use the copy icon to copy its full text. **Ask <profile>** takes you straight to a new chat in that task’s profile, outside any project. The header Wing pulses while the chat is created and the task name, recorded run time and error are sent. If creation fails, retry from that chat. It uses the same Ask action as Doctor findings.
 
-Schedules include recurring intervals, daily/weekly/monthly choices, one-time dates or delays, and custom expressions. Server templates provide starting points. Recurrences use Hermes time; run timestamps display in phone time. Editing a name or instructions preserves an unchanged schedule.
+Schedules include recurring intervals, daily/weekly/monthly choices, one-time dates or delays, and custom expressions. Server templates provide starting points. Set a schedule timezone or leave it empty to use the profile timezone; run timestamps display in phone time. Edit the late-run window and missed-run catch-up policy in the task editor. Editing a name or instructions preserves an unchanged schedule.
 
-**Save on server** stores results on Hermes. Other delivery choices depend on the connected server's configured destinations and may need setup there. A model override applies to that task; Profile default is resolved when it runs.
+**Save on server** stores results on Hermes. Choose a discovered group chat to post results into a discussion; member mentions can ask bots to continue the work. Other delivery choices depend on the connected server's configured destinations and may need setup there. A model override applies to that task; Profile default is resolved when it runs.
 
 **Run now** may take as long as the task itself. Leaving the screen does not cancel or repeat it. A paused task asks you to confirm **Resume and run**. Pausing a schedule does not stop a run already underway. If a response is lost, review the uncertainty notice before attempting another run or creating another task.
 
-Recent runs starts with 20 records and can expand to the latest 100. Agent runs open their conversation; script runs show available output and errors. Wing does not offer a task-specific Stop action, script upload or a workflow builder. Hermes runs schedules even when Wing is closed.
+Recent runs starts with 20 records and can expand to the latest 100. Agent runs open their conversation; script runs show available output and errors. **Stop run** requests cancellation of the current execution without pausing its schedule, including while Run now is waiting. Wing does not offer script upload or a workflow builder. Hermes runs schedules even when Wing is closed. See [Scheduled tasks](SCHEDULED_TASKS.md) for timing, cancellation and group delivery.
 
 ## Health checks and diagnostics
 
