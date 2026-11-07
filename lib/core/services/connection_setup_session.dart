@@ -15,19 +15,11 @@ class ConnectionSetupCheck {
       checking = probe.checking,
       verified = probe.verified,
       preferredProfileLabel = probe.discovery?.serverPreferred.label,
-      error = probe.error,
-      httpStatus = probe.httpStatus,
-      failedStage = probe.failedStage,
-      chatEndpointUnsupported = probe.chatEndpointUnsupported,
-      checkedAt = probe.checkedAt;
+      error = probe.error;
   final Map<ConnectionCheck, ConnectionCheckStatus> statuses;
   final bool checking, verified;
-  final bool chatEndpointUnsupported;
   final String? preferredProfileLabel;
   final String? error;
-  final int? httpStatus;
-  final ConnectionCheck? failedStage;
-  final DateTime? checkedAt;
 }
 
 class ConnectionSetupState {
@@ -50,8 +42,6 @@ class ConnectionSetupState {
     required this.result,
     required this.canAdvance,
     required this.cards,
-    required this.chatSocketUrl,
-    required this.chatPath,
     required this.unencrypted,
   }) : organizations = List.unmodifiable(organizations);
   final List<ConnectionSetupStep> cards;
@@ -70,7 +60,6 @@ class ConnectionSetupState {
   final CloudInstance? instance;
   final String? organization, cloudError, saveError;
   final SavedConnection? alreadySaved, result;
-  final String chatSocketUrl, chatPath;
 }
 
 /// Opaque modal attempt identity. A UI cannot fabricate an opening revision or
@@ -191,14 +180,6 @@ class ConnectionSetupSession extends ChangeNotifier {
 
   void _publish({bool notify = true}) {
     if (_closed) return;
-    ConnectionAddress? chat;
-    try {
-      chat = ConnectionAddress.parse(
-        _draft.access.chatUrl.isEmpty ? _draft.address : _draft.access.chatUrl,
-      );
-    } on FormatException {
-      /* Incomplete editor input has no network destination yet. */
-    }
     _value = ConnectionSetupState(
       draft: _draft,
       step: _step,
@@ -233,8 +214,6 @@ class ConnectionSetupSession extends ChangeNotifier {
         if (validateAddress(_draft.address) == null) ConnectionSetupStep.signIn,
         if (_probe.verified) ConnectionSetupStep.review,
       ]),
-      chatSocketUrl: chat?.socketUrl ?? '',
-      chatPath: chat?.path ?? '',
       unencrypted: _draft.address.startsWith('http:'),
     );
     if (notify) notifyListeners();
@@ -267,8 +246,12 @@ class ConnectionSetupSession extends ChangeNotifier {
     }
     final current = _value.cards.indexOf(_step);
     final next = _value.cards.indexOf(target);
-    if (current < 0 || (next - current).abs() != 1) return;
-    if (next < current) {
+    if (current < 0 || next == current) return;
+    if (target == ConnectionSetupStep.address && next < current) {
+      // A continuous drag may cross the sign-in card before settling. Accept
+      // that destination just as Back does when leaving sign-in.
+      _go(ConnectionSetupStep.address);
+    } else if (next < current) {
       back();
     } else if (_step == ConnectionSetupStep.address) {
       continueAddress();
@@ -608,12 +591,6 @@ class ConnectionSetupSession extends ChangeNotifier {
     // a borrowed reference never retires the saved registry owner.
     if (_cloudRoute && _probe.error != null) _dropOAuth();
     _go(_cloudRoute ? ConnectionSetupStep.cloud : ConnectionSetupStep.signIn);
-  }
-
-  void reviewAddress() {
-    if (_closed || _saving || _cloudBusy || _cloudRoute) return;
-    _generation++;
-    _go(ConnectionSetupStep.address);
   }
 
   Future<void> save() async {

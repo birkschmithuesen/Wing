@@ -850,25 +850,11 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: StudioButtonPress(
-                  child: OutlinedButton(
-                    onPressed: _probe.checking ? null : _check,
-                    child: const Text('Check connection'),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              StudioButtonPress(
-                child: IconButton(
-                  tooltip: 'Connection details',
-                  onPressed: _showConnectionDetails,
-                  icon: const Icon(Icons.info_outline),
-                ),
-              ),
-            ],
+          StudioButtonPress(
+            child: OutlinedButton(
+              onPressed: _probe.checking ? null : _check,
+              child: const Text('Check connection'),
+            ),
           ),
           const SizedBox(height: 8),
           _checkResultsPanel(),
@@ -887,48 +873,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       ),
       _destination(),
       _checkResultsPanel(),
-      Align(
-        alignment: AlignmentDirectional.centerEnd,
-        child: StudioButtonPress(
-          child: IconButton(
-            tooltip: 'Connection details',
-            onPressed: _showConnectionDetails,
-            icon: const Icon(Icons.info_outline),
-          ),
-        ),
-      ),
     ],
-  );
-
-  void _showConnectionDetails() => showDialog<void>(
-    context: context,
-    builder: (context) => StudioDialog(
-      title: const Text('Connection details'),
-      content: SingleChildScrollView(
-        child: SelectableText(
-          [
-            'Gateway: ${_address.text}',
-            'Live chat: ${_state.chatSocketUrl}',
-            if (_probe.httpStatus != null) 'HTTP ${_probe.httpStatus}',
-            if (_probe.checkedAt != null)
-              'Checked: ${_probe.checkedAt!.toLocal()}',
-            if (_probe.error != null) _probe.error!,
-            if (_probe.failedStage == ConnectionCheck.chat &&
-                !_probe.chatEndpointUnsupported)
-              'If you use a reverse proxy, check WebSocket forwarding for ${_state.chatPath}/api/ws.',
-          ].join('\n\n'),
-        ),
-      ),
-      actions: [
-        StudioButtonPress(
-          child: IconButton(
-            tooltip: 'Close connection details',
-            onPressed: () => Navigator.pop(context),
-            icon: const Icon(Icons.close),
-          ),
-        ),
-      ],
-    ),
   );
 
   Widget _checkResultsPanel() => Container(
@@ -945,49 +890,25 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         for (final stage in ConnectionCheck.values) _checkRow(stage),
         const Divider(height: 12),
         SizedBox(
-          height: MediaQuery.textScalerOf(context).scale(64),
-          child: Row(
-            children: [
-              Expanded(
-                child: SingleChildScrollView(
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      _probe.error ??
-                          (_probe.verified
-                              ? 'Connection verified. Select Next to name and save this instance.'
-                              : _probe.checking
-                              ? 'Checking access to your Hermes. No message will be sent.'
-                              : 'Check access before continuing. No message will be sent.'),
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: _probe.error == null
-                            ? null
-                            : Theme.of(context).colorScheme.error,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              StudioButtonPress(
-                child: IconButton(
-                  onPressed: _probe.error == null
+          height: MediaQuery.textScalerOf(context).scale(48),
+          child: SingleChildScrollView(
+            primary: false,
+            child: Semantics(
+              liveRegion: true,
+              child: Text(
+                _probe.error ??
+                    (_probe.verified
+                        ? 'Connection verified. Select Next to continue.'
+                        : _probe.checking
+                        ? 'Checking access to your Hermes. No message will be sent.'
+                        : 'Check access before continuing. No message will be sent.'),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: _probe.error == null
                       ? null
-                      : _probe.chatEndpointUnsupported &&
-                            !_cloudRoute &&
-                            _access.chatUrl.isEmpty
-                      ? _session.reviewAddress
-                      : _session.editSignIn,
-                  icon: const Icon(Icons.edit_outlined),
-                  tooltip: _cloudRoute
-                      ? 'Sign in to Hermes Cloud again'
-                      : _probe.chatEndpointUnsupported &&
-                            _access.chatUrl.isEmpty
-                      ? 'Edit gateway address'
-                      : 'Edit sign-in or custom setup',
+                      : Theme.of(context).colorScheme.error,
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ],
@@ -996,15 +917,13 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
 
   Widget _checkRow(ConnectionCheck stage) {
     final status = _probe.statuses[stage]!;
-    final failed = status == ConnectionCheckStatus.failed;
-    final available = status == ConnectionCheckStatus.available;
-    final pending = status == ConnectionCheckStatus.checking;
-    final colors = Theme.of(context).colorScheme;
-    final color = failed
-        ? colors.error
-        : available || pending
-        ? colors.primary
-        : colors.onSurfaceVariant;
+    final tokens = Theme.of(context).extension<WingTokens>()!;
+    final color = switch (status) {
+      ConnectionCheckStatus.available => tokens.success,
+      ConnectionCheckStatus.failed => tokens.danger,
+      ConnectionCheckStatus.checking => tokens.warning,
+      ConnectionCheckStatus.waiting => tokens.muted,
+    };
     final label = switch (stage) {
       ConnectionCheck.profiles => 'Profiles & access',
       ConnectionCheck.chat => 'Live chat',
@@ -1021,68 +940,31 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       liveRegion: true,
       label: '$label, $detail',
       child: ExcludeSemantics(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 4),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 20,
-                height: 20,
-                child: Icon(
-                  failed
-                      ? Icons.error_outline
-                      : available
-                      ? Icons.link
-                      : Icons.more_horiz,
-                  color: color,
-                  size: 20,
+        child: Tooltip(
+          message: '$label: $detail',
+          excludeFromSemantics: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: MediaQuery.textScalerOf(context).scale(12) > 16
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            label,
-                            style: Theme.of(context).textTheme.bodySmall,
-                          ),
-                          Text(
-                            detail,
-                            style: Theme.of(
-                              context,
-                            ).textTheme.bodySmall?.copyWith(color: color),
-                          ),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              label,
-                              style: Theme.of(context).textTheme.bodySmall,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 100,
-                            height: MediaQuery.textScalerOf(context).scale(24),
-                            child: Align(
-                              alignment: AlignmentDirectional.centerEnd,
-                              child: Text(
-                                detail,
-                                textAlign: TextAlign.end,
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(color: color),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Container(
+                  key: ValueKey('connection-check-${stage.name}-led'),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

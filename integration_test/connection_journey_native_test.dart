@@ -114,7 +114,10 @@ void main() {
         fixture.failAt = null;
         await _tap(tester, 'Check connection');
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
-        expect(find.text('Available'), findsNWidgets(3));
+        expect(
+          find.bySemanticsLabel(RegExp(r', Available$')),
+          findsNWidgets(3),
+        );
         final card = tester.widget<SingleChildScrollView>(
           find.byKey(const ValueKey('connection-card-signIn')),
         );
@@ -127,6 +130,8 @@ void main() {
           tester,
           'connection-${brightness.name}-inline-success',
         );
+        expect(find.byTooltip('Connection details'), findsNothing);
+        expect(find.byIcon(Icons.edit_outlined), findsNothing);
         await _swipe(tester, -150);
         expect(find.text('Connection verified'), findsOneWidget);
         expect(saved, isNull);
@@ -138,6 +143,30 @@ void main() {
         await _settle(tester);
         await _swipe(tester, 150);
         expect(find.byKey(const Key('connection-username')), findsOneWidget);
+        await _tap(tester, 'Next');
+        expect(
+          tester
+              .widget<TextFormField>(find.byKey(const Key('connection-name')))
+              .controller!
+              .text,
+          'Home',
+        );
+        // A continuous swipe can cross both earlier cards. It must settle on
+        // the address rather than being pulled back to the verified panel.
+        final cards = find.byKey(const Key('connection-cards'));
+        final drag = await tester.startGesture(
+          tester.getTopLeft(cards) + const Offset(8, 8),
+        );
+        for (var i = 0; i < 8; i++) {
+          await drag.moveBy(const Offset(110, 0));
+          await tester.pump(const Duration(milliseconds: 70));
+        }
+        await drag.up();
+        await _settle(tester);
+        expect(tester.widget<PageView>(cards).controller!.page, 0);
+        expect(find.text('Where’s your Hermes?'), findsOneWidget);
+        await _tap(tester, 'Next');
+        await _tap(tester, 'Check connection');
         await _tap(tester, 'Next');
         expect(
           tester
@@ -168,6 +197,8 @@ void main() {
         expect(fixture.calls, [
           ConnectionCheck.profiles,
           ConnectionCheck.chat,
+          ...ConnectionCheck.values,
+          // Rechecking after the two-card return to the address.
           ...ConnectionCheck.values,
         ]);
         expect(tester.takeException(), isNull);

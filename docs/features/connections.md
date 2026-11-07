@@ -6,7 +6,7 @@ Feature ID: `connections`.
 
 ## Sub-features
 
-- `connections.verify` — Check credentials, the gateway Webapp address and canonical chat authority in place. Check connection updates a permanent compact status area without scrolling or moving the fields and actions. The fixed header shows checking progress even while the keyboard closes; Next opens name/save only after success. Edits invalidate the previous check.
+- `connections.verify` — Check credentials, the gateway Webapp address and canonical chat authority in place. Check connection updates a permanent compact status area without scrolling or moving the fields and actions. The full-width Check connection action sits above compact result LEDs, with status descriptions for accessibility. The fixed header shows checking progress even while the keyboard closes; Next opens name/save only after success. Edits invalidate the previous check.
 - `connections.save` — Persist and reopen the selected connection.
 - Saved instance aliases appear in workspace and conversation headers as well as
   the instance picker. Renaming an instance updates a retained workspace without
@@ -49,8 +49,7 @@ content; diagnostics do not change write retry or error behavior.
 
 A standalone Dashboard can pass HTTP profile/history reads but must fail the chat
 check. `ProfileGateway` checks `session_authority` in the `gateway.ready` event payload
-through the stock event envelope before admitting session requests. Setup offers
-**Edit gateway address** and preserves sign-in fields. A known unsupported endpoint
+through the stock event envelope before admitting session requests. Use **Back** to correct the gateway address; sign-in fields are preserved. A known unsupported endpoint
 keeps the shared connection LED and health finding failed even after HTTP success;
 a fresh canonical handshake clears that observation. Webapp password sign-in keeps
 the gateway-scoped session cookies and sign-in binding within the connection’s
@@ -58,3 +57,5 @@ existing origin-bound authentication owner.
 
 For deployed chat readiness, also run the [read-only saved-chat recipe](conversation.md).
 Fixture success does not prove the configured deployment can reopen chats.
+
+A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retires the prior check while preserving entered fields.

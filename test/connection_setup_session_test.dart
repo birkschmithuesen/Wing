@@ -139,6 +139,18 @@ void main() {
     },
   );
 
+  test('a swipe can return from review directly to the address', () async {
+    local();
+    await session.check();
+    session.continueVerified();
+    expect(session.value.step, ConnectionSetupStep.review);
+    session.selectCard(ConnectionSetupStep.address);
+    expect(session.value.step, ConnectionSetupStep.address);
+    expect(session.value.check.verified, isFalse);
+    expect(session.value.draft.username, ' alex ');
+    expect(writes, isEmpty);
+  });
+
   test(
     'raw draft validation prevents probes and preserves exact password',
     () async {
