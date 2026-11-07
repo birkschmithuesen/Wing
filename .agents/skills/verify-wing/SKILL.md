@@ -13,8 +13,8 @@ a failure or preparing delivery, follow [verification scope and stopping](refere
 
 ## Launch
 
-Match the toolchain in [CI](../../../.github/workflows/pr-quality.yml): Flutter 3.44.0
-with bundled Dart 3.12, Java 17, Android SDK platform/build-tools 36 and the tracked
+Match the toolchain in [CI](../../../.github/workflows/pr-quality.yml): Flutter 3.47.9
+with bundled Dart 3.13.7, Java 17, Android SDK platform/build-tools 36 and the tracked
 Gradle wrapper. Install command-line tools, accept SDK licenses, run `flutter doctor`
 and resolve packages with `flutter pub get` while retaining `pubspec.lock`.
 Native recipes also need the API36 Google APIs x86_64 image and working KVM acceleration.

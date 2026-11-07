@@ -31,6 +31,7 @@ import 'package:wing/core/services/config_backup.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/main.dart';
 import 'package:wing/core/widgets/connection_icon_picker.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _MemoryCredentialStore implements CredentialStore {
@@ -264,6 +265,7 @@ Future<void> pumpHome(
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      theme: wingTheme(Brightness.light),
       home: HomeScreen(
         createSharedDraftSession: (entry) => SharedDraftSession(
           connectionManager: manager,
