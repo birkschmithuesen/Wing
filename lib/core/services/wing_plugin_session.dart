@@ -176,10 +176,11 @@ class WingPluginSession extends ChangeNotifier {
       if (_disposed) return;
       _release = release;
       _releaseVerified = true;
-    } catch (_) {
+    } catch (error) {
       if (!_disposed) {
-        _releaseError =
-            'Could not check GitHub releases. Refresh to try again.';
+        _releaseError = error is WingPluginReleaseFailure
+            ? error.message
+            : 'Could not check GitHub releases. Refresh to try again.';
       }
     }
     _notify();

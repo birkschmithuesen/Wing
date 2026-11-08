@@ -23,7 +23,10 @@ Each profile row has its own install/update icon. It installs missing Wing copie
 updates older ones or enables a disabled copy in that selected profile. Current
 profiles have a disabled action. Unknown or failed rows need Refresh; another
 profile’s failure does not block a verified row.
-Refresh checks GitHub and backend inventory. The icon-only
+Refresh checks GitHub and backend inventory. If the GitHub check fails, its
+message distinguishes connection failure, timeout, request limits, HTTP refusal
+and invalid release information. Installed versions remain visible; updates wait
+for a successful check. The icon-only
 Install or update Wing in all profiles action installs missing copies from
 [tarkilhk/wing-hermes-plugin](https://github.com/tarkilhk/wing-hermes-plugin), updates
 older copies, and enables Wing where disabled. Missing copies install at the
