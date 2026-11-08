@@ -19,6 +19,10 @@ Use **Next** or swipe left/right between the setup cards. **Check connection** c
 
 Choose a profile, create a chat and send a short message. Reopen the chat to see its saved history. From there, try [chat controls, files, voice and more](FEATURES.md).
 
+For live voice conversations and email draft cards, [set up the optional Wing
+plugin](WING_PLUGIN.md) in the profiles where you want those features. It is a
+separate server installation; the Android update alone does not enable it.
+
 If a saved profile is unavailable, Chats offers the available profiles directly.
 On a short screen or with enlarged text, scroll below the filters to reach these
 choices, then choose a profile to reopen the workspace.

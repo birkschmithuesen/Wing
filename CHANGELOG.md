@@ -4,6 +4,52 @@ User-facing changes for Wing. Download published APKs from [GitHub Releases](htt
 
 ## Unreleased
 
+## [1.4.1] - 2026-11-09
+
+### New
+
+- **GPT Live voice:** Talk to your agent using your **ChatGPT subscription** or
+  separately billed OpenAI API access. Available in ordinary chats and Bot Chats,
+  not group discussions.
+- **Floating call card:** Keep mute, audio routing and End voice available while
+  navigating. Enter another conversation to reveal captions and Return to voice
+  chat. Calls can continue while switching apps or locking the phone.
+- **Voice selection:** Save separate subscription and API voices for your next
+  call. Preview subscription voices offline without using voice allowance.
+  API voice previews are not available yet.
+- **Wing plugin for Hermes:** Install, enable and update the server plugin per
+  profile from **App settings → Hermes → Wing plugin**. Check installed versions,
+  available updates and results for each profile.
+- **Email draft cards:** Review recipients, subject and body, request revisions,
+  then open the draft in your Android email app to edit and send. The plugin
+  does not send email or need access to your mail account.
+
+### Improvements
+
+- Reply to specific group messages and follow clearer member status, current
+  tools and timing under **Group options → Member activity**.
+- Reopen Bot Chats after history compression. New groups show eligible local bots.
+- Use the same attachment picker, image preview and composer layout across chats
+  and groups. Wide tables now open as grids; stacked rows remain available.
+- Fix email-link handoff, draft text selection, enlarged voice controls and
+  misleading chat-ownership recovery guidance.
+
+### Setup and limitations
+
+- Live voice and email cards require the **Wing plugin for Hermes**, installed
+  and enabled in each profile. Updating the APK does not install it. Use current
+  Hermes with its gateway Webapp (at least 0.23.0) and the current plugin.
+  [Plugin setup](https://github.com/tarkilhk/Wing/blob/v1.4.1/docs/WING_PLUGIN.md).
+- Full spoken conversations remain local until Wing restarts: Hermes lacks the
+  supported recording operation needed to save them to shared history and memory.
+  Delegated task results save normally. Follow
+  [issue #121045](https://github.com/NousResearch/hermes-agent/issues/121045) and
+  related, unmerged [PR #87053](https://github.com/NousResearch/hermes-agent/pull/87053).
+- Ending voice does not cancel accepted Hermes work. Use the chat's Stop control
+  or explicitly ask to stop the task.
+- Private Bot working histories were removed because the current Hermes API
+  does not expose them. Use the shared discussion and Member activity.
+
 ## [1.4.0] - 2026-11-07
 
 Keep work moving across bots, scheduled routines and long conversations, with

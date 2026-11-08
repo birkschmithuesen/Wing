@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Install the Wing plugin on Hermes for GPT Live with a ChatGPT subscription and native email draft cards. Manage installation and updates per profile.">
+<title>Wing plugin for Hermes · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html">Recents</a>
+<a href="live-work.html">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html" aria-current="page">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<div><h1 id="guide-title">The Wing plugin<br> for Hermes</h1></div>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside><nav class="guide-toc" aria-label="On this page">
+<a href="#features">What the Hermes plugin adds</a>
+<a href="#install">Install and enable it from Wing</a>
+<a href="#email">Draft an email, then send it from your phone</a>
+<a href="#updates">Update and recover per profile</a>
+</nav></aside>
+<div class="guide-copy">
+<section id="features" aria-labelledby="features-title">
+<h2 id="features-title">What the Hermes plugin adds</h2>
+<p>The <strong>Wing plugin for Hermes</strong> is an optional, open-source plugin installed on your <strong>Hermes server</strong>. It gives the Wing Android app two extra capabilities:</p>
+<ul>
+<li><a href="voice.html"><strong>GPT Live conversations</strong></a> using your ChatGPT subscription or separately billed OpenAI API access, with your selected profile's identity and context.</li>
+<li><a href="#email"><strong>Email draft cards</strong></a> with recipients, subject and body, ready to open in your phone's email app.</li>
+</ul>
+<p>The plugin is separate from the Android app: an APK update does not install or enable it. Ordinary text chats, dictation and read-aloud work without it. Both live voice modes and email draft cards require it in the profile where you use them.</p>
+<p>Use current upstream Hermes, at least 0.23.0, with its dashboard/gateway reachable from Wing, and Wing 1.4.1 or newer. The plugin runs on stock Hermes without a core patch. Its version is separate from the Android app's version.</p>
+<p><a href="https://github.com/tarkilhk/wing-hermes-plugin">Plugin source and installation instructions</a> · <a href="https://github.com/tarkilhk/wing-hermes-plugin/releases/latest">Latest plugin release</a></p>
+</section>
+<section id="install" aria-labelledby="install-title">
+<h2 id="install-title">Install and enable it from Wing</h2>
+<ol>
+<li>Connect to the server you want to change. Open <strong>App settings → Hermes → Wing plugin</strong>.</li>
+<li>Review installed versions and the latest release, then expand <strong>Profiles</strong>.</li>
+<li>Use the action beside your profile to install, update or enable the plugin. You can instead install or update across all profiles. Review any confirmation before proceeding.</li>
+<li>Check each profile's result, follow any Hermes restart instruction, and start a new chat so newly enabled tools are available.</li>
+</ol>
+<p><strong>Install and enable it in every profile where you want these features.</strong> Enabling it in the default profile alone does not enable it elsewhere. Opening the manager never installs or updates anything automatically.</p>
+<p>Full spoken conversations are not yet saved to shared history or memory because Hermes lacks the supported recording operation Wing needs. The plugin does not remove that limitation. Hermes saves delegated task results normally. <a href="voice.html#history">History limitation and upstream proposals</a>.</p>
+<p>For voice, next choose your account mode in <strong>App settings → Voice → Live conversation</strong>. <a href="voice.html#setup">Continue with voice setup</a>.</p>
+</section>
+<section id="email" aria-labelledby="email-title">
+<h2 id="email-title">Draft an email, then send it from your phone</h2>
+<p>Enable the plugin's <strong>wing_email</strong> toolset for your profile and start a new chat. Ask Hermes to draft an email. Its draft tool returns a card showing recipients, subject and body.</p>
+<p>Tap the envelope-arrow action to open the complete draft in your chosen Android email app, including any CC or BCC recipients. Review, edit and send there. <strong>The plugin does not send email or need access to your email account.</strong></p>
+<p>Ask for a revision to create a new version; older cards retain their original contents. Drafts stay in the selected Hermes profile. Email cards need neither an OpenAI account nor a voice subscription.</p>
+</section>
+<section id="updates" aria-labelledby="updates-title">
+<h2 id="updates-title">Update and recover per profile</h2>
+<p>The manager shows installed versions, the latest GitHub release and readiness. Refresh reads installed state and checks releases again. A failed profile does not block actions on another profile whose state has been verified.</p>
+<p>New installations use the exact published release commit. Replacing an existing pinned copy asks you to confirm the target and affected profiles. An unpinned copy follows its configured source, which may lag GitHub's latest release.</p>
+<p>Network problems, timeouts, rate limits and invalid release responses have distinct explanations. Installed information remains visible when a release check fails. After an uncertain operation, refresh before retrying and inspect each profile's result.</p>
+<p>Read the <a href="https://github.com/tarkilhk/Wing/blob/main/docs/WING_PLUGIN.md">full plugin setup and recovery guide</a> for source pinning, reinstall confirmations and leaving settings during an operation.</p>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="voice.html">Talk through GPT Live</a>
+<a class="text-link" href="results.html#email">Use email draft cards</a>
+<a class="text-link" href="administration.html">Manage Hermes profiles</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html">Get connected</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>

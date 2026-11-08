@@ -1,6 +1,8 @@
 # Talk to Wing
 
-Wing can turn speech into an editable message and read an assistant reply aloud.
+Wing supports live conversations, speech-to-text dictation and reading replies aloud.
+For live conversations, first [install and enable the Wing plugin](WING_PLUGIN.md)
+in the chat's Hermes profile.
 
 ## Choose where speech is processed
 
@@ -15,6 +17,10 @@ Tap the composer microphone, speak, then tap **Stop recording**. The words appea
 [Voice setup details](PROFILE_VOICE.md) · [Privacy](../PRIVACY.md)
 
 ## Live conversations
+
+Live conversations are available in ordinary chats and Bot Chats. Group
+discussions cannot start a live call; browsing a group keeps an existing call
+connected to its original chat.
 
 In **App settings → Voice → Live conversation**, choose **ChatGPT subscription**
 or **OpenAI API**. Subscription uses the selected Hermes profile's ChatGPT sign-in
@@ -84,6 +90,20 @@ exchange is not yet saved there. Voice startup receives Hermes’s cached or sav
 and saved memory. A brand-new chat uses Hermes’s native profile inspector;
 deeper memory retrieval goes through normal Hermes delegation. Saving every
 spoken turn still awaits native Hermes support.
+
+### Why the full spoken conversation is not saved
+
+This is a current Hermes limitation: Wing needs a supported operation to record
+an externally spoken user or assistant turn without generating another reply.
+Hermes's normal task submission records its own work and answer, but not the
+separate words GPT Live speaks. The Wing plugin does not remove this limitation.
+
+The exact request is [Hermes issue #121045](https://github.com/NousResearch/hermes-agent/issues/121045).
+Its earlier implementation, [PR #121056](https://github.com/NousResearch/hermes-agent/pull/121056),
+was closed without merging. The related [PR #87053](https://github.com/NousResearch/hermes-agent/pull/87053)
+proposes persisting plugin chat messages without starting a model turn and remains
+open and unmerged as of 9 November 2026. It is a related proposal, not a shipped
+solution to Wing's full spoken-history and memory requirements.
 
 Live voice shows your speech and GPT-Live’s spoken replies in the original chat.
 These entries are labelled “Not saved to Hermes” and can be copied. They remain

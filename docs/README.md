@@ -16,6 +16,7 @@ Wing puts your Hermes Agent within reach on Android. Start with the short guides
 - **Chats and projects:** [find conversations, send, steer and revisit answers](CHATS.md).
 - **Bots and groups:** [browse saved-instance profiles, edit appearance and open hosted discussions](BOTS.md).
 - **Files and results:** [add photos and files, then open or save results](FILES.md).
+- **Wing plugin for Hermes:** [install and update live voice and email draft support per profile](WING_PLUGIN.md).
 - **Voice:** [live conversations, dictation and spoken replies](VOICE.md).
 - **Notifications:** [set up reply and attention alerts](NOTIFICATIONS.md).
 - **Your Hermes setup:** [manage profiles, scheduled tasks, health alerts and usage](MANAGE_HERMES.md).

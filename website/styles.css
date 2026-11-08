@@ -349,3 +349,17 @@ html:has(.screenshot-viewer[open]) { overflow: hidden; }
   .viewer-close { border: 1px solid ButtonText; }
   .screenshot-link:focus-visible, .viewer-picture:focus-visible { outline-color: Highlight; }
 }
+
+/* Live voice pairs its explanation with the production call interface. */
+.voice-section { border-block-start: 1px solid var(--rule); }
+.voice-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 20rem); align-items: center; gap: clamp(2rem, 6vw, 6rem); }
+.voice-layout .feature-copy { max-inline-size: 38rem; }
+.voice-layout p { color: var(--muted); }
+.voice-layout .voice-note { font-size: 1rem; }
+.voice-layout .text-link { color: var(--teal); justify-self: start; }
+.voice-shot { inline-size: min(100%, 20rem); margin: 0; justify-self: center; }
+@media (width < 50rem) {
+  .voice-layout { grid-template-columns: minmax(0, 1fr); }
+}
+
+.plugin-copy { max-inline-size: 42rem; color: var(--muted); }

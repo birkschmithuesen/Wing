@@ -66,9 +66,62 @@ Follow reasoning and timed tool runs as an answer streams. Open Tasks or Subagen
 
 [Explore live work](https://tarkilhk.github.io/Wing/live-work.html)
 
+## Talk to your agent
+
+Talk to your agent through **GPT Live using your ChatGPT subscription**. Ask
+Hermes to do work and hear the results while you move between apps or lock your
+phone. Separately billed OpenAI API access is also available. Start from
+an ordinary chat or a Bot Chat using the waveform beside the message microphone.
+A compact floating call card keeps the duration and controls available as you
+navigate. Enter another conversation to reveal captions and a return-to-chat
+control; the call stays with its original chat. Group discussions do not offer
+live voice.
+
+**Requires the [Wing plugin for Hermes](docs/WING_PLUGIN.md)** installed and
+enabled on your server for that profile. Updating the Android app does not
+install the server plugin.
+
+<p align="center">
+  <a href="https://tarkilhk.github.io/Wing/voice.html">
+    <img src="website/assets/screenshots/live-voice-dark.png" alt="Sample GPT Live conversation in Wing with spoken messages and the compact floating call card" width="260">
+  </a>
+</p>
+
+Full GPT Live conversations are not yet saved to Hermes history or memory because
+Hermes does not yet expose the supported recording operation Wing needs for
+externally spoken turns. Delegated task results are saved normally. Follow
+[the upstream request](https://github.com/NousResearch/hermes-agent/issues/121045)
+and [the related persistence PR](https://github.com/NousResearch/hermes-agent/pull/87053)
+(still unmerged when checked on 9 November 2026).
+
+Choose a GPT-Live voice in App settings, with separate saved choices for
+subscription and API calls. Preview subscription voices offline before calling;
+API voice previews are not available yet. Changes apply to your next call.
+
+[Explore live voice and setup](https://tarkilhk.github.io/Wing/voice.html)
+
+## Add the Wing plugin to Hermes
+
+The **Wing plugin for Hermes** is a separate, open-source server plugin that adds
+GPT Live conversations and email draft cards to Wing. Open **App settings → Hermes
+→ Wing plugin** to install, enable or update it for each profile where you want
+these features. Check the result for any required restart and start a new chat
+to use newly enabled tools. Ordinary chats, dictation and read-aloud work without it.
+
+[Explore the plugin and setup](https://tarkilhk.github.io/Wing/wing-plugin.html) · [Plugin source](https://github.com/tarkilhk/wing-hermes-plugin)
+
+## Draft an email, then send it from your phone
+
+With the Wing plugin's email tool enabled, ask Hermes for a draft. Review its
+recipients, subject and body in a native card, then open it in your chosen email
+app to edit and send. Ask for revisions without changing older cards. No email
+account connection to Hermes or voice subscription is required.
+
+[Email draft cards](docs/WING_PLUGIN.md#draft-an-email)
+
 ## Answers and files
 
-Read wide tables as stacked rows or a wrapped grid. Open reading mode or turn the phone sideways for more room. Copy highlighted code or whole replies, listen to answers, and preview, save or share files. Edit an earlier message, or restore its checkpoint after confirming removal of later history.
+Read wide tables as grids, with horizontal scrolling when needed, or switch to stacked rows. Open reading mode or turn the phone sideways for more room. Copy highlighted code or whole replies, listen to answers, and preview, save or share files. Edit an earlier message, or restore its checkpoint after confirming removal of later history.
 
 <p align="center">
   <a href="https://tarkilhk.github.io/Wing/results.html">
