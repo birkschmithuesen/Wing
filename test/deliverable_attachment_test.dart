@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -26,6 +25,13 @@ final testPngBytes = Uint8List.fromList(
     'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7'
     'gP9i18U1AAAAABJRU5ErkJggg==',
   ),
+);
+
+/// Scoped to the deliverable: the assistant message header always renders
+/// its own `Image` (PlayfulPortrait's avatar), unrelated to any thumbnail.
+Finder thumbnailImages() => find.descendant(
+  of: find.byType(DeliverableAttachment),
+  matching: find.byType(Image),
 );
 
 Widget message(
@@ -81,9 +87,9 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(DeliverableAttachment), findsOneWidget);
-      expect(find.byType(Image), findsOneWidget);
+      expect(thumbnailImages(), findsOneWidget);
       expect(loadCalls, 1);
-      await tester.tap(find.byType(Image));
+      await tester.tap(thumbnailImages());
       await tester.pumpAndSettle();
       expect(find.byType(ChatImagePreview), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -98,7 +104,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byType(DeliverableAttachment), findsOneWidget);
-      expect(find.byType(Image), findsNothing);
+      expect(thumbnailImages(), findsNothing);
       expect(find.text('FULL_BANK_ANALYSIS.md'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -111,11 +117,11 @@ void main() {
       await tester.pumpWidget(
         message('MEDIA:/srv/photo.png', loadImage: (_) => pending.future),
       );
-      expect(find.byType(Image), findsNothing);
+      expect(thumbnailImages(), findsNothing);
       expect(find.text('photo.png'), findsOneWidget);
       pending.completeError(const DashboardHttpException(403, 'fs/download'));
       await tester.pumpAndSettle();
-      expect(find.byType(Image), findsNothing);
+      expect(thumbnailImages(), findsNothing);
       expect(find.text('photo.png'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
@@ -141,7 +147,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(loadCalls, 1);
-    expect(find.byType(Image), findsOneWidget);
+    expect(thumbnailImages(), findsOneWidget);
   });
 
   testWidgets('three MEDIA images in one message stack as separate thumbnails', (
@@ -176,7 +182,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.byType(DeliverableAttachment), findsNWidgets(3));
-    expect(find.byType(Image), findsNWidgets(3));
+    expect(thumbnailImages(), findsNWidgets(3));
     expect(tester.takeException(), isNull);
     if (const bool.fromEnvironment('CAPTURE_DELIVERABLES')) {
       await tester.runAsync(() async {
