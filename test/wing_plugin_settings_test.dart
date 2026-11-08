@@ -12,8 +12,11 @@ import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/wing_plugin_settings_card.dart';
 import 'support/form_family_capture.dart';
 
+const releaseSha = 'a39afe7ae4acc2f2da50d73b6a117a5ce2f61e1a';
+const oldSha = '5b985c598248d6d4ad22c1d61817e777d3ea3d09';
 WingPluginRelease release([String version = '0.3.0']) =>
     WingPluginRelease.decode({
+      'target_commitish': releaseSha,
       'tag_name': 'v$version',
       'draft': false,
       'prerelease': false,
@@ -37,8 +40,10 @@ class Fixture {
   final calls = <Map<String, dynamic>>[];
   final failedReads = <String>{};
   String? failWrite, failReadback, refuseUpdate;
+  String refusal = 'Pinned installation';
   Completer<void>? readGate, writeGate, connectGate, releaseGate, readbackGate;
   bool failRelease = false, loseReceipt = false, closed = false;
+  bool wrongInstalledPin = false;
   final gateways = <String, ProfileGateway>{};
   late final AdministrationRepository server = AdministrationRepository(
     connectionId: 'fixture',
@@ -92,7 +97,7 @@ class Fixture {
           }
           await writeGate?.future;
           if (failWrite == name) {
-            throw JsonRpcError(method, 'Pinned installation', code: 4021);
+            throw JsonRpcError(method, refusal, code: 4021);
           }
           if (action == 'update' && refuseUpdate == name) {
             return {
@@ -108,8 +113,13 @@ class Fixture {
               'action': 'install',
               'identifier': WingPluginRelease.repository,
               'enable': true,
+              'ref': releaseSha,
+              'force': rows[name]?['pinned_sha'] != null,
             });
-            rows[name] = plugin('0.3.0');
+            rows[name] = {
+              ...plugin('0.3.0'),
+              'pinned_sha': wrongInstalledPin ? oldSha : releaseSha,
+            };
             return {
               'ok': true,
               'plugin_name': 'wing',
@@ -170,11 +180,17 @@ Future<void> frame(
   Object key = 'server',
 }) async {
   await tester.pumpWidget(
-    MaterialApp(
-      theme: wingTheme(brightness),
-      home: RepaintBoundary(
-        key: formFamilyCapture,
-        child: MediaQuery(
+    RepaintBoundary(
+      key: formFamilyCapture,
+      child: MaterialApp(
+        theme: wingTheme(brightness),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(
+            context,
+          ).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: MediaQuery(
           data: MediaQueryData(
             size: const Size(390, 844),
             textScaler: TextScaler.linear(scale),
@@ -216,6 +232,97 @@ const apply = 'Install or update Wing in all profiles';
 
 void main() {
   setUpAll(loadFormFamilyFonts);
+  test('backend refusal preserves its actionable reason', () async {
+    final fixture = Fixture()..failWrite = 'default';
+    final session = fixture.session();
+    addTearDown(session.dispose);
+    await session.refresh();
+    await session.applyToAll();
+    expect(session.profiles.first.error, contains('Pinned installation'));
+  });
+  test(
+    'pinned installs use exact release only after matching approval',
+    () async {
+      final fixture = Fixture();
+      fixture.rows['default']!['pinned_sha'] = oldSha;
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      expect(session.hasPinnedUpdates, isTrue);
+      await session.applyToAll();
+      expect(
+        fixture.writes.where((call) => call['profile'] == 'default'),
+        isEmpty,
+      );
+      expect(session.profiles.first.error, contains('pinned'));
+      await session.refresh();
+      await session.applyToAll(approvedPinnedRelease: session.release);
+      expect(fixture.writes.where((call) => call['force'] == true).single, {
+        'profile': 'default',
+        'action': 'install',
+        'identifier': WingPluginRelease.repository,
+        'enable': true,
+        'ref': releaseSha,
+        'force': true,
+      });
+      expect(session.profiles.first.plugin!.pinnedSha, releaseSha);
+      expect(session.profiles.every((row) => row.error == null), isTrue);
+    },
+  );
+  test(
+    'refresh retires approval and newly pinned copies require review',
+    () async {
+      final fixture = Fixture();
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      final oldRelease = session.release;
+      fixture.rows['default']!['pinned_sha'] = oldSha;
+      await session.refresh();
+      await session.applyToAll(approvedPinnedRelease: oldRelease);
+      expect(
+        fixture.writes.where((call) => call['profile'] == 'default'),
+        isEmpty,
+      );
+      expect(fixture.writes, isEmpty);
+      expect(session.error, contains('release changed'));
+      // A pin appearing after observation also cannot trigger a forced write.
+      fixture.calls.clear();
+      await session.applyToAll();
+      expect(
+        fixture.writes.where((call) => call['profile'] == 'default'),
+        isEmpty,
+      );
+      expect(session.profiles.first.error, contains('pinned'));
+    },
+  );
+  test(
+    'installation is not verified from version alone when pin differs',
+    () async {
+      final fixture = Fixture()..wrongInstalledPin = true;
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      await session.applyToAll();
+      expect(session.profiles[1].error, contains('commit does not match'));
+      expect(session.canApply, isFalse);
+    },
+  );
+  test('refusal details redact credentials without losing the reason', () async {
+    final fixture = Fixture()
+      ..failWrite = 'default'
+      ..refusal =
+          'Pinned installation: password=very-secret; https://user:secret@example.com/plugin?token=hidden';
+    final session = fixture.session();
+    addTearDown(session.dispose);
+    await session.refresh();
+    await session.applyToAll();
+    final error = session.profiles.first.error!;
+    expect(error, contains('Pinned installation'));
+    for (final secret in ['very-secret', 'user:secret', 'hidden']) {
+      expect(error, isNot(contains(secret)));
+    }
+  });
   test('stable versions compare numerically and reject previews', () {
     expect(
       WingPluginVersion.parse(
@@ -223,6 +330,17 @@ void main() {
       )!.compareTo(WingPluginVersion.parse('0.9.9')!),
       greaterThan(0),
     );
+    for (final sha in [null, 'main', 'a39afe7']) {
+      expect(
+        () => WingPluginRelease.decode({
+          'tag_name': 'v0.3.0',
+          'draft': false,
+          'prerelease': false,
+          'target_commitish': sha,
+        }),
+        throwsFormatException,
+      );
+    }
     for (final bad in ['v0.3.0', '0.3', '0.3.0-beta', '00.3.0']) {
       expect(WingPluginVersion.parse(bad), isNull);
     }
@@ -292,8 +410,7 @@ void main() {
       expect(
         fixture.writes.every(
           (call) =>
-              !call.containsKey('force') &&
-              !call.containsKey('accept_capabilities'),
+              call['force'] != true && !call.containsKey('accept_capabilities'),
         ),
         isTrue,
       );
@@ -494,6 +611,43 @@ void main() {
   );
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 1.6]) {
+      testWidgets('pinned review ${brightness.name} $scale', (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final fixture = Fixture()..writeGate = Completer<void>();
+        fixture.rows['default']!['pinned_sha'] = oldSha;
+        final session = fixture.session();
+        await frame(tester, session, brightness: brightness, scale: scale);
+        await flush(tester);
+        await tester.tap(find.byTooltip(apply));
+        await tester.pumpAndSettle();
+        expect(find.text('Replace pinned Wing version?'), findsOneWidget);
+        expect(find.textContaining('caution-level'), findsOneWidget);
+        expect(fixture.writes, isEmpty);
+        await captureFormFamily(
+          tester,
+          'wing-pin-review-${brightness.name}-$scale',
+        );
+        expect(tester.takeException(), isNull);
+        await tester.tap(find.byTooltip('Cancel'));
+        await tester.pumpAndSettle();
+        expect(fixture.writes, isEmpty);
+        await tester.tap(find.byTooltip(apply));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byTooltip('Replace pinned Wing and update all profiles'),
+        );
+        await flush(tester);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(fixture.writes.single['force'], isTrue);
+        fixture.writeGate!.complete();
+        await flush(tester);
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(session.profiles.every((row) => row.error == null), isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
       testWidgets('settings render ${brightness.name} $scale', (tester) async {
         tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;

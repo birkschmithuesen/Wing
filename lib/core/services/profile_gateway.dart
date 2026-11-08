@@ -916,10 +916,18 @@ class ProfileGateway {
 
   Future<Map<String, dynamic>> installPlugin(
     String repository, {
+    required String ref,
+    required bool replaceExisting,
     required bool Function() canDispatch,
     required void Function() onDispatched,
   }) => _mutatePlugin(
-    {'action': 'install', 'identifier': repository, 'enable': true},
+    {
+      'action': 'install',
+      'identifier': repository,
+      'ref': ref,
+      'force': replaceExisting,
+      'enable': true,
+    },
     canDispatch: canDispatch,
     onDispatched: onDispatched,
   );

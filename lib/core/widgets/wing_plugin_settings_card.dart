@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/wing_plugin_session.dart';
 import '../theme/wing_theme.dart';
 import 'studio_error.dart';
+import 'studio_form_actions.dart';
 import 'studio_loading.dart';
 
 /// Presentation only; the captured session owns inventory and command admission.
@@ -25,6 +26,35 @@ class _WingPluginSettingsCardState extends State<WingPluginSettingsCard> {
   void dispose() {
     _session.dispose();
     super.dispose();
+  }
+
+  Future<void> _apply() async {
+    if (!_session.canApply) return;
+    final release = _session.release!;
+    if (_session.hasPinnedUpdates) {
+      final approved = await showDialog<bool>(
+        context: context,
+        builder: (context) => StudioDialog(
+          title: const Text('Replace pinned Wing version?'),
+          content: Text(
+            'Install Wing ${release.version.value} from its official GitHub release in all profiles on ${_session.server.connectionLabel}.\n\n'
+            'Pinned copies will move to this release. Hermes requires a forced reinstall, which also accepts caution-level scan warnings. Dangerous code remains blocked.',
+          ),
+          actions: [
+            StudioFormActions(
+              onCancel: () => Navigator.pop(context, false),
+              onConfirm: () => Navigator.pop(context, true),
+              confirmLabel: 'Replace pinned Wing and update all profiles',
+              confirmIcon: Icons.system_update_alt,
+            ),
+          ],
+        ),
+      );
+      if (!mounted || approved != true) return;
+      await _session.applyToAll(approvedPinnedRelease: release);
+    } else {
+      await _session.applyToAll();
+    }
   }
 
   @override
@@ -71,7 +101,7 @@ class _WingPluginSettingsCardState extends State<WingPluginSettingsCard> {
                     child: IconButton(
                       tooltip: 'Install or update Wing in all profiles',
                       onPressed: _session.canApply
-                          ? () => unawaited(_session.applyToAll())
+                          ? () => unawaited(_apply())
                           : null,
                       icon: const Icon(Icons.system_update_alt),
                     ),

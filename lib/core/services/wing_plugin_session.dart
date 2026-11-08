@@ -3,6 +3,7 @@ import '../models/hermes_profile.dart';
 import '../models/profile_plugins.dart';
 import '../models/wing_plugin.dart';
 import 'administration_repository.dart';
+import 'mcp_error.dart';
 import 'wing_plugin_releases.dart';
 import 'ws_client.dart';
 
@@ -43,6 +44,15 @@ class WingPluginSession extends ChangeNotifier {
             (row.plugin == null ||
                 !row.plugin!.enabled ||
                 _release!.needsUpdate(row.plugin!)),
+      );
+
+  bool get hasPinnedUpdates =>
+      _release != null &&
+      _profiles.any(
+        (row) =>
+            row.plugin != null &&
+            row.plugin!.pinnedSha?.isNotEmpty == true &&
+            _release!.needsUpdate(row.plugin!),
       );
 
   void _notify() {
@@ -165,8 +175,14 @@ class WingPluginSession extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> applyToAll() async {
+  Future<void> applyToAll({WingPluginRelease? approvedPinnedRelease}) async {
     if (!canApply) return;
+    if (approvedPinnedRelease != null &&
+        !identical(_release, approvedPinnedRelease)) {
+      _error = 'The release changed. Review the update again.';
+      _notify();
+      return;
+    }
     final target = _release!;
     _busy = true;
     _explicit = true;
@@ -193,7 +209,7 @@ class WingPluginSession extends ChangeNotifier {
         _activeProfile = profile.label;
         _notify();
         if (_disposed) return;
-        await _apply(profile, target);
+        await _apply(profile, target, identical(target, approvedPinnedRelease));
       }
       // An uncertain result requires an inventory refresh before another write.
       // Verified success needs no additional user step.
@@ -211,7 +227,11 @@ class WingPluginSession extends ChangeNotifier {
     }
   }
 
-  Future<void> _apply(HermesProfile profile, WingPluginRelease target) async {
+  Future<void> _apply(
+    HermesProfile profile,
+    WingPluginRelease target,
+    bool replacePinned,
+  ) async {
     final owner = server.profile(profile.name);
     ProfilePlugin? current;
     var observed = false, dispatched = false, acknowledged = false;
@@ -228,9 +248,18 @@ class WingPluginSession extends ChangeNotifier {
       if (current == null || target.needsUpdate(current)) {
         await owner.requireProfile();
         if (_disposed) return;
-        final response = current == null
+        final pinned = current?.pinnedSha?.isNotEmpty == true;
+        if (pinned && !replacePinned) {
+          throw const AdministrationFailure(
+            'This Wing version is pinned. Refresh, then choose Install or update to review its replacement.',
+          );
+        }
+        final installing = current == null || pinned;
+        final response = installing
             ? await owner.gateway.installPlugin(
                 WingPluginRelease.repository,
+                ref: target.commitSha,
+                replaceExisting: pinned,
                 canDispatch: () => !_disposed,
                 onDispatched: () => dispatched = true,
               )
@@ -245,12 +274,13 @@ class WingPluginSession extends ChangeNotifier {
               ? (response['delta_lines'] as List).whereType<String>().join('\n')
               : '';
           throw AdministrationFailure(
-            '${response['error'] ?? 'Update needs review in Hermes.'}${details.isEmpty ? '' : '\n$details'}',
+            mcpErrorMessage(
+              '${response['error'] ?? 'Update needs review in Hermes.'}${details.isEmpty ? '' : '\n$details'}',
+              summary: 'Hermes refused the change.',
+            ),
           );
         }
-        final name = current == null
-            ? response['plugin_name']
-            : response['name'];
+        final name = installing ? response['plugin_name'] : response['name'];
         if (response['ok'] != true || name != 'wing') {
           throw const FormatException('Wing update was not acknowledged');
         }
@@ -261,6 +291,11 @@ class WingPluginSession extends ChangeNotifier {
         current = await _read(profile);
         readingBack = false;
         if (_disposed) return;
+        if (installing && current?.pinnedSha != target.commitSha) {
+          throw const AdministrationFailure(
+            'Installed commit does not match the GitHub release. Refresh to check.',
+          );
+        }
       }
       if (current == null) {
         throw const AdministrationFailure(
@@ -323,7 +358,10 @@ class WingPluginSession extends ChangeNotifier {
           ? 'Change accepted, but verification failed. Refresh to check the installed version.'
           : definite
           ? (error is JsonRpcError
-                ? 'Hermes refused the change. Review the Wing plugin in Hermes, then refresh.'
+                ? mcpErrorMessage(
+                    error.message,
+                    summary: 'Hermes refused the change.',
+                  )
                 : _readError(error))
           : acknowledged
           ? 'Change accepted, but verification failed. Refresh to check the installed version.'

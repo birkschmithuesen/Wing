@@ -26,9 +26,10 @@ final class WingPluginVersion implements Comparable<WingPluginVersion> {
 }
 
 final class WingPluginRelease {
-  const WingPluginRelease(this.version);
+  const WingPluginRelease(this.version, this.commitSha);
   static const repository = 'https://github.com/tarkilhk/wing-hermes-plugin';
   final WingPluginVersion version;
+  final String commitSha;
   factory WingPluginRelease.decode(Object? value) {
     if (value is! Map ||
         value['draft'] != false ||
@@ -42,7 +43,11 @@ final class WingPluginRelease {
     if (version == null) {
       throw const FormatException('Invalid Wing release version');
     }
-    return WingPluginRelease(version);
+    final sha = value['target_commitish'];
+    if (sha is! String || !RegExp(r'^[0-9a-f]{40}$').hasMatch(sha)) {
+      throw const FormatException('Wing release must name an exact commit');
+    }
+    return WingPluginRelease(version, sha);
   }
   bool needsUpdate(ProfilePlugin plugin) {
     final installed = WingPluginVersion.parse(plugin.version);

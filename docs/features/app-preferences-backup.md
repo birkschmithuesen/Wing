@@ -19,7 +19,9 @@ The Wing plugin section shows the connected server and each profile’s version 
 configured enablement. Refresh checks GitHub and backend inventory. The icon-only
 Install or update Wing in all profiles action installs missing copies from
 [tarkilhk/wing-hermes-plugin](https://github.com/tarkilhk/wing-hermes-plugin), updates
-older copies through their existing source, and enables Wing where disabled.
+older copies, and enables Wing where disabled. Missing copies install at the
+published release commit. For pinned copies, review the replacement dialog and
+confirm to move them to that exact commit. Cancel leaves the batch untouched.
 Each profile keeps its own outcome; one failure does not hide other successes.
 Without a connection, the section explains that Hermes is required.
 
@@ -50,10 +52,12 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 Backup contains sensitive connection material. Use only owned fixture data and retain exact credential semantics. Wrong passphrases and storage/provider failures must preserve the existing configuration.
 
-Plugin installation uses the stock Hermes management API. Git installs follow
-their configured branch; catalog installs follow the reviewed catalog, which can
-lag behind GitHub releases. Held pins, scan refusals and capability-review requests
-are not overridden. An unavailable version is not treated as a missing plugin.
+Plugin installation uses the stock Hermes management API. Unpinned updates follow
+their configured branch or catalog, which can lag behind GitHub releases. Moving
+a pin requires Hermes’s forced reinstall: its confirmation explains that caution
+scan warnings will be accepted, while dangerous code remains blocked. Approval
+applies only to the displayed release. Other scan/capability refusals remain
+visible, with Hermes’s reason. An unavailable version is not treated as missing.
 A lost update reply or unavailable readback requires Refresh before retrying.
 Leaving the section stops undispatched changes; a command already sent can finish
 on Hermes. Refresh after returning to check it. New tools apply to new chats;
