@@ -772,6 +772,116 @@ void main() {
         },
       );
       testWidgets(
+        'member activity stays readable with long and missing observations ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final members = fixture.room['members'] as List;
+          members.first['display_name'] = 'Atlas research and release planning';
+          group = (await fixture.repository.groupCatalog()).single;
+          final state = await fixture.read('default', 'groups.state', {
+            'room_id': group.id,
+          });
+          fixture.readHook = (_, method, _) async => method == 'groups.state'
+              ? {
+                  ...state,
+                  'driver_status': {
+                    ...state['driver_status'] as Map<String, dynamic>,
+                    'working': true,
+                    'member_activity': [
+                      {
+                        'member_id': 'atlas',
+                        'status': 'running',
+                        'tool': 'web_search_with_a_long_backend_tool_name',
+                        'started_at': 1791756000.0,
+                        'progress_at': 1791756012.0,
+                        'thread_id': 'exact-long-discussion-thread',
+                        'round_index': 2,
+                      },
+                      {
+                        'member_id': 'mira',
+                        'status': 'queued',
+                        'thread_id': 'queued-discussion',
+                      },
+                    ],
+                  },
+                }
+              : null;
+          final frame = GlobalKey();
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: frame,
+              child: MaterialApp(
+                theme: wingTheme(brightness),
+                debugShowCheckedModeBanner: false,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: BotGroupScreen(
+                  createSession: owner,
+                  stopVoicePlayback: () async {},
+                  voiceInputSettings: () => null,
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.byTooltip('Group options'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Member activity'));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull);
+          expect(find.text('Running'), findsOneWidget);
+          expect(find.text('Queued'), findsOneWidget);
+          final tool = find.text(
+            'Using web_search_with_a_long_backend_tool_name',
+          );
+          expect(tool, findsOneWidget);
+          // The reported defect was uniform oversized text. Assert the resolved
+          // hierarchy rather than just the row's declared theme tokens.
+          final timing = find.textContaining('Last activity');
+          expect(
+            tester.widget<Text>(timing).style!.fontSize!,
+            lessThan(tester.widget<Text>(tool).style!.fontSize!),
+          );
+          final close = find.byTooltip('Close member activity');
+          final closeRect = tester.getRect(close);
+          expect(closeRect.width, greaterThanOrEqualTo(48));
+          expect(closeRect.height, greaterThanOrEqualTo(48));
+          await render(tester, frame, 'member-panel-${brightness.name}-$scale');
+          final details = find.text('Raw details').first;
+          await tester.ensureVisible(details);
+          await tester.tap(details);
+          await tester.pumpAndSettle();
+          final raw = find.textContaining(
+            'Thread: exact-long-discussion-thread',
+          );
+          await tester.ensureVisible(raw);
+          expect(raw, findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await render(
+            tester,
+            frame,
+            'member-panel-expanded-${brightness.name}-$scale',
+          );
+          final expandedCloseRect = tester.getRect(close);
+          final last = find.text('Queued');
+          await tester.ensureVisible(last);
+          expect(tester.getRect(close), expandedCloseRect);
+          await tester.tap(close);
+          // Closing returns to a working group's continuously animated status.
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text('Member activity'), findsNothing);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+      testWidgets(
         'shared settings preserve failed draft and show pending ${brightness.name} $scale',
         (tester) async {
           tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
