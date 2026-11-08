@@ -935,6 +935,55 @@ void main() {
     await settle(tester);
   });
 
+  testWidgets(
+    'a Bluetooth headphone route change during read-aloud opens the round',
+    (tester) async {
+      await readingAloud(tester, HeadphoneRouteFixture.speaker);
+      expect(find.text('Listening'), findsNothing);
+      route.change(HeadphoneRouteFixture.bluetoothHeadphones);
+      await settle(tester);
+      expect(find.text('Listening'), findsOneWidget);
+      expect(device.vadOptions!.keepPlayback, isTrue);
+      await finishReading(tester);
+      await tester.tap(find.text('Stop listening'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'losing the Bluetooth headphone route during read-aloud closes the round',
+    (tester) async {
+      await readingAloud(tester, HeadphoneRouteFixture.bluetoothHeadphones);
+      expect(find.text('Listening'), findsOneWidget);
+      route.change(HeadphoneRouteFixture.speaker);
+      await settle(tester);
+      expect(find.text('Listening'), findsNothing);
+      final stopsBefore = playbackStops();
+      await windows(tester, 0.95, 40);
+      expect(playbackStops(), stopsBefore);
+      await finishReading(tester);
+      expect(find.textContaining('Recording ·'), findsOneWidget);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'switching to a non-headphone Bluetooth device during read-aloud does '
+    'not open the round',
+    (tester) async {
+      await readingAloud(tester, HeadphoneRouteFixture.speaker);
+      expect(find.text('Listening'), findsNothing);
+      route.change(HeadphoneRouteFixture.bluetoothOther);
+      await settle(tester);
+      expect(find.text('Listening'), findsNothing);
+      await finishReading(tester);
+      expect(find.textContaining('Recording ·'), findsOneWidget);
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
   testWidgets('the message after a barge-in carries the interrupted-reply hint', (
     tester,
   ) async {
