@@ -155,13 +155,15 @@ successful acknowledgement in both themes at normal and enlarged text sizes.
 ### Structured email draft verification
 
 ```sh
-flutter test --no-pub test/email_draft_test.dart test/profile_conversation_ui_test.dart
+flutter test --no-pub test/email_draft_test.dart test/profile_conversation_ui_test.dart test/selection_viewport_test.dart
 ```
 
 The production Markdown/card path checks exact version references, complete long
 Unicode payloads, waiting reads/chooser feedback, failed reads and retry, missing
 email apps, profile replacement, departure, malformed references and completion
 of streaming fences. Phone layouts cover light/dark themes and enlarged text.
+Subject and body selection use the shared viewport owner so hidden selection
+handles cannot escape the conversation's visible reading area.
 The chooser payload is a platform-channel fixture; third-party composer handling
 requires a device with an email app. The plugin must be installed/enabled per
 profile; its draft tool must produce the reference. No account or voice provider

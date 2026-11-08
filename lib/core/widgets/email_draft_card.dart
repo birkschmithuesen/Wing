@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../models/email_draft.dart';
 import '../services/email_composer.dart';
+import 'selection_viewport.dart';
 import 'studio_error.dart';
 import 'studio_loading.dart';
 
@@ -164,12 +165,16 @@ class _EmailDraftCardState extends State<EmailDraftCard> {
               if (draft.cc.isNotEmpty) _field('Cc', draft.cc.join(', ')),
               if (draft.bcc.isNotEmpty) _field('Bcc', draft.bcc.join(', ')),
               const SizedBox(height: 12),
-              SelectableText(
-                draft.subject.isEmpty ? '(No subject)' : draft.subject,
-                style: theme.textTheme.titleMedium,
+              viewportSelection(
+                SelectableText(
+                  draft.subject.isEmpty ? '(No subject)' : draft.subject,
+                  style: theme.textTheme.titleMedium,
+                ),
               ),
               const SizedBox(height: 12),
-              SelectableText(draft.body, style: theme.textTheme.bodyMedium),
+              viewportSelection(
+                SelectableText(draft.body, style: theme.textTheme.bodyMedium),
+              ),
             ],
             if (_error != null)
               Padding(
