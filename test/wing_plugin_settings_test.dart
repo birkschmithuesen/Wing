@@ -1,4 +1,7 @@
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:url_launcher_platform_interface/link.dart';
@@ -8,6 +11,7 @@ import 'package:wing/core/models/wing_plugin.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/wing_plugin_session.dart';
+import 'package:wing/core/services/wing_plugin_releases.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
@@ -58,6 +62,7 @@ class Fixture {
   String? failWrite, failReadback, refuseUpdate;
   String refusal = 'Pinned installation';
   Completer<void>? readGate, writeGate, connectGate, releaseGate, readbackGate;
+  Object? releaseFailure;
   bool failRelease = false, loseReceipt = false, closed = false;
   bool wrongInstalledPin = false;
   final gateways = <String, ProfileGateway>{};
@@ -182,6 +187,7 @@ class Fixture {
     server,
     readRelease: () async {
       await releaseGate?.future;
+      if (releaseFailure case final error?) throw error;
       if (failRelease) throw StateError('GitHub down');
       return release();
     },
@@ -490,6 +496,100 @@ void main() {
       );
     },
   );
+  for (final (label, respond, message)
+      in <(String, Future<http.Response> Function(), String)>[
+        (
+          'rate limit',
+          () async => http.Response(
+            'private body',
+            403,
+            headers: {'x-ratelimit-remaining': '0'},
+          ),
+          'GitHub is limiting release checks. Try again later.',
+        ),
+        (
+          'too many requests',
+          () async => http.Response('private body', 429),
+          'GitHub is limiting release checks. Try again later.',
+        ),
+        (
+          'refusal',
+          () async => http.Response('private body', 403),
+          'GitHub refused the release check (HTTP 403).',
+        ),
+        (
+          'missing release',
+          () async => http.Response('private body', 404),
+          'The Wing plugin release could not be found on GitHub.',
+        ),
+        (
+          'server failure',
+          () async => http.Response('private body', 503),
+          'GitHub is unavailable (HTTP 503). Try again later.',
+        ),
+        (
+          'timeout',
+          () async => throw TimeoutException('private detail'),
+          'GitHub did not respond in time. Refresh to try again.',
+        ),
+        (
+          'connection failure',
+          () async => throw http.ClientException('private detail'),
+          'Could not connect to GitHub. Check your connection and refresh.',
+        ),
+        (
+          'invalid JSON',
+          () async => http.Response('private body', 200),
+          'GitHub returned invalid Wing release information.',
+        ),
+        (
+          'invalid release',
+          () async => http.Response('{}', 200),
+          'GitHub returned invalid Wing release information.',
+        ),
+      ]) {
+    test('release check preserves $label reason and recovers', () async {
+      final fixture = Fixture();
+      final session = WingPluginSession(fixture.server);
+      addTearDown(session.dispose);
+      var calls = 0;
+      await http.runWithClient(
+        () => session.refresh(),
+        () => MockClient((request) {
+          calls++;
+          expect(
+            request.url.toString(),
+            'https://api.github.com/repos/tarkilhk/wing-hermes-plugin/releases/latest',
+          );
+          expect(request.headers.containsKey('authorization'), isFalse);
+          return respond();
+        }),
+      );
+      expect(calls, 1);
+      expect(session.releaseError, message);
+      expect(session.profiles.every((row) => row.observed), isTrue);
+      expect(session.profiles.first.plugin!.version, '0.2.3');
+      expect(session.canApply, isFalse);
+      expect(fixture.writes, isEmpty);
+      await http.runWithClient(
+        () => session.refresh(),
+        () => MockClient(
+          (_) async => http.Response(
+            jsonEncode({
+              'tag_name': 'v0.3.1',
+              'target_commitish': releaseSha,
+              'draft': false,
+              'prerelease': false,
+            }),
+            200,
+          ),
+        ),
+      );
+      expect(session.releaseError, isNull);
+      expect(session.release!.version.value, '0.3.1');
+      expect(session.canApply, isTrue);
+    });
+  }
   test(
     'GitHub failure leaves backend inventory visible and refresh recovers',
     () async {
@@ -665,6 +765,52 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('release reason stays readable ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        const message =
+            'Could not connect to GitHub. Check your connection and refresh.';
+        final fixture = Fixture();
+        final session = fixture.session();
+        await frame(tester, session, brightness: brightness, scale: scale);
+        await flush(tester);
+        await openManager(tester);
+        fixture.releaseGate = Completer<void>();
+        fixture.releaseFailure = const WingPluginReleaseFailure(message);
+        await tester.tap(find.byTooltip(refresh));
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(StudioLoading), findsOneWidget);
+        fixture.releaseGate!.complete();
+        fixture.releaseGate = null;
+        await flush(tester);
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(find.text(message), findsOneWidget);
+        expect(session.profiles.first.plugin!.version, '0.2.3');
+        expect(session.canApply, isFalse);
+        await tester.ensureVisible(find.text(message));
+        await flush(tester);
+        expect(find.byTooltip(refresh).hitTestable(), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await captureFormFamily(
+          tester,
+          'release-reason-${brightness.name}-$scale',
+        );
+        fixture.releaseFailure = null;
+        await tester.tap(find.byTooltip(refresh));
+        await flush(tester);
+        expect(find.text(message), findsNothing);
+        expect(session.canApply, isTrue);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
   testWidgets(
     'refresh failure settles feedback and replacement ignores old completion',
     (tester) async {
