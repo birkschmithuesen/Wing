@@ -62,9 +62,9 @@ class _WingPluginPageState extends State<WingPluginPage> {
               style: Theme.of(context).textTheme.bodySmall,
             ),
           ),
-          StudioButtonPress(
-            child: Semantics(
-              link: true,
+          Semantics(
+            link: true,
+            child: StudioButtonPress(
               child: IconButton(
                 tooltip: 'Open Wing plugin on GitHub',
                 onPressed: _openingGitHub ? null : _openGitHub,
@@ -181,19 +181,21 @@ class _WingPluginPageState extends State<WingPluginPage> {
           child: StudioError(error),
         ),
       const Divider(height: 40),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.people_outline),
-        title: const Text('Profiles'),
-        subtitle: Text(
-          session.profiles.isEmpty
-              ? 'Inventory unavailable'
-              : overview.summary == 'Not installed'
-              ? '0 of ${session.profiles.length} installed'
-              : overview.summary,
+      StudioButtonPress(
+        child: ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.people_outline),
+          title: const Text('Profiles'),
+          subtitle: Text(
+            session.profiles.isEmpty
+                ? 'Inventory unavailable'
+                : overview.summary == 'Not installed'
+                ? '0 of ${session.profiles.length} installed'
+                : overview.summary,
+          ),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: widget.openProfiles,
         ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: widget.openProfiles,
       ),
     ];
   }
