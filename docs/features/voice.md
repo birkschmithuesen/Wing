@@ -15,6 +15,8 @@ Feature ID: `voice`.
 
 - `voice.live-voice` — Choose a GPT-Live voice in the existing Voice settings; retain separate subscription/API choices on the phone. Apply changes to the next call and report an unsupported plugin voice before negotiation.
 
+- `voice.live-preview` — Play or stop a bundled sample of the selected subscription voice beside its settings picker, offline without microphone access or provider usage. API previews are explicitly unavailable. Changing settings, leaving the page or backgrounding stops playback.
+
 ## How to get to it (user POV)
 
 In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, choose its GPT-Live voice, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
@@ -30,7 +32,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   The controller tests cover explicit subscription/API billing modes, no billing
   fallback, profile binding, safe errors and retirement during negotiation.
   Settings checks select a voice, switch modes, reopen the page, and retain both
-  choices independently of Android speech. Startup checks capture the voice before
+  choices independently of Android speech. Preview checks hold asset loading through Stop, selection, background and route closure; verify failure/retry and replacement by Android speech; inspect loading and playback through the production settings control. Startup checks capture the voice before
   a settings change and verify the selected voice in the provider request.
   They also pass the provider's native text delegation through the call owner
   into the original chat once. The protocol suite replays a real subscription
@@ -66,7 +68,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 Offline recognition availability is an OS capability, not just a permission. Native offline samples do not prove live provider speech or human intelligibility. No additional charged provider calls are implied by this recipe.
 
-The Android voice family includes a local WebRTC peer: it checks real audio
+The Android voice family decodes and completes all nine bundled subscription
+previews through the native audio player. It also includes a local WebRTC peer: it checks real audio
 packets during Home/lock, foreground-service retention without notification
 monitoring, and mute/end through the Android notification. It makes no provider
 calls. Host UI renders use `--dart-define=LIVE_VOICE_REVIEW=true` with

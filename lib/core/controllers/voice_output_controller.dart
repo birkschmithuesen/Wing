@@ -141,6 +141,33 @@ class VoiceOutputController extends ChangeNotifier {
     String content,
     VoiceOutputSettings settings,
     RemoteVoice Function() createRemote,
+  ) => _play(message, (id) async {
+    final text = spokenReplyText(content);
+    if (text.isEmpty) {
+      throw StateError('This message has no prose to read aloud.');
+    }
+    switch (settings) {
+      case HermesVoiceOutputSettings():
+        final remote = createRemote();
+        _remote = remote;
+        final audio = await remote.synthesize(text);
+        if (_id != id || _disposed) return;
+        await device.play(id, audio);
+      case LocalVoiceOutputSettings(:final voice, :final rate):
+        await device.speak(id, text, voice: voice, rate: rate.multiplier);
+    }
+  });
+
+  Future<void> playAudio(Object owner, Future<Uint8List> Function() load) =>
+      _play(owner, (id) async {
+        final audio = await load();
+        if (_id != id || _disposed) return;
+        await device.play(id, audio);
+      });
+
+  Future<void> _play(
+    Object message,
+    Future<void> Function(String id) play,
   ) async {
     if (_disposed) return;
     unawaited(stop().catchError((Object _) {}));
@@ -152,20 +179,7 @@ class VoiceOutputController extends ChangeNotifier {
     _notify();
     if (_disposed || _id != id) return;
     try {
-      final text = spokenReplyText(content);
-      if (text.isEmpty) {
-        throw StateError('This message has no prose to read aloud.');
-      }
-      switch (settings) {
-        case HermesVoiceOutputSettings():
-          final remote = createRemote();
-          _remote = remote;
-          final audio = await remote.synthesize(text);
-          if (_id != id || _disposed) return;
-          await device.play(id, audio);
-        case LocalVoiceOutputSettings(:final voice, :final rate):
-          await device.speak(id, text, voice: voice, rate: rate.multiplier);
-      }
+      await play(id);
     } catch (failure) {
       if (_id == id && !_disposed) _error = voiceFailureMessage(failure);
     } finally {

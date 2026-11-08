@@ -11,6 +11,7 @@ import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/services/android_voice.dart';
 import 'package:wing/core/services/voice_preferences_session.dart';
+import 'package:wing/core/services/voice_sample.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
@@ -132,6 +133,7 @@ void main() {
     Brightness brightness = Brightness.light,
     double scale = 1,
     VoidCallback? link,
+    Future<Uint8List> Function(String) loadSample = loadVoiceSample,
   }) async {
     await tester.pumpWidget(
       RepaintBoundary(
@@ -151,6 +153,7 @@ void main() {
               device: device,
               hermesProfileLabel: 'Personal',
               openHermesSettings: link,
+              loadSample: loadSample,
             ),
           ),
         ),
@@ -172,6 +175,85 @@ void main() {
     await tester.tap(find.text('Hermes · server profile').hitTestable().last);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('GPT-Live preview shows loading, Stop, failure and retry', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    addTearDown(tester.view.reset);
+    final owner = AppPreferences(await SharedPreferences.getInstance());
+    final device = VoiceDeviceFixture();
+    addTearDown(owner.dispose);
+    addTearDown(device.stream.close);
+    var load = Completer<Uint8List>();
+    await show(tester, owner, device, loadSample: (_) => load.future);
+    final preview = find.byTooltip('Preview GPT-Live voice');
+    await tester.ensureVisible(preview);
+    await tester.tap(preview);
+    await tester.pump();
+    expect(
+      find.byWidgetPredicate(
+        (w) =>
+            w is CircularProgressIndicator &&
+            w.semanticsLabel == 'Preparing voice preview',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.byTooltip('Stop GPT-Live preview').hitTestable(),
+      findsOneWidget,
+    );
+    await screenshot(tester, 'live-preview-loading');
+    await tester.tap(find.byTooltip('Stop GPT-Live preview'));
+    await tester.pumpAndSettle();
+    load.complete(Uint8List.fromList([1]));
+    await tester.pumpAndSettle();
+    expect(device.calls, isNot(contains('play')));
+    load = Completer<Uint8List>();
+    await tester.tap(preview);
+    await tester.pump();
+    load.completeError(
+      StateError('Could not load this voice preview. Please try again.'),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find
+          .text('Could not load this voice preview. Please try again.')
+          .hitTestable(),
+      findsOneWidget,
+    );
+    await screenshot(tester, 'live-preview-failed');
+    load = Completer<Uint8List>();
+    device.playbackDelay = Completer<void>();
+    await tester.tap(preview);
+    await tester.pump();
+    load.complete(Uint8List.fromList([1]));
+    await tester.pump();
+    device.stream.add({'id': device.playing, 'playing': true});
+    await tester.pumpAndSettle();
+    expect(find.byIcon(Icons.stop).hitTestable(), findsOneWidget);
+    await screenshot(tester, 'live-preview-playing');
+    device.playbackDelay!.complete();
+    await tester.pumpAndSettle();
+    expect(preview.hitTestable(), findsOneWidget);
+    await owner.setLiveVoiceMode(LiveVoiceMode.api);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(
+            find.byWidgetPredicate(
+              (w) => w is IconButton && w.tooltip == 'Preview GPT-Live voice',
+            ),
+          )
+          .onPressed,
+      isNull,
+    );
+    expect(
+      find.text('API voice previews are not available yet.'),
+      findsOneWidget,
+    );
+  });
 
   testWidgets(
     'GPT-Live voices persist separately through mode switches and reopen',
@@ -420,6 +502,15 @@ void main() {
           await Scrollable.ensureVisible(
             tester.element(liveField),
             alignment: 0.2,
+          );
+          await tester.pumpAndSettle();
+          expect(
+            find.byTooltip('Preview GPT-Live voice').hitTestable(),
+            findsOneWidget,
+          );
+          await screenshot(
+            tester,
+            'live-preview-${brightness.name}-${(scale * 100).round()}',
           );
           await tester.tap(
             find.descendant(of: liveField, matching: find.byType(TextField)),

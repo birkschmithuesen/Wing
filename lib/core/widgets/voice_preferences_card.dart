@@ -191,12 +191,48 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           ),
           if (state.liveVoice case final voice?) ...[
             const SizedBox(height: 12),
-            _select(
-              'GPT-Live voice',
-              voice,
-              state.liveVoices,
-              'voice.live_voice',
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: _select(
+                    'GPT-Live voice',
+                    voice,
+                    state.liveVoices,
+                    'voice.live_voice',
+                  ),
+                ),
+                const SizedBox(width: 8),
+                StudioButtonPress(
+                  child: IconButton(
+                    tooltip: state.livePreviewActive
+                        ? 'Stop GPT-Live preview'
+                        : 'Preview GPT-Live voice',
+                    onPressed: state.livePreview,
+                    icon: state.livePreviewPreparing
+                        ? const SizedBox.square(
+                            dimension: 24,
+                            child: CircularProgressIndicator(
+                              semanticsLabel: 'Preparing voice preview',
+                              strokeWidth: 2,
+                            ),
+                          )
+                        : Icon(
+                            state.livePreviewActive
+                                ? Icons.stop
+                                : Icons.volume_up_outlined,
+                          ),
+                  ),
+                ),
+              ],
             ),
+            const SizedBox(height: 8),
+            Text(
+              state.liveMode.selected == LiveVoiceMode.api
+                  ? 'API voice previews are not available yet.'
+                  : 'Preview plays a saved sample offline.',
+            ),
+            if (state.livePreviewError case final error?) StudioError(error),
           ],
           const SizedBox(height: 24),
           _select('Voice input', state.input, _engines, 'voice.input'),
