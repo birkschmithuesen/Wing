@@ -16,8 +16,9 @@ Feature ID: `app-preferences-backup`.
 Open App settings from the drawer. Change theme, accent or text size. Use its export/restore controls to back up connections/preferences with an optional passphrase, then review a restore result.
 
 Under Hermes, tap the compact Wing plugin card to open its dedicated page. It
-shows the connected server, installed versions, latest GitHub release and overall
-status. Open Profiles for individual versions, enablement and operation results.
+explains the optional server plugin and links to its GitHub repository. Below
+that, it shows the connected server, installed versions, latest GitHub release
+and overall status. Open Profiles for individual versions, enablement and operation results.
 Each profile row has its own install/update icon. It installs missing Wing copies,
 updates older ones or enables a disabled copy in that selected profile. Current
 profiles have a disabled action. Unknown or failed rows need Refresh; another

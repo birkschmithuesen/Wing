@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import '../models/wing_plugin.dart';
+import '../services/web_preview.dart';
 import '../services/wing_plugin_session.dart';
 import '../theme/wing_theme.dart';
 import 'studio_error.dart';
@@ -8,7 +10,7 @@ import 'studio_loading.dart';
 import 'wing_app_bar.dart';
 
 /// A manager or profile inventory borrowing the settings card's captured owner.
-class WingPluginPage extends StatelessWidget {
+class WingPluginPage extends StatefulWidget {
   const WingPluginPage({
     super.key,
     required this.session,
@@ -18,6 +20,65 @@ class WingPluginPage extends StatelessWidget {
   final WingPluginSession session;
   final bool profiles;
   final VoidCallback openProfiles;
+
+  @override
+  State<WingPluginPage> createState() => _WingPluginPageState();
+}
+
+class _WingPluginPageState extends State<WingPluginPage> {
+  WingPluginSession get session => widget.session;
+  bool get profiles => widget.profiles;
+  bool _openingGitHub = false, _githubFailed = false;
+
+  Future<void> _openGitHub() async {
+    if (_openingGitHub) return;
+    setState(() {
+      _openingGitHub = true;
+      _githubFailed = false;
+    });
+    final opened = await openWebPreview(
+      Uri.parse(WingPluginRelease.repository),
+    );
+    if (!mounted) return;
+    setState(() {
+      _openingGitHub = false;
+      _githubFailed = !opened;
+    });
+  }
+
+  Widget _introduction(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      const Text(
+        'This optional plugin runs on your Hermes server to enable extra features in Wing. '
+        'You can install or update it for individual profiles, or for all profiles at once.',
+      ),
+      const SizedBox(height: 8),
+      Row(
+        children: [
+          Expanded(
+            child: Text(
+              'GitHub · tarkilhk/wing-hermes-plugin',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ),
+          StudioButtonPress(
+            child: Semantics(
+              link: true,
+              child: IconButton(
+                tooltip: 'Open Wing plugin on GitHub',
+                onPressed: _openingGitHub ? null : _openGitHub,
+                icon: const Icon(Icons.open_in_new),
+              ),
+            ),
+          ),
+        ],
+      ),
+      if (_githubFailed)
+        const StudioError('Could not open GitHub. Please try again.'),
+      const SizedBox(height: 24),
+    ],
+  );
 
   void _apply(BuildContext context) {
     if (profiles) Navigator.of(context).pop();
@@ -80,6 +141,7 @@ class WingPluginPage extends StatelessWidget {
     final overview = session.overview;
     final review = session.reviewRelease;
     return [
+      if (review == null) _introduction(context),
       Row(
         children: [
           const Icon(Icons.dns_outlined, size: 18),
@@ -131,12 +193,7 @@ class WingPluginPage extends StatelessWidget {
               : overview.summary,
         ),
         trailing: const Icon(Icons.chevron_right),
-        onTap: openProfiles,
-      ),
-      const SizedBox(height: 24),
-      Text(
-        'From tarkilhk/wing-hermes-plugin on GitHub.',
-        style: Theme.of(context).textTheme.bodySmall,
+        onTap: widget.openProfiles,
       ),
     ];
   }
@@ -283,8 +340,8 @@ class WingPluginPage extends StatelessWidget {
         title: Text(profiles ? 'Profiles' : 'Wing plugin'),
       ),
       body: StudioPageLoading(
-        active: session.busy,
-        label: session.progressLabel,
+        active: session.busy || _openingGitHub,
+        label: session.busy ? session.progressLabel : 'Opening GitHub',
         child: Column(
           children: [
             Expanded(

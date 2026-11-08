@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/models/wing_plugin.dart';
 import 'package:wing/core/services/administration_repository.dart';
@@ -29,6 +31,20 @@ Map<String, dynamic> plugin(String version, {bool enabled = true}) => {
   'version': version,
   'status': enabled ? 'enabled' : 'disabled',
 };
+
+class _GitHubBrowser extends UrlLauncherPlatform {
+  Completer<bool> gate = Completer<bool>();
+  final calls = <String>[];
+  @override
+  LinkDelegate? get linkDelegate => null;
+  @override
+  Future<bool> supportsMode(PreferredLaunchMode mode) async => false;
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) {
+    calls.add(url);
+    return gate.future;
+  }
+}
 
 class Fixture {
   final names = ['default', 'personal', 'work'];
@@ -683,6 +699,49 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  testWidgets('plugin introduction opens GitHub with feedback and retry', (
+    tester,
+  ) async {
+    final original = UrlLauncherPlatform.instance;
+    final browser = _GitHubBrowser();
+    UrlLauncherPlatform.instance = browser;
+    addTearDown(() => UrlLauncherPlatform.instance = original);
+    await frame(tester, Fixture().session());
+    await flush(tester);
+    await openManager(tester);
+    expect(
+      find.textContaining('This optional plugin runs on your Hermes server'),
+      findsOneWidget,
+    );
+    final link = find.byTooltip('Open Wing plugin on GitHub');
+    await tester.tap(link);
+    await flush(tester);
+    expect(browser.calls, ['https://github.com/tarkilhk/wing-hermes-plugin']);
+    expect(find.byType(StudioLoading), findsOneWidget);
+    await tester.tap(link);
+    expect(browser.calls.length, 1);
+    browser.gate.complete(false);
+    await flush(tester);
+    expect(find.byType(StudioLoading), findsNothing);
+    expect(
+      find.text('Could not open GitHub. Please try again.'),
+      findsOneWidget,
+    );
+    browser.gate = Completer<bool>();
+    await tester.tap(link);
+    await flush(tester);
+    browser.gate.complete(true);
+    await flush(tester);
+    expect(find.text('Could not open GitHub. Please try again.'), findsNothing);
+    expect(find.byType(StudioLoading), findsNothing);
+    browser.gate = Completer<bool>();
+    await tester.tap(link);
+    await flush(tester);
+    await tester.pumpWidget(const SizedBox.shrink());
+    browser.gate.complete(false);
+    await flush(tester);
+    expect(tester.takeException(), isNull);
+  });
   for (final target in ['default', 'personal', 'work']) {
     test('individual maintenance changes only $target', () async {
       final fixture = Fixture();
@@ -790,6 +849,7 @@ void main() {
         await frame(tester, session, brightness: brightness, scale: scale);
         await flush(tester);
         await openManager(tester);
+        await tester.ensureVisible(find.text('Profiles'));
         await tester.tap(find.text('Profiles'));
         await tester.pumpAndSettle();
         await captureFormFamily(
@@ -905,6 +965,7 @@ void main() {
           tester.getSize(find.byTooltip(apply)).height,
           greaterThanOrEqualTo(48),
         );
+        await tester.ensureVisible(find.text('Profiles'));
         await tester.tap(find.text('Profiles'));
         await tester.pumpAndSettle();
         expect(find.text('default'), findsOneWidget);
