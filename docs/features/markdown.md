@@ -23,7 +23,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/markdown_inline_parser_test.dart test/markdown_segment_correctness_test.dart test/markdown_parse_worker_test.dart test/markdown_phone_content_test.dart test/phone_reading_test.dart test/profile_conversation_ui_test.dart test/web_preview_test.dart test/profile_markdown_style_test.dart test/growing_markdown_text_test.dart
+  flutter test --no-pub test/markdown_inline_parser_test.dart test/markdown_segment_correctness_test.dart test/markdown_parse_worker_test.dart test/markdown_phone_content_test.dart test/phone_reading_test.dart test/profile_conversation_ui_test.dart test/web_preview_test.dart test/profile_markdown_style_test.dart test/growing_markdown_text_test.dart test/block_reusing_markdown_body_test.dart
   ```
 
   Document assertions distinguish whole prose segments from the table cells'

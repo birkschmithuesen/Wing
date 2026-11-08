@@ -91,7 +91,7 @@ void main() {
     expect(find.text('Result'), findsOneWidget);
     final table = find.byType(AdaptiveMarkdownTable);
     expect(table, findsOneWidget);
-    expect(find.byType(Table), findsNothing);
+    expect(find.byType(Table), findsOneWidget);
     for (final text in ['Name', 'Status', 'A long project name', 'Ready']) {
       expect(
         find.descendant(

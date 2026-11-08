@@ -216,6 +216,9 @@ void main() {
       ),
       same(stable),
     );
+    expect(find.byType(Table), findsOneWidget);
+    await tester.tap(find.byTooltip('Read as stacked rows'));
+    await tester.pumpAndSettle();
     expect(find.byType(Table), findsNothing);
     expect(find.text('Column 2'), findsOneWidget);
     void verifyCells() {
