@@ -48,7 +48,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/wing_plugin_settings_test.dart test/profile_plugins_session_test.dart
-  flutter test --no-pub test/app_preferences_test.dart test/app_preferences_pending_authority_test.dart test/backup_restore_outcomes_test.dart test/config_backup_exact_credentials_test.dart
+  flutter test --no-pub test/app_preferences_schema_test.dart test/app_preferences_test.dart test/app_preferences_pending_authority_test.dart test/backup_restore_outcomes_test.dart test/config_backup_exact_credentials_test.dart
   ```
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
