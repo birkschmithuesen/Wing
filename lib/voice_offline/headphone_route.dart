@@ -196,6 +196,12 @@ class HeadphoneRoute extends ChangeNotifier {
 
   bool get headphones => _headphones;
 
+  /// The connected output device's raw Bluetooth class, for callers that
+  /// need a finer distinction than [headphones] (e.g. a car kit's SCO hold,
+  /// car_mic_session.dart's [isCarKitClass]). Null off Bluetooth or when
+  /// Android would not let Wing read it.
+  int? get bluetoothClass => _route.bluetoothClass;
+
   /// True only for the `wired` reason, unlike [headphones] which also counts
   /// Bluetooth headphones. No longer used to gate playback barge-in: the
   /// owner lifted that Bluetooth lock 2026-10-20 without an echo measurement

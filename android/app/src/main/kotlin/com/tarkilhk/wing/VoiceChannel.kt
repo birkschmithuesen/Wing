@@ -87,6 +87,8 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                 "removeVadModel" -> { speech.release(); models.remove(); result.success(null) }
                 "prepareVad" -> { if (models.verifyManifest() == null) speech.prepare(); result.success(null) }
                 "releaseVad" -> { speech.release(); result.success(null) }
+                "openMicLink" -> micRoute.openLink { ready -> result.success(ready) }
+                "closeMicLink" -> { micRoute.closeLink(); result.success(null) }
                 "setMediaKeys" -> { mediaKeys.enable(call.argument<Boolean>("on") == true); result.success(null) }
                 "keepScreenOn" -> {
                     if (call.argument<Boolean>("on") == true) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -116,6 +118,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
             maxMs = call.argument<Int>("maxMs") ?: 600_000,
             startCue = call.argument<Boolean>("startCue") ?: cues,
             mic = call.argument<String>("mic") ?: "auto",
+            holdMic = call.argument<Boolean>("holdMic") == true,
         )
         val begin = {
             try {

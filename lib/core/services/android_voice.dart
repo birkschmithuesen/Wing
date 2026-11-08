@@ -66,6 +66,16 @@ abstract interface class VoiceDevice {
   Future<void> setMediaKeys(bool on);
   Future<void> keepScreenOn(bool on);
   Future<int> deleteVadDebugRecordings();
+
+  /// Opens the classic-SCO link for [reason] and keeps it open across every
+  /// following vad round (dictation, listening-in, read-aloud barge-in)
+  /// until [closeMicLink] — a car kit's SCO channel otherwise opens and
+  /// closes per round (spec Birk decision 2026-10-19: car kits keep SCO open
+  /// for the whole conversation). Answers whether the link became ready.
+  Future<bool> openMicLink(String reason);
+
+  /// Ends the hold started by [openMicLink].
+  Future<void> closeMicLink(String reason);
 }
 
 class AndroidVoice implements VoiceDevice {
@@ -174,6 +184,13 @@ class AndroidVoice implements VoiceDevice {
   @override
   Future<int> deleteVadDebugRecordings() async =>
       await channel.invokeMethod<int>('deleteVadDebugRecordings') ?? 0;
+  @override
+  Future<bool> openMicLink(String reason) async =>
+      await channel.invokeMethod<bool>('openMicLink', {'reason': reason}) ??
+      false;
+  @override
+  Future<void> closeMicLink(String reason) =>
+      channel.invokeMethod('closeMicLink', {'reason': reason});
 }
 
 class VadCaptureOptions {
@@ -185,6 +202,7 @@ class VadCaptureOptions {
     this.startCue,
     this.keepPlayback = false,
     this.mic = VoiceMicRoute.auto,
+    this.holdMic = false,
   });
   final bool cues;
   final bool debug;
@@ -202,6 +220,12 @@ class VadCaptureOptions {
   /// value skips the decision (spec 2026-10-18 manual mic).
   final VoiceMicRoute mic;
 
+  /// A [CarMicSession] already holds the Bluetooth link open for this round;
+  /// native skips its own per-round acquire/release and uses the held device
+  /// (spec Birk decision 2026-10-19: car kits keep SCO open for the whole
+  /// conversation, not just one round).
+  final bool holdMic;
+
   Map<String, Object> toMap() => {
     'cues': cues,
     'debug': debug,
@@ -210,6 +234,7 @@ class VadCaptureOptions {
     'startCue': startCue ?? cues,
     'keepPlayback': keepPlayback,
     'mic': mic.name,
+    'holdMic': holdMic,
   };
 }
 
