@@ -37,12 +37,19 @@ API mode uses the plugin to add the native context to voice startup. Its
 configuration comes from the profile's `voice.gpt_live` settings and Hermes's
 supported OpenAI key resolver. Credentials stay on the server in both modes.
 
-Open a connected chat and tap **Start voice conversation** (the waveform icon
-beside the microphone in the message field).
-The call dock shows connecting, listening, muted and failure states. Use its
-icons to mute, change audio routing, show captions, return to the original chat,
-or end voice. Headsets are preferred when connected; the speaker control can
-select the phone speaker or return to headset/earpiece routing.
+Open a connected chat and tap **Start voice conversation** (the waveform icon beside the microphone in the message field).
+The floating call card stays above the app while you navigate. Its compact row
+shows the original chat title, voice duration, mute, audio routing and End voice.
+Headsets are preferred when connected; the speaker control can select the phone
+speaker or return to headset/earpiece routing.
+
+In the original chat, spoken text appears in the conversation. After you enter
+another chat or group, the card adds a compact lower row with captions and
+**Return to voice chat** (the speech bubble with a waveform). Captions start off;
+when enabled they share the row with the controls and scroll within two lines.
+Returning keeps the call connected and hides both extra controls. Captions reset
+off when you return or start another call. Browsing a list or opening a menu
+alone does not count as entering a different conversation.
 
 You can switch apps or lock the phone during a call. Allow microphone and
 notification access; Bluetooth access enables headset routing. The persistent

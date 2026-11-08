@@ -6,7 +6,7 @@ Feature ID: `voice`.
 
 ## Sub-features
 
-- `voice.live` — Choose subscription or API GPT-Live, start in the current chat, mute/route/caption/end and continue under lock.
+- `voice.live` — Choose subscription or API GPT-Live, start in the current chat and keep an elevated compact call card above navigation. Mute, change audio routing, end voice and continue under lock. Entering another chat or group reveals captions and Return to voice chat in its lower row; returning hides them and resets captions off. Captions scroll within two lines without enlarging the normal control row.
 - `voice.transcript` — Read both spoken sides in the original chat during and after a call. Local voice rows are labelled “Not saved to Hermes”, support Copy, and last until Wing restarts. They do not submit work. Hermes replies to voice-submitted tasks are collapsed under “Hermes task details”, with native actions inside.
 - `voice.live-work` — Delegate once into the original chat; send recent spoken context with new work through Hermes’s native voice surface; match replies to their work admission and provider delegation. Interrupt speech independently of work.
 - `voice.dictate` — Finish or cancel into the correct draft.
@@ -17,7 +17,7 @@ Feature ID: `voice`.
 
 ## How to get to it (user POV)
 
-In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, choose its GPT-Live voice, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
+In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, choose its GPT-Live voice, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app-wide floating call card and persistent Android notification expose call controls.
 
 For dictation/read-aloud, in App settings choose device or Hermes input/output. Tap the chat or group microphone to dictate into an editable draft, and use a reply playback action to hear it. Stop or cancel explicitly.
 
@@ -45,7 +45,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   while context is loading. Transcript tests cover replay, partial final events,
   identical distinct turns, profile isolation, hangup/disconnect retention and
   passive timeline projection. The UI suite checks both speakers, Copy, and
-  departure/reopening and collapsed/expanded Hermes task details in both themes at normal and enlarged text. CI-mode checks also keep the composer reachable above the keyboard and scroll long voice errors while Dismiss stays reachable; real-font captures verify the same layouts.
+  departure/reopening and collapsed/expanded Hermes task details in both themes at normal and enlarged text. CI-mode checks also keep the composer reachable above the keyboard and scroll long voice errors while Dismiss stays reachable; real-font captures verify the same layouts. It also drives chat switching, the compact caption row, held return navigation and failed-return recovery while the call stays connected.
 
   ```sh
   flutter test --no-pub test/live_voice_session_test.dart test/live_voice_protocol_test.dart test/voice_preferences_test.dart test/voice_preferences_session_test.dart test/composer_draft_store_test.dart

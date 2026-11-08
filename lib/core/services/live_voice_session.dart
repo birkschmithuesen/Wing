@@ -76,6 +76,7 @@ class LiveVoiceSession extends ChangeNotifier {
   bool get audioChanging => _audioChanging;
   String? get error => _error;
   String get caption => _caption;
+  DateTime? get connectedAt => _connectedAt;
   final _transcripts = <ProfileSessionKey, List<LiveVoiceTurn>>{};
   final _pendingSpeech = <bool, int>{};
   int _speechSequence = 0;
@@ -153,6 +154,7 @@ class LiveVoiceSession extends ChangeNotifier {
   bool _audioChanging = false;
   String? _error;
   String _caption = '';
+  DateTime? _connectedAt;
   String _input = '', _output = '';
   String _recentSpeech = '';
   bool _hasUserSpeech = false;
@@ -185,6 +187,7 @@ class LiveVoiceSession extends ChangeNotifier {
     _phase = LiveVoicePhase.connecting;
     _error = null;
     _caption = '';
+    _connectedAt = null;
     _input = _output = _recentSpeech = '';
     _hasUserSpeech = false;
     _pendingReplies.clear();
@@ -302,6 +305,7 @@ class LiveVoiceSession extends ChangeNotifier {
         if (_phase != LiveVoicePhase.connecting) return;
         _connectTimeout?.cancel();
         _phase = LiveVoicePhase.listening;
+        _connectedAt = DateTime.now();
         _replies
           ..clear()
           ..addAll(_conversation!.completedReplies);
@@ -309,17 +313,16 @@ class LiveVoiceSession extends ChangeNotifier {
         _changed();
       case VoiceTranscript():
         final spoken = _recordSpeech(parsed);
+        _caption = _bounded(spoken);
         if (parsed.user && parsed.text.trim().isNotEmpty) _hasUserSpeech = true;
         var accumulated = parsed.user ? _input : _output;
         if (parsed.complete) {
-          _caption = _bounded(spoken);
           _recentSpeech = _speechTail(
-            '$_recentSpeech\n${parsed.user ? 'User' : 'Voice'}: $_caption',
+            '$_recentSpeech\n${parsed.user ? 'User' : 'Voice'}: ${_bounded(spoken)}',
           );
           accumulated = '';
         } else {
           accumulated = _bounded(accumulated + parsed.text);
-          _caption = accumulated;
         }
         if (parsed.user) {
           _input = accumulated;

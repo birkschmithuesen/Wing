@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/models/recent_conversation.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/connection_access.dart';
@@ -83,6 +84,21 @@ class _UiConversation implements LiveVoiceConversation {
   void release() => owner.release();
 }
 
+class _HeldUiVoiceTransport extends VoiceTransportFixture {
+  Completer<void>? audioGate;
+  @override
+  Future<void> mute(bool muted) async {
+    await audioGate?.future;
+    await super.mute(muted);
+  }
+
+  @override
+  Future<void> speaker(bool enabled) async {
+    await audioGate?.future;
+    await super.speaker(enabled);
+  }
+}
+
 class _VoiceHistoryFixture extends ProfileBrowserFixture {
   final rows = <Map<String, dynamic>>[];
   @override
@@ -124,6 +140,83 @@ void main() {
     });
   }
 
+  testWidgets(
+    'call controls follow current routes and exact conversation identity',
+    (tester) async {
+      final transport = VoiceTransportFixture();
+      final voice = LiveVoiceSession(
+        createTransport: () => transport,
+        background: VoiceBackgroundFixture(),
+      );
+      final chat = VoiceChatFixture(profile: 'personal');
+      await voice.start(chat);
+      final selected = ValueNotifier(RecentConversationKey.chat(chat.key));
+      final navigator = GlobalKey<NavigatorState>();
+      Widget page(RecentConversationKey key) => LiveVoiceChatLocation(
+        conversation: key,
+        enabled: true,
+        child: const Scaffold(body: Text('Conversation')),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigator,
+          builder: (context, child) => LiveVoiceScope(
+            session: voice,
+            openChat: (_) async {},
+            child: LiveVoiceLayout(child: child!),
+          ),
+          home: ValueListenableBuilder<RecentConversationKey>(
+            valueListenable: selected,
+            builder: (context, value, _) => page(value),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Return to voice chat'), findsNothing);
+      final other = RecentConversationKey.chat(
+        VoiceChatFixture(profile: 'work').key,
+      );
+      unawaited(
+        navigator.currentState!.push<void>(
+          MaterialPageRoute(builder: (_) => page(other)),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('Return to voice chat'),
+        findsOneWidget,
+        reason: 'The same session ID in another profile is a different chat',
+      );
+      await tester.tap(find.byTooltip('Show voice captions'));
+      await tester.pump();
+      selected.value = const RecentConversationKey.group('covered-root-group');
+      await tester.pump();
+      selected.value = RecentConversationKey.chat(chat.key);
+      await tester.pump();
+      expect(
+        find.byTooltip('Hide voice captions'),
+        findsOneWidget,
+        reason:
+            'Rebuilding the covered original route cannot claim the foreground',
+      );
+      navigator.currentState!.pop();
+      await tester.pumpAndSettle();
+      expect(find.byTooltip('Return to voice chat'), findsNothing);
+      selected.value = const RecentConversationKey.group('group');
+      await tester.pumpAndSettle();
+      expect(
+        find.byTooltip('Show voice captions'),
+        findsOneWidget,
+        reason:
+            'Entering a group is a different conversation, with captions reset',
+      );
+      await tester.pumpWidget(const SizedBox());
+      await voice.end();
+      voice.dispose();
+      selected.dispose();
+    },
+  );
+
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       for (final fail in [false, true]) {
@@ -152,7 +245,7 @@ void main() {
               gatewayFactory: gateway.gateway,
             );
             final device = VoiceDeviceFixture(),
-                transport = VoiceTransportFixture(),
+                transport = _HeldUiVoiceTransport(),
                 background = VoiceBackgroundFixture();
             final session = _UiVoiceSession(transport, background);
             await controller.initialize();
@@ -163,6 +256,9 @@ void main() {
             tester.view.physicalSize = const Size(390, 844);
             addTearDown(tester.view.reset);
             try {
+              Completer<void>? returnGate;
+              var failReturn = false;
+              Future<void>? returnOperation;
               await tester.pumpWidget(
                 MaterialApp(
                   theme: wingTheme(brightness),
@@ -172,7 +268,11 @@ void main() {
                     ).copyWith(textScaler: TextScaler.linear(scale)),
                     child: LiveVoiceScope(
                       session: session,
-                      openChat: (_) async {},
+                      openChat: (key) => returnOperation = () async {
+                        await returnGate?.future;
+                        if (failReturn) throw StateError('Open failed');
+                        await controller.openSession(key);
+                      }(),
                       child: RepaintBoundary(
                         key: frame,
                         child: LiveVoiceLayout(child: child!),
@@ -282,10 +382,38 @@ void main() {
               await tester.pump();
               await tester.pump(const Duration(milliseconds: 100));
               expect(session.phase, LiveVoicePhase.listening);
+              transport.audioGate = Completer<void>();
               await tester.tap(find.byTooltip('Mute voice'));
               await tester.pump();
+              expect(session.audioChanging, isTrue);
+              expect(find.byType(CircularProgressIndicator), findsOneWidget);
+              await screenshot(
+                tester,
+                '${brightness.name}-$scale-mute-pending',
+              );
+              transport.audioGate!.complete();
+              await tester.pump();
+              transport.audioGate = null;
+
               expect(session.muted, isTrue);
               expect(transport.isMuted, isTrue);
+              transport.audioGate = Completer<void>();
+              await tester.tap(find.byTooltip('Use earpiece'));
+              await tester.pump();
+              expect(session.audioChanging, isTrue);
+              expect(find.byType(CircularProgressIndicator), findsOneWidget);
+              transport.audioGate!.completeError(StateError('Route failed'));
+              await tester.pump();
+              expect(
+                find.text('Could not change voice audio. Try again.'),
+                findsOneWidget,
+              );
+              expect(session.active, isTrue);
+              expect(session.speaker, isTrue);
+              await tester.tap(find.byTooltip('Dismiss voice error'));
+              transport.audioGate = null;
+              await tester.pump();
+
               transport.event({
                 'type': 'turn.done',
                 'turn': {
@@ -306,7 +434,6 @@ void main() {
                 isEmpty,
               );
               await screenshot(tester, '${brightness.name}-$scale-spoken-user');
-              await tester.tap(find.byTooltip('Show voice captions'));
               transport.event({
                 'type': 'output_transcript.added',
                 'item': {'text': 'Your name is Robert.'},
@@ -321,8 +448,127 @@ void main() {
               });
               await tester.pump();
               await tester.settleTranscript();
+              expect(find.text('Your name is Robert.'), findsOneWidget);
               await screenshot(tester, '${brightness.name}-$scale-muted');
               expect(tester.takeException(), isNull);
+              expect(find.byTooltip('Show voice captions'), findsNothing);
+              expect(find.byTooltip('Return to voice chat'), findsNothing);
+              final callOriginal = controller.current!.chat!.key;
+              final card = find.byKey(const ValueKey('live-voice-card'));
+              expect(tester.getTopLeft(card).dy, lessThan(40));
+              if (scale == 1) expect(tester.getSize(card).height, lessThan(80));
+              await tester.binding.handlePopRoute();
+              await tester.pumpAndSettle();
+              expect(
+                find.byTooltip('Return to voice chat'),
+                findsNothing,
+                reason:
+                    'Browsing the chat list does not enter a different chat',
+              );
+              await screenshot(tester, '${brightness.name}-$scale-chat-list');
+              await tester.ensureVisible(
+                find.text('Plan the Android workspace'),
+              );
+              await tester.tap(find.text('Plan the Android workspace'));
+              await tester.pumpAndSettle();
+              expect(session.active, isTrue);
+              expect(session.conversation!.key, callOriginal);
+              expect(find.byTooltip('Show voice captions'), findsOneWidget);
+              expect(find.byTooltip('Return to voice chat'), findsOneWidget);
+              final awayHeight = tester.getSize(card).height;
+              await tester.tap(find.byTooltip('Show voice captions'));
+              await tester.pump();
+              expect(find.text('Your name is Robert.'), findsOneWidget);
+              expect(
+                tester.getSize(card).height,
+                awayHeight,
+                reason: 'Two-line captions share the footer with its controls',
+              );
+              for (final label in [
+                'Mute voice',
+                'Unmute voice',
+                'Use earpiece',
+                'End voice',
+                'Hide voice captions',
+                'Return to voice chat',
+              ]) {
+                final control = find.byTooltip(label);
+                if (control.evaluate().isNotEmpty) {
+                  expect(
+                    tester.getSize(control).width,
+                    greaterThanOrEqualTo(48),
+                  );
+                  expect(
+                    tester.getSize(control).height,
+                    greaterThanOrEqualTo(48),
+                  );
+                }
+              }
+              await screenshot(
+                tester,
+                '${brightness.name}-$scale-away-captions',
+              );
+              returnGate = Completer<void>();
+              await tester.tap(find.byTooltip('Return to voice chat'));
+              await tester.pump();
+              expect(
+                find.descendant(
+                  of: card,
+                  matching: find.byType(CircularProgressIndicator),
+                ),
+                findsOneWidget,
+              );
+              await screenshot(
+                tester,
+                '${brightness.name}-$scale-return-pending',
+              );
+              failReturn = true;
+              returnGate.complete();
+              await tester.pumpAndSettle();
+              expect(
+                find.text('Could not open the voice chat. Try again.'),
+                findsOneWidget,
+              );
+              expect(session.active, isTrue);
+              returnGate = null;
+              failReturn = false;
+              await tester.tap(find.byTooltip('Return to voice chat'));
+              await tester.runAsync(() => returnOperation!);
+              await tester.pump();
+              await tester.settleTranscript();
+              expect(controller.current!.chat!.key, callOriginal);
+              expect(find.byTooltip('Return to voice chat'), findsNothing);
+              expect(
+                find.byKey(const ValueKey('live-voice-captions')),
+                findsNothing,
+              );
+              expect(
+                find.text('Could not open the voice chat. Try again.'),
+                findsNothing,
+              );
+
+              await tester.binding.handlePopRoute();
+              await tester.pumpAndSettle();
+              await tester.tap(
+                find.byKey(const ValueKey('workspace-new-chat')),
+              );
+              await tester.pumpAndSettle();
+              expect(find.text('Choose profile'), findsOneWidget);
+              await tester.tap(find.text('personal').last);
+              await tester.pumpAndSettle();
+              expect(controller.current!.chat!.key, isNot(callOriginal));
+              expect(session.conversation!.key, callOriginal);
+              expect(find.byTooltip('Show voice captions'), findsOneWidget);
+              expect(
+                find.byKey(const ValueKey('live-voice-captions')),
+                findsNothing,
+              );
+              await screenshot(tester, '${brightness.name}-$scale-new-chat');
+              await tester.tap(find.byTooltip('Return to voice chat'));
+              await tester.runAsync(() => returnOperation!);
+              await tester.pump();
+              await tester.settleTranscript();
+              expect(find.byTooltip('Return to voice chat'), findsNothing);
               tester.view.viewInsets = const FakeViewPadding(bottom: 300);
               await tester.pump();
               expect(

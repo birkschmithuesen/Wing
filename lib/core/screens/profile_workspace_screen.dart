@@ -2727,10 +2727,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             _composerPanel(chat, constraints),
       ),
     );
-    return EmailDraftScope(
-      owner: chat.key,
-      read: (reference) => controller.readEmailDraft(chat, reference),
-      child: content,
+    return LiveVoiceChatLocation(
+      conversation: RecentConversationKey.chat(chat.key),
+      enabled: _hasChatFocus,
+      child: EmailDraftScope(
+        owner: chat.key,
+        read: (reference) => controller.readEmailDraft(chat, reference),
+        child: content,
+      ),
     );
   }
 

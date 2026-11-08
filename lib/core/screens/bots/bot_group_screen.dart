@@ -1,3 +1,5 @@
+import '../../widgets/live_voice_scope.dart';
+import '../../models/recent_conversation.dart';
 import '../../widgets/conversation_composer.dart';
 import '../../widgets/gateway_approval_panel.dart';
 import '../../models/gateway_approval.dart';
@@ -812,7 +814,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
         _session.attachments.isEmpty;
     final locked =
         _session.pendingText != null || _session.sending || _voiceInput.active;
-    return BotGroupConversation(
+    final conversation = BotGroupConversation(
       group: _session.group,
       instanceHeader: ServerConnectionLabel(
         label: _session.group.instance,
@@ -1187,6 +1189,11 @@ class _BotGroupScreenState extends State<BotGroupScreen>
           ),
         ),
       ),
+    );
+    return LiveVoiceChatLocation(
+      conversation: RecentConversationKey.group(_session.group.key),
+      enabled: _visible,
+      child: conversation,
     );
   }
 }

@@ -379,7 +379,12 @@ void main() {
         'type': 'turn.done',
         'turn': {'role': 'assistant', 'transcript': 'result'},
       });
+      expect(
+        voice.transcript(chat.key).single.text,
+        'The complete spoken result',
+      );
       expect(voice.caption, 'The complete spoken result');
+      expect(voice.connectedAt, isNotNull);
       background.action('mute');
       await settleVoice();
       expect(transport.isMuted, isTrue);
