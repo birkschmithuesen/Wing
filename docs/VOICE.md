@@ -32,7 +32,8 @@ API mode uses the plugin to add the native context to voice startup. Its
 configuration comes from the profile's `voice.gpt_live` settings and Hermes's
 supported OpenAI key resolver. Credentials stay on the server in both modes.
 
-Open a connected chat and tap **Start voice conversation** (the waveform icon).
+Open a connected chat and tap **Start voice conversation** (the waveform icon
+beside the microphone in the message field).
 The call dock shows connecting, listening, muted and failure states. Use its
 icons to mute, change audio routing, show captions, return to the original chat,
 or end voice. Headsets are preferred when connected; the speaker control can

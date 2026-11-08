@@ -187,6 +187,37 @@ void main() {
                 ),
               );
               await tester.pumpAndSettle();
+              if (!fail) {
+                for (final size in [
+                  const Size(390, 844),
+                  const Size(320, 844),
+                  const Size(844, 390),
+                ]) {
+                  tester.view.physicalSize = size;
+                  await tester.pumpAndSettle();
+                  final microphone = tester.getRect(
+                    find.byTooltip('Dictate message'),
+                  );
+                  final live = tester.getRect(
+                    find.byTooltip('Start voice conversation'),
+                  );
+                  expect(live.center.dy, closeTo(microphone.center.dy, 1));
+                  expect(live.left - microphone.right, inInclusiveRange(0, 12));
+                  expect(
+                    find.byTooltip('Start voice conversation').hitTestable(),
+                    findsOneWidget,
+                  );
+                  expect(live.width, greaterThanOrEqualTo(48));
+                  expect(live.height, greaterThanOrEqualTo(48));
+                  expect(tester.takeException(), isNull);
+                  await screenshot(
+                    tester,
+                    '${brightness.name}-$scale-voice-actions-${size.width.toInt()}',
+                  );
+                }
+                tester.view.physicalSize = const Size(390, 844);
+                await tester.pumpAndSettle();
+              }
               await tester.tap(find.byTooltip('Start voice conversation'));
               await tester.pump();
               await tester.pump(const Duration(milliseconds: 100));
