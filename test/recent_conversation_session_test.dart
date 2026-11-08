@@ -626,25 +626,28 @@ void main() {
     expect(session.active, isTrue);
   });
 
-  test('Desktop ownership refusal explains recovery and permits retry', () async {
-    await session.select(_entry(0).key);
-    source.openFailure = JsonRpcError(
-      'session.resume',
-      'runtime_coordination_required',
-      code: 4001,
-      reason: 'runtime_coordination_required',
-    );
-    expect(await session.select(_entry(1).key), isFalse);
-    expect(session.selected, _entry(0).key);
-    expect(session.selecting, isFalse);
-    expect(
-      session.error,
-      'Sending is unavailable while another Hermes app holds this chat. Close it there, then retry.',
-    );
-    source.openFailure = null;
-    expect(await session.select(_entry(1).key), isTrue);
-    expect(session.error, isNull);
-  });
+  test(
+    'Coordination refusal keeps ownership uncertain and permits retry',
+    () async {
+      await session.select(_entry(0).key);
+      source.openFailure = JsonRpcError(
+        'session.resume',
+        'runtime_coordination_required',
+        code: 4001,
+        reason: 'runtime_coordination_required',
+      );
+      expect(await session.select(_entry(1).key), isFalse);
+      expect(session.selected, _entry(0).key);
+      expect(session.selecting, isFalse);
+      expect(
+        session.error,
+        'Sending is unavailable. Hermes could not confirm chat ownership. If this chat is open in another app, close it there, then retry.',
+      );
+      source.openFailure = null;
+      expect(await session.select(_entry(1).key), isTrue);
+      expect(session.error, isNull);
+    },
+  );
 
   test(
     'external selection retires the ring and prevents further opening',

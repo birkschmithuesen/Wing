@@ -105,11 +105,15 @@ flutter test --no-pub test/reply_segment_identity_test.dart test/reading_snapsho
 ```
 
 
-When Hermes refuses attachment because another writer holds a chat, Wing shows
-the saved messages and keeps the draft. Sending remains unavailable until normal
-attachment succeeds. Close the chat in the holding app, then use Retry; Wing
-does not force ownership away from another process. Retry shows the pulsating
-Wing in the header while messages stay usable.
+When Hermes cannot confirm chat ownership, Wing shows the saved messages and
+keeps the draft. Sending remains unavailable until normal attachment succeeds.
+If the chat is open in another app, close it there, then use Retry. The refusal
+alone does not prove another app holds it; Hermes can also fail to verify its
+ownership records. Wing does not force ownership away from another process.
+Retry shows the pulsating Wing in the header while messages stay usable.
+Clients sharing a chat must use the same canonical gateway. A standalone
+Dashboard on the same machine can hold an independent runtime over the same
+saved transcript; sharing the host or database does not establish shared access.
 The host recovery recipe exercises the real Recents control, readable history
 during held attachment, refused sending, retained drafts and successful retry
 in both themes at normal and enlarged text sizes:

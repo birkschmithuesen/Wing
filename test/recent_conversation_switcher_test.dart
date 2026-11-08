@@ -619,7 +619,7 @@ void main() {
                 if (outcome == 'coordination') {
                   expect(
                     find.text(
-                      'Sending is unavailable while another Hermes app holds this chat. Close it there, then retry.',
+                      'Sending is unavailable. Hermes could not confirm chat ownership. If this chat is open in another app, close it there, then retry.',
                     ),
                     findsOneWidget,
                   );

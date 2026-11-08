@@ -90,7 +90,7 @@ bool isConversationAttachmentRefused(Object error) =>
 String conversationOpeningFailureMessage(Object error) {
   if (isUnsupportedChatEndpoint(error)) return chatEndpointFailureMessage;
   if (isConversationAttachmentRefused(error)) {
-    return 'Sending is unavailable while another Hermes app holds this chat. Close it there, then retry.';
+    return 'Sending is unavailable. Hermes could not confirm chat ownership. If this chat is open in another app, close it there, then retry.';
   }
   if (error is TlsException ||
       error is DashboardHttpException &&
