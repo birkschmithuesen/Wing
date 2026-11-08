@@ -8,6 +8,7 @@ Feature ID: `bots`.
 
 - `bots.chat` — Open the exact bot conversation. First open creates the named hidden Bot Chat atomically; reopening or recovering a lost acknowledgement adopts the confirmed server conversation.
 - `bots.groups` — Read and manage a hosted discussion with the same conversation frame, responsive composer, reading mode and approval review as other chats. Exact member activity distinguishes queued, running and stopping work; a working room does not mark every member active.
+- Discussion composers keep the [shared message-box identity](chat-inputs.md): attachments at the left, dictation in the field and Send/Stop at the right. Recents preserves those positions while remaining passive.
 - Failed group work offers Retry for the exact member/task attempt. Retry preserves unrelated work and your draft; it does not stop the room or create a continuation message.
 - An unknown local attempt offers Discard when Hermes advertises it. Confirmation explains that the outcome remains unknown: discarding does not undo side effects or stop a process. The action names the exact member, task and execution generation.
 - Group options → Shared settings edits the room purpose (500 characters), shared notes (4 KB UTF-8), and routing. Everyone gives each member a turn; Lead lets a selected member choose recipients; Auto makes an additional model call and falls back to everyone if selection fails. Changes apply to new discussions. Save retains rejected drafts and confirms the durable room context before closing.

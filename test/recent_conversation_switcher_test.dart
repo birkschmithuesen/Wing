@@ -1018,7 +1018,24 @@ void main() {
         );
         expect(find.byType(ConversationComposer), findsOneWidget);
         expect(find.byType(BotGroupMessage), findsOneWidget);
-        expect(find.byIcon(Icons.add), findsNothing);
+        final attachment = find.byTooltip('Add group attachment');
+        expect(attachment, findsOneWidget);
+        final surface = tester.getRect(
+          find.byKey(const ValueKey('conversation-composer')),
+        );
+        expect(
+          tester
+              .getCenter(
+                find.descendant(
+                  of: attachment,
+                  matching: find.byIcon(Icons.add),
+                ),
+              )
+              .dx,
+          closeTo(surface.left + 8 + 24, .01),
+        );
+        expect(tester.getSize(attachment).width, 48);
+        expect(attachment.hitTestable(), findsNothing);
         final prose = [
           ...tester
               .widgetList<RichText>(find.byType(RichText))

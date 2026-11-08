@@ -3143,147 +3143,132 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 primaryAction: _composerActionButton(chat),
                 editing: chat.composer.observation.editingEntry != null,
                 controls: chat.composer.observation.editingEntry != null
-                    ? _queuedEditActions(chat)
-                    : Row(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          StudioButtonPress(
-                            child: IconButton(
-                              tooltip: 'Attach file',
-                              style: IconButton.styleFrom(
-                                minimumSize: const Size(48, 48),
-                              ),
-                              icon: const Icon(Icons.add),
-                              onPressed:
-                                  !controller.canAddAttachment(chat) ||
-                                      _launchingCamera
-                                  ? null
-                                  : () => _run(() async {
-                                      final target = chat.key;
-                                      final choice =
-                                          await showModalBottomSheet<
-                                            _AttachmentChoice
-                                          >(
-                                            context: context,
-                                            showDragHandle: true,
-                                            builder: (context) => SafeArea(
-                                              child: Column(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  StudioButtonPress(
-                                                    child: ListTile(
-                                                      leading: const Icon(
-                                                        Icons
-                                                            .camera_alt_outlined,
-                                                      ),
-                                                      title: const Text(
-                                                        'Camera',
-                                                      ),
-                                                      enabled:
-                                                          widget
-                                                              .onCapturePhoto !=
-                                                          null,
-                                                      onTap:
-                                                          widget.onCapturePhoto ==
-                                                              null
-                                                          ? null
-                                                          : () => Navigator.pop(
-                                                              context,
-                                                              _AttachmentChoice
-                                                                  .camera,
-                                                            ),
+                    ? [Expanded(child: _queuedEditActions(chat))]
+                    : [
+                        StudioButtonPress(
+                          child: IconButton(
+                            tooltip: 'Attach file',
+                            style: IconButton.styleFrom(
+                              minimumSize: const Size(48, 48),
+                            ),
+                            icon: const Icon(Icons.add),
+                            onPressed:
+                                !controller.canAddAttachment(chat) ||
+                                    _launchingCamera
+                                ? null
+                                : () => _run(() async {
+                                    final target = chat.key;
+                                    final choice =
+                                        await showModalBottomSheet<
+                                          _AttachmentChoice
+                                        >(
+                                          context: context,
+                                          showDragHandle: true,
+                                          builder: (context) => SafeArea(
+                                            child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                StudioButtonPress(
+                                                  child: ListTile(
+                                                    leading: const Icon(
+                                                      Icons.camera_alt_outlined,
                                                     ),
-                                                  ),
-                                                  StudioButtonPress(
-                                                    child: ListTile(
-                                                      leading: const Icon(
-                                                        Icons
-                                                            .photo_library_outlined,
-                                                      ),
-                                                      title: const Text(
-                                                        'Photos',
-                                                      ),
-                                                      onTap: () =>
-                                                          Navigator.pop(
+                                                    title: const Text('Camera'),
+                                                    enabled:
+                                                        widget.onCapturePhoto !=
+                                                        null,
+                                                    onTap:
+                                                        widget.onCapturePhoto ==
+                                                            null
+                                                        ? null
+                                                        : () => Navigator.pop(
                                                             context,
                                                             _AttachmentChoice
-                                                                .photos,
+                                                                .camera,
                                                           ),
+                                                  ),
+                                                ),
+                                                StudioButtonPress(
+                                                  child: ListTile(
+                                                    leading: const Icon(
+                                                      Icons
+                                                          .photo_library_outlined,
+                                                    ),
+                                                    title: const Text('Photos'),
+                                                    onTap: () => Navigator.pop(
+                                                      context,
+                                                      _AttachmentChoice.photos,
                                                     ),
                                                   ),
-                                                  StudioButtonPress(
-                                                    child: ListTile(
-                                                      leading: const Icon(
-                                                        Icons
-                                                            .insert_drive_file_outlined,
-                                                      ),
-                                                      title: const Text(
-                                                        'Files',
-                                                      ),
-                                                      onTap: () =>
-                                                          Navigator.pop(
-                                                            context,
-                                                            _AttachmentChoice
-                                                                .files,
-                                                          ),
+                                                ),
+                                                StudioButtonPress(
+                                                  child: ListTile(
+                                                    leading: const Icon(
+                                                      Icons
+                                                          .insert_drive_file_outlined,
+                                                    ),
+                                                    title: const Text('Files'),
+                                                    onTap: () => Navigator.pop(
+                                                      context,
+                                                      _AttachmentChoice.files,
                                                     ),
                                                   ),
-                                                ],
-                                              ),
+                                                ),
+                                              ],
                                             ),
-                                          );
-                                      if (choice == null) {
-                                        return;
-                                      }
-                                      if (choice == _AttachmentChoice.camera) {
-                                        if (_launchingCamera) {
-                                          return;
-                                        }
-                                        setState(() => _launchingCamera = true);
-                                        try {
-                                          await widget.onCapturePhoto!(target);
-                                        } finally {
-                                          if (mounted) {
-                                            setState(
-                                              () => _launchingCamera = false,
-                                            );
-                                          }
-                                        }
-                                        return;
-                                      }
-                                      final type =
-                                          choice == _AttachmentChoice.photos
-                                          ? FileType.image
-                                          : FileType.any;
-                                      final files = await FilePicker.pickFiles(
-                                        type: type,
-                                      );
-                                      if (files.isEmpty) {
-                                        return;
-                                      }
-                                      if (files.any(
-                                        (file) => file.path == null,
-                                      )) {
-                                        throw const AttachmentDraftException(
-                                          'A selected file could not be opened. Select the files again.',
+                                          ),
                                         );
+                                    if (choice == null) {
+                                      return;
+                                    }
+                                    if (choice == _AttachmentChoice.camera) {
+                                      if (_launchingCamera) {
+                                        return;
                                       }
-                                      await controller.addAttachments(chat, [
-                                        for (final file in files)
-                                          (path: file.path!, name: file.name),
-                                      ]);
-                                    }),
-                            ),
+                                      setState(() => _launchingCamera = true);
+                                      try {
+                                        await widget.onCapturePhoto!(target);
+                                      } finally {
+                                        if (mounted) {
+                                          setState(
+                                            () => _launchingCamera = false,
+                                          );
+                                        }
+                                      }
+                                      return;
+                                    }
+                                    final type =
+                                        choice == _AttachmentChoice.photos
+                                        ? FileType.image
+                                        : FileType.any;
+                                    final files = await FilePicker.pickFiles(
+                                      type: type,
+                                    );
+                                    if (files.isEmpty) {
+                                      return;
+                                    }
+                                    if (files.any(
+                                      (file) => file.path == null,
+                                    )) {
+                                      throw const AttachmentDraftException(
+                                        'A selected file could not be opened. Select the files again.',
+                                      );
+                                    }
+                                    await controller.addAttachments(chat, [
+                                      for (final file in files)
+                                        (path: file.path!, name: file.name),
+                                    ]);
+                                  }),
                           ),
-                          _composerContextRing(chat),
-                          Expanded(
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: _composerIntelligenceButton(context, chat),
-                            ),
+                        ),
+                        _composerContextRing(chat),
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _composerIntelligenceButton(context, chat),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
               ),
             ],
           ),

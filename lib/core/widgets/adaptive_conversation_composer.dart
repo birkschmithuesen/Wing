@@ -3,8 +3,9 @@ import 'package:flutter/material.dart';
 import '../theme/wing_theme.dart';
 import 'conversation_reading_scope.dart';
 
-/// Reflows the existing composer controls without taking ownership of editing
-/// or action admission. The field stays mounted in the same slot in both modes.
+/// Owns the control row, so a single control keeps the same leading position as
+/// several controls. Reflows without owning editing or action admission; the
+/// field stays mounted in the same slot in both modes.
 class AdaptiveConversationComposer extends StatefulWidget {
   const AdaptiveConversationComposer({
     super.key,
@@ -15,7 +16,8 @@ class AdaptiveConversationComposer extends StatefulWidget {
     this.editing = false,
   });
 
-  final Widget field, controls, primaryAction;
+  final Widget field, primaryAction;
+  final List<Widget> controls;
   final FocusNode focusNode;
   final bool editing;
 
@@ -65,7 +67,12 @@ class _ComposerState extends State<AdaptiveConversationComposer> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Expanded(child: widget.controls),
+                Expanded(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: widget.controls,
+                  ),
+                ),
                 if (!widget.editing) ...[
                   const SizedBox(width: 8),
                   widget.primaryAction,

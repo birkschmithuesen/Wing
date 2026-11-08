@@ -1115,47 +1115,52 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               ),
             ),
           ),
-          controls: StudioButtonPress(
-            child: PopupMenuButton<String>(
-              tooltip: 'Add group attachment',
-              enabled:
-                  _session.canAddAttachments &&
-                  !_voiceInput.active &&
-                  !_launchingCamera,
-              icon: const Icon(Icons.add),
-              onSelected: (choice) async {
-                if (choice != 'camera') {
-                  await _pickAttachments(photos: choice == 'photos');
-                  return;
-                }
-                setState(() => _launchingCamera = true);
-                try {
-                  await widget.onCapturePhoto!();
-                } catch (_) {
-                  if (context.mounted) {
-                    showStudioError(
-                      context,
-                      'The camera could not open. Try again.',
-                    );
+          controls: [
+            StudioButtonPress(
+              child: PopupMenuButton<String>(
+                tooltip: 'Add group attachment',
+                enabled:
+                    _session.canAddAttachments &&
+                    !_voiceInput.active &&
+                    !_launchingCamera,
+                icon: const Icon(Icons.add),
+                onSelected: (choice) async {
+                  if (choice != 'camera') {
+                    await _pickAttachments(photos: choice == 'photos');
+                    return;
                   }
-                } finally {
-                  if (mounted) setState(() => _launchingCamera = false);
-                }
-              },
-              itemBuilder: (_) => [
-                if (widget.onCapturePhoto != null)
+                  setState(() => _launchingCamera = true);
+                  try {
+                    await widget.onCapturePhoto!();
+                  } catch (_) {
+                    if (context.mounted) {
+                      showStudioError(
+                        context,
+                        'The camera could not open. Try again.',
+                      );
+                    }
+                  } finally {
+                    if (mounted) setState(() => _launchingCamera = false);
+                  }
+                },
+                itemBuilder: (_) => [
+                  if (widget.onCapturePhoto != null)
+                    const StudioPopupMenuItem(
+                      value: 'camera',
+                      child: Text('Camera'),
+                    ),
                   const StudioPopupMenuItem(
-                    value: 'camera',
-                    child: Text('Camera'),
+                    value: 'photos',
+                    child: Text('Photos'),
                   ),
-                const StudioPopupMenuItem(
-                  value: 'photos',
-                  child: Text('Photos'),
-                ),
-                const StudioPopupMenuItem(value: 'files', child: Text('Files')),
-              ],
+                  const StudioPopupMenuItem(
+                    value: 'files',
+                    child: Text('Files'),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           primaryAction: ComposerIconButton(
             focused: false,
             label: stopping

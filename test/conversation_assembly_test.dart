@@ -30,6 +30,25 @@ Future<void> _render(WidgetTester tester, String name) async {
     find.byType(ConversationComposer, skipOffstage: false),
     name.startsWith('worker-') ? findsNothing : findsOneWidget,
   );
+  final attachment = find.byTooltip(
+    name.startsWith('group-') ? 'Add group attachment' : 'Attach file',
+  );
+  if (attachment.evaluate().isNotEmpty) {
+    final surface = tester.getRect(
+      find.byKey(const ValueKey('conversation-composer')),
+    );
+    final glyph = find.descendant(
+      of: attachment,
+      matching: find.byIcon(Icons.add),
+    );
+    expect(
+      tester.getCenter(glyph).dx,
+      closeTo(surface.left + 8 + 24, .01),
+      reason: 'Every composer anchors its attachment glyph at the leading edge',
+    );
+    expect(tester.getSize(attachment).width, 48);
+    expect(attachment.hitTestable(), findsOneWidget);
+  }
   if (!_capture) return;
   await tester.pump();
   final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -156,6 +175,19 @@ void main() {
             final name =
                 '${worker ? 'worker' : 'group'}-${brightness.name}-$scale';
             await _render(tester, '$name-portrait');
+            if (!worker) {
+              await tester.tap(field);
+              tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+              await tester.pumpAndSettle();
+              await _render(tester, '$name-portrait-keyboard');
+              expect(
+                find.byTooltip('Send group message').hitTestable(),
+                findsOneWidget,
+              );
+              tester.view.viewInsets = const FakeViewPadding();
+              tester.widget<TextField>(field).focusNode!.unfocus();
+              await tester.pumpAndSettle();
+            }
             await tester.tap(enter);
             await tester.pumpAndSettle();
             expect(find.byTooltip('Exit reading mode'), findsOneWidget);
@@ -188,6 +220,11 @@ void main() {
                 find.byTooltip('Expand composer controls'),
                 findsOneWidget,
               );
+              await tester.tap(find.byTooltip('Expand composer controls'));
+              await tester.pumpAndSettle();
+              await _render(tester, '$name-landscape-expanded');
+              await tester.tap(find.byTooltip('Collapse composer controls'));
+              await tester.pumpAndSettle();
               await tester.tap(field);
               tester.view.viewInsets = const FakeViewPadding(bottom: 240);
               await tester.pumpAndSettle();

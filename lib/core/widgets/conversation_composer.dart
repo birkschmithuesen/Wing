@@ -12,13 +12,14 @@ class ConversationComposer extends StatelessWidget {
     required this.field,
     required this.focusNode,
     required this.primaryAction,
-    this.controls = const SizedBox.shrink(),
+    this.controls = const [],
     this.beforeField = const [],
     this.dock,
     this.editing = false,
   });
 
-  final Widget field, controls, primaryAction;
+  final Widget field, primaryAction;
+  final List<Widget> controls;
   final FocusNode focusNode;
   final List<Widget> beforeField;
   final Widget? dock;

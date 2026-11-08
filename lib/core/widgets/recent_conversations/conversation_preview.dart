@@ -215,25 +215,23 @@ class _SavedChatComposerState extends State<_SavedChatComposer> {
       hintText: 'Message Hermes or type /',
       microphone: VoiceInputButton(enabled: true, onPressed: () {}),
     ),
-    controls: Row(
-      children: [
-        const StudioButtonPress(
-          child: IconButton(
-            onPressed: null,
-            tooltip: 'Attach file',
-            icon: Icon(Icons.add),
-          ),
+    controls: [
+      const StudioButtonPress(
+        child: IconButton(
+          onPressed: null,
+          tooltip: 'Attach file',
+          icon: Icon(Icons.add),
         ),
-        Expanded(
-          child: Text(
-            widget.modelLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: Theme.of(context).textTheme.labelSmall,
-          ),
+      ),
+      Expanded(
+        child: Text(
+          widget.modelLabel,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: Theme.of(context).textTheme.labelSmall,
         ),
-      ],
-    ),
+      ),
+    ],
     primaryAction: ComposerIconButton(
       focused: false,
       label: 'Send message',
@@ -359,6 +357,15 @@ class _SavedGroupPageState extends State<_SavedGroupPage> {
           readOnly: true,
           microphone: VoiceInputButton(enabled: true, onPressed: () {}),
         ),
+        controls: [
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Add group attachment',
+              icon: const Icon(Icons.add),
+              onPressed: () {},
+            ),
+          ),
+        ],
         primaryAction: ComposerIconButton(
           focused: false,
           label: 'Send group message',
