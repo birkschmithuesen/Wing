@@ -86,8 +86,9 @@ final class TranscriptReading implements TranscriptReader {
       _voiceSubmissions.add(submission);
 
   void registerVoiceReplacement(String admission, String submission) {
-    if (_voiceAdmissions.contains(admission))
+    if (_voiceAdmissions.contains(admission)) {
       registerVoiceSubmission(submission);
+    }
   }
 
   void observeVoiceAdmission(String submission, String admission) {
