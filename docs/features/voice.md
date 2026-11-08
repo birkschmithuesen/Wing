@@ -15,7 +15,7 @@ Feature ID: `voice`.
 
 ## How to get to it (user POV)
 
-In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, then tap the waveform icon in a connected chat. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
+In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
 
 For dictation/read-aloud, in App settings choose device or Hermes input/output. Tap the chat or group microphone to dictate into an editable draft, and use a reply playback action to hear it. Stop or cancel explicitly.
 

@@ -2894,6 +2894,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Widget? _composerField;
 
   Widget _composerTextField(BuildContext context, ProfileChat chat) {
+    final scope = LiveVoiceScope.maybeOf(context);
     final compact = ConversationReadingScope.compact(context);
     final keyboard = ConversationReadingScope.compactKeyboard(context);
     final inputs = (
@@ -2906,13 +2907,16 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       chat.runtime.blocksTurnAdmission,
       _canPasteImage(chat),
       _voiceInput.canDictate(controller.canDictate(chat)),
-      LiveVoiceScope.maybeOf(context)?.session.active,
+      scope?.session,
+      scope?.session.active,
+      chat.runtime.offline,
+      chat.readOnlyReason,
     );
     if (_composerFieldInputs == inputs) return _composerField!;
     _composerFieldInputs = inputs;
     // Native editing listens to its controller. Answer growth does not change
     // field chrome; keep its subtree until an actual field capability changes.
-    return _composerField = ConversationComposerField(
+    final field = ConversationComposerField(
       fieldKey: const Key('profile-message-composer'),
       controller: _composer,
       focusNode: _composerFocus,
@@ -2975,6 +2979,32 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           : chat.runtime.blocksTurnAdmission
           ? 'Draft your next message'
           : 'Message Hermes or type /',
+    );
+    return _composerField = Row(
+      children: [
+        Expanded(child: field),
+        if (chat.composer.observation.editingEntry == null && scope != null)
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Start voice conversation',
+              icon: const Icon(Icons.graphic_eq),
+              onPressed:
+                  scope.session.active ||
+                      chat.runtime.offline ||
+                      chat.readOnlyReason != null
+                  ? null
+                  : () => _run(() async {
+                      await scope.session.start(
+                        controller.liveVoiceConversation(chat),
+                        prepare: () async {
+                          await _voiceInput.cancel();
+                          await _voiceOutput.stop();
+                        },
+                      );
+                    }),
+            ),
+          ),
+      ],
     );
   }
 
@@ -3189,27 +3219,6 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 controls: chat.composer.observation.editingEntry != null
                     ? [Expanded(child: _queuedEditActions(chat))]
                     : [
-                        if (LiveVoiceScope.maybeOf(context) case final scope?)
-                          StudioButtonPress(
-                            child: IconButton(
-                              tooltip: 'Start voice conversation',
-                              icon: const Icon(Icons.graphic_eq),
-                              onPressed:
-                                  scope.session.active ||
-                                      chat.runtime.offline ||
-                                      chat.readOnlyReason != null
-                                  ? null
-                                  : () => _run(() async {
-                                      await scope.session.start(
-                                        controller.liveVoiceConversation(chat),
-                                        prepare: () async {
-                                          await _voiceInput.cancel();
-                                          await _voiceOutput.stop();
-                                        },
-                                      );
-                                    }),
-                            ),
-                          ),
                         _composerContextRing(chat),
                         Expanded(
                           child: Align(

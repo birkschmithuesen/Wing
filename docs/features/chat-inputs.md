@@ -17,7 +17,7 @@ Group message Reply selects an existing discussion thread and mentions its membe
 
 ## How to get to it (user POV)
 
-Write in the chat composer and Send. Hold the action button for steer or queue choices. Open queued work to edit it; use saved-message actions to edit or Restore and saved-answer actions to regenerate or fork.
+Write in the chat composer and Send. The GPT-Live waveform sits beside the dictation microphone; the + attachment action stays in the toolbar. Hold the action button for steer or queue choices. Open queued work to edit it; use saved-message actions to edit or Restore and saved-answer actions to regenerate or fork.
 
 ## Driving it with Wing harnesses
 
