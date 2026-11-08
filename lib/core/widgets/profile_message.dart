@@ -20,7 +20,7 @@ import 'profile_review_notice_card.dart';
 import 'user_message_attachment.dart';
 import 'bot_avatar.dart';
 
-/// One message design shared by groups, canonical bot chats and working history.
+/// One message design shared by groups and canonical bot chats.
 /// Routes supply identity and action authority; this scope owns no reads or writes.
 class BotConversationScope extends InheritedTheme {
   const BotConversationScope({
@@ -74,6 +74,7 @@ class ProfileMessage extends StatelessWidget {
   final Future<void> Function(ChatOutput output)? onShareRemoteFile;
   final Future<bool> Function(ChatOutput output)? onDownloadRemoteFile;
   final UserAttachmentImageLoader? loadAttachmentImage;
+  final VoidCallback? onReply;
   final VoidCallback? onReadAloud;
   final bool readingAloud;
   final Widget? actions;
@@ -95,6 +96,7 @@ class ProfileMessage extends StatelessWidget {
     this.onShareRemoteFile,
     this.onDownloadRemoteFile,
     this.loadAttachmentImage,
+    this.onReply,
     this.onReadAloud,
     this.readingAloud = false,
     this.actions,
@@ -359,7 +361,8 @@ class ProfileMessage extends StatelessWidget {
                                 context,
                                 date,
                                 false,
-                                userWidth: width - 14,
+                                // The frame contributes one pixel on each side.
+                                userWidth: width - 16,
                                 botBubble: true,
                               ),
                             ),
@@ -458,6 +461,15 @@ class ProfileMessage extends StatelessWidget {
       foregroundColor: Theme.of(context).colorScheme.onSurface,
     );
     final controls = [
+      if (onReply != null)
+        StudioButtonPress(
+          child: IconButton(
+            tooltip: 'Reply to message',
+            style: compactActionStyle,
+            onPressed: streaming ? null : onReply,
+            icon: const Icon(Icons.reply_outlined, size: 18),
+          ),
+        ),
       if (user && showEditAction)
         StudioButtonPress(
           child: IconButton(

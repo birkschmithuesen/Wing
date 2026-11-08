@@ -36,10 +36,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/profile_execution_activity_test.dart test/profile_live_execution_test.dart test/reply_duration_test.dart test/profile_live_work_route_test.dart test/profile_subagents_test.dart test/question_activity_projection_test.dart test/question_activity_test.dart test/gateway_approval_panel_test.dart test/notification_approval_review_test.dart test/profile_approval_queue_test.dart test/native_prompt_runtime_test.dart test/native_prompt_controller_test.dart
   ```
 
-- **Task handoff across chat surfaces:** the production conversation route checks four completed tasks through streaming, held history, the original saved Activity Tasks tab, draft retention and three later rounds in both themes at normal/enlarged text. The owner suites also cover working histories, child completion, cancelled tasks, hydration and unfinished work retained after a response.
+- **Task handoff across chat surfaces:** the production conversation route checks four completed tasks through streaming, held history, the original saved Activity Tasks tab, draft retention and three later rounds in both themes at normal/enlarged text. The owner suites also cover child completion, cancelled tasks, hydration and unfinished work retained after a response.
 
   ```sh
-  flutter test --no-pub test/profile_live_work_route_test.dart test/profile_execution_activity_test.dart test/bot_group_history_test.dart test/subagent_timeline_session_test.dart test/saved_activity_test.dart
+  flutter test --no-pub test/profile_live_work_route_test.dart test/profile_execution_activity_test.dart test/subagent_timeline_session_test.dart test/saved_activity_test.dart
   ```
 
 - **Drawer gestures:** the shared dock and production conversation route exercise

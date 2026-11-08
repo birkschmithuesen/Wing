@@ -9206,11 +9206,6 @@
       "provenance": "tracked"
     },
     {
-      "path": "lib/core/screens/bots/bot_group_history_screen.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
       "path": "lib/core/screens/bots/bot_group_screen.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -9484,11 +9479,6 @@
       "path": "lib/core/services/bot_group_draft_session.dart",
       "area": "lib",
       "provenance": "tracked"
-    },
-    {
-      "path": "lib/core/services/bot_group_history_session.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
     },
     {
       "path": "lib/core/services/bot_group_read_state.dart",
@@ -11614,16 +11604,6 @@
       "path": "test/bot_group_draft_session_test.dart",
       "area": "test",
       "provenance": "tracked"
-    },
-    {
-      "path": "test/bot_group_history_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/bot_group_history_view_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
     },
     {
       "path": "test/bot_group_loading_test.dart",

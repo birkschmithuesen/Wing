@@ -232,7 +232,7 @@ void main() {
           scope: controller.current!.scope,
           instance: 'Host',
           read: fixture.read,
-          savedHistory: fixture.savedHistory,
+
           command: fixture.command,
           ownership: fixture.ownership,
         ),

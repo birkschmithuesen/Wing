@@ -517,6 +517,32 @@ void main() {
   );
 
   test(
+    'canonical Bot Chat rejects a different root even when its tip is named Bot Chat',
+    () async {
+      final base = fixture.gateway(controller.current!.scope);
+      final gateway = ProfileGateway(
+        scope: base.scope,
+        discover: base.discover,
+        get: base.read,
+        rpc: (method, params) async => method == 'session.list'
+            ? {
+                'sessions': [
+                  {
+                    'id': 'ordinary-root',
+                    'resolved_id': 'ordinary-tip',
+                    'title': 'Bot Chat',
+                    'root_title': 'Ordinary conversation',
+                  },
+                ],
+              }
+            : base.call(method, params),
+      );
+      addTearDown(gateway.close);
+      await expectLater(gateway.canonicalBotChat(), throwsFormatException);
+    },
+  );
+
+  test(
     'canonical Bot Chat uses tip accounting without duplicating an open tip',
     () async {
       fixture.hiddenSessions['personal'] = [

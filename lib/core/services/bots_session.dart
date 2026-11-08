@@ -553,6 +553,10 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     busy: _busy,
     errors: [..._errors, ..._readErrors.values, ?_operationError],
     groupHosts: _ready,
+    seatableProfiles: {
+      for (final r in _repositories ?? <BotsRepository>[])
+        r.scope.connectionIdentity: r.seatableProfiles,
+    },
     instances: (_repositories ?? <BotsRepository>[]).map(
       (r) => BotInstance(r.scope.connectionIdentity, r.instance),
     ),
@@ -1163,7 +1167,9 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     } catch (error) {
       if (!_closed) {
         _operationError =
-            error is BotMetadataConflict || error is BotGroupEditConflict
+            error is BotMetadataConflict ||
+                error is BotGroupEditConflict ||
+                error is BotGroupCreateRefused
             ? error.toString()
             : dispatched
             ? 'The change could not be confirmed. Check the result before trying again.'

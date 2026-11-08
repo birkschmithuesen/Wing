@@ -69,6 +69,7 @@ class BotGroupSession extends ChangeNotifier {
       );
       if (saved != null) {
         _draft = saved.text;
+        _reply = saved.reply;
         _references = retainComposerReferences(_draft, saved.references);
         _attachments = List.of(saved.attachments);
         if (saved.pendingEventId case final eventId?) {
@@ -243,6 +244,60 @@ class BotGroupSession extends ChangeNotifier {
     }
     _references = retainComposerReferences(text, [..._references, ?selected]);
     return _saveDraft();
+  }
+
+  BotGroupReply? _reply;
+  BotGroupReply? get reply => _reply;
+  bool get canChooseReply =>
+      !_closed && !_sending && !_acting && _pending == null;
+  bool canReplyTo(BotGroupEvent event) =>
+      canChooseReply &&
+      event.isMessage &&
+      event.text.trim().isNotEmpty &&
+      identical(_events[event.sequence], event);
+
+  Future<void> replyTo(BotGroupEvent event) async {
+    if (!canReplyTo(event)) return;
+    final member = event.actor == 'member'
+        ? group.members.where((m) => m.id == event.actorId).firstOrNull
+        : null;
+    _reply = BotGroupReply(
+      threadId: event.threadId.isEmpty ? null : event.threadId,
+      author:
+          member?.name ?? (event.actorName.isEmpty ? 'You' : event.actorName),
+      quote: event.text
+          .split('\n')
+          .map((line) => line.trim())
+          .firstWhere((line) => line.isNotEmpty),
+    );
+    if (member != null) {
+      final token = _memberToken(member);
+      if (!composerReferenceSpans(
+        _draft,
+        selected: _references,
+      ).any((span) => span.reference.target == member.id)) {
+        _draft = '$token ${_draft.trimLeft()}';
+        _references = retainComposerReferences(_draft, [
+          ..._references,
+          ComposerReference(
+            kind: ComposerReferenceKind.agent,
+            token: token,
+            target: member.id,
+          ),
+        ]);
+      }
+    }
+    _draftRevision++;
+    notifyListeners();
+    await _saveDraft();
+  }
+
+  Future<void> cancelReply() async {
+    if (!canChooseReply || _reply == null) return;
+    _reply = null;
+    _draftRevision++;
+    notifyListeners();
+    await _saveDraft();
   }
 
   final AttachmentDraftService _attachmentService;
@@ -442,6 +497,7 @@ class BotGroupSession extends ChangeNotifier {
         pendingEventId: _pending?.$1,
         pendingWireText: _pendingWireText,
         pendingText: _pending?.$2,
+        reply: _reply,
       );
       _draftWriteRevision = preferences.messageDraftRevision(
         group.scope.connectionIdentity,
@@ -863,6 +919,7 @@ class BotGroupSession extends ChangeNotifier {
           _pendingAttachments = const [];
           if (_draft.trim() == pending.$2) {
             _draft = '';
+            _reply = null;
             _draftRevision++;
             _references = const [];
           }
@@ -969,6 +1026,7 @@ class BotGroupSession extends ChangeNotifier {
           dispatched = true;
         },
         attachments: _pendingAttachments,
+        threadId: _reply?.threadId,
       );
       final sentIds = _pendingAttachments.map((item) => item.id).toSet();
       _attachments.removeWhere((item) => sentIds.contains(item.id));
@@ -989,6 +1047,7 @@ class BotGroupSession extends ChangeNotifier {
               ) ==
               _draftWriteRevision) {
         _draft = '';
+        _reply = null;
         _draftRevision++;
         _references = const [];
         if (!_closed) notifyListeners();
@@ -1179,7 +1238,7 @@ class BotGroupSession extends ChangeNotifier {
 }
 
 /// Discussion input adapter. It lends reading facts to the same transcript used
-/// by Bot Chats and Working history, without lending room command authority.
+/// by Bot Chats and Group history, without lending room command authority.
 final class BotGroupTranscriptReading implements TranscriptReader {
   BotGroupTranscriptReading._(this._session);
   final BotGroupSession _session;

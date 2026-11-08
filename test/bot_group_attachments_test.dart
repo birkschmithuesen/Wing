@@ -42,6 +42,7 @@ class _FailingDraftPreferences extends BotsPreferences {
     String? pendingEventId,
     String? pendingWireText,
     String? pendingText,
+    BotGroupReply? reply,
   }) {
     if (failWrite) throw StateError('Device unavailable');
     return super.writeMessageDraft(
@@ -53,6 +54,7 @@ class _FailingDraftPreferences extends BotsPreferences {
       pendingEventId: pendingEventId,
       pendingWireText: pendingWireText,
       pendingText: pendingText,
+      reply: reply,
     );
   }
 

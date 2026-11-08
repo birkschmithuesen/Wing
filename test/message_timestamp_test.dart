@@ -457,7 +457,7 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
-      for (final surface in ['group', 'bot', 'history']) {
+      for (final surface in ['group', 'bot']) {
         testWidgets(
           'shared bot conversation $surface ${brightness.name} $scale',
           (tester) async {

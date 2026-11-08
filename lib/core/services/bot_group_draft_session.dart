@@ -68,7 +68,15 @@ class BotGroupDraftSession extends ChangeNotifier {
       hosts.where((host) => host.identity == _identity).firstOrNull?.label ??
       '';
   List<BotRecord> get bots => _opening.bots
-      .where((bot) => bot.scope.connectionIdentity == _identity)
+      .where(
+        (bot) =>
+            bot.scope.connectionIdentity == _identity &&
+            (editing ||
+                _opening.seatableProfiles[_identity]?.contains(
+                      bot.profile.name,
+                    ) ==
+                    true),
+      )
       .toList();
   List<BotRecord> get selected =>
       bots.where((bot) => _members.contains(bot.id)).toList();
@@ -127,7 +135,10 @@ class BotGroupDraftSession extends ChangeNotifier {
   BotRecord? appearance(BotGroupMember member) =>
       bots.where((bot) => bot.profile.name == member.profile).firstOrNull;
   bool canSelect(BotRecord bot) =>
-      editable && !editing && (contains(bot) || _members.length < 6);
+      editable &&
+      !editing &&
+      bots.any((candidate) => candidate.id == bot.id) &&
+      (contains(bot) || _members.length < 6);
   void chooseColor(ProfileColorChoice value) {
     if (!editable || value.slot == null) return;
     _iconColor = value;

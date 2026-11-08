@@ -18,8 +18,6 @@ import 'package:flutter/material.dart';
 
 import '../../widgets/selection_viewport.dart';
 import '../../services/bot_group_session.dart';
-import '../../services/bot_group_history_session.dart';
-import 'bot_group_history_screen.dart';
 import '../../models/bots.dart';
 import '../../widgets/server_connection_label.dart';
 import '../../widgets/bot_avatar.dart';
@@ -38,7 +36,7 @@ import '../../widgets/voice_input_activity.dart';
 import '../../widgets/studio_form_actions.dart';
 import 'bot_group_context_sheet.dart';
 
-enum _GroupBotAction { history, chat, settings }
+enum _GroupBotAction { chat, settings }
 
 class BotGroupScreen extends StatefulWidget {
   const BotGroupScreen({
@@ -260,6 +258,12 @@ class _BotGroupScreenState extends State<BotGroupScreen>
 
   Widget _message(TranscriptTimelineEntry entry) {
     final user = entry.role == 'user';
+    final event = _session.events
+        .where(
+          (event) =>
+              event.sequence == (entry.presentationId as (String, int)).$2,
+        )
+        .firstOrNull;
     final member = _session.group.members
         .where((member) => member.handle == entry.message.senderHandle)
         .firstOrNull;
@@ -267,6 +271,12 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       key: ValueKey<(String, int)>(entry.presentationId as (String, int)),
       group: _session.group,
       message: entry.message,
+      onReply: event != null && _session.canReplyTo(event)
+          ? () {
+              unawaited(_session.replyTo(event));
+              _focus.requestFocus();
+            }
+          : null,
       loadAttachmentImage: (target) async =>
           (await _session.downloadAttachment(target)).bytes,
       onDownloadAttachment: (output) async =>
@@ -680,12 +690,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
           const PopupMenuDivider(height: 9),
           for (final (action, label, icon, enabled) in [
             (
-              _GroupBotAction.history,
-              'View working history',
-              Icons.history_outlined,
-              true,
-            ),
-            (
               _GroupBotAction.chat,
               'Chat directly',
               Icons.chat_bubble_outline,
@@ -737,8 +741,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       if (!mounted || ModalRoute.isCurrentOf(context) != true) return;
       final currentBot = _session.appearance(member.profile);
       switch (action) {
-        case _GroupBotAction.history:
-          await _openWorkingHistories(member);
         case _GroupBotAction.chat:
           if (currentBot != null) await widget.onOpenBotChat?.call(currentBot);
         case _GroupBotAction.settings:
@@ -781,33 +783,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       if (mounted && updated != null) {
         _session.updateDetails(updated);
       }
-    } finally {
-      _inspectingDetails = false;
-      if (mounted) _syncVisibility();
-    }
-  }
-
-  Future<void> _openWorkingHistories([BotGroupMember? member]) async {
-    _focus.unfocus();
-    _inspectingDetails = true;
-    _syncVisibility();
-    try {
-      await Navigator.of(context).push<void>(
-        MaterialPageRoute(
-          builder: (_) => InheritedTheme.captureAll(
-            context,
-            BotGroupHistoryScreen(
-              initialMemberId: member?.id,
-              appearanceForMember: _session.appearance,
-              createSession: () => BotGroupHistorySession(
-                _session.repository,
-                _session.group,
-                readingPositions: _session.preferences.readingPositions,
-              ),
-            ),
-          ),
-        ),
-      );
     } finally {
       _inspectingDetails = false;
       if (mounted) _syncVisibility();
@@ -866,8 +841,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             onSelected: (action) async {
               final menuClosed = _retireOptionsMenu();
               switch (action) {
-                case 'histories':
-                  await _openWorkingHistories();
                 case 'refresh':
                   await _refreshGroup(menuClosed: menuClosed);
                 case 'stop':
@@ -885,10 +858,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               }
             },
             itemBuilder: (_) => [
-              const StudioPopupMenuItem(
-                value: 'histories',
-                child: Text('Bot working histories'),
-              ),
               if (_session.canEditContext)
                 const StudioPopupMenuItem(
                   value: 'context',
@@ -1057,6 +1026,45 @@ class _BotGroupScreenState extends State<BotGroupScreen>
         valueListenable: _composer,
         builder: (context, _, _) => ConversationComposer(
           beforeField: [
+            if (_session.reply case final reply?)
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 4,
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.reply_outlined, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Replying to ${reply.author}',
+                            style: Theme.of(context).textTheme.labelMedium,
+                          ),
+                          Text(
+                            reply.quote,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                    StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Cancel reply',
+                        onPressed: _session.canChooseReply
+                            ? () => unawaited(_session.cancelReply())
+                            : null,
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             if (_session.attachments.isNotEmpty ||
                 _session.attachmentPreparation != null)
               ComposerAttachmentStrip(

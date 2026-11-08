@@ -114,6 +114,7 @@ class BotsPreferences {
     String? pendingEventId,
     String? pendingWireText,
     String? pendingText,
+    BotGroupReply? reply,
   })?
   messageDraft(String identity, String roomId) {
     final key = _messageDraftKey(identity, roomId);
@@ -135,6 +136,11 @@ class BotsPreferences {
       pendingEventId: record['pending_event_id'] as String?,
       pendingWireText: record['pending_wire_text'] as String?,
       pendingText: record['pending_text'] as String?,
+      reply: record['reply'] == null
+          ? null
+          : BotGroupReply.fromJson(
+              Map<String, dynamic>.from(record['reply'] as Map),
+            ),
     );
   }
 
@@ -171,10 +177,14 @@ class BotsPreferences {
     String? pendingEventId,
     String? pendingWireText,
     String? pendingText,
+    BotGroupReply? reply,
   }) {
     final key = _messageDraftKey(identity, roomId);
     final encoded =
-        text.isEmpty && attachments.isEmpty && pendingEventId == null
+        text.isEmpty &&
+            attachments.isEmpty &&
+            pendingEventId == null &&
+            reply == null
         ? null
         : jsonEncode({
             'text': text,
@@ -183,6 +193,7 @@ class BotsPreferences {
             'pending_event_id': ?pendingEventId,
             'pending_wire_text': ?pendingWireText,
             'pending_text': ?pendingText,
+            'reply': ?reply?.toJson(),
           });
     final writes = _writes;
     writes.pending[key] = encoded;

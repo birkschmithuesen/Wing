@@ -169,7 +169,7 @@ void main() {
                       scope: controller.current!.scope,
                       instance: 'Host',
                       read: bots.read,
-                      savedHistory: bots.savedHistory,
+
                       command: bots.command,
                       ownership: bots.ownership,
                     ),

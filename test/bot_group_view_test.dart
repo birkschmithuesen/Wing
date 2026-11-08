@@ -8,7 +8,6 @@ import 'package:wing/core/widgets/profile_tool_call.dart';
 import 'package:wing/core/screens/profile_transcript.dart';
 import 'package:wing/core/services/bots_preferences.dart';
 import 'package:wing/core/models/bots.dart';
-import 'package:wing/core/screens/bots/bot_group_history_screen.dart';
 import 'package:wing/core/models/profile_colors.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/wing_app_bar.dart';
@@ -2075,7 +2074,7 @@ void main() {
           await tester.tap(find.byTooltip('Group options'));
           await tester.pumpAndSettle();
           expect(find.text('Edit group'), findsNothing);
-          expect(find.text('Bot working histories'), findsOneWidget);
+          expect(find.text('Bot working histories'), findsNothing);
           expect(find.text('Refresh group'), findsOneWidget);
           await _render(
             tester,
@@ -2095,7 +2094,7 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
-        'bot avatar popup has only three scoped actions ${brightness.name} $scale',
+        'bot avatar popup has only two scoped actions ${brightness.name} $scale',
         (tester) async {
           tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
           tester.view.devicePixelRatio = 1;
@@ -2106,17 +2105,6 @@ void main() {
             _event(1, 'message.member', 'atlas', 'Atlas room reply'),
             _event(2, 'message.member', 'mira', 'Mira room reply'),
           ]);
-          fixture.workerRows['mira'] = [
-            {
-              'id': 'mira-root',
-              'resolved_id': 'mira-tip',
-              'title': 'Group: room-1',
-              'source': 'bot_room',
-            },
-          ];
-          fixture.workerMessages['mira'] = [
-            {'id': 1, 'role': 'assistant', 'content': 'Mira internal work'},
-          ];
           final group = (await readFixtureGroups(
             fixture.repository,
             groupMessages: null,
@@ -2206,7 +2194,7 @@ void main() {
             isTrue,
           );
           final buttons = [
-            for (final action in ['history', 'chat', 'settings'])
+            for (final action in ['chat', 'settings'])
               find.byKey(ValueKey(('group-bot-action', action))),
           ];
           for (final button in buttons) {
@@ -2225,7 +2213,7 @@ void main() {
               isTrue,
             );
           }
-          expect(find.text('View working history'), findsOneWidget);
+          expect(find.text('View working history'), findsNothing);
           expect(find.text('Chat directly'), findsOneWidget);
           expect(find.text('Bot settings'), findsOneWidget);
           final panel = find
@@ -2336,15 +2324,7 @@ void main() {
           await tester.sendKeyEvent(LogicalKeyboardKey.enter);
           await tester.pumpAndSettle();
           await _settleGroupMarkdown(tester);
-          expect(find.byType(BotGroupHistoryScreen), findsOneWidget);
-          expect(fixture.historyReads.single, ('mira', 'mira-tip', 0));
-          expect(
-            tester
-                .widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Mira'))
-                .selected,
-            isTrue,
-          );
-          expect(find.text('Mira internal work'), findsOneWidget);
+          expect(find.text('Mira private chat'), findsOneWidget);
           navigator.currentState!.pop();
           await tester.pumpAndSettle();
           await tester.tap(avatar);
@@ -2371,65 +2351,66 @@ void main() {
     }
   }
 
-  testWidgets('missing bot keeps room history but disables profile shortcuts', (
-    tester,
-  ) async {
-    final fixture = BotsFixture();
-    fixture.events.add(_event(1, 'message.member', 'mira', 'Saved Mira reply'));
-    final group = (await readFixtureGroups(
-      fixture.repository,
-      groupMessages: null,
-    )).first;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: BotGroupScreen(
-          stopVoicePlayback: () async {},
-          voiceInputSettings: () => const LocalVoiceInputSettings(language: ''),
-          createSession: () => BotGroupSession(
-            fixture.repository,
-            group,
-            reads: BotGroupReadState(),
-            preferences: groupPreferences,
-            groupMessages: null,
-            appearances: FixedGroupAppearances([]),
+  testWidgets(
+    'missing bot disables profile shortcuts without offering private history',
+    (tester) async {
+      final fixture = BotsFixture();
+      fixture.events.add(
+        _event(1, 'message.member', 'mira', 'Saved Mira reply'),
+      );
+      final group = (await readFixtureGroups(
+        fixture.repository,
+        groupMessages: null,
+      )).first;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: BotGroupScreen(
+            stopVoicePlayback: () async {},
+            voiceInputSettings: () =>
+                const LocalVoiceInputSettings(language: ''),
+            createSession: () => BotGroupSession(
+              fixture.repository,
+              group,
+              reads: BotGroupReadState(),
+              preferences: groupPreferences,
+              groupMessages: null,
+              appearances: FixedGroupAppearances([]),
+            ),
+            onOpenBotChat: (_) async => fail('Unavailable bot must not open'),
+            onOpenBotSettings: (_) async =>
+                fail('Unavailable bot must not open'),
           ),
-          onOpenBotChat: (_) async => fail('Unavailable bot must not open'),
-          onOpenBotSettings: (_) async => fail('Unavailable bot must not open'),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Options for Mira'));
-    await tester.pumpAndSettle();
-    expect(
-      tester
-          .widget<PopupMenuItem>(
-            find.byKey(const ValueKey(('group-bot-action', 'history'))),
-          )
-          .enabled,
-      isTrue,
-    );
-    expect(
-      tester
-          .widget<PopupMenuItem>(
-            find.byKey(const ValueKey(('group-bot-action', 'chat'))),
-          )
-          .enabled,
-      isFalse,
-    );
-    expect(
-      tester
-          .widget<PopupMenuItem>(
-            find.byKey(const ValueKey(('group-bot-action', 'settings'))),
-          )
-          .enabled,
-      isFalse,
-    );
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
-  });
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Options for Mira'));
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey(('group-bot-action', 'history'))),
+        findsNothing,
+      );
+      expect(
+        tester
+            .widget<PopupMenuItem>(
+              find.byKey(const ValueKey(('group-bot-action', 'chat'))),
+            )
+            .enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<PopupMenuItem>(
+              find.byKey(const ValueKey(('group-bot-action', 'settings'))),
+            )
+            .enabled,
+        isFalse,
+      );
+      await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets('covered group editor stays paused across app resume', (
     tester,
@@ -3097,7 +3078,7 @@ void main() {
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 400));
         await tester.pump();
-        expect(find.text('Bot working histories'), findsOneWidget);
+        expect(find.text('Bot working histories'), findsNothing);
         expect(find.byIcon(Icons.pending_outlined), findsNothing);
         expect(
           find.descendant(

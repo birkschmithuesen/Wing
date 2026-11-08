@@ -536,7 +536,7 @@ void main() {
         read: second.read,
         command: second.command,
         ownership: second.ownership,
-        savedHistory: second.savedHistory,
+
       );
       final owner = BotsSession((_) async => [first.repository, other]);
       addTearDown(owner.dispose);

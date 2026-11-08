@@ -13,6 +13,8 @@ Feature ID: `chat-inputs`.
 - `chat-inputs.revise` — Edit, restore or regenerate using revision-fenced saved row targets. Deep revision explains the number of later user turns removed; harmless last-turn regeneration remains immediate. Fork requires an idle source.
 - `chat-inputs.clarify` — Use the explicit icon in a waiting question to answer with plain composer text. Slash commands, references and attachments retain their own submission semantics. A newer draft is never consumed by an earlier answer.
 
+Group message Reply selects an existing discussion thread and mentions its member author. Cancel reply clears that selection. The room draft retains reply context across reopening and uncertain-send retry; see [Bots](bots.md).
+
 ## How to get to it (user POV)
 
 Write in the chat composer and Send. Hold the action button for steer or queue choices. Open queued work to edit it; use saved-message actions to edit or Restore and saved-answer actions to regenerate or fork.

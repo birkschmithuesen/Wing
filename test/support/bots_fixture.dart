@@ -7,7 +7,6 @@ import 'dart:convert';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/bots_repository.dart';
 import 'package:wing/core/services/administration_repository.dart';
-import 'package:wing/core/services/profile_gateway.dart';
 
 /// Modern stock shapes, with explicit authority and per-key revisions.
 class BotsFixture {
@@ -36,10 +35,6 @@ class BotsFixture {
   ];
   final commands = <(String, String, Map<String, dynamic>)>[];
   final events = <Map<String, dynamic>>[];
-  final historyReads = <(String, String, int)>[];
-  final workerRows = <String, List<Map<String, dynamic>>>{};
-  final workerMessages = <String, List<Map<String, dynamic>>>{};
-  Future<ProfileHistoryPage> Function(String, String, int)? historyHook;
   final room = <String, dynamic>{
     'room_id': 'room-1',
     'name': 'Research team',
@@ -86,7 +81,7 @@ class BotsFixture {
     instance: 'Home server',
     server: server,
     read: read,
-    savedHistory: savedHistory,
+
     command: command,
     ownership: ownership,
     now: now,
@@ -108,21 +103,6 @@ class BotsFixture {
       page,
       since: since,
     );
-  }
-
-  Future<ProfileHistoryPage> savedHistory(
-    String profile,
-    String session,
-    int offset,
-  ) async {
-    historyReads.add((profile, session, offset));
-    if (historyHook != null) {
-      return await historyHook!(profile, session, offset);
-    }
-    final rows = workerMessages[profile] ?? const <Map<String, dynamic>>[];
-    final end = (rows.length - offset).clamp(0, rows.length);
-    final start = (end - 20).clamp(0, end);
-    return ProfileHistoryPage(session, rows.sublist(start, end), offset, 20);
   }
 
   static Map<String, dynamic> profile(
@@ -235,7 +215,7 @@ class BotsFixture {
     }
     return switch (method) {
       'session.resume' => passiveSnapshot(params),
-      'session.list' => {'sessions': workerRows[profile] ?? []},
+      'session.list' => {'sessions': <Map<String, dynamic>>[]},
       'profiles.list' => {
         'profiles': jsonDecode(jsonEncode(profiles)),
         'bot_mode_protocol': true,
@@ -259,7 +239,9 @@ class BotsFixture {
       },
       'groups.capabilities' => {
         'driver': true,
+        'seatable_profiles': profiles.map((row) => row['name']).toList(),
         'methods': [
+          'groups.create',
           'groups.send',
           'groups.stop',
           'groups.retry',

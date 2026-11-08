@@ -500,6 +500,13 @@ final class BotGroupState {
   }
 }
 
+class BotGroupCreateRefused implements Exception {
+  const BotGroupCreateRefused(this.message);
+  final String message;
+  @override
+  String toString() => message;
+}
+
 class BotGroupEditConflict implements Exception {
   const BotGroupEditConflict(this.message);
   final String message;
@@ -598,6 +605,28 @@ class BotGroupEvent {
   bool get isPass => kind == 'turn.settled' && passedMemberId != null;
   bool get isTranscriptEntry => isMessage || isPass;
   String get memberId => isPass ? passedMemberId! : actorId;
+}
+
+/// A local reply target; it does not grant access to a worker conversation.
+@immutable
+class BotGroupReply {
+  const BotGroupReply({
+    required this.threadId,
+    required this.author,
+    required this.quote,
+  });
+  final String? threadId;
+  final String author, quote;
+  Map<String, Object?> toJson() => {
+    'thread_id': threadId,
+    'author': author,
+    'quote': quote,
+  };
+  factory BotGroupReply.fromJson(Map<String, dynamic> value) => BotGroupReply(
+    threadId: value['thread_id'] as String?,
+    author: value['author'] as String,
+    quote: value['quote'] as String,
+  );
 }
 
 @immutable
@@ -759,15 +788,24 @@ class BotsSnapshot {
     this.busy = false,
     Iterable<String> errors = const [],
     Iterable<String> groupHosts = const [],
+    Map<String, Set<String>> seatableProfiles = const {},
     Iterable<BotInstance> instances = const [],
   }) : bots = List.unmodifiable(bots),
        groups = List.unmodifiable(groups),
        errors = List.unmodifiable(errors),
        groupHosts = List.unmodifiable(groupHosts),
+       seatableProfiles = Map.unmodifiable(
+         seatableProfiles.map(
+           (key, value) => MapEntry(key, Set<String>.unmodifiable(value)),
+         ),
+       ),
        instances = List.unmodifiable(instances);
   final List<BotRecord> bots;
   final List<BotGroup> groups;
   final List<String> errors, groupHosts;
+
+  /// Current group-creation eligibility, keyed by authenticated instance.
+  final Map<String, Set<String>> seatableProfiles;
   final List<BotInstance> instances;
   final bool loading, busy;
   final bool botsAvailable, groupsAvailable;

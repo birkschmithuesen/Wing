@@ -161,6 +161,7 @@ class BotGroupMessage extends StatelessWidget {
     required this.senderAvatarVisible,
     this.loadImages = true,
     this.onSenderTap,
+    this.onReply,
     this.loadAttachmentImage,
     this.onDownloadAttachment,
   });
@@ -172,6 +173,7 @@ class BotGroupMessage extends StatelessWidget {
   final bool senderAvatarVisible;
   final bool loadImages;
   final void Function(BuildContext anchor)? onSenderTap;
+  final VoidCallback? onReply;
 
   @override
   Widget build(BuildContext context) => BotMentionScope(
@@ -184,6 +186,7 @@ class BotGroupMessage extends StatelessWidget {
           ? null
           : _GroupBubblePalette.forMessage(context, message.senderHandle),
       onSenderTap: onSenderTap,
+      onReply: onReply,
       loadImages: loadImages,
       loadAttachmentImage: loadAttachmentImage,
       onDownloadRemoteFile: onDownloadAttachment,

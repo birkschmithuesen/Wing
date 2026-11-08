@@ -1227,7 +1227,7 @@ void main() {
             scope: controller.current!.scope,
             instance: 'Host',
             read: botFixture.read,
-            savedHistory: botFixture.savedHistory,
+
             command: (_, _, _, _, _) async => throw StateError('Passive only'),
             ownership: (_, _) async => throw StateError('No runtime reads'),
           ),

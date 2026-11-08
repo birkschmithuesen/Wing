@@ -1695,7 +1695,7 @@ void main() {
               read: fixture.read,
               command: fixture.command,
               ownership: fixture.ownership,
-              savedHistory: fixture.savedHistory,
+
             ),
         ];
         final session = BotsSession((_) async => sources);
@@ -2097,7 +2097,7 @@ void main() {
       read: other.read,
       command: other.command,
       ownership: other.ownership,
-      savedHistory: other.savedHistory,
+
     );
     final owner = BotsSession((_) async => [active.repository, repository]);
     addTearDown(owner.dispose);
@@ -2395,7 +2395,7 @@ void main() {
       read: fixture.read,
       command: fixture.command,
       ownership: fixture.ownership,
-      savedHistory: fixture.savedHistory,
+
       retain: () => retained++,
       release: () => released++,
     );
@@ -2529,7 +2529,7 @@ void main() {
         read: second.read,
         command: second.command,
         ownership: second.ownership,
-        savedHistory: second.savedHistory,
+
       );
       final started = Completer<void>(), release = Completer<void>();
       first.readHook = (_, method, _) async {
@@ -3311,7 +3311,7 @@ void main() {
         scope: fixture.repository.scope,
         instance: fixture.repository.instance,
         read: fixture.read,
-        savedHistory: fixture.savedHistory,
+
         command: fixture.command,
         ownership: fixture.ownership,
         retain: () => retains++,
@@ -3443,7 +3443,7 @@ void main() {
       ),
       instance: 'Other',
       read: fixture.read,
-      savedHistory: fixture.savedHistory,
+
       command: fixture.command,
       ownership: fixture.ownership,
     );
@@ -4198,7 +4198,7 @@ void main() {
       ),
       instance: 'Other',
       read: fixture.read,
-      savedHistory: fixture.savedHistory,
+
       command: fixture.command,
       ownership: fixture.ownership,
     );

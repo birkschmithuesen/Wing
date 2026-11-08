@@ -1033,7 +1033,7 @@ class ProfileGateway {
         id.isEmpty ||
         tipId is! String ||
         tipId.isEmpty ||
-        summary['title'] != 'Bot Chat') {
+        summary['root_title'] != 'Bot Chat') {
       throw const FormatException('Invalid canonical Bot Chat');
     }
     final root = await sessionMetadata(id);

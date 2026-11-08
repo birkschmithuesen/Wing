@@ -135,6 +135,84 @@ void main() {
   }
 
   test(
+    'new group uses seatable profiles and rechecks eligibility before create',
+    () async {
+      var now = DateTime.utc(2026, 11, 8);
+      final (fixture, session) = await roster(now: () => now);
+      final capabilities = await fixture.read(
+        'default',
+        'groups.capabilities',
+        {},
+      );
+      var eligible = ['atlas', 'mira'];
+      fixture.readHook = (_, method, _) async => method == 'groups.capabilities'
+          ? {...capabilities, 'seatable_profiles': eligible}
+          : null;
+      now = now.add(const Duration(seconds: 31));
+      await session.refresh();
+      final draft = BotGroupDraftSession(session);
+      addTearDown(draft.dispose);
+      expect(
+        draft.bots.map((bot) => bot.profile.name),
+        unorderedEquals(eligible),
+      );
+      final excluded = session.state.bots.firstWhere(
+        (bot) => bot.profile.name == 'forge',
+      );
+      expect(draft.canSelect(excluded), false);
+      for (final bot in draft.bots) {
+        draft.select(bot, true);
+      }
+      expect(draft.canSave, true);
+      eligible = ['atlas'];
+      expect(await draft.save(canUse: () => true), false);
+      expect(
+        fixture.commands.where((command) => command.$2 == 'groups.create'),
+        isEmpty,
+      );
+      expect(draft.error, contains('cannot join'));
+      expect(draft.selected, hasLength(2));
+      await session.refresh();
+      final reopened = BotGroupDraftSession(session);
+      addTearDown(reopened.dispose);
+      expect(reopened.bots.map((bot) => bot.profile.name), ['atlas']);
+      final editing = BotGroupDraftSession(
+        session,
+        existing: session.state.groups.single,
+      );
+      addTearDown(editing.dispose);
+      expect(editing.bots.map((bot) => bot.profile.name), contains('mira'));
+    },
+  );
+
+  test(
+    'group create retires during eligibility read without dispatch',
+    () async {
+      final (fixture, session) = await roster();
+      final capabilities = await fixture.read(
+        'default',
+        'groups.capabilities',
+        {},
+      );
+      final held = Completer<Map<String, dynamic>>();
+      fixture.readHook = (_, method, _) async =>
+          method == 'groups.capabilities' ? held.future : null;
+      var active = true;
+      final create = fixture.repository.createGroup(
+        'new-room',
+        'New room',
+        session.state.bots.take(2).toList(),
+        () => active,
+        () {},
+      );
+      active = false;
+      held.complete(capabilities);
+      await expectLater(create, throwsStateError);
+      expect(fixture.commands, isEmpty);
+    },
+  );
+
+  test(
     'room picture prompt survives editor and preferences reconstruction',
     () async {
       final (fixture, session, _) = await editingRoster();
@@ -1158,7 +1236,7 @@ void main() {
         ),
         instance: 'Studio server',
         read: fixture.read,
-        savedHistory: fixture.savedHistory,
+
         command: fixture.command,
         ownership: fixture.ownership,
       );

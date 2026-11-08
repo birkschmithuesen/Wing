@@ -159,7 +159,7 @@ Your bubbles show your message without a User label. Bot replies show the
 sender's saved avatar and name, formatted text, links, code and timestamps.
 Bot and user Copy actions sit in their colored bottom rows. Long bot answers use
 the available reading width; your bubbles remain right-aligned and clear of the
-framed avatar. Discussions, Bot Chats and working histories use the same transcript renderer,
+framed avatar. Discussions and Bot Chats use the same transcript renderer,
 including reading-position anchoring, Latest/New activity navigation, Copy and
 message viewers. Bot Chats and Working history use the same streamed reasoning,
 tool timeline, Tasks/Agents viewers and working Wing. Group discussions show the
@@ -227,7 +227,7 @@ Tap the people icon under the title for a compact member list anchored beneath
 that button, with saved names and avatars. Tap outside or use Back
 to dismiss it. Without a saved room picture, the conversation shows its
 member-avatar collage.
-The ellipsis menu contains working histories, Shared settings, Refresh and Stop.
+The ellipsis menu contains Member activity, Shared settings, Refresh and Stop.
 Shared settings edits purpose, shared notes and routing for future discussions.
 Purpose allows 500 characters and notes allow 4 KB of UTF-8 text. Everyone gives
 each member a turn on an unaddressed message. Lead lets a selected member choose
@@ -338,37 +338,26 @@ when the outcome is uncertain. Raw details keeps the exact receipts.
 An unmatched “Bot delivery process finished” notice stays separate. Expand
 Output to inspect the runner's command and result.
 
-## Bot working histories
+## Group replies and activity
 
-Internal group-worker sessions stay out of Recents and ordinary chat notifications.
-To inspect one, open the group, choose **⋯ → Bot working histories**, then select
-a bot. The viewer is read only: it loads saved messages without starting a bot
-turn. It uses the normal chat transcript, including reasoning and tool sections,
-automatic older-page loading and the latest-message arrow. It opens with the
-latest 20 visible conversation messages, or all available when there are fewer,
-fetching past recent tool-only pages automatically. Older pages load as you scroll.
-Switching back to a bot
-keeps its loaded history and reading position for this visit. Refresh rereads the
-saved history with progress in the header. While the bot works, the same chat
-renderer shows live reasoning segments, tool activity, Tasks/Agents and the
-pulsating working Wing with the normal chat wording. Worker observation stays
-read only and does not take over that bot’s session. Back returns to the shared group
-and preserves your draft. Send group messages from the group composer.
+Use the reply icon below a message to continue that discussion thread. Wing
+shows the selected message above the composer and adds a mention when replying
+to a bot. Cancel reply clears the thread selection. An unconfirmed send keeps
+its selected thread through retry and reopening.
 
-Unavailable history is labelled separately from a failed read. Send messages
-from the shared group or the bot's continuing chat.
+The shared discussion contains the room’s public history. Open **Group options →
+Member activity** for reported member progress. Private group-worker transcripts
+are not exposed by the current canonical Hermes API or Desktop group view.
+
+New group offers only local bots the gateway currently permits as members.
+Create checks the list again; if eligibility changes, reopen New group to choose
+members again. Existing groups retain their fixed membership.
 
 [Administration](ADMINISTRATION.md) · [Chats](CHATS.md)
-
-Working history uses the shared conversation renderer. If a refresh fails,
-received text stays visible while Wing retries reading the saved answer.
-Image previews use the same renderer as the other conversation screens,
-including inside Activity details.
 
 ### Shared conversation presentation
 
 Normal chats, Bot Chats and groups share page framing, transcript layout, reading
 mode and the responsive composer. Groups retain their room-specific execution,
-member mentions and available actions. Bot working histories use that same page
-layout for read-only internal conversations, with a member selector and Activity.
+member mentions, reply threads and available actions.
 Reading mode hides context and footer; Back restores them before leaving.

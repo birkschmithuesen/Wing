@@ -439,7 +439,12 @@ void main() {
       fixture.readHook = (_, method, _) async {
         if (method == 'groups.capabilities') {
           readinessReads++;
-          return driver == null ? {} : {'driver': driver};
+          return driver == null
+              ? {}
+              : {
+                  'driver': driver,
+                  'seatable_profiles': ['atlas', 'mira', 'forge'],
+                };
         }
         return null;
       };

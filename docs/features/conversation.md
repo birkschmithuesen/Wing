@@ -7,7 +7,7 @@ Feature ID: `conversation`.
 ## Sub-features
 
 - `conversation.read` — Reconcile live and saved messages. Steering becomes a normal user bubble when it appears in saved history, including on reopen and cached reading; see the [steering recipe](chat-inputs.md#gotchas). Saved history opens independently of runtime attachment; an attachment refusal keeps messages and drafts visible, with Retry to enable sending.
-- Normal chats, canonical Bot Chats, group discussions and bot working histories share the conversation frame and reading layout. Passive Recents cards use the same frame and composer presentation.
+- Normal chats, canonical Bot Chats and group discussions share the conversation frame and reading layout. Passive Recents cards use the same frame and composer presentation.
 - `conversation.reading-mode` — Use a table’s full-screen icon to hide the composer and portrait context row without leaving the conversation. The same icon or Android Back restores it; drafts remain intact. Landscape puts title and scope in one header row.
 - `conversation.search` — Find and open older content.
 - Async delegation completion flags keep model-facing wake text out of conversation bubbles and Find. Useful completion results remain in Activity and searchable; quoted examples stay readable.
@@ -101,7 +101,7 @@ local rows; a failed read preserves them. Command and review notices keep their
 place between retained reply segments, including segments with identical text.
 
 ```sh
-flutter test --no-pub test/reply_segment_identity_test.dart test/bot_group_history_test.dart test/reading_snapshot_message_test.dart test/workspace_reading_snapshot_test.dart
+flutter test --no-pub test/reply_segment_identity_test.dart test/reading_snapshot_message_test.dart test/workspace_reading_snapshot_test.dart
 ```
 
 

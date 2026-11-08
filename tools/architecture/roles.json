@@ -891,11 +891,6 @@
       "feature": "bots",
       "library": "lib/core/screens/bots/bot_group_context_sheet.dart"
     },
-    "lib/core/screens/bots/bot_group_history_screen.dart": {
-      "role": "view",
-      "feature": "bots",
-      "library": "lib/core/screens/bots/bot_group_history_screen.dart"
-    },
     "lib/core/screens/bots/bot_group_screen.dart": {
       "role": "view",
       "feature": "bots",
@@ -1170,11 +1165,6 @@
       "role": "application",
       "feature": "bots",
       "library": "lib/core/services/bot_group_draft_session.dart"
-    },
-    "lib/core/services/bot_group_history_session.dart": {
-      "role": "application",
-      "feature": "bots",
-      "library": "lib/core/services/bot_group_history_session.dart"
     },
     "lib/core/services/bot_group_read_state.dart": {
       "role": "data",

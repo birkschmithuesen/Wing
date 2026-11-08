@@ -378,8 +378,6 @@ Future<void> _incomingJourney(
     ownership: (profile, ids) async => ids
         .where((id) => host.sessions(profile).any((row) => row['id'] == id))
         .toSet(),
-    savedHistory: (profile, id, offset) =>
-        gatewayFor(profile).history(id, offset: offset),
   );
   host.groupReply(1);
   final bots = BotsSession((_) async => [repository]);

@@ -16,6 +16,7 @@ import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_form_actions.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/background_markdown_content.dart';
 
 import 'support/bots_fixture.dart';
 
@@ -76,6 +77,107 @@ void main() {
       }),
     );
   }
+
+  test(
+    'reply keeps the selected thread and mention through refusal and reopen',
+    () async {
+      fixture.events.add({
+        ...event(1, 'member-answer', 'message.member', {
+          'text': 'First answer\nMore detail',
+          'thread_id': 'original-thread',
+        }),
+        'actor': {'kind': 'member', 'id': 'atlas', 'display_name': 'Atlas'},
+      });
+      var session = owner();
+      await session.refresh();
+      await session.editMentions('Follow up');
+      await session.replyTo(session.events.single);
+      expect(session.reply!.threadId, 'original-thread');
+      expect(session.reply!.quote, 'First answer');
+      expect(session.draftText, '@Atlas Follow up');
+      await session.replyTo(session.events.single);
+      expect(session.draftText, '@Atlas Follow up');
+      expect(fixture.commands, isEmpty);
+      fixture.commandHook = (_, method, _) async {
+        if (method == 'groups.send') {
+          throw JsonRpcError(method, 'Refused', data: {'admitted': false});
+        }
+        return null;
+      };
+      expect(await session.send(session.draftText), false);
+      expect(session.canChooseReply, true);
+      expect(session.reply!.threadId, 'original-thread');
+      fixture.commandHook = (_, method, _) async {
+        if (method == 'groups.send') throw StateError('Connection lost');
+        return null;
+      };
+      expect(await session.send(session.draftText), false);
+      final attempt = fixture.commands.last.$3;
+      expect((attempt['payload'] as Map)['thread_id'], 'original-thread');
+      expect(session.canChooseReply, false);
+      await session.cancelReply();
+      expect(session.reply, isNotNull);
+      session.dispose();
+      SharedPreferences.resetStatic();
+      preferences = await BotsPreferences.load();
+      session = owner();
+      addTearDown(session.dispose);
+      expect(session.reply!.threadId, 'original-thread');
+      expect(session.draftText, '@Atlas Follow up');
+      fixture.commandHook = null;
+      expect(await session.send(session.draftText), true);
+      expect(fixture.commands.last.$3, attempt);
+      expect(session.reply, isNull);
+      expect(session.draftText, isEmpty);
+      expect(
+        preferences.messageDraft(group.scope.connectionIdentity, group.id),
+        isNull,
+      );
+    },
+  );
+
+  test(
+    'cancel reply returns to a new thread and rejects foreign message targets',
+    () async {
+      fixture.events.add(
+        event(1, 'question', 'message.user', {
+          'text': 'Question',
+          'thread_id': 'original-thread',
+        }),
+      );
+      final session = owner();
+      addTearDown(session.dispose);
+      await session.refresh();
+      await session.replyTo(session.events.single);
+      expect(session.draftText, isEmpty);
+      expect(session.reply, isNotNull);
+      expect(
+        preferences.messageDraft(
+          group.scope.connectionIdentity,
+          'another-room',
+        ),
+        isNull,
+      );
+      final foreign = BotGroupEvent(
+        sequence: 1,
+        eventId: 'foreign',
+        kind: 'message.user',
+        actor: 'gateway',
+        actorId: 'other',
+        actorName: 'Other',
+        timestamp: DateTime(2026),
+        text: 'Other',
+      );
+      await session.replyTo(foreign);
+      expect(session.reply!.threadId, 'original-thread');
+      await session.cancelReply();
+      expect(session.reply, isNull);
+      await session.editMentions('New discussion');
+      expect(await session.send(session.draftText), true);
+      final command = fixture.commands.last.$3;
+      expect((command['payload'] as Map)['thread_id'], command['event_id']);
+    },
+  );
 
   test(
     'definite refusal restores editable persisted draft; unknown keeps same identity',
@@ -168,6 +270,7 @@ void main() {
       fixture.readHook = (_, method, _) async => method == 'groups.capabilities'
           ? {
               'driver': true,
+              'seatable_profiles': ['atlas', 'mira'],
               'methods': ['groups.state'],
             }
           : null;
@@ -542,6 +645,19 @@ void main() {
   Future<void> render(WidgetTester tester, GlobalKey key, String name) async {
     if (!capture) return;
     await tester.pump(const Duration(milliseconds: 300));
+    for (var attempt = 0; attempt < 200; attempt++) {
+      final pending = tester
+          .stateList<BackgroundMarkdownContentState>(
+            find.byType(BackgroundMarkdownContent, skipOffstage: false),
+          )
+          .any((state) => state.pending);
+      if (!pending) break;
+      if (attempt == 199) fail('Group Markdown did not settle for capture');
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 16));
+    }
     await tester.runAsync(() async {
       final image =
           await (key.currentContext!.findRenderObject()!
@@ -603,6 +719,106 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets('reply selection and held send ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        fixture.events.add({
+          ...event(1, 'answer', 'message.member', {
+            'text': 'Check the trend over the last week.',
+            'thread_id': 'health-thread',
+          }),
+          'actor': {'kind': 'member', 'id': 'atlas', 'display_name': 'Atlas'},
+        });
+        final session = owner();
+        final frame = GlobalKey();
+        await tester.pumpWidget(
+          RepaintBoundary(
+            key: frame,
+            child: MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: BotGroupScreen(
+                createSession: () => session,
+                stopVoicePlayback: () async {},
+                voiceInputSettings: () => null,
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Reply to message'));
+        await tester.pump();
+        final input = find.byKey(const ValueKey('group-message-composer'));
+        expect(find.text('Replying to Atlas'), findsOneWidget);
+        expect(tester.widget<TextField>(input).controller!.text, '@Atlas ');
+        expect(fixture.commands, isEmpty);
+        tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+        await tester.pumpAndSettle();
+        await render(tester, frame, 'reply-keyboard-${brightness.name}-$scale');
+        await tester.tap(find.byTooltip('Cancel reply'));
+        await tester.pump();
+        expect(find.text('Replying to Atlas'), findsNothing);
+        tester.view.viewInsets = const FakeViewPadding();
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Reply to message'));
+        await tester.pumpAndSettle();
+        await tester.enterText(input, '@Atlas Explain the trend');
+        final held = Completer<void>();
+        fixture.commandHook = (_, method, _) async {
+          if (method == 'groups.send') {
+            await held.future;
+            throw StateError('Connection lost');
+          }
+          return null;
+        };
+        await tester.tap(find.byTooltip('Send group message'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.pump();
+        expect(session.sending, true, reason: session.error);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(find.text('Replying to Atlas'), findsOneWidget);
+        expect(
+          tester
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is IconButton && widget.tooltip == 'Cancel reply',
+                ),
+              )
+              .onPressed,
+          isNull,
+        );
+        await render(tester, frame, 'reply-pending-${brightness.name}-$scale');
+        held.complete();
+        await tester.pumpAndSettle();
+        expect(
+          find.text('Message not confirmed · Retry the same message'),
+          findsOneWidget,
+        );
+        expect(find.text('Replying to Atlas'), findsOneWidget);
+        await render(tester, frame, 'reply-failed-${brightness.name}-$scale');
+        final attempt = fixture.commands.last.$3;
+        expect((attempt['payload'] as Map)['thread_id'], 'health-thread');
+        fixture.commandHook = null;
+        await tester.tap(find.byTooltip('Retry same message'));
+        await tester.pumpAndSettle();
+        expect(fixture.commands.last.$3, attempt);
+        expect(find.text('Replying to Atlas'), findsNothing);
+        expect(tester.widget<TextField>(input).controller!.text, isEmpty);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox());
+      });
+
       testWidgets(
         'discard and bounded Continue controls ${brightness.name} $scale',
         (tester) async {

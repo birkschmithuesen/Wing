@@ -9,7 +9,6 @@ import '../models/profile_session_key.dart';
 import 'administration_repository.dart';
 import 'attachment_image_preflight.dart';
 import 'bot_display_client.dart';
-import 'profile_gateway.dart';
 import 'connection_diagnostics.dart';
 import 'workspace_connection_failure.dart';
 import 'hermes_voice.dart';
@@ -37,13 +36,6 @@ typedef BotsCommand =
 typedef BotsOwnership =
     Future<Set<String>> Function(String profile, Iterable<String> sessions);
 
-typedef BotsSavedHistory =
-    Future<ProfileHistoryPage> Function(
-      String profile,
-      String session,
-      int offset,
-    );
-
 final class BotPresenceObservation {
   BotPresenceObservation(
     Map<String, BotPresence> values, {
@@ -62,7 +54,6 @@ class BotsRepository {
     required this._read,
     required this._command,
     required this._ownership,
-    required this._savedHistory,
     this.server,
     this.displayConnect,
     void Function()? retain,
@@ -88,21 +79,6 @@ class BotsRepository {
     displayConnect: server.displayConnect,
     retain: server.retain,
     release: server.release,
-    savedHistory: (profile, session, offset) async {
-      server.retain();
-      try {
-        final gateway = server.gateway(profile);
-        await gateway.requireProfile();
-        return await gateway.history(
-          session,
-          offset: offset,
-          limit: 20,
-          inlineImages: false,
-        );
-      } finally {
-        server.release();
-      }
-    },
     read: (profile, method, params) async {
       server.retain();
       try {
@@ -155,7 +131,6 @@ class BotsRepository {
   final BotsRead _read;
   final BotsCommand _command;
   final BotsOwnership _ownership;
-  final BotsSavedHistory _savedHistory;
   final void Function() _retain, _release;
   final DateTime Function() _now;
   void retain() => _retain();
@@ -630,9 +605,18 @@ class BotsRepository {
   }
 
   Set<String> _groupMethods = const {};
+  Set<String> _seatableProfiles = const {};
+  Set<String> get seatableProfiles => _seatableProfiles;
   Future<bool> groupsReady() async {
     final capabilities = await _read('default', 'groups.capabilities', {});
     final driver = capabilities['driver'];
+    final seatable = capabilities['seatable_profiles'];
+    _seatableProfiles = const {};
+    if (seatable is! List ||
+        seatable.any((name) => name is! String || name.isEmpty)) {
+      throw const FormatException('Invalid group member eligibility');
+    }
+    _seatableProfiles = Set.unmodifiable(seatable.cast<String>());
     final methods = capabilities['methods'];
     _groupMethods =
         methods is List && methods.every((method) => method is String)
@@ -998,100 +982,6 @@ class BotsRepository {
     );
   }
 
-  /// Exact stock worker identity. Discovery never creates or resumes a runtime.
-  Future<String?> groupMemberSession(
-    BotGroup group,
-    BotGroupMember member,
-  ) async {
-    _ownsGroup(group);
-    if (!group.members.any(
-      (candidate) =>
-          candidate.id == member.id && candidate.profile == member.profile,
-    )) {
-      throw StateError('Bot does not belong to this group');
-    }
-    final title = 'Group: ${group.id}';
-    final result = await _read(member.profile, 'session.list', {
-      'title': title,
-      'include_hidden': true,
-    });
-    final rows = _rows(result['sessions']);
-    if (rows.isEmpty) return null;
-    if (rows.length != 1 ||
-        rows.single['title'] != title ||
-        rows.single['source'] != 'bot_room') {
-      throw const FormatException('Invalid group worker identity');
-    }
-    _requiredText(rows.single['id']);
-    return _requiredText(rows.single['resolved_id']);
-  }
-
-  Future<ProfileHistoryPage> groupMemberHistory(
-    BotGroup group,
-    BotGroupMember member,
-    String session,
-    int offset,
-  ) async {
-    _ownsGroup(group);
-    if (!group.members.any(
-          (candidate) =>
-              candidate.id == member.id && candidate.profile == member.profile,
-        ) ||
-        session.isEmpty ||
-        offset < 0) {
-      throw ArgumentError('Invalid group history owner');
-    }
-    final page = await _savedHistory(member.profile, session, offset);
-    if (page.sessionId != session || page.offset != offset) {
-      throw const FormatException(
-        'Group worker history changed. Refresh to read it.',
-      );
-    }
-    return page;
-  }
-
-  /// Mount only the stock read-only child subscription; never prompt an agent.
-  Future<Map<String, dynamic>> watchSubagent(
-    BotGroup group,
-    BotGroupMember member,
-    String child,
-  ) {
-    _ownsGroup(group);
-    if (child.isEmpty ||
-        !group.members.any(
-          (candidate) =>
-              candidate.id == member.id && candidate.profile == member.profile,
-        )) {
-      throw ArgumentError('Invalid subagent observation');
-    }
-    return _read(member.profile, 'session.resume', {
-      'session_id': child,
-      'display_projection': true,
-    });
-  }
-
-  /// Passive reads and canonical subscriptions only; never controls the worker.
-  Future<Map<String, dynamic>> groupMemberObservation(
-    BotGroup group,
-    BotGroupMember member,
-    String method,
-    Map<String, dynamic> params,
-  ) {
-    _ownsGroup(group);
-    if (!group.members.any(
-          (candidate) =>
-              candidate.id == member.id && candidate.profile == member.profile,
-        ) ||
-        !const {
-          'session.active_list',
-          'session.resume',
-          'session.events.since',
-        }.contains(method)) {
-      throw ArgumentError('Invalid worker observation');
-    }
-    return _read(member.profile, method, params);
-  }
-
   Future<BotGroupPage> groupLog(BotGroup group, {int since = 0}) async {
     _ownsGroup(group);
     final result = await _read('default', 'groups.log', {
@@ -1258,6 +1148,17 @@ class BotsRepository {
     for (final bot in members) {
       _owns(bot);
     }
+    if (!await groupsReady() || !_groupMethods.contains('groups.create')) {
+      throw const BotGroupCreateRefused(
+        'Group creation is unavailable. Refresh Bots and try again.',
+      );
+    }
+    if (members.any((bot) => !_seatableProfiles.contains(bot.profile.name))) {
+      throw const BotGroupCreateRefused(
+        'A selected bot cannot join this group. Reopen New group to choose its members again.',
+      );
+    }
+    if (!canDispatch()) throw StateError('Group creation is no longer active');
     final result = await _command(
       'default',
       'groups.create',
@@ -1294,6 +1195,7 @@ class BotsRepository {
     bool Function() canDispatch,
     void Function() onDispatched, {
     List<BotGroupAttachment> attachments = const [],
+    String? threadId,
   }) async {
     _ownsGroup(group);
     final Map<String, dynamic> result;
@@ -1306,7 +1208,7 @@ class BotsRepository {
           'event_id': event,
           'payload': {
             'text': text,
-            'thread_id': event,
+            'thread_id': threadId ?? event,
             if (attachments.isNotEmpty)
               'attachments': attachments.map((item) => item.toJson()).toList(),
           },

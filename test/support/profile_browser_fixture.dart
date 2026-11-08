@@ -45,8 +45,6 @@ class ProfileBrowserFixture {
       groupObservations: GroupObservations(workspace),
       scope: workspace,
       instance: 'Test',
-      savedHistory: (_, _, _) async =>
-          throw StateError('Appearance does not read history'),
       read: (profile, method, params) => gateway(
         WorkspaceScope(
           connectionId: workspace.connectionId,
@@ -330,7 +328,19 @@ class ProfileBrowserFixture {
         return {
           'sessions': [
             for (final row in rows.take(1))
-              {...row, 'resolved_id': compressionTips[row['id']] ?? row['id']},
+              {
+                ...row,
+                'root_title': row['title'],
+                'title':
+                    [
+                          ...sessions(scope.profileName),
+                          ...?hiddenSessions[scope.profileName],
+                        ]
+                        .where((tip) => tip['id'] == compressionTips[row['id']])
+                        .firstOrNull?['title'] ??
+                    row['title'],
+                'resolved_id': compressionTips[row['id']] ?? row['id'],
+              },
           ],
         };
       }

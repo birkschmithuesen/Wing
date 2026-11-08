@@ -221,7 +221,7 @@ void main() {
         read: fixture.read,
         command: fixture.command,
         ownership: fixture.ownership,
-        savedHistory: fixture.savedHistory,
+
       );
       const channel = MethodChannel(AndroidShareIntentService.channelName);
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
