@@ -1,3 +1,6 @@
+import '../services/administration_repository.dart';
+import '../services/wing_plugin_session.dart';
+import '../widgets/wing_plugin_settings_card.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import '../widgets/notification_channel_diagnostics.dart';
 import 'package:flutter/material.dart';
@@ -25,6 +28,7 @@ class AppSettingsContent extends StatefulWidget {
   const AppSettingsContent({
     super.key,
     required this.preferences,
+    required this.pluginServer,
     required this.createVoiceSession,
     required this.onChanged,
     this.enableNotifications,
@@ -33,6 +37,7 @@ class AppSettingsContent extends StatefulWidget {
   });
 
   final AppPreferences preferences;
+  final AdministrationRepository? pluginServer;
   final VoicePreferencesSession Function() createVoiceSession;
   final VoidCallback onChanged;
   final Future<void> Function()? enableNotifications;
@@ -389,6 +394,23 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                       ),
                     ),
                   ),
+                ),
+                _SettingsSection(
+                  title: 'Wing plugin',
+                  child: widget.pluginServer == null
+                      ? const Card(
+                          child: Padding(
+                            padding: EdgeInsets.all(16),
+                            child: Text(
+                              'Connect to Hermes to manage the Wing plugin.',
+                            ),
+                          ),
+                        )
+                      : WingPluginSettingsCard(
+                          key: ObjectKey(widget.pluginServer),
+                          createSession: () =>
+                              WingPluginSession(widget.pluginServer!),
+                        ),
                 ),
                 _SettingsSection(
                   title: 'About',

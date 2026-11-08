@@ -13,6 +13,10 @@ Feature ID: `versions-updates`.
 - `versions-updates.confirm` — Admit only the exact confirmed update target.
 - `versions-updates.follow` — Follow progress automatically and scroll newest-first logs in a viewer capped at 16 text rows. The single rightmost sync control checks progress while an update is outstanding and availability otherwise.
 
+The separate [Wing plugin section in App settings](app-preferences-backup.md)
+checks the companion plugin’s GitHub release and installed versions across profiles;
+it does not upgrade Hermes itself.
+
 ## How to get to it (user POV)
 
 Open connection details and its Versions/server-update controls. Check availability, inspect the exact target and confirmation, then follow status or independently scroll the log.

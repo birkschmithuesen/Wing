@@ -547,6 +547,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
             title: const Text('App settings'),
           ),
           body: AppSettingsContent(
+            pluginServer: null,
             preferences: _appPreferences,
             createVoiceSession: () => VoicePreferencesSession(
               preferences: _appPreferences,
@@ -1363,6 +1364,7 @@ class HomeScreenState extends State<HomeScreen> {
         ),
         body: _destination == AppDestination.settings
             ? AppSettingsContent(
+                pluginServer: null,
                 preferences: widget.appPreferences,
                 createVoiceSession: () => VoicePreferencesSession(
                   preferences: widget.appPreferences,

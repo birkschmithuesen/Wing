@@ -9,6 +9,7 @@ Feature ID: `conversation`.
 - `conversation.read` — Reconcile live and saved messages. Steering becomes a normal user bubble when it appears in saved history, including on reopen and cached reading; see the [steering recipe](chat-inputs.md#gotchas). Saved history opens independently of runtime attachment; an attachment refusal keeps messages and drafts visible, with Retry to enable sending.
 - Normal chats, canonical Bot Chats and group discussions share the conversation frame and reading layout. Passive Recents cards use the same frame and composer presentation.
 - `conversation.reading-mode` — Use a table’s full-screen icon to hide the composer and portrait context row without leaving the conversation. The same icon or Android Back restores it; drafts remain intact. Landscape puts title and scope in one header row.
+- `conversation.email-draft` — With Wing plugin 0.3.0 enabled in the selected Hermes profile and its email tools available, ask Hermes to draft an email. A returned `wing-email-draft` card shows To, optional Cc/Bcc, subject and full body. Tap the envelope-arrow icon (Open in email app) to choose a composer with those exact fields. Sending and final edits happen there. Older cards keep their original version after revisions. Missing drafts show Retry; ordinary email prose is not interpreted as a draft.
 - `conversation.search` — Find and open older content.
 - Async delegation completion flags keep model-facing wake text out of conversation bubbles and Find. Useful completion results remain in Activity and searchable; quoted examples stay readable.
 - `conversation.position` — Page and return without losing reading position. Leaving for another thread or app keeps the current reading location, including at Latest. After sending and leaving before the reply, return to the sent message and the beginning of the reply. Opening a popup or changing a chat's decoration keeps the current viewport without starting another history restoration.
@@ -150,3 +151,18 @@ without a conversation warning. Failed acknowledgement still leaves the chat
 unread for retry; explicit Mark as read actions retain their failure feedback.
 The row-action viewport regression checks rejection, diagnostic output and later
 successful acknowledgement in both themes at normal and enlarged text sizes.
+
+### Structured email draft verification
+
+```sh
+flutter test --no-pub test/email_draft_test.dart test/profile_conversation_ui_test.dart
+```
+
+The production Markdown/card path checks exact version references, complete long
+Unicode payloads, waiting reads/chooser feedback, failed reads and retry, missing
+email apps, profile replacement, departure, malformed references and completion
+of streaming fences. Phone layouts cover light/dark themes and enlarged text.
+The chooser payload is a platform-channel fixture; third-party composer handling
+requires a device with an email app. The plugin must be installed/enabled per
+profile; its draft tool must produce the reference. No account or voice provider
+credentials are required for drafts. Plain chat continues to use ordinary links.

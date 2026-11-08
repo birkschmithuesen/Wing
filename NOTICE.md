@@ -43,3 +43,11 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Project icons and the Queue layers glyph use Microsoft’s unmodified `@vscode/codicons` 0.0.45, matching Hermes Desktop, under [CC BY 4.0](assets/fonts/CODICONS-LICENSE). Microsoft is the original author; see [font provenance](assets/fonts/README.md).
+
+## Email draft cards
+
+Wing's email draft integration is inspired by [arsiktech/hermes-draft-cards](https://github.com/arsiktech/hermes-draft-cards),
+MIT, copyright 2026 arsiktech, reviewed at commit
+`6e6ca659ece59b0ce1c28b3b188393491ee5a415`. The accompanying Wing Hermes plugin
+adapts its structured card/version design and retains the original MIT notice.
+Wing's Flutter renderer and Android compose handoff are implemented independently.

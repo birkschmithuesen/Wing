@@ -192,8 +192,8 @@ void main() {
   });
 
   for (final content in [
-    '<nihonbashi_front@gardenhotels.co.jp>',
-    '[Email hotel](mailto:nihonbashi_front@gardenhotels.co.jp?subject=Luggage%20storage&body=Hello%0AThank%20you&cc=other%2Btrip@example.com)',
+    '<alex@example.com>',
+    '[Email hotel](mailto:alex@example.com?subject=Luggage%20storage&body=Hello%0AThank%20you&cc=other%2Btrip@example.com)',
   ]) {
     testWidgets('email link opens the compose chooser: $content', (
       tester,
@@ -216,7 +216,7 @@ void main() {
       await tester.tap(
         find.text(
           content.startsWith('<')
-              ? 'nihonbashi_front@gardenhotels.co.jp'
+              ? 'alex@example.com'
               : 'Email hotel',
           findRichText: true,
         ),
@@ -226,7 +226,7 @@ void main() {
       expect(
         calls.single.arguments,
         content.startsWith('<')
-            ? 'mailto:nihonbashi_front@gardenhotels.co.jp'
+            ? 'mailto:alex@example.com'
             : content.substring(content.indexOf('(') + 1, content.length - 1),
       );
       expect(find.byType(SnackBar), findsNothing);

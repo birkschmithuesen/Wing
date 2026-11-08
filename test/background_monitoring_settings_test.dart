@@ -117,6 +117,7 @@ void main() {
             ),
             home: Scaffold(
               body: AppSettingsContent(
+                pluginServer: null,
                 preferences: appPreferences,
                 createVoiceSession: () => VoicePreferencesSession(
                   preferences: appPreferences,

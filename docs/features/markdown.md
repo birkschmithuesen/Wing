@@ -9,6 +9,7 @@ Feature ID: `markdown`.
 - `markdown.render` — Read partial and completed formatted content.
 - `markdown.tables` — Tables open as a wrapped grid, with horizontal scrolling when too wide; use the icon controls to choose stacked header/value rows or the table. The latest explicit choice stays with the table through message updates, completion and rotation. Full screen enters the containing conversation’s reading mode.
 - `markdown.links` — Open web links, linked Hermes files and email drafts. Email addresses open Android’s email app chooser, preserving recipients and any subject/body supplied by the link.
+- Completed `wing-email-draft` fences render the exact plugin artifact in the originating conversation; see [`conversation.email-draft`](conversation.md#structured-email-draft-verification). Partial or malformed references remain readable source.
 - `markdown.copy` — Select or copy exact code and output.
 - `markdown.reuse` — Retain current content through asynchronous rendering.
 

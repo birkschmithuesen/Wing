@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 
 import '../services/markdown_segments.dart';
 import 'source_code_block.dart';
+import '../models/email_draft.dart';
+import 'email_draft_card.dart';
 import 'web_output_preview.dart';
 
 /// Splits raw markdown into text segments and fenced code blocks.
@@ -44,6 +46,10 @@ class MarkdownCodeBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (language == 'wing-email-draft' && previewEnabled) {
+      final reference = EmailDraftReference.parse(code);
+      if (reference != null) return EmailDraftCard(reference: reference);
+    }
     final diagramFormat = switch (language?.toLowerCase()) {
       'mermaid' => WebOutputFormat.mermaid,
       'svg' => WebOutputFormat.svg,

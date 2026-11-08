@@ -44,6 +44,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: AppSettingsContent(
+              pluginServer: null,
               preferences: owner,
               createVoiceSession: () => VoicePreferencesSession(
                 preferences: owner,
@@ -98,6 +99,7 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: AppSettingsContent(
+              pluginServer: null,
               preferences: owner,
               createVoiceSession: () => VoicePreferencesSession(
                 preferences: owner,

@@ -1,3 +1,4 @@
+import '../models/email_draft.dart';
 import '../models/model_catalog_details.dart';
 import '../models/canonical_session.dart';
 import 'package:uuid/uuid.dart';
@@ -3350,6 +3351,24 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat.reading.historySessionId ?? chat._key.sessionId,
       offset: offset,
     );
+  }
+
+  Future<EmailDraft> readEmailDraft(
+    ProfileChat chat,
+    EmailDraftReference reference,
+  ) async {
+    _owned(chat);
+    final profile = chat.key.workspace.profileName;
+    final client = _gatewayConnection.createDashboardReadClient();
+    try {
+      final data = await client.apiGet(
+        'plugins/wing/drafts/v1/${reference.id}/versions/${reference.version}',
+        queryParameters: {'profile': profile},
+      );
+      return EmailDraft.fromJson(reference, data);
+    } finally {
+      client.close();
+    }
   }
 
   OwnedRemoteFiles outputFiles(ProfileChat chat) {

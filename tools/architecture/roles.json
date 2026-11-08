@@ -196,6 +196,11 @@
       "feature": "notifications",
       "library": "lib/core/models/detached_work.dart"
     },
+    "lib/core/models/email_draft.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/email_draft.dart"
+    },
     "lib/core/models/fallback_model.dart": {
       "role": "domain",
       "feature": "model-selection",
@@ -575,6 +580,11 @@
       "role": "domain",
       "feature": "voice",
       "library": "lib/core/models/voice_processing_settings.dart"
+    },
+    "lib/core/models/wing_plugin.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/models/wing_plugin.dart"
     },
     "lib/core/models/workspace_entry.dart": {
       "role": "domain",
@@ -1831,6 +1841,16 @@
       "feature": "outputs-and-viewers",
       "library": "lib/core/services/web_preview.dart"
     },
+    "lib/core/services/wing_plugin_releases.dart": {
+      "role": "data",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/wing_plugin_releases.dart"
+    },
+    "lib/core/services/wing_plugin_session.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/wing_plugin_session.dart"
+    },
     "lib/core/services/workspace_connection_failure.dart": {
       "role": "utility",
       "feature": "connections",
@@ -2180,6 +2200,11 @@
       "role": "view",
       "feature": "versions-updates",
       "library": "lib/core/widgets/drawer_versions.dart"
+    },
+    "lib/core/widgets/email_draft_card.dart": {
+      "role": "presentation",
+      "feature": "conversation",
+      "library": "lib/core/widgets/email_draft_card.dart"
     },
     "lib/core/widgets/gateway_approval_panel.dart": {
       "role": "view",
@@ -2575,6 +2600,11 @@
       "role": "view",
       "feature": "app-shell",
       "library": "lib/core/widgets/wing_app_bar.dart"
+    },
+    "lib/core/widgets/wing_plugin_settings_card.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/wing_plugin_settings_card.dart"
     },
     "lib/core/widgets/wing_welcome.dart": {
       "role": "view",

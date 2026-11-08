@@ -1,3 +1,4 @@
+import '../widgets/email_draft_card.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'administration/admin_hosted_connector_accounts_page.dart';
 import '../widgets/hosted_connection_request_panel.dart';
@@ -2456,7 +2457,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           projection.retainedActivityBeforePresentationId,
     );
     final focus = _readingFocus(chat);
-    return SkillReaderScope(
+    final content = SkillReaderScope(
       createReader: (document) => controller.skillReader(
         document.readerTarget,
         chat.key.workspace.profileName,
@@ -2703,6 +2704,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         footerBuilder: (context, constraints) =>
             _composerPanel(chat, constraints),
       ),
+    );
+    return EmailDraftScope(
+      owner: chat.key,
+      read: (reference) => controller.readEmailDraft(chat, reference),
+      child: content,
     );
   }
 
@@ -3925,6 +3931,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   profileName: _analyticsProfileName,
                 ),
                 AppDestination.settings => AppSettingsContent(
+                  pluginServer: controller.administration(),
                   key: ValueKey(_settingsRevision),
                   preferences: controller.appPreferences,
                   createVoiceSession: () => VoicePreferencesSession(

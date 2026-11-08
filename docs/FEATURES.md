@@ -92,6 +92,7 @@ decisions use their operation icon and error color.
 ## Use what is already on your phone
 
 - **Bring files and ideas.** Attach a photo or file, take a picture inside a chat, or review content shared from another Android app before sending it to Hermes. Images sent from Desktop also appear in saved chats; tap a thumbnail to open its original.
+- **Email draft cards.** With Wing plugin 0.3.0 enabled for your Hermes profile, ask Hermes to draft an email. Its draft tool produces a card with recipients, subject and body. Tap the envelope-arrow icon to open the complete draft in your chosen email app, where you edit and send. Revisions create new cards; older cards keep their original text. Drafts do not require a voice subscription or email account connection to Hermes.
 - **Compose email from a link.** Tap an email address in a reply to open Android’s email app chooser. The draft keeps the address and any subject or body included in the link. Sending happens in your chosen email app.
 - **Open useful results.** Images appear inline in replies, with a compact download control and tap-to-zoom using the original. Preview PDFs, Markdown, diagrams and supported media. File cards place a download arrow and preview eye beside the filename. Save or share output files through Android.
 - **Talk when typing is awkward.** Dictate into an editable draft and read a reply aloud. Choose on-device or Hermes processing separately for input and output in App settings.
@@ -130,3 +131,5 @@ choices; 92 distinct symbols are available overall. Search understands names
 and activities such as conference, shopping, trip and packing list. Preview a
 choice, then use the checkmark to apply it to the project draft; closing the tray
 keeps the previous icon. The plain folder is in Work & study.
+
+The **Wing plugin** section in App settings shows backend plugin versions per profile, checks the latest GitHub release, and installs or updates Wing across all profiles on the connected server.

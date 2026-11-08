@@ -66,6 +66,7 @@ Future<void> _show(
         home: Scaffold(
           appBar: AppBar(title: const Text('App settings')),
           body: AppSettingsContent(
+            pluginServer: null,
             preferences: appPreferences,
             createVoiceSession: () => VoicePreferencesSession(
               preferences: appPreferences,

@@ -114,6 +114,11 @@ class ProfileGatewayConnection {
   DashboardClient? _fileDashboard;
   bool _closed = false;
 
+  DashboardClient createDashboardReadClient() {
+    if (_closed) throw StateError('Connection is closed');
+    return _dashboard.forkReads();
+  }
+
   DashboardClient createFileReadClient() {
     if (_closed) throw StateError('Connection is closed');
     final dashboard = _fileDashboard ??=
@@ -587,9 +592,15 @@ class ProfileGateway {
           timeout: switch (method) {
             'mcp.servers.oauth.start' => const Duration(seconds: 45),
             'command.dispatch' || 'slash.exec' => commandTimeout,
-            // Stock update_all checks and updates installed plugins serially;
-            // even one healthy Git operation can outlast the ordinary RPC wait.
-            'plugins.manage' when params['action'] == 'update_all' =>
+            // Plugin maintenance can clone, scan and install dependencies;
+            // healthy operations can outlast the ordinary RPC wait.
+            'plugins.manage'
+                when const {
+                  'update_all',
+                  'install',
+                  'update',
+                  'toggle',
+                }.contains(params['action']) =>
               const Duration(minutes: 5),
             'session.mutate' when params['operation'] == 'compress' =>
               const Duration(minutes: 11),
@@ -896,25 +907,45 @@ class ProfileGateway {
     if (key.isEmpty) {
       throw ArgumentError('Plugin key is empty');
     }
-    await connect();
-    if (!canDispatch()) {
-      throw JsonRpcError(
-        'plugins.manage',
-        'Operation retired',
-        reason: 'operation_retired',
-      );
-    }
-    onDispatched();
-    return call('plugins.manage', {
-      'action': 'toggle',
-      'key': key,
-      'enable': enabled,
-    });
+    return _mutatePlugin(
+      {'action': 'toggle', 'key': key, 'enable': enabled},
+      canDispatch: canDispatch,
+      onDispatched: onDispatched,
+    );
   }
 
-  /// Maintain installed plugins in this captured profile. Stock owns which
-  /// pinned or review-requiring items are skipped and returns per-item results.
+  Future<Map<String, dynamic>> installPlugin(
+    String repository, {
+    required bool Function() canDispatch,
+    required void Function() onDispatched,
+  }) => _mutatePlugin(
+    {'action': 'install', 'identifier': repository, 'enable': true},
+    canDispatch: canDispatch,
+    onDispatched: onDispatched,
+  );
+
+  Future<Map<String, dynamic>> updatePlugin(
+    String name, {
+    required bool Function() canDispatch,
+    required void Function() onDispatched,
+  }) => _mutatePlugin(
+    {'action': 'update', 'name': name},
+    canDispatch: canDispatch,
+    onDispatched: onDispatched,
+  );
+
+  /// Stock owns eligibility, pins and review requirements for this profile.
   Future<Map<String, dynamic>> updateInstalledPlugins({
+    required bool Function() canDispatch,
+    required void Function() onDispatched,
+  }) => _mutatePlugin(
+    {'action': 'update_all'},
+    canDispatch: canDispatch,
+    onDispatched: onDispatched,
+  );
+
+  Future<Map<String, dynamic>> _mutatePlugin(
+    Map<String, dynamic> params, {
     required bool Function() canDispatch,
     required void Function() onDispatched,
   }) async {
@@ -927,7 +958,7 @@ class ProfileGateway {
       );
     }
     onDispatched();
-    return call('plugins.manage', {'action': 'update_all'});
+    return call('plugins.manage', params);
   }
 
   /// Stock completion derives profile and workspace from the owning session.

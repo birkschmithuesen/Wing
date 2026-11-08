@@ -28,6 +28,9 @@ executed. Manage capabilities opens the skill library, discovery, agent plugins,
 Connected apps or MCP connectors. Returning refreshes the selected inventory.
 The tool row's icon-only setup action opens its owning editor.
 
+For installing or updating the Wing companion across every profile, use the
+[Wing plugin section in App settings](app-preferences-backup.md).
+
 Agent plugins has icon-only Update installed plugins and Refresh plugins actions.
 Update runs the server's bounded unattended update operation for the captured
 profile. Held/pinned installs stay unchanged; failed, skipped and review-required
