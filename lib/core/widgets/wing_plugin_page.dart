@@ -43,6 +43,39 @@ class WingPluginPage extends StatelessWidget {
     ),
   );
 
+  Widget _review(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: DecoratedBox(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
+        borderRadius: WingRadius.control,
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Replace the pinned version?',
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              session.reviewProfileLabel != null
+                  ? 'Replace the pinned Wing version in ${session.reviewProfileLabel} with ${session.reviewRelease!.version.value} from the official GitHub release.'
+                  : 'Move pinned copies to Wing ${session.reviewRelease!.version.value} from the official GitHub release, then install or update Wing in the other profiles.',
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Hermes requires a forced reinstall for pinned copies. This accepts caution-level scan warnings; dangerous code stays blocked.',
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
   List<Widget> _details(BuildContext context) {
     final overview = session.overview;
     final review = session.reviewRelease;
@@ -55,39 +88,7 @@ class WingPluginPage extends StatelessWidget {
         ],
       ),
       const SizedBox(height: 24),
-      if (review != null)
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceContainerLow,
-              borderRadius: WingRadius.control,
-              border: Border.all(
-                color: Theme.of(context).colorScheme.outlineVariant,
-              ),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Replace the pinned version?',
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Move pinned copies to Wing ${review.version.value} from the official GitHub release, then install or update Wing in the other profiles.',
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Hermes requires a forced reinstall for pinned copies. This accepts caution-level scan warnings; dangerous code stays blocked.',
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+      if (review != null) _review(context),
       if (review == null) ...[
         Text(
           overview.title,
@@ -141,6 +142,9 @@ class WingPluginPage extends StatelessWidget {
   }
 
   List<Widget> _profileRows(BuildContext context) => [
+    if (session.reviewRelease != null && session.reviewProfileName != null)
+      _review(context),
+    if (session.error case final error?) StudioError(error),
     Text(
       'Wing plugin · ${session.server.connectionLabel}',
       style: Theme.of(context).textTheme.bodySmall,
@@ -193,6 +197,20 @@ class WingPluginPage extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Install or update Wing in ${row.profile.label}',
+              onPressed:
+                  session.reviewRelease == null &&
+                      session.canApplyTo(row.profile.name)
+                  ? () => unawaited(
+                      session.requestApply(profileName: row.profile.name),
+                    )
+                  : null,
+              icon: const Icon(Icons.system_update_alt),
+            ),
+          ),
         ],
       ),
       const Divider(height: 24),
@@ -200,7 +218,12 @@ class WingPluginPage extends StatelessWidget {
   ];
 
   Widget _footer(BuildContext context) {
-    final review = session.reviewRelease != null && !profiles;
+    final review =
+        session.reviewRelease != null &&
+        (!profiles || session.reviewProfileName != null);
+    final reviewLabel = session.reviewProfileLabel;
+    final scopeLabel =
+        (review ? reviewLabel : null) ?? session.operationProfileLabel;
     return SafeArea(
       top: false,
       child: Padding(
@@ -209,7 +232,7 @@ class WingPluginPage extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '${session.profiles.isEmpty ? 'All profiles' : 'All ${session.profiles.length} profiles'}\n${session.server.connectionLabel}',
+                '${scopeLabel ?? (session.profiles.isEmpty ? 'All profiles' : 'All ${session.profiles.length} profiles')}\n${session.server.connectionLabel}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -217,10 +240,12 @@ class WingPluginPage extends StatelessWidget {
             if (review)
               StudioFormActions(
                 onCancel: session.busy ? null : session.cancelReview,
-                onConfirm: session.canApply
+                onConfirm: session.canConfirmReview
                     ? () => unawaited(session.confirmPinnedUpdate())
                     : null,
-                confirmLabel: 'Replace pinned Wing and update all profiles',
+                confirmLabel: reviewLabel == null
+                    ? 'Replace pinned Wing and update all profiles'
+                    : 'Replace pinned Wing in $reviewLabel',
               )
             else ...[
               StudioButtonPress(

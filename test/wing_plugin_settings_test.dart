@@ -683,8 +683,154 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  for (final target in ['default', 'personal', 'work']) {
+    test('individual maintenance changes only $target', () async {
+      final fixture = Fixture();
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      fixture.calls.clear();
+      await session.requestApply(profileName: target);
+      expect(fixture.writes, isNotEmpty);
+      expect(fixture.calls.every((call) => call['profile'] == target), isTrue);
+      expect(session.canApplyTo(target), isFalse);
+      expect(
+        session.profiles.firstWhere((row) => row.profile.name == target).result,
+        isNotNull,
+      );
+      for (final other in fixture.names.where((name) => name != target)) {
+        expect(session.canApplyTo(other), isTrue);
+      }
+    });
+  }
+  test('a failed other profile does not block the selected profile', () async {
+    final fixture = Fixture()..failedReads.add('default');
+    final session = fixture.session();
+    addTearDown(session.dispose);
+    await session.refresh();
+    expect(session.canApply, isFalse);
+    expect(session.canApplyTo('default'), isFalse);
+    expect(session.canApplyTo('personal'), isTrue);
+    await session.requestApply(profileName: 'personal');
+    expect(fixture.writes.single['profile'], 'personal');
+    expect(session.profiles.first.error, isNotNull);
+    expect(session.canApplyTo('work'), isTrue);
+  });
+  test(
+    'profile pin review is scoped, cancellable and retired by refresh',
+    () async {
+      final fixture = Fixture();
+      fixture.rows['default']!['pinned_sha'] = oldSha;
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      await session.requestApply(profileName: 'default');
+      expect(session.reviewProfileName, 'default');
+      expect(fixture.writes, isEmpty);
+      session.cancelReview();
+      await session.confirmPinnedUpdate();
+      expect(fixture.writes, isEmpty);
+      await session.requestApply(profileName: 'default');
+      await session.refresh();
+      await session.confirmPinnedUpdate();
+      expect(fixture.writes, isEmpty);
+      await session.requestApply(profileName: 'default');
+      await session.confirmPinnedUpdate();
+      expect(fixture.writes.single['profile'], 'default');
+      expect(fixture.writes.single['force'], isTrue);
+      expect(session.canApplyTo('personal'), isTrue);
+    },
+  );
+  test(
+    'a removed selected profile never expands the command to all profiles',
+    () async {
+      final fixture = Fixture();
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      fixture.names.remove('personal');
+      await session.requestApply(profileName: 'personal');
+      expect(fixture.writes, isEmpty);
+      expect(session.error, contains('no longer available'));
+      expect(session.canApplyTo('personal'), isFalse);
+    },
+  );
+  test('failed single update requires refresh only for that profile', () async {
+    final fixture = Fixture()..failWrite = 'default';
+    final session = fixture.session();
+    addTearDown(session.dispose);
+    await session.refresh();
+    await session.requestApply(profileName: 'default');
+    expect(session.canApplyTo('default'), isFalse);
+    expect(session.canApplyTo('personal'), isTrue);
+    final count = fixture.writes.length;
+    await session.requestApply(profileName: 'default');
+    expect(fixture.writes.length, count);
+    fixture.failWrite = null;
+    await session.refresh();
+    await session.requestApply(profileName: 'default');
+    expect(session.profiles.first.error, isNull);
+    expect(
+      fixture.writes.every((call) => call['profile'] == 'default'),
+      isTrue,
+    );
+  });
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 1.6]) {
+      testWidgets('individual profile controls ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final fixture = Fixture()..writeGate = Completer<void>();
+        fixture.rows['default']!['pinned_sha'] = oldSha;
+        final session = fixture.session();
+        await frame(tester, session, brightness: brightness, scale: scale);
+        await flush(tester);
+        await openManager(tester);
+        await tester.tap(find.text('Profiles'));
+        await tester.pumpAndSettle();
+        await captureFormFamily(
+          tester,
+          'wing-individual-${brightness.name}-$scale',
+        );
+        await tester.tap(find.byTooltip('Install or update Wing in default'));
+        await tester.pumpAndSettle();
+        expect(find.text('Profiles'), findsOneWidget);
+        expect(
+          find.text('Replace the pinned version?').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.textContaining('in default with'), findsOneWidget);
+        expect(fixture.writes, isEmpty);
+        await captureFormFamily(
+          tester,
+          'wing-individual-review-${brightness.name}-$scale',
+        );
+        await tester.tap(find.byTooltip('Cancel'));
+        await tester.pumpAndSettle();
+        expect(fixture.writes, isEmpty);
+        await tester.tap(find.byTooltip('Install or update Wing in default'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Replace pinned Wing in default'));
+        await flush(tester);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(fixture.writes.single['profile'], 'default');
+        await captureFormFamily(
+          tester,
+          'wing-individual-pending-${brightness.name}-$scale',
+        );
+        fixture.writeGate!.complete();
+        await flush(tester);
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(fixture.writes.single['profile'], 'default');
+        expect(session.canApplyTo('personal'), isTrue);
+        expect(session.profiles.first.error, isNull);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
       testWidgets('pinned review ${brightness.name} $scale', (tester) async {
         tester.view.physicalSize = const Size(390, 844);
         tester.view.devicePixelRatio = 1;

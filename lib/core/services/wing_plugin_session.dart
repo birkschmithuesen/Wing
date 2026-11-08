@@ -25,7 +25,9 @@ class WingPluginSession extends ChangeNotifier {
   String? _error, _releaseError;
   String? get error => _error;
   String? get releaseError => _releaseError;
-  String? _activeProfile;
+  String? _activeProfile, _operationProfileName;
+  String? get operationProfileLabel =>
+      _operationProfileName == null ? null : _activeProfile;
   String? get activeProfile => _activeProfile;
   bool _busy = false, _explicit = false, _updating = false;
   bool get busy => _busy;
@@ -33,21 +35,34 @@ class WingPluginSession extends ChangeNotifier {
   bool get updating => _updating;
   bool _verified = false, _releaseVerified = false, _disposed = false;
   int _notifications = 0;
-  bool get canApply =>
-      !_disposed &&
-      !_busy &&
-      _verified &&
-      _releaseVerified &&
+  bool get _canMaintain => !_disposed && !_busy && _releaseVerified;
+  bool _needsChange(WingPluginProfile row) =>
+      row.observed &&
+      row.error == null &&
+      (row.plugin == null ||
+          !row.plugin!.enabled ||
+          _release!.needsUpdate(row.plugin!));
+  bool get canApply => _canMaintain && _verified && _profiles.any(_needsChange);
+  bool canApplyTo(String profileName) =>
+      _canMaintain &&
+      _error == null &&
       _profiles.any(
-        (row) =>
-            row.observed &&
-            (row.plugin == null ||
-                !row.plugin!.enabled ||
-                _release!.needsUpdate(row.plugin!)),
+        (row) => row.profile.name == profileName && _needsChange(row),
       );
+  bool _canApplyScope(String? name) =>
+      name == null ? canApply : canApplyTo(name);
 
   WingPluginRelease? _reviewRelease;
   WingPluginRelease? get reviewRelease => _reviewRelease;
+  String? _reviewProfileName;
+  String? get reviewProfileName => _reviewProfileName;
+  String? get reviewProfileLabel => _profiles
+      .where((row) => row.profile.name == _reviewProfileName)
+      .firstOrNull
+      ?.profile
+      .label;
+  bool get canConfirmReview =>
+      _reviewRelease != null && _canApplyScope(_reviewProfileName);
   WingPluginOverview get overview => WingPluginOverview.fromProfiles(
     _profiles,
     _release,
@@ -60,33 +75,39 @@ class WingPluginSession extends ChangeNotifier {
       : 'Checking Wing plugin versions';
 
   /// The explicit action presents pin replacement in the manager before writing.
-  Future<void> requestApply() async {
-    if (!canApply) return;
-    if (hasPinnedUpdates) {
+  Future<void> requestApply({String? profileName}) async {
+    if (_reviewRelease != null || !_canApplyScope(profileName)) return;
+    if (_hasPinnedUpdates(profileName)) {
+      _reviewProfileName = profileName;
       _reviewRelease = _release;
       _notify();
       return;
     }
-    await applyToAll();
+    await _applyScope(profileName);
   }
 
   void cancelReview() {
     if (_disposed || _busy) return;
     _reviewRelease = null;
+    _reviewProfileName = null;
     _notify();
   }
 
   Future<void> confirmPinnedUpdate() async {
-    if (!canApply || _reviewRelease == null) return;
+    if (!canConfirmReview) return;
     final approved = _reviewRelease;
+    final profileName = _reviewProfileName;
     _reviewRelease = null;
-    await applyToAll(approvedPinnedRelease: approved);
+    _reviewProfileName = null;
+    await _applyScope(profileName, approvedPinnedRelease: approved);
   }
 
-  bool get hasPinnedUpdates =>
+  bool get hasPinnedUpdates => _hasPinnedUpdates(null);
+  bool _hasPinnedUpdates(String? profileName) =>
       _release != null &&
       _profiles.any(
         (row) =>
+            (profileName == null || row.profile.name == profileName) &&
             row.plugin != null &&
             row.plugin!.pinnedSha?.isNotEmpty == true &&
             _release!.needsUpdate(row.plugin!),
@@ -132,6 +153,7 @@ class WingPluginSession extends ChangeNotifier {
     _verified = false;
     _releaseVerified = false;
     _reviewRelease = null;
+    _reviewProfileName = null;
     _error = null;
     _releaseError = null;
     server.retain();
@@ -213,8 +235,14 @@ class WingPluginSession extends ChangeNotifier {
     _notify();
   }
 
-  Future<void> applyToAll({WingPluginRelease? approvedPinnedRelease}) async {
-    if (!canApply) return;
+  Future<void> applyToAll({WingPluginRelease? approvedPinnedRelease}) =>
+      _applyScope(null, approvedPinnedRelease: approvedPinnedRelease);
+
+  Future<void> _applyScope(
+    String? profileName, {
+    WingPluginRelease? approvedPinnedRelease,
+  }) async {
+    if (!_canApplyScope(profileName)) return;
     if (approvedPinnedRelease != null &&
         !identical(_release, approvedPinnedRelease)) {
       _error = 'The release changed. Review the update again.';
@@ -225,6 +253,13 @@ class WingPluginSession extends ChangeNotifier {
     _busy = true;
     _explicit = true;
     _updating = true;
+    _operationProfileName = profileName;
+    _activeProfile = profileName == null
+        ? null
+        : _profiles
+              .firstWhere((row) => row.profile.name == profileName)
+              .profile
+              .label;
     _verified = false;
     _error = null;
     server.retain();
@@ -233,16 +268,31 @@ class WingPluginSession extends ChangeNotifier {
       if (_disposed) return;
       final discovery = await server.discover();
       if (_disposed) return;
+      final selected = discovery.profiles
+          .where(
+            (profile) => profileName == null || profile.name == profileName,
+          )
+          .toList();
+      if (profileName != null && selected.isEmpty) {
+        throw const AdministrationFailure(
+          'This profile is no longer available. Refresh to check.',
+        );
+      }
       final old = {for (final row in _profiles) row.profile.name: row};
       _profiles = [
         for (final profile in discovery.profiles)
-          WingPluginProfile(
-            profile: profile,
-            plugin: old[profile.name]?.plugin,
-            observed: old[profile.name]?.observed ?? false,
-          ),
+          if (profileName != null &&
+              profile.name != profileName &&
+              old.containsKey(profile.name))
+            old[profile.name]!
+          else
+            WingPluginProfile(
+              profile: profile,
+              plugin: old[profile.name]?.plugin,
+              observed: old[profile.name]?.observed ?? false,
+            ),
       ];
-      for (final profile in discovery.profiles) {
+      for (final profile in selected) {
         if (_disposed) return;
         _activeProfile = profile.label;
         _notify();
@@ -259,6 +309,7 @@ class WingPluginSession extends ChangeNotifier {
         _busy = false;
         _updating = false;
         _activeProfile = null;
+        _operationProfileName = null;
         _notify();
       }
       server.release();

@@ -6,7 +6,7 @@ Feature ID: `app-preferences-backup`.
 
 ## Sub-features
 
-- `app-preferences-backup.wing-plugin` — See the latest GitHub release and each backend profile’s installed Wing plugin version. Install, update and enable Wing across all profiles through Hermes.
+- `app-preferences-backup.wing-plugin` — See the latest GitHub release and each backend profile’s installed Wing plugin version. Install, update and enable Wing in one profile or across all profiles through Hermes.
 - `app-preferences-backup.personalize` — Save and preview device preferences.
 - `app-preferences-backup.export` — Write the chosen backup through Android.
 - `app-preferences-backup.restore` — Read back settings and credentials with explicit outcomes.
@@ -18,12 +18,17 @@ Open App settings from the drawer. Change theme, accent or text size. Use its ex
 Under Hermes, tap the compact Wing plugin card to open its dedicated page. It
 shows the connected server, installed versions, latest GitHub release and overall
 status. Open Profiles for individual versions, enablement and operation results.
+Each profile row has its own install/update icon. It installs missing Wing copies,
+updates older ones or enables a disabled copy in that selected profile. Current
+profiles have a disabled action. Unknown or failed rows need Refresh; another
+profile’s failure does not block a verified row.
 Refresh checks GitHub and backend inventory. The icon-only
 Install or update Wing in all profiles action installs missing copies from
 [tarkilhk/wing-hermes-plugin](https://github.com/tarkilhk/wing-hermes-plugin), updates
 older copies, and enables Wing where disabled. Missing copies install at the
 published release commit. For pinned copies, review the inline replacement explanation and
-confirm to move them to that exact commit. Cancel leaves the batch untouched.
+confirm to move them to that exact commit. The review and footer identify the
+selected profile or the all-profile scope. Cancel sends no changes.
 Each profile keeps its own outcome; one failure does not hide other successes.
 Without a connection, the section explains that Hermes is required.
 
@@ -58,7 +63,7 @@ Plugin installation uses the stock Hermes management API. Unpinned updates follo
 their configured branch or catalog, which can lag behind GitHub releases. Moving
 a pin requires Hermes’s forced reinstall: its confirmation explains that caution
 scan warnings will be accepted, while dangerous code remains blocked. Approval
-applies only to the displayed release. Other scan/capability refusals remain
+applies only to the displayed release and selected scope. Other scan/capability refusals remain
 visible, with Hermes’s reason. An unavailable version is not treated as missing.
 A lost update reply or unavailable readback requires Refresh before retrying.
 Returning from the plugin page to App settings keeps the current operation and
