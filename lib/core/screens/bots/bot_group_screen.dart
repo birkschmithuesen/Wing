@@ -418,11 +418,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
 
   Future<void> _showMemberActivity() async {
     final activities = _session.runtime?.memberActivity ?? const [];
-    String time(DateTime value) {
-      final local = value.toLocal();
-      return '${MaterialLocalizations.of(context).formatMediumDate(local)} ${TimeOfDay.fromDateTime(local).format(context)}';
-    }
-
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => StudioDialog(
@@ -431,7 +426,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             Expanded(
               child: Text(
                 'Member activity',
-                style: Theme.of(dialogContext).textTheme.titleMedium,
+                style: Theme.of(dialogContext).textTheme.titleLarge,
               ),
             ),
             StudioButtonPress(
@@ -443,45 +438,37 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             ),
           ],
         ),
-        content: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            for (final activity in activities)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _session.group.members
-                              .where((member) => member.id == activity.memberId)
-                              .firstOrNull
-                              ?.name ??
-                          'Bot',
-                      style: Theme.of(dialogContext).textTheme.titleSmall,
-                    ),
-                    Text(activity.status),
-                    if (activity.tool case final tool?) Text('Using $tool'),
-                    if (activity.startedAt case final started?)
-                      Text('Started ${time(started)}'),
-                    if (activity.progressAt case final progress?)
-                      Text('Last activity ${time(progress)}'),
-                    ExpansionTile(
-                      tilePadding: EdgeInsets.zero,
-                      title: const Text('Raw details'),
-                      children: [
-                        viewportSelection(
-                          SelectableText(
-                            'Member: ${activity.memberId}\nThread: ${activity.threadId}\nRound: ${activity.roundIndex ?? 'unknown'}',
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var i = 0; i < activities.length; i++) ...[
+                if (i > 0) const Divider(height: 24),
+                Builder(
+                  builder: (context) {
+                    final activity = activities[i];
+                    final member = _session.group.members
+                        .where((member) => member.id == activity.memberId)
+                        .firstOrNull;
+                    return _GroupMemberActivityRow(
+                      activity: activity,
+                      name: member?.name ?? 'Bot',
+                      bot: member == null
+                          ? null
+                          : _session.appearance(member.profile),
+                    );
+                  },
                 ),
+              ],
+              const SizedBox(height: WingSpacing.sm),
+              Text(
+                'Times reported by Hermes',
+                style: Theme.of(dialogContext).textTheme.labelSmall,
               ),
-            const Text('Times are reported by Hermes.'),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -1203,6 +1190,117 @@ class _BotGroupScreenState extends State<BotGroupScreen>
           ),
         ),
       ),
+    );
+  }
+}
+
+class _GroupMemberActivityRow extends StatelessWidget {
+  const _GroupMemberActivityRow({
+    required this.activity,
+    required this.name,
+    required this.bot,
+  });
+
+  final BotGroupMemberActivity activity;
+  final String name;
+  final BotRecord? bot;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final tokens = theme.extension<WingTokens>()!;
+    final status = switch (activity.status) {
+      'running' => 'Running',
+      'queued' => 'Queued',
+      'stopping' => 'Stopping',
+      _ => activity.status,
+    };
+    final statusColor = switch (activity.status) {
+      'running' => tokens.accent,
+      'stopping' => tokens.warning,
+      _ => tokens.muted,
+    };
+    String time(DateTime value) {
+      final local = value.toLocal();
+      return '${MaterialLocalizations.of(context).formatShortDate(local)} · '
+          '${TimeOfDay.fromDateTime(local).format(context)}';
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            BorrowedBotAvatar(bot: bot, name: name, size: 40),
+            const SizedBox(width: WingSpacing.md),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: WingSpacing.sm,
+                    runSpacing: WingSpacing.xs,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      Text(name, style: theme.textTheme.titleMedium),
+                      Text(
+                        status,
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: statusColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (activity.tool case final tool?) ...[
+                    const SizedBox(height: WingSpacing.xs),
+                    Text('Using $tool', style: theme.textTheme.bodyMedium),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+
+        if (activity.startedAt != null || activity.progressAt != null)
+          Padding(
+            padding: const EdgeInsets.only(top: WingSpacing.sm),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (activity.startedAt case final started?)
+                  Text(
+                    'Started ${time(started)}',
+                    style: theme.textTheme.labelSmall,
+                  ),
+                if (activity.progressAt case final progress?)
+                  Text(
+                    'Last activity ${time(progress)}',
+                    style: theme.textTheme.labelSmall,
+                  ),
+              ],
+            ),
+          ),
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          childrenPadding: EdgeInsets.zero,
+          minTileHeight: 48,
+          shape: const Border(),
+          collapsedShape: const Border(),
+          title: Text('Raw details', style: theme.textTheme.labelMedium),
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: viewportSelection(
+                SelectableText(
+                  'Member: ${activity.memberId}\nThread: ${activity.threadId}\nRound: ${activity.roundIndex ?? 'unknown'}',
+                  style: theme.textTheme.bodySmall,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }
