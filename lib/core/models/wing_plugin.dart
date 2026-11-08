@@ -73,3 +73,152 @@ final class WingPluginProfile {
       ? 'Not installed'
       : 'Version ${plugin!.version.isEmpty ? 'unknown' : plugin!.version} · ${plugin!.status.label}';
 }
+
+/// One projection for the settings card and plugin manager.
+final class WingPluginOverview {
+  const WingPluginOverview(
+    this.title,
+    this.detail,
+    this.summary,
+    this.installedVersions, {
+    this.needsAttention = false,
+  });
+  final String title, detail, summary;
+  final String? installedVersions;
+  final bool needsAttention;
+
+  factory WingPluginOverview.fromProfiles(
+    List<WingPluginProfile> rows,
+    WingPluginRelease? release, {
+    required bool checking,
+    required bool updating,
+    required bool unavailable,
+  }) {
+    final versions =
+        rows
+            .where((row) => row.observed && row.plugin != null)
+            .map(
+              (row) =>
+                  row.plugin!.version.isEmpty ? 'Unknown' : row.plugin!.version,
+            )
+            .toSet()
+            .toList()
+          ..sort((a, b) {
+            final first = WingPluginVersion.parse(a),
+                second = WingPluginVersion.parse(b);
+            return first != null && second != null
+                ? first.compareTo(second)
+                : a.compareTo(b);
+          });
+    final installed = versions.isEmpty ? null : versions.join(' · ');
+    var ready = 0,
+        missing = 0,
+        older = 0,
+        pinned = 0,
+        disabled = 0,
+        unknown = 0,
+        failed = 0;
+    for (final row in rows) {
+      if (row.error != null) {
+        failed++;
+      } else if (!row.observed) {
+        unknown++;
+      } else if (row.plugin == null) {
+        missing++;
+      } else if (release == null) {
+        unknown++;
+      } else if (release.needsUpdate(row.plugin!)) {
+        if (row.plugin!.pinnedSha?.isNotEmpty == true) {
+          pinned++;
+        } else {
+          older++;
+        }
+      } else if (!row.plugin!.enabled) {
+        disabled++;
+      } else {
+        ready++;
+      }
+    }
+    final counts = [
+      if (ready > 0) '$ready ready',
+      if (older > 0) '$older older',
+      if (pinned > 0) '$pinned pinned',
+      if (missing > 0) '$missing missing',
+      if (disabled > 0) '$disabled disabled',
+      if (unknown > 0) '$unknown unavailable',
+      if (failed > 0) '$failed failed',
+    ].join(' · ');
+    if (updating) {
+      return WingPluginOverview(
+        'Installing or updating Wing…',
+        'Results appear in Profiles as each operation finishes.',
+        counts,
+        installed,
+      );
+    }
+    if (checking && (rows.isEmpty || unknown > 0)) {
+      return WingPluginOverview(
+        'Checking versions…',
+        'Reading the plugin inventory for this server.',
+        'Checking versions…',
+        installed,
+      );
+    }
+    if (unavailable || unknown > 0) {
+      return WingPluginOverview(
+        'Could not check versions',
+        'Refresh to check before installing or updating.',
+        'Version unavailable',
+        installed,
+        needsAttention: true,
+      );
+    }
+    if (failed > 0) {
+      return WingPluginOverview(
+        'Some profiles need attention',
+        'Open Profiles to see the reason. Refresh before trying again.',
+        counts,
+        installed,
+        needsAttention: true,
+      );
+    }
+    if (rows.isEmpty) {
+      return WingPluginOverview(
+        'No profiles found',
+        'Refresh to check this server’s profiles.',
+        'No profiles found',
+        installed,
+      );
+    }
+    if (missing == rows.length) {
+      return WingPluginOverview(
+        'Not installed',
+        'Install Wing on this server for all profiles.',
+        'Not installed',
+        null,
+      );
+    }
+    if (ready == rows.length) {
+      return WingPluginOverview(
+        'Up to date',
+        'Wing is installed and enabled in every profile.',
+        '${release!.version.value} · all $ready profiles',
+        installed,
+      );
+    }
+    if (pinned > 0) {
+      return WingPluginOverview(
+        'Older version is pinned',
+        'Review the pinned replacement before updating all profiles.',
+        counts,
+        installed,
+      );
+    }
+    return WingPluginOverview(
+      'Setup incomplete',
+      'Install, update or enable Wing where needed.',
+      counts,
+      installed,
+    );
+  }
+}

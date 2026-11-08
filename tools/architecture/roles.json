@@ -2601,6 +2601,11 @@
       "feature": "app-shell",
       "library": "lib/core/widgets/wing_app_bar.dart"
     },
+    "lib/core/widgets/wing_plugin_page.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/wing_plugin_page.dart"
+    },
     "lib/core/widgets/wing_plugin_settings_card.dart": {
       "role": "view",
       "feature": "app-preferences-backup",

@@ -16024,6 +16024,11 @@
       "path": "test/wing_plugin_settings_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/widgets/wing_plugin_page.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {

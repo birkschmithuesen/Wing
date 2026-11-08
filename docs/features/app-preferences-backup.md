@@ -15,12 +15,14 @@ Feature ID: `app-preferences-backup`.
 
 Open App settings from the drawer. Change theme, accent or text size. Use its export/restore controls to back up connections/preferences with an optional passphrase, then review a restore result.
 
-The Wing plugin section shows the connected server and each profile’s version and
-configured enablement. Refresh checks GitHub and backend inventory. The icon-only
+Under Hermes, tap the compact Wing plugin card to open its dedicated page. It
+shows the connected server, installed versions, latest GitHub release and overall
+status. Open Profiles for individual versions, enablement and operation results.
+Refresh checks GitHub and backend inventory. The icon-only
 Install or update Wing in all profiles action installs missing copies from
 [tarkilhk/wing-hermes-plugin](https://github.com/tarkilhk/wing-hermes-plugin), updates
 older copies, and enables Wing where disabled. Missing copies install at the
-published release commit. For pinned copies, review the replacement dialog and
+published release commit. For pinned copies, review the inline replacement explanation and
 confirm to move them to that exact commit. Cancel leaves the batch untouched.
 Each profile keeps its own outcome; one failure does not hide other successes.
 Without a connection, the section explains that Hermes is required.
@@ -59,7 +61,9 @@ scan warnings will be accepted, while dangerous code remains blocked. Approval
 applies only to the displayed release. Other scan/capability refusals remain
 visible, with Hermes’s reason. An unavailable version is not treated as missing.
 A lost update reply or unavailable readback requires Refresh before retrying.
-Leaving the section stops undispatched changes; a command already sent can finish
-on Hermes. Refresh after returning to check it. New tools apply to new chats;
+Returning from the plugin page to App settings keeps the current operation and
+its visible progress. Leaving App settings or replacing the backend stops
+undispatched changes; a command already sent can finish on Hermes. Refresh after
+returning to check it. New tools apply to new chats;
 any required backend restart is shown in the profile result. Opening settings
 never installs plugins or enables automatic updates.

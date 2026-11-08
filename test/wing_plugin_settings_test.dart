@@ -205,7 +205,7 @@ Future<void> frame(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  const Text('Wing plugin'),
+                  const Text('Hermes'),
                   WingPluginSettingsCard(
                     key: ValueKey(key),
                     createSession: () => session,
@@ -225,6 +225,11 @@ Future<void> flush(WidgetTester tester) async {
   for (var i = 0; i < 12; i++) {
     await tester.pump(const Duration(milliseconds: 50));
   }
+}
+
+Future<void> openManager(WidgetTester tester) async {
+  await tester.tap(find.text('Wing plugin'));
+  await flush(tester);
 }
 
 const refresh = 'Refresh Wing plugin versions';
@@ -322,6 +327,59 @@ void main() {
     for (final secret in ['very-secret', 'user:secret', 'hidden']) {
       expect(error, isNot(contains(secret)));
     }
+  });
+  test(
+    'inline pin review is required and cancelled without mutation',
+    () async {
+      final fixture = Fixture();
+      fixture.rows['default']!['pinned_sha'] = oldSha;
+      final session = fixture.session();
+      addTearDown(session.dispose);
+      await session.refresh();
+      expect(session.overview.summary, contains('pinned'));
+      await session.requestApply();
+      expect(session.reviewRelease, same(session.release));
+      expect(fixture.writes, isEmpty);
+      session.cancelReview();
+      expect(session.reviewRelease, isNull);
+      await session.requestApply();
+      await session.confirmPinnedUpdate();
+      expect(fixture.writes.first['force'], isTrue);
+      expect(session.overview.title, 'Up to date');
+    },
+  );
+  testWidgets('compact card opens manager and profiles on demand', (
+    tester,
+  ) async {
+    final fixture = Fixture();
+    for (final name in fixture.names) {
+      fixture.rows[name] = null;
+    }
+    final session = fixture.session();
+    await frame(tester, session);
+    await flush(tester);
+    expect(find.text('default'), findsNothing);
+    expect(find.text('Extra features for Wing.'), findsOneWidget);
+    expect(find.byTooltip(apply), findsNothing);
+    await openManager(tester);
+    expect(find.text('Not installed'), findsOneWidget);
+    expect(find.text('default'), findsNothing);
+    await tester.tap(find.text('Profiles'));
+    await flush(tester);
+    expect(find.text('default'), findsOneWidget);
+    expect(find.text('personal'), findsOneWidget);
+    await tester.pageBack();
+    await flush(tester);
+    await tester.tap(find.byTooltip(apply));
+    await flush(tester);
+    expect(session.overview.title, 'Up to date');
+    expect(
+      fixture.writes.every(
+        (call) => call['action'] == 'install' && call['force'] == false,
+      ),
+      isTrue,
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
   });
   test('stable versions compare numerically and reject previews', () {
     expect(
@@ -507,6 +565,12 @@ void main() {
       final session = fixture.session();
       await frame(tester, session);
       expect(find.byType(StudioLoading), findsNothing);
+      expect(find.text('default'), findsNothing);
+      await tester.tap(find.text('Wing plugin'));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byTooltip(refresh), findsOneWidget);
+      expect(find.byType(StudioLoading), findsOneWidget);
       fixture.readGate!.complete();
       fixture.readGate = null;
       await flush(tester);
@@ -536,6 +600,12 @@ void main() {
         isNull,
       );
       await captureFormFamily(tester, 'wing-plugin-update');
+      await tester.pageBack();
+      await flush(tester);
+      expect(find.text('App settings'), findsOneWidget);
+      expect(find.byType(StudioLoading), findsOneWidget);
+      await openManager(tester);
+      expect(find.byType(StudioLoading), findsOneWidget);
       fixture.writeGate!.complete();
       await flush(tester);
       expect(find.byType(StudioLoading), findsNothing);
@@ -562,6 +632,7 @@ void main() {
       final session = fixture.session();
       await frame(tester, session);
       await flush(tester);
+      await openManager(tester);
       await tester.tap(find.byTooltip(apply));
       await tester.pump();
       await tester.pump();
@@ -585,6 +656,7 @@ void main() {
       final session = first.session();
       await frame(tester, session);
       await flush(tester);
+      await openManager(tester);
       first.releaseGate = Completer<void>();
       first.failRelease = true;
       await tester.tap(find.byTooltip(refresh));
@@ -605,7 +677,9 @@ void main() {
       await flush(tester);
       first.readGate!.complete();
       await flush(tester);
-      expect(find.text('Version 0.9.0 · enabled'), findsOneWidget);
+      expect(find.text('App settings'), findsOneWidget);
+      await openManager(tester);
+      expect(find.text('0.3.0 · 0.9.0'), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -621,9 +695,18 @@ void main() {
         final session = fixture.session();
         await frame(tester, session, brightness: brightness, scale: scale);
         await flush(tester);
+        await openManager(tester);
+        await tester.drag(
+          find.byType(SingleChildScrollView).last,
+          const Offset(0, -600),
+        );
+        await tester.pumpAndSettle();
         await tester.tap(find.byTooltip(apply));
         await tester.pumpAndSettle();
-        expect(find.text('Replace pinned Wing version?'), findsOneWidget);
+        expect(
+          find.text('Replace the pinned version?').hitTestable(),
+          findsOneWidget,
+        );
         expect(find.textContaining('caution-level'), findsOneWidget);
         expect(fixture.writes, isEmpty);
         await captureFormFamily(
@@ -666,10 +749,24 @@ void main() {
           'wing-plugin-${brightness.name}-$scale',
         );
         expect(tester.takeException(), isNull);
+        expect(find.text('default'), findsNothing);
+        await openManager(tester);
+        await captureFormFamily(
+          tester,
+          'wing-manager-${brightness.name}-$scale',
+        );
         expect(
           tester.getSize(find.byTooltip(apply)).height,
           greaterThanOrEqualTo(48),
         );
+        await tester.tap(find.text('Profiles'));
+        await tester.pumpAndSettle();
+        expect(find.text('default'), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'wing-profiles-${brightness.name}-$scale',
+        );
+        expect(tester.takeException(), isNull);
         await tester.pumpWidget(const SizedBox.shrink());
       });
     }

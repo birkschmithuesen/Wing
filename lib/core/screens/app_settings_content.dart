@@ -396,21 +396,13 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                   ),
                 ),
                 _SettingsSection(
-                  title: 'Wing plugin',
-                  child: widget.pluginServer == null
-                      ? const Card(
-                          child: Padding(
-                            padding: EdgeInsets.all(16),
-                            child: Text(
-                              'Connect to Hermes to manage the Wing plugin.',
-                            ),
-                          ),
-                        )
-                      : WingPluginSettingsCard(
-                          key: ObjectKey(widget.pluginServer),
-                          createSession: () =>
-                              WingPluginSession(widget.pluginServer!),
-                        ),
+                  title: 'Hermes',
+                  child: WingPluginSettingsCard(
+                    key: ObjectKey(widget.pluginServer),
+                    createSession: widget.pluginServer == null
+                        ? null
+                        : () => WingPluginSession(widget.pluginServer!),
+                  ),
                 ),
                 _SettingsSection(
                   title: 'About',

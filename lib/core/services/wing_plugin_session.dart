@@ -46,6 +46,43 @@ class WingPluginSession extends ChangeNotifier {
                 _release!.needsUpdate(row.plugin!)),
       );
 
+  WingPluginRelease? _reviewRelease;
+  WingPluginRelease? get reviewRelease => _reviewRelease;
+  WingPluginOverview get overview => WingPluginOverview.fromProfiles(
+    _profiles,
+    _release,
+    checking: _busy,
+    updating: _updating,
+    unavailable: _error != null || _releaseError != null,
+  );
+  String get progressLabel => _updating
+      ? 'Updating Wing plugin in ${_activeProfile ?? 'all profiles'}'
+      : 'Checking Wing plugin versions';
+
+  /// The explicit action presents pin replacement in the manager before writing.
+  Future<void> requestApply() async {
+    if (!canApply) return;
+    if (hasPinnedUpdates) {
+      _reviewRelease = _release;
+      _notify();
+      return;
+    }
+    await applyToAll();
+  }
+
+  void cancelReview() {
+    if (_disposed || _busy) return;
+    _reviewRelease = null;
+    _notify();
+  }
+
+  Future<void> confirmPinnedUpdate() async {
+    if (!canApply || _reviewRelease == null) return;
+    final approved = _reviewRelease;
+    _reviewRelease = null;
+    await applyToAll(approvedPinnedRelease: approved);
+  }
+
   bool get hasPinnedUpdates =>
       _release != null &&
       _profiles.any(
@@ -94,6 +131,7 @@ class WingPluginSession extends ChangeNotifier {
     _explicit = explicit;
     _verified = false;
     _releaseVerified = false;
+    _reviewRelease = null;
     _error = null;
     _releaseError = null;
     server.retain();

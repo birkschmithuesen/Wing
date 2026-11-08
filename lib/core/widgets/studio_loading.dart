@@ -20,6 +20,22 @@ class StudioLoading extends StatefulWidget {
   State<StudioLoading> createState() => _StudioLoadingState();
 }
 
+/// Static brand artwork, independent of work or loading state.
+class StudioWingMark extends StatelessWidget {
+  const StudioWingMark({super.key, this.size = 28});
+  final double size;
+  @override
+  Widget build(BuildContext context) => ExcludeSemantics(
+    child: _WingGlyph(
+      label: 'Wing',
+      size: size,
+      color: Theme.of(context).colorScheme.primary,
+      pulse: const AlwaysStoppedAnimation<double>(0),
+      animate: false,
+    ),
+  );
+}
+
 /// A Wing-only mark for confirmed work. Callers render non-working states
 /// separately; the conversation pulse takes priority over nested work.
 class StudioWorkingIndicator extends StatefulWidget {
