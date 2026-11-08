@@ -11,6 +11,7 @@ import 'voice_sample.dart';
 
 class VoicePreferencesPresentation {
   VoicePreferencesPresentation({
+    required this.liveMode,
     required this.input,
     required this.output,
     required this.language,
@@ -38,6 +39,7 @@ class VoicePreferencesPresentation {
   }) : languages = List.unmodifiable(languages),
        voices = List.unmodifiable(voices);
 
+  final AppPreferenceControl<LiveVoiceMode> liveMode;
   final AppPreferenceControl<AppVoiceProcessing> input;
   final AppPreferenceControl<AppVoiceProcessing> output;
   final AppPreferenceControl<String> language;
@@ -148,6 +150,7 @@ class VoicePreferencesSession {
         input.selected == AppVoiceProcessing.hermes ||
         output.selected == AppVoiceProcessing.hermes;
     return VoicePreferencesPresentation(
+      liveMode: _control((state) => state.liveVoiceMode),
       input: input,
       output: output,
       language: language,

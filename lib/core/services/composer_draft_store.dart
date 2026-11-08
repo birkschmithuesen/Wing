@@ -325,6 +325,7 @@ class ComposerDraftStore {
 
   Map<String, dynamic> _encodeQueuedPrompt(QueuedPromptDraft prompt) => {
     'text': prompt.text,
+    if (prompt.voiceContext != null) 'voice_context': prompt.voiceContext,
     if (prompt.submissionId != null) 'submission_id': prompt.submissionId,
     if (prompt.submissionPayload != null)
       'submission_payload': prompt.submissionPayload,
@@ -359,6 +360,7 @@ class ComposerDraftStore {
           queued.add(
             QueuedPromptDraft(
               text: text,
+              voiceContext: record['voice_context'] as String?,
               references: ComposerReference.decode(record['references']),
               attachments: attachments,
               submissionUncertain: submissionUncertain == true,

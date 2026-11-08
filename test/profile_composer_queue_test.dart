@@ -1019,6 +1019,36 @@ void main() {
     },
   );
 
+  test(
+    'editing a prepared request does not reuse its old dispatch identity',
+    () async {
+      await restoreComposerFixture(
+        chat: chat,
+        preferences: prefs,
+        paused: true,
+        queuedPrompts: [
+          QueuedPromptDraft(
+            text: 'Original',
+            voiceContext: 'Voice context',
+            submissionId: 'prepared-input',
+            submissionPayload: {
+              'submission_id': 'prepared-input',
+              'text': 'Original',
+            },
+          ),
+        ],
+      );
+      final queued = chat.composer.observation.queue.single;
+      await controller.beginQueuedPromptEdit(chat, queued.id);
+      controller.updateQueuedPromptEdit(chat, 'Changed');
+      await controller.saveQueuedPromptEdit(chat);
+      final value = (await saved())!.queuedPrompts.single;
+      expect(value.submissionId, isNull);
+      expect(value.submissionPayload, isNull);
+      expect(value.voiceContext, 'Voice context');
+    },
+  );
+
   test('stale queued edit cannot overwrite another entry', () async {
     await controller.queuePrompt(chat, 'Same');
     await controller.queuePrompt(chat, 'Same');

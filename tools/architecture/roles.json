@@ -291,6 +291,11 @@
       "feature": "administration-connectors",
       "library": "lib/core/models/hosted_connector_accounts.dart"
     },
+    "lib/core/models/live_voice_turn.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/models/live_voice_turn.dart"
+    },
     "lib/core/models/local_transcript_message.dart": {
       "role": "domain",
       "feature": "conversation",
@@ -1471,6 +1476,21 @@
       "feature": "attachments-and-sharing",
       "library": "lib/core/services/image_clipboard.dart"
     },
+    "lib/core/services/live_voice_protocol.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_protocol.dart"
+    },
+    "lib/core/services/live_voice_session.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_session.dart"
+    },
+    "lib/core/services/live_voice_transport.dart": {
+      "role": "data",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_transport.dart"
+    },
     "lib/core/services/markdown_inline_parser.dart": {
       "role": "utility",
       "feature": "markdown",
@@ -1652,6 +1672,11 @@
       "library": "lib/core/services/profile_workspace_controller.dart"
     },
     "lib/core/services/profile_workspace_deleted_drafts.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_live_voice.dart": {
       "role": "application",
       "feature": "conversation",
       "library": "lib/core/services/profile_workspace_controller.dart"
@@ -2265,6 +2290,11 @@
       "role": "view",
       "feature": "versions-updates",
       "library": "lib/core/widgets/installed_app_version_card.dart"
+    },
+    "lib/core/widgets/live_voice_scope.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/live_voice_scope.dart"
     },
     "lib/core/widgets/markdown_code_block.dart": {
       "role": "view",

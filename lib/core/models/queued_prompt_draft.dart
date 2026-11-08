@@ -3,6 +3,7 @@ import 'attachment_draft.dart';
 
 class QueuedPromptDraft {
   final String text;
+  final String? voiceContext;
   final List<ComposerReference> references;
   final List<AttachmentDraft> attachments;
   final bool submissionUncertain;
@@ -11,6 +12,7 @@ class QueuedPromptDraft {
 
   QueuedPromptDraft({
     required this.text,
+    this.voiceContext,
     Iterable<ComposerReference> references = const [],
     Iterable<AttachmentDraft> attachments = const [],
     this.submissionUncertain = false,

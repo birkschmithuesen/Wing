@@ -76,9 +76,48 @@ final class TranscriptReading implements TranscriptReader {
   final _replyReceipts = <String, Set<int>>{};
   Set<String>? _pendingReplyAdmissions;
 
+  // Presentation provenance, scoped to this reading. Hermes still owns all
+  // rows and work; hanging up must not erase which replies came from voice work.
+  final _voiceSubmissions = <String>{};
+  final _voiceAdmissions = <String>{};
+  final _voiceReplyRows = <int>{};
+
+  void registerVoiceSubmission(String submission) =>
+      _voiceSubmissions.add(submission);
+
+  void registerVoiceReplacement(String admission, String submission) {
+    if (_voiceAdmissions.contains(admission)) {
+      registerVoiceSubmission(submission);
+    }
+  }
+
+  void observeVoiceAdmission(String submission, String admission) {
+    if (_voiceSubmissions.contains(submission)) _voiceAdmissions.add(admission);
+  }
+
+  void observeVoiceCompletion(Map<String, dynamic> completion) {
+    final receipt = completion['persisted_turn'];
+    if (receipt is! Map ||
+        !_voiceSubmissions.contains(receipt['submission_id'])) {
+      return;
+    }
+    final rows = receipt['row_ids'];
+    if (rows is List) _voiceReplyRows.addAll(rows.whereType<int>());
+  }
+
+  bool isVoiceTaskReply(Map<String, dynamic> row) =>
+      row['role'] == 'assistant' &&
+      (_voiceAdmissions.contains(row['_reply_admission']) ||
+          _voiceReplyRows.contains(row['id']));
+
   void observePendingReplyAdmissions(Iterable<String> ids) {
     _pendingReplyAdmissions = ids.toSet();
   }
+
+  /// Native completion can omit its body after streaming it. All consumers use
+  /// the same resolved answer before settlement retires the stream.
+  String completionText(Map<String, dynamic> completion) =>
+      completion['text']?.toString() ?? streaming;
 
   void retireReply() {
     if (_replyTurn != null) _completedReplyTurns.add(_replyTurn!);

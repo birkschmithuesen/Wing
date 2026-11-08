@@ -28,6 +28,7 @@ object MonitoringRuntime {
         if (engine === flutterEngine) return
         engine = flutterEngine
         ChatNotifications.attach(context, flutterEngine)
+        LiveVoiceRuntime.attach(context, flutterEngine)
         val app = context.applicationContext
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -122,13 +123,14 @@ object MonitoringRuntime {
         context.getSystemService(PowerManager::class.java)
             .isIgnoringBatteryOptimizations(context.packageName)
 
-    private fun releaseIfUnused() {
+    fun releaseIfUnused() {
         // Allow an in-flight method result or replacement activity to complete.
         Handler(Looper.getMainLooper()).post {
-            if (!activityAttached && !running && starting.isEmpty()) {
+            if (!activityAttached && !running && !LiveVoiceRuntime.active && starting.isEmpty()) {
                 channel?.setMethodCallHandler(null)
                 channel = null
                 ChatNotifications.detach()
+                LiveVoiceRuntime.detach()
                 engine?.destroy()
                 engine = null
             }

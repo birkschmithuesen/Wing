@@ -1152,13 +1152,24 @@ class ComposerSession {
       _enqueue(rawText, fromSend: fromSend, consumeMatchingDraft: true);
 
   /// Independent surfaces cannot consume the chat draft, even for identical text.
-  Future<void> enqueueExternal(String text) =>
-      _enqueue(text, fromSend: false, consumeMatchingDraft: false);
+  Future<void> enqueueExternal(
+    String text, {
+    String? voiceContext,
+    String? submissionId,
+  }) => _enqueue(
+    text,
+    fromSend: false,
+    consumeMatchingDraft: false,
+    voiceContext: voiceContext,
+    submissionId: submissionId,
+  );
 
   Future<void> _enqueue(
     String rawText, {
     required bool fromSend,
     required bool consumeMatchingDraft,
+    String? voiceContext,
+    String? submissionId,
   }) async {
     _ensure();
     if (_preparing != 0) {
@@ -1195,6 +1206,8 @@ class ComposerSession {
     final item = _QueueEntry(
       QueuedPromptDraft(
         text: fromSend ? rawText : text,
+        voiceContext: voiceContext,
+        submissionId: submissionId,
         references: retainComposerReferences(
           rawText,
           consumeMatchingDraft ? originalReferences : const [],
@@ -1328,6 +1341,13 @@ class ComposerSession {
     _saving = true;
     item.value = QueuedPromptDraft(
       text: text,
+      voiceContext: original.voiceContext,
+      // A preassigned identity can follow edits until any payload was prepared
+      // for dispatch. Reusing a dispatched ID with new text is not safe.
+      submissionId:
+          !original.submissionUncertain && original.submissionPayload == null
+          ? original.submissionId
+          : null,
       references: retainComposerReferences(
         text,
         identical(_editing, item) ? _editReferences : original.references,
@@ -1445,6 +1465,7 @@ class ComposerSession {
     final submissionId = item?.value.submissionId ?? const Uuid().v4();
     final ticket = ComposerSubmission(
       submissionId: submissionId,
+      voiceContext: item?.value.voiceContext,
       text: text,
       references: references,
       attachments: files.map(_file),
@@ -1452,6 +1473,7 @@ class ComposerSession {
     _submissions[ticket] = _SubmissionWork(
       value: QueuedPromptDraft(
         submissionId: submissionId,
+        voiceContext: item?.value.voiceContext,
         text: text,
         references: references,
         attachments: files,
@@ -1539,6 +1561,7 @@ class ComposerSession {
     final work = _submission(ticket);
     work.value = QueuedPromptDraft(
       text: work.value.text,
+      voiceContext: work.value.voiceContext,
       submissionId: ticket.submissionId,
       submissionPayload: payload == null
           ? null
@@ -1569,6 +1592,7 @@ class ComposerSession {
     } else {
       final value = QueuedPromptDraft(
         text: work.value.text,
+        voiceContext: work.value.voiceContext,
         submissionId: ticket.submissionId,
         submissionPayload: work.value.submissionPayload,
         references: work.value.references,
@@ -1677,6 +1701,7 @@ class ComposerSession {
     // work on the next launch.
     item.value = QueuedPromptDraft(
       text: text,
+      voiceContext: original.voiceContext,
       references: retainComposerReferences(text, references),
       attachments: original.attachments,
       submissionUncertain: true,

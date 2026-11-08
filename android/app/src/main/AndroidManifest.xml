@@ -7,6 +7,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+    <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
     <application
         android:label="${appLabel}"
         android:name="${applicationName}"
@@ -20,6 +26,8 @@
         <activity android:name=".NotificationActionActivity" android:exported="false"
             android:taskAffinity="" android:excludeFromRecents="true"
             android:theme="@style/NotificationActionTheme" />
+        <service android:name=".LiveVoiceService" android:exported="false"
+            android:stopWithTask="false" android:foregroundServiceType="microphone|mediaPlayback" />
         <service
             android:name=".BackgroundMonitoringService"
             android:exported="false"

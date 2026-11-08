@@ -76,6 +76,8 @@ import 'completion_diagnostics.dart';
 import 'remote_files_client.dart';
 import 'owned_remote_files.dart';
 import 'hermes_voice.dart';
+import 'live_voice_session.dart';
+import '../models/app_preferences.dart' show LiveVoiceMode;
 import '../models/voice_processing_settings.dart';
 import 'connection_manager.dart';
 import 'connection_access.dart';
@@ -94,6 +96,7 @@ import '../models/notification_focus.dart';
 import '../models/notification_input.dart';
 
 part 'profile_workspace_references.dart';
+part 'profile_workspace_live_voice.dart';
 part 'profile_workspace_notifications.dart';
 part 'profile_workspace_recents.dart';
 part 'profile_workspace_deleted_drafts.dart';
@@ -689,7 +692,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
   bool _retentionScheduled = false;
   static const settledChatLimit = 20;
 
+  final _liveVoiceChats = <ProfileChat, Set<_WorkspaceLiveVoiceConversation>>{};
+
   bool _chatOwnsWork(ProfileWorkspaceData resource, ProfileChat chat) =>
+      _liveVoiceChats.containsKey(chat) ||
       chat.runtime.blocksTurnAdmission ||
       chat.runtime.activity(
             backgroundWorking: chat._subagents.any((item) => !item.isTerminal),
@@ -7951,6 +7957,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'submission_id': ticket.submissionId,
         if (admittingQueue) 'queued': true,
         'text': submittedText,
+        if (ticket.voiceContext != null) ...{
+          'surface': 'voice-live',
+          'voice_context': ticket.voiceContext,
+        },
         if (resource.gateway.canonicalClarifyBatch) 'clarify_batch': true,
         if (images.isNotEmpty) 'attachments': images,
       };
@@ -8011,6 +8021,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         );
       }
       acknowledged = true;
+      _observeVoiceAdmission(chat, receipt);
       resource.gateway.canonical.admission(
         receipt,
         inputId: ticket.submissionId,
@@ -8162,6 +8173,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat,
     ).gateway.canonical.session(chat.runtime.runtimeId);
     if (state == null) return;
+    for (final receipt in state.pending) {
+      _observeVoiceAdmission(chat, receipt);
+    }
     chat.reading.observePendingReplyAdmissions(
       state.pending.where((row) => !row.queued).map((row) => row.id),
     );
@@ -8352,12 +8366,21 @@ class ProfileWorkspaceController extends ChangeNotifier {
           text,
           selected: chat.composer.observation.references,
         );
-        await _commandOwner(chat).gateway.call('prompt.replace_queued', {
-          'session_id': chat.runtime.runtimeId,
-          'admission_id': row.id,
-          'submission_id': const Uuid().v4(),
-          'text': prepared,
-        });
+        final submission = const Uuid().v4();
+        final voiceContext = _prepareVoiceReplacement(chat, row.id, submission);
+        final receipt = CanonicalAdmission.fromJson(
+          await _commandOwner(chat).gateway.call('prompt.replace_queued', {
+            'session_id': chat.runtime.runtimeId,
+            'admission_id': row.id,
+            'submission_id': submission,
+            'text': prepared,
+            if (voiceContext != null) ...{
+              'surface': 'voice-live',
+              'voice_context': voiceContext,
+            },
+          }),
+        );
+        _observeVoiceAdmission(chat, receipt);
         await _refreshCanonicalPending(chat);
       });
       await chat.composer.cancelEdit();
@@ -9255,6 +9278,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
       case 'message.complete':
       case 'turn.end':
+        chat.reading.observeVoiceCompletion(event.data);
+        final completionText = chat.reading.completionText(event.data);
+        for (final voice
+            in _liveVoiceChats[chat] ??
+                const <_WorkspaceLiveVoiceConversation>{}) {
+          voice.observeCompletion(
+            event.envelope['admission_id'],
+            completionText,
+          );
+        }
         if (chat.runtime.blocksTurnAdmission) {
           unawaited(
             _settle(resource, chat, event.data).catchError((Object e) {
@@ -9338,7 +9371,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if ((failed || cancelled) && chat.composer.observation.queue.isNotEmpty) {
       chat.composer.recordRuntimeFailure();
     }
-    final finalText = completion['text']?.toString() ?? chat.reading.streaming;
+    final finalText = chat.reading.completionText(completion);
     final excerptStarted = CompletionDiagnostics.enabled
         ? CompletionDiagnostics.start()
         : 0;

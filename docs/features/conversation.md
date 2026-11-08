@@ -91,6 +91,13 @@ history before attachment completes, then reports whether canonical attachment
 succeeded or a visible attachment failure remains. This targeted case establishes
 readability, not permission to force takeover or proof of message submission.
 
+Both sides of live voice appear as local chat entries labelled “Not saved to Hermes”.
+They survive call ending, history refresh and chat switching while Wing runs;
+they have Copy but no saved-message edit, restore or regenerate actions. They
+are not included in server history search or Hermes memory.
+
+A live voice call captures its original conversation. Browsing another chat does not retarget it. Voice delegates through the canonical queue/steering/stop owner; ending voice releases its retention lease without interrupting work. See [voice](voice.md).
+
 ## Gotchas
 
 Streamed replies use Hermes turn, segment and UTF-16 offset identities. Replayed
@@ -168,3 +175,8 @@ The chooser payload is a platform-channel fixture; third-party composer handling
 requires a device with an email app. The plugin must be installed/enabled per
 profile; its draft tool must produce the reference. No account or voice provider
 credentials are required for drafts. Plain chat continues to use ordinary links.
+
+Replies to voice-submitted Hermes work are folded under “Hermes task details”
+while the original chat reading is retained. Expand to inspect the native result
+and its saved actions. GPT-Live’s spoken reply stays directly readable as a local
+voice entry. Correlation uses native IDs, never matching prose.

@@ -162,6 +162,7 @@ final class ComposerSubmission {
   ComposerSubmission({
     required this.submissionId,
     required this.text,
+    this.voiceContext,
     Iterable<ComposerReference> references = const [],
     required Iterable<ComposerAttachmentObservation> attachments,
   }) : references = List.unmodifiable(references),
@@ -169,6 +170,7 @@ final class ComposerSubmission {
 
   final String submissionId;
   final String text;
+  final String? voiceContext;
   final List<ComposerReference> references;
   final List<ComposerAttachmentObservation> attachments;
 }

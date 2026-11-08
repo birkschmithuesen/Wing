@@ -34,6 +34,29 @@ void main() {
     );
   }
 
+  test('voice origin and recent speech survive outbox reload', () async {
+    final store = ComposerDraftStore(preferences, connectionIdentity: 'host');
+    await store.write(
+      profileName: 'work',
+      sessionId: 'one',
+      text: '',
+      attachments: [],
+      queuedPrompts: [
+        QueuedPromptDraft(
+          text: 'Use Hermes',
+          voiceContext: 'Voice: I will ask Hermes.',
+          submissionId: 'input-one',
+        ),
+      ],
+    );
+    final restored = await store.read(profileName: 'work', sessionId: 'one');
+    expect(
+      restored!.queuedPrompts.single.voiceContext,
+      'Voice: I will ask Hermes.',
+    );
+    expect(restored.queuedPrompts.single.submissionId, 'input-one');
+  });
+
   test(
     'retains accepted image ownership and resets it for a new session',
     () async {

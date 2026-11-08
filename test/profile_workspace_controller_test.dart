@@ -1,3 +1,6 @@
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/live_voice_session.dart';
+import 'support/live_voice_fixture.dart';
 import 'package:wing/core/models/gateway_approval.dart';
 import 'support/canonical_gateway_fixture.dart';
 import 'package:wing/core/models/hermes_question.dart';
@@ -218,6 +221,8 @@ class Host {
   Future<void> Function()? onApprovalResponse;
   Completer<void>? promptSubmitStarted;
   Completer<void>? promptSubmitDelay;
+  Completer<void>? promptReplaceStarted;
+  Completer<void>? promptReplaceDelay;
   Completer<void>? connectDelay;
   Completer<void>? activeListDelay;
   int connectFailures = 0;
@@ -246,6 +251,15 @@ class Host {
   Completer<void>? heldHistoryStarted;
   Completer<void>? heldHistoryDelay;
   Object? heldHistoryFailure;
+  Object? liveVoiceStatusFailure;
+  Object? liveVoiceSessionFailure;
+  bool liveVoiceApiAvailable = true;
+  String? voiceCachedPrompt;
+  String? voiceSavedPrompt = 'Native saved prompt';
+  Completer<void>? heldVoiceContext;
+  Completer<void>? heldVoiceStatus;
+  Completer<void>? heldVoiceSession;
+  final voiceEndpoints = <String>[];
   Completer<void>? heldTimingLog;
   Completer<void>? projectDelay;
   final projectPaths = <String, String?>{};
@@ -282,6 +296,20 @@ class Host {
           throw DashboardRequestNotSentException(
             StateError('Creation retired'),
           );
+        }
+        if (endpoint == 'plugins/wing/voice/v2/session?profile=$name') {
+          onDispatched();
+          voiceEndpoints.add(endpoint);
+          calls.add((name, 'voice.negotiate', Map.of(body)));
+          await heldVoiceSession?.future;
+          if (liveVoiceSessionFailure case final failure?) throw failure;
+          return {
+            'contractVersion': 2,
+            'answer': 'SDP',
+            'mode': body['mode'],
+            'protocol': body['mode'] == 'api' ? 'openai-live' : 'codex-live-v3',
+            'handoff': 'client',
+          };
         }
         expect(endpoint, 'files/mkdir?profile=$name');
         onDispatched();
@@ -353,6 +381,18 @@ class Host {
         );
       },
       get: (path, query) async {
+        if (path == 'plugins/wing/voice/v2/status') {
+          reads.add((path, query));
+          await heldVoiceStatus?.future;
+          if (liveVoiceStatusFailure case final failure?) throw failure;
+          return {
+            'contractVersion': 2,
+            'available': query['mode'] == 'api' ? liveVoiceApiAvailable : true,
+            'authOwner': 'hermes-profile',
+            'modes': ['subscription', 'api'],
+          };
+        }
+
         reads.add((path, query));
         if (RegExp(r'^sessions/[^/]+/mutation-snapshot$').hasMatch(path)) {
           return {
@@ -380,6 +420,15 @@ class Host {
                 [
                   {'id': 'same', 'title': '$name chat', 'profile': name},
                 ],
+          };
+        }
+        if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+          return {
+            'id': Uri.decodeComponent(path.split('/')[1]),
+            'profile': name,
+            'system_prompt': voiceSavedPrompt == null
+                ? null
+                : '$voiceSavedPrompt for $name',
           };
         }
         if (path.startsWith('sessions/') &&
@@ -519,6 +568,8 @@ class Host {
           );
           canonicalAdmissions['$name:${params['session_id']}:${params['submission_id']}'] =
               replacement;
+          promptReplaceStarted?.complete();
+          await promptReplaceDelay?.future;
           return replacement;
         }
         if (method == 'session.mutate') {
@@ -679,6 +730,13 @@ class Host {
                 },
               ],
             },
+          };
+        }
+        if (method == 'session.info') {
+          await heldVoiceContext?.future;
+          return {
+            'system_prompt': voiceCachedPrompt,
+            'cwd': '/$name/workspace',
           };
         }
         if (method == 'session.create' || method == 'session.resume') {
@@ -887,6 +945,554 @@ void main() {
     appPreferences.dispose();
     attachmentCache.deleteSync(recursive: true);
   });
+
+  test(
+    'live voice reports a missing plugin without blaming ChatGPT sign-in',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      host.liveVoiceStatusFailure = const DashboardHttpException(
+        404,
+        'plugins/wing/voice/v2/status',
+      );
+      final transport = VoiceTransportFixture();
+      final session = LiveVoiceSession(
+        createTransport: () => transport,
+        background: VoiceBackgroundFixture(),
+      );
+      await session.start(controller.liveVoiceConversation(chat));
+      await settleVoice();
+      expect(
+        session.error,
+        'The Wing plugin is not installed or enabled on this Hermes profile. Install and enable it for live voice.',
+      );
+      expect(host.calls.where((c) => c.$2 == 'voice.negotiate'), isEmpty);
+      expect(transport.closed, isTrue);
+      session.dispose();
+    },
+  );
+
+  test(
+    'live voice captures billing and chat scope without consuming draft',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      await controller.updateDraft(chat, 'Keep my typed draft');
+      await appPreferences.setLiveVoiceMode(LiveVoiceMode.api);
+      final voice = controller.liveVoiceConversation(chat);
+      expect(voice.mode, LiveVoiceMode.api);
+      await appPreferences.setLiveVoiceMode(LiveVoiceMode.subscription);
+      final result = await voice.negotiate('offer');
+      expect(result['protocol'], 'openai-live');
+      expect(result['mode'], 'api');
+      final negotiation = host.calls.singleWhere(
+        (call) => call.$2 == 'voice.negotiate',
+      );
+      expect(negotiation.$1, chat.key.workspace.profileName);
+      expect(negotiation.$3['offer'], 'offer');
+      expect(host.voiceEndpoints, [
+        'plugins/wing/voice/v2/session?profile=${chat.key.workspace.profileName}',
+      ]);
+      expect(
+        host.calls.singleWhere((c) => c.$2 == 'voice.negotiate').$3['mode'],
+        'api',
+      );
+      await voice.delegate(
+        'request',
+        'Spoken request',
+        delegationId: 'spoken-request',
+      );
+      await Future<void>.delayed(Duration.zero);
+      expect(chat.composer.observation.text, 'Keep my typed draft');
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
+      final submitted = host.calls.singleWhere((c) => c.$2 == 'prompt.submit');
+      expect(submitted.$3['session_id'], chat.runtime.runtimeId);
+      expect(submitted.$3['text'], 'Spoken request');
+      voice.release();
+      expect(host.calls.where((c) => c.$2 == 'session.interrupt'), isEmpty);
+      expect(voice.available, isFalse);
+      await expectLater(
+        voice.delegate('request', 'Too late', delegationId: 'too-late'),
+        throwsStateError,
+      );
+    },
+  );
+
+  test('live voice subscription uses only the Wing plugin contract', () async {
+    final chat = await controller.createChat(canDispatch: () => true);
+    final voice = controller.liveVoiceConversation(chat);
+    final result = await voice.negotiate('offer');
+    expect(result['mode'], 'subscription');
+    expect(host.voiceEndpoints, [
+      'plugins/wing/voice/v2/session?profile=${chat.key.workspace.profileName}',
+    ]);
+    expect(host.calls.singleWhere((c) => c.$2 == 'voice.negotiate').$3, {
+      'offer': 'offer',
+      'voice': 'cove',
+      'mode': 'subscription',
+      'system_prompt':
+          'Native saved prompt for ${chat.key.workspace.profileName}',
+      'cwd': '/${chat.key.workspace.profileName}/workspace',
+      'history': voice.context,
+    });
+    final reads = host.reads.where((r) => r.$1.contains('voice/')).toList();
+    expect(reads.single.$1, 'plugins/wing/voice/v2/status');
+    expect(reads.single.$2['profile'], chat.key.workspace.profileName);
+    voice.release();
+  });
+
+  test(
+    'live voice subscription delegates provider text through canonical chat',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      await controller.updateDraft(chat, 'Keep this draft');
+      final transport = VoiceTransportFixture();
+      final session = LiveVoiceSession(
+        createTransport: () => transport,
+        background: VoiceBackgroundFixture(),
+      );
+      await session.start(controller.liveVoiceConversation(chat));
+      const text =
+          'Ask Hermes to use its terminal tool to calculate 137 times 29';
+      transport.event({
+        'type': 'output_transcript.added',
+        'item': {'text': 'I will ask Hermes.'},
+      });
+      transport.delegate('native-delegation', text);
+      transport.delegate('native-delegation', text);
+      await settleVoice();
+      await settleVoice();
+      final submissions = host.calls
+          .where((c) => c.$2 == 'prompt.submit')
+          .toList();
+      expect(submissions, hasLength(1));
+      expect(submissions.single.$3['session_id'], chat.runtime.runtimeId);
+      expect(submissions.single.$3['text'], text);
+      expect(submissions.single.$3['surface'], 'voice-live');
+      expect(
+        submissions.single.$3['voice_context'],
+        contains('I will ask Hermes.'),
+      );
+      expect(submissions.single.$3.containsKey('voice_turn'), isFalse);
+      expect(chat.composer.observation.text, 'Keep this draft');
+      await session.end();
+      session.dispose();
+      expect(host.calls.where((c) => c.$2 == 'session.interrupt'), isEmpty);
+    },
+  );
+
+  test(
+    'live voice matches each completion to its admission, including completion before ACK',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      final voice = controller.liveVoiceConversation(chat);
+      host.promptSubmitStarted = Completer<void>();
+      host.promptSubmitDelay = Completer<void>();
+      await voice.delegate(
+        'request',
+        'Calculate it',
+        delegationId: 'spoken-work',
+      );
+      await host.promptSubmitStarted!.future;
+      final receipt = host.canonicalAdmissions.values.single;
+      void complete(String admission, String text) {
+        host.gateways[chat.key.workspace.profileName]!.onEvent!(
+          StreamEvent(
+            type: 'message.complete',
+            sessionId: chat.runtime.runtimeId,
+            envelope: {'admission_id': admission},
+            data: {'text': text},
+          ),
+        );
+      }
+
+      complete(receipt['admission_id'] as String, 'The result is 3973');
+      expect(voice.completedReplies, isEmpty);
+      host.promptSubmitDelay!.complete();
+      await settleVoice();
+      await settleVoice();
+      expect(voice.completedReplies, {'spoken-work': 'The result is 3973'});
+      host.promptSubmitDelay = null;
+      host.promptSubmitStarted = null;
+      await voice.delegate(
+        'request',
+        'Another task',
+        delegationId: 'second-work',
+      );
+      await settleVoice();
+      await settleVoice();
+      final second = host.canonicalAdmissions.values.last;
+      complete(second['admission_id'] as String, 'Second result');
+      expect(voice.completedReplies, {
+        'spoken-work': 'The result is 3973',
+        'second-work': 'Second result',
+      });
+      complete('unrelated-typed-work', 'Do not read this aloud');
+      expect(voice.completedReplies, {
+        'spoken-work': 'The result is 3973',
+        'second-work': 'Second result',
+      });
+      voice.release();
+    },
+  );
+
+  test('live voice edited unsent request retains result routing', () async {
+    final chat = await controller.createChat(canDispatch: () => true);
+    await chat.composer.pause();
+    final voice = controller.liveVoiceConversation(chat);
+    addTearDown(voice.release);
+    await voice.delegate(
+      'request',
+      'Calculate it',
+      delegationId: 'edited-voice',
+    );
+    await settleVoice();
+    final queued = chat.composer.observation.queue.single;
+    await controller.beginQueuedPromptEdit(chat, queued.id);
+    controller.updateQueuedPromptEdit(chat, 'Calculate 173 times 41');
+    await controller.saveQueuedPromptEdit(chat);
+    await controller.resumeQueue(chat);
+    await settleVoice();
+    final receipt = host.canonicalAdmissions.values.single;
+    host.gateways[chat.key.workspace.profileName]!.onEvent!(
+      StreamEvent(
+        type: 'message.complete',
+        sessionId: chat.runtime.runtimeId,
+        envelope: {'admission_id': receipt['admission_id']},
+        data: {'text': '7093'},
+      ),
+    );
+    await settleVoice();
+    expect(voice.completedReplies, {'edited-voice': '7093'});
+    expect(
+      host.calls.where((c) => c.$2 == 'prompt.submit').single.$3['text'],
+      'Calculate 173 times 41',
+    );
+  });
+
+  for (final early in [false, true]) {
+    test(
+      'live voice server queue replacement retains handoff early=$early',
+      () async {
+        final chat = await controller.createChat(canDispatch: () => true);
+        emitChatEvent(controller, chat, 'message.start');
+        final voice = controller.liveVoiceConversation(chat);
+        addTearDown(voice.release);
+        await voice.delegate(
+          'request',
+          'Calculate it',
+          voiceContext: 'Original spoken context',
+          delegationId: 'replaced-voice',
+        );
+        await settleVoice();
+        await settleVoice();
+        final original = host.canonicalAdmissions.values.single;
+        expect(original['status'], 'queued');
+        final queued = chat.composer.observation.queue.single;
+        await controller.beginQueuedPromptEdit(chat, queued.id);
+        controller.updateQueuedPromptEdit(chat, 'Calculate 173 times 41');
+        host.promptReplaceStarted = Completer<void>();
+        if (early) host.promptReplaceDelay = Completer<void>();
+        final edited = controller.saveQueuedPromptEdit(chat);
+        await host.promptReplaceStarted!.future;
+        if (!early) await edited;
+        final replacement = host.canonicalAdmissions.values.last;
+        expect(original['outcome'], 'cancelled');
+        expect(replacement['admission_id'], isNot(original['admission_id']));
+        host.gateways[chat.key.workspace.profileName]!.onEvent!(
+          StreamEvent(
+            type: 'message.complete',
+            sessionId: chat.runtime.runtimeId,
+            envelope: {'admission_id': replacement['admission_id']},
+            data: {
+              'text': '7093',
+              'persisted_turn': {
+                'submission_id': replacement['input_id'],
+                'row_ids': [201, 202],
+                'complete': true,
+                'final_assistant_row_id': 202,
+              },
+            },
+          ),
+        );
+        if (early) {
+          host.promptReplaceDelay!.complete();
+          await edited;
+        }
+        await settleVoice();
+        expect(voice.completedReplies, {'replaced-voice': '7093'});
+        final sent = host.calls
+            .singleWhere((c) => c.$2 == 'prompt.replace_queued')
+            .$3;
+        expect(sent['surface'], 'voice-live');
+        expect(sent['voice_context'], 'Original spoken context');
+        expect(
+          chat.reading.isVoiceTaskReply({'id': 202, 'role': 'assistant'}),
+          isTrue,
+        );
+      },
+    );
+  }
+
+  for (final beforeAck in [false, true]) {
+    for (final hangup in [false, true]) {
+      test(
+        'live voice forwards streamed result with null completion text beforeAck=$beforeAck hangup=$hangup',
+        () async {
+          final chat = await controller.createChat(canDispatch: () => true);
+          final transport = VoiceTransportFixture();
+          final session = LiveVoiceSession(
+            createTransport: () => transport,
+            background: VoiceBackgroundFixture(),
+          );
+          await session.start(controller.liveVoiceConversation(chat));
+          addTearDown(() async {
+            await session.end();
+            session.dispose();
+          });
+          host.promptSubmitStarted = Completer<void>();
+          if (beforeAck) host.promptSubmitDelay = Completer<void>();
+          transport.delegate('spoken-result', 'Calculate it');
+          await host.promptSubmitStarted!.future;
+          if (!beforeAck) {
+            await settleVoice();
+            await settleVoice();
+          }
+          final receipt = host.canonicalAdmissions.values.single;
+          final admission = receipt['admission_id'] as String;
+          void emit(String type, Map<String, dynamic> data) =>
+              host.gateways[chat.key.workspace.profileName]!.onEvent!(
+                StreamEvent(
+                  type: type,
+                  sessionId: chat.runtime.runtimeId,
+                  envelope: {'admission_id': admission},
+                  data: data,
+                ),
+              );
+          if (hangup) await session.end();
+          emit('message.start', {'turn_id': 'native-turn'});
+          emit('message.delta', {
+            'turn_id': 'native-turn',
+            'segment': 0,
+            'offset': 0,
+            'text': 'The result is 3973.',
+          });
+          expect(chat.reading.streaming, 'The result is 3973.');
+          // Captured stock event shape: body is carried by stream, receipt by completion.
+          emit('message.complete', {
+            'text': null,
+            'content': null,
+            'admission_id': admission,
+            'outcome': 'completed',
+            'status': 'complete',
+            'persisted_turn': {
+              'complete': true,
+              'row_ids': [101, 102],
+              'user_row_id': 101,
+              'user_row_ids': [101],
+              'final_assistant_row_id': 102,
+              'submission_id': receipt['input_id'],
+            },
+          });
+          if (beforeAck) host.promptSubmitDelay!.complete();
+          await settleVoice();
+          await settleVoice();
+          await settleVoice();
+          final replies = transport.sent
+              .where(
+                (event) =>
+                    event['type'] == 'delegation.context.append' &&
+                    event['delegation_item_id'] == 'spoken-result' &&
+                    jsonEncode(event).contains('The result is 3973.'),
+              )
+              .toList();
+          expect(
+            replies,
+            hasLength(hangup ? 0 : 1),
+            reason: 'The actual Hermes result must reach GPT-Live once',
+          );
+          expect(
+            host.calls.where((call) => call.$2 == 'prompt.submit'),
+            hasLength(1),
+          );
+          expect(
+            chat.reading.isVoiceTaskReply({
+              'id': 102,
+              'role': 'assistant',
+              'content': 'The result is 3973.',
+            }),
+            isTrue,
+          );
+          expect(
+            chat.reading.isVoiceTaskReply({
+              'id': 103,
+              'role': 'assistant',
+              'content': 'The result is 3973.',
+            }),
+            isFalse,
+            reason: 'Identical typed answers must not be folded',
+          );
+          expect(
+            chat.reading.isVoiceTaskReply({
+              'id': 101,
+              'role': 'user',
+              'content': 'Calculate it',
+            }),
+            isFalse,
+          );
+          expect(
+            chat.reading.isVoiceTaskReply({
+              '_reply_admission': admission,
+              'role': 'assistant',
+              'content': 'Interim task reply',
+            }),
+            isTrue,
+            reason: 'Streaming and saved replies share task provenance',
+          );
+          await session.end();
+          expect(
+            chat.reading.isVoiceTaskReply({'id': 102, 'role': 'assistant'}),
+            isTrue,
+            reason: 'Hangup must retain task details',
+          );
+        },
+      );
+    }
+  }
+
+  test(
+    'live voice preserves the native cached prompt over an older saved prompt',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      host.voiceCachedPrompt = 'Native active SOUL and memory';
+      final voice = controller.liveVoiceConversation(chat);
+      await voice.negotiate('offer');
+      final body = host.calls.singleWhere((c) => c.$2 == 'voice.negotiate').$3;
+      expect(body['system_prompt'], 'Native active SOUL and memory');
+      expect(body['cwd'], '/${chat.key.workspace.profileName}/workspace');
+      voice.release();
+    },
+  );
+
+  test(
+    'live voice explicitly requests native profile inspection for a new chat',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      host.voiceSavedPrompt = null;
+      final voice = controller.liveVoiceConversation(chat);
+      await voice.negotiate('offer');
+      expect(
+        host.calls
+            .singleWhere((c) => c.$2 == 'voice.negotiate')
+            .$3['system_prompt'],
+        isNull,
+      );
+      voice.release();
+    },
+  );
+
+  test(
+    'live voice retirement during native context read prevents negotiation',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      final held = host.heldVoiceContext = Completer<void>();
+      final voice = controller.liveVoiceConversation(chat);
+      final pending = expectLater(voice.negotiate('offer'), throwsStateError);
+      await Future<void>.delayed(Duration.zero);
+      voice.release();
+      held.complete();
+      await pending;
+      expect(host.voiceEndpoints, isEmpty);
+    },
+  );
+
+  test('live voice API unavailable stops before negotiating', () async {
+    final chat = await controller.createChat(canDispatch: () => true);
+    await appPreferences.setLiveVoiceMode(LiveVoiceMode.api);
+    host.liveVoiceApiAvailable = false;
+    final voice = controller.liveVoiceConversation(chat);
+    await expectLater(
+      voice.negotiate('offer'),
+      throwsA(
+        isA<LiveVoiceStartException>().having(
+          (e) => e.message,
+          'message',
+          contains('Configure OpenAI API credentials'),
+        ),
+      ),
+    );
+    expect(host.voiceEndpoints, isEmpty);
+    voice.release();
+  });
+
+  test('live voice provider failure never changes billing mode', () async {
+    final chat = await controller.createChat(canDispatch: () => true);
+    host.liveVoiceSessionFailure = const DashboardHttpException(
+      429,
+      'plugins/wing/voice/v2/session',
+    );
+    final voice = controller.liveVoiceConversation(chat);
+    await expectLater(
+      voice.negotiate('offer'),
+      throwsA(
+        isA<LiveVoiceStartException>().having(
+          (e) => e.message,
+          'message',
+          contains('subscription’s voice allowance'),
+        ),
+      ),
+    );
+    expect(host.voiceEndpoints, hasLength(1));
+    expect(host.reads.where((r) => r.$1.startsWith('audio/')), isEmpty);
+    voice.release();
+  });
+
+  for (final duringSession in [false, true]) {
+    test(
+      'live voice release fences held ${duringSession ? 'session' : 'status'} response',
+      () async {
+        final chat = await controller.createChat(canDispatch: () => true);
+        final held = Completer<void>();
+        if (duringSession) {
+          host.heldVoiceSession = held;
+        } else {
+          host.heldVoiceStatus = held;
+        }
+        final voice = controller.liveVoiceConversation(chat);
+        final pending = expectLater(voice.negotiate('offer'), throwsStateError);
+        await Future<void>.delayed(Duration.zero);
+        voice.release();
+        held.complete();
+        await pending;
+        expect(host.voiceEndpoints, hasLength(duringSession ? 1 : 0));
+        expect(host.calls.where((c) => c.$2 == 'session.interrupt'), isEmpty);
+      },
+    );
+  }
+
+  test('live voice bounds long chat context including its heading', () async {
+    host.historyMessages = [
+      {'id': 1, 'role': 'assistant', 'content': '${'x' * 30000}Latest result'},
+    ];
+    final chat = (await controller.openSession(
+      ProfileSessionKey(controller.current!.scope, 'same'),
+    ))!;
+    final voice = controller.liveVoiceConversation(chat);
+    expect(voice.context.length, lessThanOrEqualTo(24000));
+    expect(voice.context, startsWith('Current chat:'));
+    expect(voice.context, endsWith('Latest result'));
+    voice.release();
+  });
+
+  test(
+    'live voice release revokes negotiation and never cancels work',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      final voice = controller.liveVoiceConversation(chat);
+      voice.release();
+      await expectLater(voice.negotiate('late offer'), throwsStateError);
+      expect(host.calls.where((c) => c.$2 == 'voice.negotiate'), isEmpty);
+      expect(host.calls.where((c) => c.$2 == 'session.interrupt'), isEmpty);
+    },
+  );
 
   test(
     'sent image reads share login across independently disposed owners',

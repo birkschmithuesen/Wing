@@ -1,4 +1,6 @@
 import '../widgets/email_draft_card.dart';
+import '../widgets/live_voice_scope.dart';
+import '../widgets/anchored_expansion_tile.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'administration/admin_hosted_connector_accounts_page.dart';
 import '../widgets/hosted_connection_request_panel.dart';
@@ -486,6 +488,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   Future<void> _requestDictation(ProfileChat chat) async {
+    if (LiveVoiceScope.maybeOf(context)?.session.active == true) return;
     final capture = controller.captureVoiceDraft(chat);
     final selection = _composer.selection;
     _composerFocus.unfocus();
@@ -520,7 +523,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     settings: () => controller.appPreferences.current.voiceOutputSettings,
     cancelDictation: _voiceInput.cancel,
     admitsTarget: (target) => controller.admitsVoice(chat, target),
-    admitPresentation: () => mounted,
+    admitPresentation: () =>
+        mounted && LiveVoiceScope.maybeOf(context)?.session.active != true,
     createRemote: (target) => controller.voiceForChat(chat, target),
     onNotice: (notice) => showStudioError(context, notice),
   );
@@ -2051,6 +2055,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     bool allowSavedActions = true,
   }) {
     if (entry.suppressed) return const SizedBox.shrink();
+    if (entry.message.kind == TranscriptMessageKind.voice) {
+      return ProfileMessage(
+        key: ValueKey(entry.presentationId),
+        message: entry.message,
+        loadImages: false,
+      );
+    }
     final displayedHistory = capturedRows;
     // Resolve only the captured immutable input used by existing runtime commands.
     // The ordinal itself never admits an execution or a replacement chat.
@@ -2088,47 +2099,55 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         !chat.changingIntelligence &&
         !chat.runtime.commandRunning &&
         !controller.switching;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ProfileMessage(
-          key: ValueKey(entry.presentationId),
-          message: entry.message,
-          showCopyHeader: showCopyHeader,
-          onReadAloud: entry.message.role == 'assistant'
-              ? () => _run(() => _requestReadAloud(chat, message))
-              : null,
-          showEditAction: savedPrompt,
-          showRestoreAction: savedPrompt,
-          onRestore:
-              savedPrompt && controller.canRestoreSavedPrompt(chat, message)
-              ? () => _restoreSavedMessage(chat, message)
-              : null,
-          onEdit: savedPrompt && controller.canEditSavedPrompt(chat, message)
-              ? () => _editSavedMessage(chat, message)
-              : null,
-          actions: savedAnswer
-              ? _answerActions(
-                  chat,
-                  message,
-                  enabled: enabled,
-                  messageId: entry.savedMessageId!,
-                )
-              : null,
-          readingAloud:
-              _voiceOutput.owner == controller.voiceReplyKey(chat, message),
-          loadAttachmentImage: (path) => _loadAttachmentImage(chat, path),
-          attachmentImagesAvailable:
-              controller.connectionStatus.access ==
-                  ConnectionAvailability.available &&
-              controller.connectionStatus.phase !=
-                  ServerConnectionPhase.reconnecting,
-          onOpenRemoteFile: (output) => _openAnswerOutput(chat, output),
-          onShareRemoteFile: (output) => _shareToolResource(chat, output),
-          onDownloadRemoteFile: (output) => _downloadAnswerOutput(chat, output),
-        ),
-      ],
+    final body = ProfileMessage(
+      key: ValueKey(entry.presentationId),
+      message: entry.message,
+      showCopyHeader: showCopyHeader,
+      onReadAloud: entry.message.role == 'assistant'
+          ? () => _run(() => _requestReadAloud(chat, message))
+          : null,
+      showEditAction: savedPrompt,
+      showRestoreAction: savedPrompt,
+      onRestore: savedPrompt && controller.canRestoreSavedPrompt(chat, message)
+          ? () => _restoreSavedMessage(chat, message)
+          : null,
+      onEdit: savedPrompt && controller.canEditSavedPrompt(chat, message)
+          ? () => _editSavedMessage(chat, message)
+          : null,
+      actions: savedAnswer
+          ? _answerActions(
+              chat,
+              message,
+              enabled: enabled,
+              messageId: entry.savedMessageId!,
+            )
+          : null,
+      readingAloud:
+          _voiceOutput.owner == controller.voiceReplyKey(chat, message),
+      loadAttachmentImage: (path) => _loadAttachmentImage(chat, path),
+      attachmentImagesAvailable:
+          controller.connectionStatus.access ==
+              ConnectionAvailability.available &&
+          controller.connectionStatus.phase !=
+              ServerConnectionPhase.reconnecting,
+      onOpenRemoteFile: (output) => _openAnswerOutput(chat, output),
+      onShareRemoteFile: (output) => _shareToolResource(chat, output),
+      onDownloadRemoteFile: (output) => _downloadAnswerOutput(chat, output),
     );
+    if (chat.reading.isVoiceTaskReply(message)) {
+      return AnchoredExpansionTile(
+        key: ValueKey((chat.key, entry.presentationId, 'voice-task')),
+        title: Text(
+          'Hermes task details',
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+        shape: const Border(),
+        collapsedShape: const Border(),
+        expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [body],
+      );
+    }
+    return body;
   }
 
   Widget _answerActions(
@@ -2424,7 +2443,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       liveAnswering: liveAnswering,
     );
     final displayRows = projection.rows;
-    final timeline = projection.timeline;
+    final voice = LiveVoiceScope.maybeOf(context)?.session;
+    final timeline = nearby == null && voice != null
+        ? projection.timeline.withVoiceTurns(voice.transcript(chat.key))
+        : projection.timeline;
     // Put the following reply's Copy beside its own Activity disclosure. The
     // immutable section identity keeps normal, paged and Find views consistent.
     final activityReplies = <Object, TranscriptTimelineEntry>{};
@@ -2884,6 +2906,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       chat.runtime.blocksTurnAdmission,
       _canPasteImage(chat),
       _voiceInput.canDictate(controller.canDictate(chat)),
+      LiveVoiceScope.maybeOf(context)?.session.active,
     );
     if (_composerFieldInputs == inputs) return _composerField!;
     _composerFieldInputs = inputs;
@@ -3166,6 +3189,27 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 controls: chat.composer.observation.editingEntry != null
                     ? [Expanded(child: _queuedEditActions(chat))]
                     : [
+                        if (LiveVoiceScope.maybeOf(context) case final scope?)
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Start voice conversation',
+                              icon: const Icon(Icons.graphic_eq),
+                              onPressed:
+                                  scope.session.active ||
+                                      chat.runtime.offline ||
+                                      chat.readOnlyReason != null
+                                  ? null
+                                  : () => _run(() async {
+                                      await scope.session.start(
+                                        controller.liveVoiceConversation(chat),
+                                        prepare: () async {
+                                          await _voiceInput.cancel();
+                                          await _voiceOutput.stop();
+                                        },
+                                      );
+                                    }),
+                            ),
+                          ),
                         _composerContextRing(chat),
                         Expanded(
                           child: Align(
@@ -3352,7 +3396,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   Widget _dictationButton(ProfileChat chat) => VoiceInputButton(
-    enabled: _voiceInput.canDictate(controller.canDictate(chat)),
+    enabled:
+        LiveVoiceScope.maybeOf(context)?.session.active != true &&
+        _voiceInput.canDictate(controller.canDictate(chat)),
     onPressed: () => _run(() => _requestDictation(chat)),
   );
 

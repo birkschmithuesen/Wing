@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'core/services/live_voice_session.dart';
+import 'core/services/live_voice_transport.dart';
+import 'core/widgets/live_voice_scope.dart';
 import 'core/models/bots.dart';
 import 'core/services/health_alert_incident_store.dart';
 import 'core/models/scheduled_task.dart';
@@ -176,6 +180,10 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
       >{};
   late final AppPreferences _appPreferences;
   late final ProfileWorkspaceRegistry _profileControllers;
+  final _liveVoice = LiveVoiceSession(
+    createTransport: WebRtcLiveVoiceTransport.new,
+    background: AndroidLiveVoiceBackground(),
+  );
   late final NativeNotificationSink _profileNotifications;
   late final ChatNotificationCoordinator _chatNotices;
   late final Future<void> _notificationsReady;
@@ -584,53 +592,57 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
       builder: (context, child) {
         final systemMediaQuery = MediaQuery.of(context);
         final preference = preferences.values.textSize;
-        return ChatNoticeActivityScope(
-          activity: _chatNotices.activity,
-          child: HealthAlertsScope(
-            alerts: _healthAlerts,
-            openAlert: _openAlertHealth,
-            child: MediaQuery(
-              data: systemMediaQuery.copyWith(
-                textScaler: preference == null
-                    ? systemMediaQuery.textScaler
-                    : preference.applyTo(systemMediaQuery.textScaler),
-              ),
-              child: HealthAlertNotice(
-                navigatorKey: _navigatorKey,
-                child: Column(
-                  children: [
-                    if (preferences.needsAppearanceRepair)
-                      Material(
-                        child: SafeArea(
-                          bottom: false,
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 8,
-                            ),
-                            child: Row(
-                              children: [
-                                const Expanded(
-                                  child: Text(
-                                    'Saved appearance settings need repair. Temporary appearance is shown.',
-                                  ),
-                                ),
-                                StudioButtonPress(
-                                  child: TextButton(
-                                    key: const ValueKey(
-                                      'app-preference-repair',
+        return LiveVoiceScope(
+          session: _liveVoice,
+          openChat: (key) => openProfileNotification(jsonEncode(key.toJson())),
+          child: ChatNoticeActivityScope(
+            activity: _chatNotices.activity,
+            child: HealthAlertsScope(
+              alerts: _healthAlerts,
+              openAlert: _openAlertHealth,
+              child: MediaQuery(
+                data: systemMediaQuery.copyWith(
+                  textScaler: preference == null
+                      ? systemMediaQuery.textScaler
+                      : preference.applyTo(systemMediaQuery.textScaler),
+                ),
+                child: HealthAlertNotice(
+                  navigatorKey: _navigatorKey,
+                  child: Column(
+                    children: [
+                      if (preferences.needsAppearanceRepair)
+                        Material(
+                          child: SafeArea(
+                            bottom: false,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 8,
+                              ),
+                              child: Row(
+                                children: [
+                                  const Expanded(
+                                    child: Text(
+                                      'Saved appearance settings need repair. Temporary appearance is shown.',
                                     ),
-                                    onPressed: _openPreferenceRepair,
-                                    child: const Text('Repair'),
                                   ),
-                                ),
-                              ],
+                                  StudioButtonPress(
+                                    child: TextButton(
+                                      key: const ValueKey(
+                                        'app-preference-repair',
+                                      ),
+                                      onPressed: _openPreferenceRepair,
+                                      child: const Text('Repair'),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    Expanded(child: child!),
-                  ],
+                      Expanded(child: LiveVoiceLayout(child: child!)),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -693,6 +705,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     _healthAlerts.dispose();
     _healthAlertSettings.dispose();
     _backgroundMonitoring.dispose();
+    _liveVoice.dispose();
     _profileControllers.dispose();
     _appPreferences.state.removeListener(_preferencesChanged);
     _appPreferences.dispose();
