@@ -1857,7 +1857,7 @@
       "library": "lib/core/services/voice_preferences_session.dart"
     },
     "lib/core/services/voice_sample.dart": {
-      "role": "domain",
+      "role": "platform",
       "feature": "voice",
       "library": "lib/core/services/voice_sample.dart"
     },

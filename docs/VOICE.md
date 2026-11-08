@@ -27,6 +27,12 @@ subscription and API voices on this phone, including in settings backups. This
 choice does not change Android read-aloud voices or the Hermes profile defaults.
 Use the current Wing plugin to enable voice selection.
 
+Tap the speaker beside **GPT-Live voice** to preview any subscription voice,
+then tap Stop to end the sample. These recordings use the same sentence as
+Android voice previews and play offline, without a microphone, server connection
+or voice usage charge. API voice previews are not available yet. Changing a
+setting or leaving the page stops playback.
+
 Both live modes require the **Wing plugin** (`wing`) installed and enabled
 for the chat's Hermes profile. Enabling it in `default` does not enable it in
 other profiles. The plugin uses current stock Hermes and, for subscription mode, the profile's

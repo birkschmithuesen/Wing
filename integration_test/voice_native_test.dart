@@ -6,6 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/voice_sample.dart';
 
 /// Disposable emulator with RECORD_AUDIO granted. Synthetic audio verifies the
 /// native boundary; transcription and speech intelligibility need human review.
@@ -18,6 +20,29 @@ void main() {
       home: Scaffold(body: Text('Wing native voice acceptance')),
     ),
   );
+
+  testWidgets('all subscription previews decode and complete on Android', (
+    tester,
+  ) async {
+    await launch(tester);
+    for (final voice in LiveVoiceMode.subscription.voices) {
+      final owner = 'native-preview-$voice';
+      var started = false;
+      final subscription = device.events.listen((event) {
+        if (event['id'] == owner && event['playing'] == true) started = true;
+      });
+      try {
+        final audio = await loadVoiceSample(
+          liveVoiceSampleAsset(LiveVoiceMode.subscription, voice)!,
+        );
+        await device.play(owner, audio).timeout(const Duration(seconds: 15));
+        expect(started, isTrue, reason: voice);
+      } finally {
+        await device.stopPlayback(owner);
+        await subscription.cancel();
+      }
+    }
+  });
 
   testWidgets('stopping native capture returns recorded audio', (tester) async {
     await launch(tester);

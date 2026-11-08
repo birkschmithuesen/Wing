@@ -13,7 +13,7 @@ Feature ID: `app-preferences-backup`.
 
 ## How to get to it (user POV)
 
-Open App settings from the drawer. Change theme, accent or text size. Under Voice, select a GPT-Live voice for each live conversation mode; these phone-owned choices are included in settings backups. Use its export/restore controls to back up connections/preferences with an optional passphrase, then review a restore result.
+Open App settings from the drawer. Change theme, accent or text size. Under Voice, select a GPT-Live voice for each live conversation mode; these phone-owned choices are included in settings backups. Tap the adjacent speaker to preview subscription voices offline; API previews are unavailable. Use its export/restore controls to back up connections/preferences with an optional passphrase, then review a restore result.
 
 Under Hermes, tap the compact Wing plugin card to open its dedicated page. It
 explains the optional server plugin and links to its GitHub repository. Below

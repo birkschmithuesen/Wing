@@ -9,11 +9,17 @@ import 'android_voice.dart';
 import 'app_preferences.dart';
 import 'voice_sample.dart';
 
+enum _VoicePreview { android, live }
+
 class VoicePreferencesPresentation {
   VoicePreferencesPresentation({
     required this.liveMode,
     required this.liveVoice,
     required this.liveVoices,
+    required this.livePreview,
+    required this.livePreviewActive,
+    required this.livePreviewPreparing,
+    required this.livePreviewError,
     required this.input,
     required this.output,
     required this.language,
@@ -43,6 +49,10 @@ class VoicePreferencesPresentation {
 
   final AppPreferenceControl<LiveVoiceMode> liveMode;
   final AppPreferenceControl<String>? liveVoice;
+  final VoidCallback? livePreview;
+  final bool livePreviewActive;
+  final bool livePreviewPreparing;
+  final String? livePreviewError;
   final List<({String value, String label})> liveVoices;
   final AppPreferenceControl<AppVoiceProcessing> input;
   final AppPreferenceControl<AppVoiceProcessing> output;
@@ -78,6 +88,7 @@ class VoicePreferencesSession {
     required VoiceDevice device,
     required this.hermesProfileLabel,
     required this.openHermesSettings,
+    this.loadSample = loadVoiceSample,
   }) : _device = device,
        _preview = VoiceOutputController(device) {
     _presentation = ValueNotifier(_state());
@@ -87,6 +98,8 @@ class VoicePreferencesSession {
   }
 
   final AppPreferences preferences;
+  final Future<Uint8List> Function(String) loadSample;
+  _VoicePreview _previewKind = _VoicePreview.android;
   final VoiceDevice _device;
   final VoiceOutputController _preview;
   final String? hermesProfileLabel;
@@ -154,6 +167,16 @@ class VoicePreferencesSession {
         input.selected == AppVoiceProcessing.hermes ||
         output.selected == AppVoiceProcessing.hermes;
     final liveMode = preferences.current.liveVoiceMode.selected;
+    final liveVoice = liveMode == null
+        ? null
+        : preferences.current.liveVoiceFor(liveMode);
+    final canPreviewLive =
+        !_closed &&
+        _foreground &&
+        !_choosing &&
+        !preferences.current.liveVoiceMode.busy &&
+        liveVoice?.busy == false &&
+        liveVoiceSampleAsset(liveMode, liveVoice?.selected) != null;
     return VoicePreferencesPresentation(
       liveMode: _control((state) => state.liveVoiceMode),
       liveVoice: liveMode == null
@@ -163,6 +186,15 @@ class VoicePreferencesSession {
         for (final value in liveMode?.voices ?? <String>[])
           (value: value, label: value[0].toUpperCase() + value.substring(1)),
       ]),
+      livePreview: canPreviewLive
+          ? () => unawaited(_toggleLivePreview())
+          : null,
+      livePreviewActive: _preview.owner == _VoicePreview.live,
+      livePreviewPreparing:
+          _preview.owner == _VoicePreview.live && _preview.preparing,
+      livePreviewError: _previewKind == _VoicePreview.live
+          ? _preview.error
+          : null,
       input: input,
       output: output,
       language: language,
@@ -224,8 +256,10 @@ class VoicePreferencesSession {
       loading: _loading,
       capabilityError: _capabilityError,
       operationError: _operationError,
-      previewError: _preview.error,
-      previewActive: _preview.owner != null,
+      previewError: _previewKind == _VoicePreview.android
+          ? _preview.error
+          : null,
+      previewActive: _preview.owner == _VoicePreview.android,
       preview: canPreview ? () => unawaited(_togglePreview()) : null,
       refresh: !_loading && !_closed && _foreground
           ? () => unawaited(refresh())
@@ -310,27 +344,48 @@ class VoicePreferencesSession {
     return _choose(value, (state) => state.voiceLanguage);
   }
 
+  Future<void> _stopPreview() async {
+    try {
+      await _preview.stop();
+    } catch (_) {
+      if (!_closed) {
+        _operationError = 'Could not stop voice preview. Please retry.';
+        _publish();
+      }
+    }
+  }
+
   Future<void> _togglePreview() async {
     if (_closed || !_foreground || current.preview == null) return;
-    if (_preview.owner != null) {
-      try {
-        await _preview.stop();
-      } catch (_) {
-        if (!_closed) {
-          _operationError = 'Could not stop voice preview. Please retry.';
-          _publish();
-        }
-      }
+    if (_preview.owner == _VoicePreview.android) {
+      await _stopPreview();
       return;
     }
     final settings = preferences.current.localVoiceOutputSettings;
     if (settings == null) return;
+    _previewKind = _VoicePreview.android;
     await _preview.speak(
-      'preview',
+      _VoicePreview.android,
       voiceSampleText,
       settings,
       () => throw StateError('Local preview cannot use Hermes.'),
     );
+  }
+
+  Future<void> _toggleLivePreview() async {
+    if (_closed || !_foreground || current.livePreview == null) return;
+    if (_preview.owner == _VoicePreview.live) {
+      await _stopPreview();
+      return;
+    }
+    final mode = preferences.current.liveVoiceMode.selected;
+    final voice = mode == null
+        ? null
+        : preferences.current.liveVoiceFor(mode).selected;
+    final asset = liveVoiceSampleAsset(mode, voice);
+    if (asset == null) return;
+    _previewKind = _VoicePreview.live;
+    await _preview.playAudio(_VoicePreview.live, () => loadSample(asset));
   }
 
   Future<void> _openProfileSettings() async {

@@ -314,6 +314,78 @@
       "status": "supported"
     },
     {
+      "id": "asset-assets/voice_samples/subscription/arbor.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/arbor.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/breeze.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/breeze.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/cove.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/cove.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/ember.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/ember.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/juniper.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/juniper.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/maple.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/maple.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/sol.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/sol.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/spruce.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/spruce.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
+      "id": "asset-assets/voice_samples/subscription/vale.m4a",
+      "kind": "asset-or-source",
+      "path": "assets/voice_samples/subscription/vale.m4a",
+      "purpose": "Offline GPT-Live subscription voice audition",
+      "source": "lib/core/services/voice_sample.dart",
+      "status": "supported"
+    },
+    {
       "id": "authored-census-cli",
       "kind": "python-cli",
       "path": "tools/architecture/rules/authored_census.py",
@@ -7429,6 +7501,51 @@
     },
     {
       "path": "assets/fonts/wing-icons.ttf",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/arbor.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/breeze.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/cove.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/ember.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/juniper.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/maple.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/sol.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/spruce.m4a",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/voice_samples/subscription/vale.m4a",
       "area": "assets",
       "provenance": "tracked"
     },
