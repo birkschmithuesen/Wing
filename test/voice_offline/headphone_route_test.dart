@@ -122,6 +122,16 @@ void main() {
       expect(notified, 3);
     });
 
+    test('route changes close and reopen the verdict for Bluetooth headphones', () async {
+      host.route = HeadphoneRouteFixture.bluetoothHeadphones;
+      await route.refresh();
+      host.change(HeadphoneRouteFixture.speaker);
+      expect(route.headphones, isFalse);
+      host.change(HeadphoneRouteFixture.bluetoothHeadphones);
+      expect(route.headphones, isTrue);
+      expect(notified, 3);
+    });
+
     test('Wing car mode closes the verdict', () async {
       host.route = HeadphoneRouteFixture.headphones;
       await route.refresh();
