@@ -39,6 +39,8 @@
 <a href="bots.html">Bots &amp; groups</a>
 <a href="recents.html">Recents</a>
 <a href="live-work.html">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
 <a href="results.html">Results</a>
 <a href="health.html">Health</a>
 <a href="administration.html" aria-current="page">Administration</a>
@@ -57,6 +59,7 @@
 <nav class="guide-toc" aria-label="On this page">
 <a href="#profile">Set models and agent instructions</a>
 <a href="#capabilities">Manage skills, providers and connectors</a>
+<a href="#wing-plugin">Add live voice and email draft cards</a>
 <a href="#find">Find a setting and review changes</a>
 </nav>
 </aside>
@@ -92,6 +95,13 @@
 </div>
 <p>Discover more skills through the official Hub, and check which skills and tools still need setup. In <strong>Agent plugins</strong>, manually update installed plugins and inspect each updated, skipped, failed or review-needed result.</p>
 <p>Manage model-provider access and MCP connectors for the selected profile. Connectors give the agent access to external tools and data. Cached runtime status shows reported connection or sign-in problems separately from <strong>Test connection</strong>. Supported hosted accounts appear in <strong>Connected apps</strong>, with separate names and authorization for each account.</p>
+</section>
+<section id="wing-plugin" aria-labelledby="wing-plugin-title">
+<h2 id="wing-plugin-title">Add live voice and email draft cards</h2>
+<p>The optional <strong>Wing plugin for Hermes</strong> runs on your Hermes server and adds live conversations and structured email drafts. It is separate from the Android app; updating Wing does not install it. Ordinary chats, dictation and read-aloud work without it.</p>
+<p>Open <strong>App settings → Hermes → Wing plugin</strong>. The manager shows installed versions, the latest GitHub release and readiness. Expand <strong>Profiles</strong> to install, update or enable the plugin for a specific profile, or use the all-profiles install/update action. Enable it wherever you want these features, then start a new chat. Follow any restart instruction in the result.</p>
+<p>Opening settings never installs or updates automatically. New installs use the exact published release commit. Replacing a pinned copy asks for confirmation; unpinned copies follow their configured source. Refresh after a release-check error or uncertain operation before retrying.</p>
+<p>Use current upstream Hermes, at least 0.23.0, and the latest stable plugin release. <a href="https://github.com/tarkilhk/Wing/blob/main/docs/WING_PLUGIN.md">Read the setup and recovery guide</a> or inspect the <a href="https://github.com/tarkilhk/wing-hermes-plugin">plugin source</a>.</p>
 </section>
 <section id="find" aria-labelledby="find-title">
 <h2 id="find-title">Find a setting and review changes</h2>

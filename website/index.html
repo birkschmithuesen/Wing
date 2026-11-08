@@ -166,6 +166,32 @@
 </div>
 </div>
 </section>
+<section class="voice-section page-width section-space" id="voice" aria-labelledby="voice-title">
+<div class="voice-layout">
+<div class="feature-copy">
+<h2 id="voice-title">Talk to<br> your agent</h2>
+<p>Talk to your agent through <strong>GPT Live using your ChatGPT subscription</strong>. Ask Hermes to do work and hear the results while you move between apps or lock your phone. Separately billed OpenAI API access is also available.</p>
+<p>Start from an ordinary chat or a Bot Chat. A compact floating call card keeps the duration, mute, audio routing and End voice controls available as you navigate. Enter another conversation to reveal captions and a return-to-chat control; the call stays with its original chat.</p>
+<p><strong>Requires the <a href="wing-plugin.html">Wing plugin for Hermes</a></strong>, installed and enabled on your server for the chat’s profile. Updating the Android app alone does not install the plugin.</p>
+<p>Choose your GPT-Live voice in App settings and preview subscription voices offline before calling. Your selection applies to the next call.</p>
+<p class="voice-note">Available in individual chats, not group discussions. Full spoken exchanges are not yet saved to Hermes history because Hermes lacks the supported recording operation Wing needs. Delegated task results are saved normally. <a href="voice.html#history">History limitation and upstream proposals</a>.</p>
+<a class="text-link" href="voice.html">Explore live voice and setup</a>
+</div>
+<figure class="guide-shot voice-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/live-voice-dark.png" aria-label="Enlarge screenshot: Sample GPT Live conversation in Wing with its compact floating call card"><img src="assets/screenshots/live-voice-dark.png" width="780" height="1688" alt="Sample GPT Live conversation in Wing with spoken messages and the compact floating call card" loading="lazy"></a>
+</div>
+</figure>
+</div>
+</section>
+<section class="page-width section-space" id="wing-plugin" aria-labelledby="plugin-title">
+<div class="section-heading"><h2 id="plugin-title">Add the Wing plugin<br> to Hermes</h2></div>
+<div class="feature-copy plugin-copy">
+<p>The open-source <strong>Wing plugin for Hermes</strong> runs on your server and adds GPT Live conversations and native email draft cards. Talk using your ChatGPT subscription, or ask Hermes to prepare an email that you review and send in your phone's email app.</p>
+<p>Install and enable it for each profile from <strong>App settings → Hermes → Wing plugin</strong>. The manager checks versions and lets you install, enable or update profiles individually. It is separate from the Android app; opening settings never installs anything automatically.</p>
+</div>
+<div class="section-more"><a class="text-link" href="wing-plugin.html">Explore the Hermes plugin and setup</a><a class="text-link" href="https://github.com/tarkilhk/wing-hermes-plugin">Plugin source on GitHub</a></div>
+</section>
 <section class="craft-section" aria-labelledby="craft-title">
 <div class="page-width section-space">
 <div class="section-heading">
@@ -174,7 +200,7 @@
 <div class="result-stories">
 <article class="feature-story">
 <h3>Read formatted Markdown</h3>
-<p>Read wide tables as stacked rows or a wrapped grid. Open reading mode to give the conversation more room while keeping your draft intact.</p>
+<p>Read wide tables as grids with horizontal scrolling, or switch to stacked rows. Open reading mode to give the conversation more room while keeping your draft intact.</p>
 <figure class="guide-shot ">
 <div class="app-frame">
 <a class="screenshot-link" data-screenshot href="assets/screenshots/results-light.png" aria-label="Enlarge screenshot: A formatted Wing reply with a workshop checklist, table and quoted advice"><img src="assets/screenshots/results-light.png" width="780" height="1600" alt="A formatted Wing reply with a workshop checklist, table and quoted advice" loading="lazy"></a>
@@ -253,6 +279,7 @@
 </div>
 <article class="feature-story">
 <p>Choose model defaults, protect skills against agent edits, update installed plugins and check connector status. Schedule work in its own timezone, send results into a group, or stop a run while keeping its schedule.</p>
+<p>Add the optional <a href="wing-plugin.html">Wing plugin</a> for <a href="#voice">GPT Live conversations</a> and <a href="results.html#email">email draft cards</a> you can open and send in your phone's email app.</p>
 <figure class="guide-shot">
 <div class="app-frame">
 <a class="screenshot-link" data-screenshot href="assets/screenshots/administration-dark.png" aria-label="Enlarge screenshot: Wing Administration with profile selection, settings search and grouped controls"><img src="assets/screenshots/administration-dark.png" width="780" height="1688" alt="Wing Administration with profile selection, settings search and grouped controls" loading="lazy"></a>

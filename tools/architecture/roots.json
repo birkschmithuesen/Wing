@@ -7730,6 +7730,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "docs/WING_PLUGIN.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
       "path": "docs/features/administration-behavior.md",
       "area": "docs",
       "provenance": "tracked"
@@ -15865,6 +15870,21 @@
       "provenance": "tracked"
     },
     {
+      "path": "website/assets/screenshots/live-voice-away-light.png",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
+      "path": "website/assets/screenshots/live-voice-settings-light.png",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
+      "path": "website/assets/screenshots/live-voice-dark.png",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
       "path": "website/assets/screenshots/message-actions-light.png",
       "area": "website",
       "provenance": "tracked"
@@ -16056,6 +16076,16 @@
     },
     {
       "path": "website/usage.html",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
+      "path": "website/voice.html",
+      "area": "website",
+      "provenance": "tracked"
+    },
+    {
+      "path": "website/wing-plugin.html",
       "area": "website",
       "provenance": "tracked"
     },

@@ -28,8 +28,7 @@ Open a child's details to read its own conversation when Hermes supplies its
 session identity. It uses the same message and Activity timeline as the main
 chat, including saved tool results, available reasoning and live tool previews.
 Expand **Task** for its goal and metadata. Eligible guidance and Send controls
-stay below the conversation, with Interrupt in the status row. Working history
-and nested read-only viewers do not offer those controls.
+stay below the conversation, with Interrupt in the status row. Nested read-only viewers do not offer those controls.
 
 Use Refresh in the header to reread the child. Updates continue while the viewer is open and
 Wing is active. After three consecutive failures, automatic refresh stops; use

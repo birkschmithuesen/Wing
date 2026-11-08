@@ -161,31 +161,25 @@ Bot and user Copy actions sit in their colored bottom rows. Long bot answers use
 the available reading width; your bubbles remain right-aligned and clear of the
 framed avatar. Discussions and Bot Chats use the same transcript renderer,
 including reading-position anchoring, Latest/New activity navigation, Copy and
-message viewers. Bot Chats and Working history use the same streamed reasoning,
+message viewers. Bot Chats use the same streamed reasoning,
 tool timeline, Tasks/Agents viewers and working Wing. Group discussions show the
-public room messages and room status supplied by Hermes; select a member’s
-Working history to inspect that bot’s private activity.
-
-Working history displays received messages before waiting on older pages or live
-activity. Activity starts collapsed and loads its contents when you open it.
-Live activity arrives separately, with progress in the header while it loads.
-Current Tasks and Subagents remain in the bottom dock through waiting and idle
-states; refreshing or opening activity keeps the messages readable.
+public room messages and room status supplied by Hermes. Open **Group options →
+Member activity** for reported member progress; private worker transcripts are
+not exposed by the current canonical API.
 
 When a bot passes its turn, the discussion shows a **Passed** bubble with that
 bot's name, avatar and timestamp. Recents cards include these bubbles. A pass
 does not create a New answer cue or a reply notification.
 
 Tap a bot's avatar in the discussion to open a compact card over it, with the
-bot's saved avatar and name above three icon-and-text actions: **View working
-history**, **Chat directly** and **Bot settings**.
+bot's saved avatar and name above **Chat directly** and **Bot settings**.
 The menu opens over the tapped avatar, showing a single face. The original tile
 returns when you close the menu or return to the discussion.
 
-Working history opens with that member selected. Direct chat immediately opens
+Direct chat immediately opens
 the bot's private conversation screen, with the Wing pulse while it loads and
 Retry there if loading fails; settings apply to its profile across chats.
-Working history and settings return to the discussion with your draft and
+Settings returns to the discussion with your draft and
 reading position intact. Direct chat follows the normal Bot Chat navigation;
 Back returns to Bots. A direct chat on another saved instance uses Wing's usual
 instance-switching flow.

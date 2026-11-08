@@ -1,0 +1,144 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Talk to your Hermes agent through GPT Live using your ChatGPT subscription or OpenAI API. Set up the required Wing plugin for Hermes.">
+<title>GPT Live voice conversations · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html">Recents</a>
+<a href="live-work.html">Live work</a>
+<a href="voice.html" aria-current="page">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<div><h1 id="guide-title">Talk to your agent<br> with GPT Live</h1></div>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside><nav class="guide-toc" aria-label="On this page">
+<a href="#conversation">Talk using your ChatGPT subscription</a>
+<a href="#setup">Set up voice for your profile</a>
+<a href="#voices">Choose and preview a voice</a>
+<a href="#controls">Keep talking while you move</a>
+<a href="#history">Know what is saved and shared</a>
+<a href="#dictation">Dictation and read-aloud remain available</a>
+</nav></aside>
+<div class="guide-copy">
+<section id="conversation" aria-labelledby="conversation-title">
+<h2 id="conversation-title">Talk using your ChatGPT subscription</h2>
+<p>Use <strong>GPT Live with your ChatGPT subscription</strong> to talk with your Hermes agent, ask it to do work and hear the results. Separately billed OpenAI API access is also available.</p>
+<p>Start from an ordinary chat or a Bot Chat. Your call stays attached to that conversation when you navigate elsewhere. <strong>Group discussions do not offer live voice.</strong></p>
+<p>Both account modes require the <a href="wing-plugin.html"><strong>Wing plugin for Hermes</strong></a>, installed and enabled on your server in the profile you are chatting with. Updating the Android app alone does not install it.</p>
+<figure class="guide-shot guide-inline-shot"><div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/live-voice-dark.png" aria-label="Enlarge screenshot: Sample GPT Live conversation with its compact floating call card"><img src="assets/screenshots/live-voice-dark.png" width="780" height="1688" alt="Sample GPT Live conversation in Wing with spoken messages and the compact floating call card" loading="lazy"></a>
+</div></figure>
+</section>
+<section id="setup" aria-labelledby="setup-title">
+<h2 id="setup-title">Set up voice for your profile</h2>
+<ol>
+<li><a href="wing-plugin.html#install">Install and enable the Wing plugin for Hermes</a> in the profile you use.</li>
+<li>Open <strong>App settings → Voice → Live conversation</strong>. Choose <strong>ChatGPT subscription</strong> or <strong>OpenAI API</strong>, then select your <strong>GPT-Live voice</strong>.</li>
+<li>Open a connected ordinary chat or Bot Chat and tap <strong>Start voice conversation</strong>, the waveform beside the microphone in the message field.</li>
+<li>Allow microphone and notification access. Allow Bluetooth access if you use a headset.</li>
+</ol>
+<p>Subscription mode uses that profile's OpenAI Codex sign-in with voice access and your ChatGPT plan's voice allowance. API mode uses the profile's OpenAI voice credentials and bills its API account separately. Wing never switches billing modes automatically; a changed choice applies to the next call.</p>
+</section>
+<section id="voices" aria-labelledby="voices-title">
+<h2 id="voices-title">Choose and preview a voice</h2>
+<p>In <strong>App settings → Voice</strong>, choose <strong>GPT-Live voice</strong> below the Live conversation mode. Wing remembers separate subscription and API choices on this phone and includes them in settings backups. Changes apply to your next call; they do not change Android read-aloud voices or Hermes profile defaults. Use the current Wing plugin for voice selection.</p>
+<p>Tap the speaker beside the picker to preview a subscription voice, then Stop to end the sample. These bundled recordings play offline, with no microphone access, server connection or voice usage charge. Changing a setting, leaving the page or putting Wing in the background stops playback. API voice previews are not available yet.</p>
+<figure class="guide-shot guide-inline-shot"><div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/live-voice-settings-light.png" aria-label="Enlarge screenshot: GPT-Live subscription voice selection and offline preview in Wing"><img src="assets/screenshots/live-voice-settings-light.png" width="780" height="1688" alt="Wing Voice settings with ChatGPT subscription selected, a GPT-Live voice picker and a speaker control for offline previews" loading="lazy"></a>
+</div></figure>
+</section>
+<section id="controls" aria-labelledby="controls-title">
+<h2 id="controls-title">Keep talking while you move</h2>
+<p>A compact floating call card stays above the app as you navigate. Its main row shows the original chat title, call duration, mute, audio routing and End voice. Calls can continue while you switch apps or lock your phone. The Android notification also offers Mute and End voice.</p>
+<p>In the original chat, read spoken text directly in the conversation. Enter another chat or group and the card adds a lower row with captions and <strong>Return to voice chat</strong>, the speech bubble with a waveform. The call still belongs to the original chat; browsing a group does not start a group call.</p>
+<p>Captions start off. When enabled, they scroll within two lines beside the controls. Returning to the voice chat keeps the call connected, hides the extra controls and resets captions off. Opening a list or menu alone does not reveal them.</p>
+<figure class="guide-shot guide-inline-shot"><div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/live-voice-away-light.png" aria-label="Enlarge screenshot: Floating voice card with captions and return control while viewing another Wing chat"><img src="assets/screenshots/live-voice-away-light.png" width="780" height="1688" alt="Wing showing another chat beneath the original call's floating card, with captions and Return to voice chat visible" loading="lazy"></a>
+</div></figure>
+<p>Speak with the selected profile's identity and saved context. When you ask for work, GPT Live delegates a text request to your normal Hermes agent, which runs the tools and returns a result. Handle approvals and questions in the originating chat.</p>
+<p>Talking over a spoken reply or ending voice leaves accepted Hermes work running. Say <strong>“stop the task”</strong> or use the chat's Stop control to cancel work. Incoming calls or loss of audio focus end the voice session.</p>
+</section>
+<section id="history" aria-labelledby="history-title">
+<h2 id="history-title">Know what is saved and shared</h2>
+<p>Spoken entries marked <strong>Not saved to Hermes</strong> can be read and copied while Wing runs, including after ending a call or switching chats. They disappear on app restart. Complete spoken exchanges are not yet saved to Hermes's shared history or memory because of a current Hermes limitation: there is no supported operation Wing can use to record externally spoken turns without asking Hermes to generate another reply.</p>
+<p>The exact upstream request is <a href="https://github.com/NousResearch/hermes-agent/issues/121045">Hermes issue #121045: record externally conducted conversation turns</a>. Its earlier implementation, <a href="https://github.com/NousResearch/hermes-agent/pull/121056">PR #121056</a>, was closed without merging. The related <a href="https://github.com/NousResearch/hermes-agent/pull/87053">PR #87053: persist plugin chat messages</a> remains open and unmerged as of 9 November 2026. These are proposals, not an available fix for Wing's full spoken history.</p>
+<p>Hermes saves delegated task requests and results normally. In the current chat, results appear under expandable <strong>Hermes task details</strong>, separate from GPT Live's spoken answer.</p>
+<p>Live audio goes directly to OpenAI; relevant chat context and task results also reach the voice service. Provider credentials remain on Hermes. Read the <a href="https://github.com/tarkilhk/Wing/blob/main/PRIVACY.md">privacy policy</a> for data handling.</p>
+</section>
+<section id="dictation" aria-labelledby="dictation-title">
+<h2 id="dictation-title">Dictation and read-aloud remain available</h2>
+<p>The microphone beside the waveform records speech into an editable draft for you to review before sending. Read aloud plays an existing assistant reply. These are separate from a live conversation and do not require the Wing plugin.</p>
+<p>Choose on-device or Hermes processing for each under <strong>App settings → Voice</strong>. See the <a href="https://github.com/tarkilhk/Wing/blob/main/docs/VOICE.md">complete voice guide</a> for device requirements.</p>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="wing-plugin.html">Install the Wing plugin for Hermes</a>
+<a class="text-link" href="live-work.html">Follow and steer work</a>
+<a class="text-link" href="bots.html">Open a Bot Chat</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html">Get connected</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>
