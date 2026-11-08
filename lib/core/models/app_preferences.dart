@@ -18,7 +18,40 @@ enum AppTextSizePreference {
 
 enum AppVoiceProcessing { local, hermes }
 
-enum LiveVoiceMode { subscription, api }
+enum LiveVoiceMode {
+  subscription([
+    'arbor',
+    'breeze',
+    'cove',
+    'ember',
+    'juniper',
+    'maple',
+    'sol',
+    'spruce',
+    'vale',
+  ]),
+  api([
+    'marin',
+    'cedar',
+    'quartz',
+    'ripple',
+    'vesper',
+    'willow',
+    'stone',
+    'gleam',
+    'meridian',
+    'bossa',
+    'tempo',
+    'beacon',
+    'delta',
+    'cinder',
+  ]);
+
+  const LiveVoiceMode(this.voices);
+
+  /// Offered built-in voices; provider availability is checked at call startup.
+  final List<String> voices;
+}
 
 enum AppVoiceRate {
   slower('0.8', .8),
@@ -41,6 +74,8 @@ enum AppPreferenceField {
   attentionNotifications('attention_notifications'),
   notificationPreviews('notification_message_previews'),
   liveVoiceMode('voice.live_mode'),
+  liveSubscriptionVoice('voice.live_subscription_voice'),
+  liveApiVoice('voice.live_api_voice'),
   voiceInput('voice.input'),
   voiceOutput('voice.output'),
   voiceLanguage('voice.android_language'),
@@ -61,6 +96,8 @@ class AppPreferencesSnapshot {
     required this.attentionNotifications,
     required this.notificationPreviews,
     required this.liveVoiceMode,
+    required this.liveSubscriptionVoice,
+    required this.liveApiVoice,
     required this.voiceInput,
     required this.voiceOutput,
     required this.voiceLanguage,
@@ -76,6 +113,8 @@ class AppPreferencesSnapshot {
   final bool attentionNotifications;
   final bool notificationPreviews;
   final LiveVoiceMode liveVoiceMode;
+  final String liveSubscriptionVoice;
+  final String liveApiVoice;
   final AppVoiceProcessing voiceInput;
   final AppVoiceProcessing voiceOutput;
   final String voiceLanguage;
@@ -92,6 +131,8 @@ class AppPreferencesSnapshot {
     attentionNotifications: true,
     notificationPreviews: true,
     liveVoiceMode: LiveVoiceMode.subscription,
+    liveSubscriptionVoice: 'cove',
+    liveApiVoice: 'marin',
     voiceInput: AppVoiceProcessing.local,
     voiceOutput: AppVoiceProcessing.local,
     voiceLanguage: '',
@@ -110,6 +151,8 @@ class AppPreferencesSnapshot {
         attentionNotifications,
     AppPreferenceField.notificationPreviews.storageKey: notificationPreviews,
     AppPreferenceField.liveVoiceMode.storageKey: liveVoiceMode.name,
+    AppPreferenceField.liveSubscriptionVoice.storageKey: liveSubscriptionVoice,
+    AppPreferenceField.liveApiVoice.storageKey: liveApiVoice,
     AppPreferenceField.voiceInput.storageKey: voiceInput.name,
     AppPreferenceField.voiceOutput.storageKey: voiceOutput.name,
     AppPreferenceField.voiceLanguage.storageKey: voiceLanguage,
@@ -169,6 +212,10 @@ class AppPreferencesValues {
       _values[AppPreferenceField.notificationPreviews] as bool?;
   LiveVoiceMode? get liveVoiceMode =>
       _named(AppPreferenceField.liveVoiceMode, LiveVoiceMode.values);
+  String? get liveSubscriptionVoice =>
+      _values[AppPreferenceField.liveSubscriptionVoice] as String?;
+  String? get liveApiVoice =>
+      _values[AppPreferenceField.liveApiVoice] as String?;
   AppVoiceProcessing? get voiceInput =>
       _named(AppPreferenceField.voiceInput, AppVoiceProcessing.values);
   AppVoiceProcessing? get voiceOutput =>
@@ -219,6 +266,11 @@ class AppPreferencesSchema {
         AppPreferenceField.notificationPreviews => value is bool,
         AppPreferenceField.liveVoiceMode => LiveVoiceMode.values.any(
           (choice) => choice.name == value,
+        ),
+        AppPreferenceField.liveSubscriptionVoice =>
+          LiveVoiceMode.subscription.voices.contains(value),
+        AppPreferenceField.liveApiVoice => LiveVoiceMode.api.voices.contains(
+          value,
         ),
         AppPreferenceField.voiceInput || AppPreferenceField.voiceOutput =>
           AppVoiceProcessing.values.any((choice) => choice.name == value),

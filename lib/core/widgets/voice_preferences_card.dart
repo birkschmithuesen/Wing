@@ -186,11 +186,18 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
                 : 'Uses the Hermes profile’s ChatGPT sign-in and subscription voice limits.',
           ),
           const SizedBox(height: 8),
-          Text(
-            state.liveMode.selected == LiveVoiceMode.api
-                ? 'Uses Hermes’s built-in API voice. Changes apply to your next call.'
-                : 'Requires the Wing plugin enabled in this Hermes profile. Changes apply to your next call.',
+          const Text(
+            'Requires the Wing plugin enabled in this Hermes profile. Changes apply to your next call.',
           ),
+          if (state.liveVoice case final voice?) ...[
+            const SizedBox(height: 12),
+            _select(
+              'GPT-Live voice',
+              voice,
+              state.liveVoices,
+              'voice.live_voice',
+            ),
+          ],
           const SizedBox(height: 24),
           _select('Voice input', state.input, _engines, 'voice.input'),
           const SizedBox(height: 12),

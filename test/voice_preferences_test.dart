@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -12,6 +13,7 @@ import 'package:wing/core/services/android_voice.dart';
 import 'package:wing/core/services/voice_preferences_session.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/voice_preferences_card.dart';
 import 'support/voice_fixture.dart';
 
@@ -23,6 +25,20 @@ class _FailingStorage extends InMemorySharedPreferencesStore {
     if (failNext) {
       failNext = false;
       return Future.value(false);
+    }
+    return super.setValue(type, key, value);
+  }
+}
+
+class _HeldVoiceStorage extends InMemorySharedPreferencesStore {
+  _HeldVoiceStorage() : super.empty();
+  final release = Completer<bool>();
+  bool hold = true;
+  @override
+  Future<bool> setValue(String type, String key, Object value) async {
+    if (hold && key.endsWith('voice.live_subscription_voice')) {
+      hold = false;
+      if (!await release.future) return false;
     }
     return super.setValue(type, key, value);
   }
@@ -118,27 +134,23 @@ void main() {
     VoidCallback? link,
   }) async {
     await tester.pumpWidget(
-      MaterialApp(
-        theme: wingTheme(brightness),
-        home: RepaintBoundary(
-          key: frame,
-          child: Scaffold(
-            body: MediaQuery(
-              data: MediaQueryData(
-                size: const Size(320, 800),
-                textScaler: TextScaler.linear(scale),
-              ),
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: VoicePreferencesCard(
-                  createSession: () => VoicePreferencesSession(
-                    preferences: owner,
-                    device: device,
-                    hermesProfileLabel: 'Personal',
-                    openHermesSettings: link,
-                  ),
-                ),
-              ),
+      RepaintBoundary(
+        key: frame,
+        child: MaterialApp(
+          debugShowCheckedModeBanner: false,
+          theme: wingTheme(brightness),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: VoicePreferencesPage(
+            createSession: () => VoicePreferencesSession(
+              preferences: owner,
+              device: device,
+              hermesProfileLabel: 'Personal',
+              openHermesSettings: link,
             ),
           ),
         ),
@@ -160,6 +172,121 @@ void main() {
     await tester.tap(find.text('Hermes · server profile').hitTestable().last);
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'GPT-Live voices persist separately through mode switches and reopen',
+    (tester) async {
+      final prefs = await SharedPreferences.getInstance();
+      final owner = AppPreferences(prefs);
+      final device = VoiceDeviceFixture();
+      addTearDown(owner.dispose);
+      addTearDown(device.stream.close);
+      await show(tester, owner, device);
+      Future<void> pick(String label) async {
+        final field = find.byWidgetPredicate(
+          (widget) =>
+              widget is StudioSelect<String> &&
+              widget.label == 'GPT-Live voice',
+        );
+        await tester.ensureVisible(field);
+        await tester.tap(
+          find.descendant(of: field, matching: find.byType(TextField)),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text(label).hitTestable().last);
+        await tester.pumpAndSettle();
+      }
+
+      await pick('Breeze');
+      expect(owner.current.liveSubscriptionVoice.selected, 'breeze');
+      await owner.setLiveVoiceMode(LiveVoiceMode.api);
+      await tester.pumpAndSettle();
+      await pick('Cedar');
+      await owner.setLiveVoiceMode(LiveVoiceMode.subscription);
+      await tester.pumpAndSettle();
+      expect(find.text('Breeze'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+      final reopened = AppPreferences(prefs);
+      addTearDown(reopened.dispose);
+      expect(reopened.current.liveSubscriptionVoice.selected, 'breeze');
+      expect(reopened.current.liveApiVoice.selected, 'cedar');
+      expect(reopened.current.values.voice, '');
+    },
+  );
+
+  test(
+    'invalid GPT-Live voices are explicit and repairable per mode',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('voice.live_api_voice', 'cove');
+      final owner = AppPreferences(prefs);
+      addTearDown(owner.dispose);
+      expect(owner.current.liveApiVoice.selected, isNull);
+      expect(owner.current.liveApiVoice.notice, isNotNull);
+      expect(owner.current.liveSubscriptionVoice.selected, 'cove');
+      await owner.setLiveApiVoice('cedar');
+      await owner.reload();
+      expect(owner.current.liveApiVoice.selected, 'cedar');
+    },
+  );
+
+  testWidgets('GPT-Live choice shows saving, failure and retry', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(320, 800);
+    addTearDown(tester.view.reset);
+    SharedPreferences.resetStatic();
+    final storage = _HeldVoiceStorage();
+    SharedPreferencesStorePlatform.instance = storage;
+    final owner = AppPreferences(await SharedPreferences.getInstance());
+    final device = VoiceDeviceFixture();
+    addTearDown(owner.dispose);
+    addTearDown(device.stream.close);
+    await show(tester, owner, device);
+    Future<void> chooseBreeze() async {
+      final field = find.byWidgetPredicate(
+        (w) => w is StudioSelect<String> && w.label == 'GPT-Live voice',
+      );
+      await tester.ensureVisible(field);
+      await tester.tap(
+        find.descendant(of: field, matching: find.byType(TextField)),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Breeze').hitTestable().last);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+    }
+
+    await chooseBreeze();
+    await tester.pump();
+    await screenshot(tester, 'live-voice-saving');
+    expect(
+      find.byWidgetPredicate(
+        (w) => w is StudioLoading && w.label == 'Saving voice settings',
+      ),
+      findsWidgets,
+    );
+    expect(owner.current.liveSubscriptionVoice.selected, 'cove');
+    await screenshot(tester, 'live-voice-saving');
+    storage.release.complete(false);
+    await tester.pumpAndSettle();
+    expect(
+      find
+          .text('Could not save this voice setting. Please retry.')
+          .hitTestable(),
+      findsOneWidget,
+    );
+    expect(owner.current.liveSubscriptionVoice.selected, 'cove');
+    await screenshot(tester, 'live-voice-save-failed');
+    await chooseBreeze();
+    await tester.pumpAndSettle();
+    expect(owner.current.liveSubscriptionVoice.selected, 'breeze');
+    expect(
+      find.text('Could not save this voice setting. Please retry.'),
+      findsNothing,
+    );
+  });
 
   testWidgets('live conversation setting explicitly selects API billing', (
     tester,
@@ -287,6 +414,25 @@ void main() {
             tester,
             'settings-input-${brightness.name}-${(scale * 100).round()}',
           );
+          final liveField = find.byWidgetPredicate(
+            (w) => w is StudioSelect<String> && w.label == 'GPT-Live voice',
+          );
+          await Scrollable.ensureVisible(
+            tester.element(liveField),
+            alignment: 0.2,
+          );
+          await tester.tap(
+            find.descendant(of: liveField, matching: find.byType(TextField)),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Breeze').hitTestable(), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await screenshot(
+            tester,
+            'live-voice-picker-${brightness.name}-${(scale * 100).round()}',
+          );
+          await tester.tap(find.text('Breeze').hitTestable());
+          await tester.pumpAndSettle();
           await tester.ensureVisible(
             find.text('Refresh Android voices and languages'),
           );

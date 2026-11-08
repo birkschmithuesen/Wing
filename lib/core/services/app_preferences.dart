@@ -82,6 +82,8 @@ class AppPreferencesState {
     required this.attentionNotifications,
     required this.notificationPreviews,
     required this.liveVoiceMode,
+    required this.liveSubscriptionVoice,
+    required this.liveApiVoice,
     required this.voiceInput,
     required this.voiceOutput,
     required this.voiceLanguage,
@@ -110,6 +112,14 @@ class AppPreferencesState {
   final AppPreferenceControl<bool> attentionNotifications;
   final AppPreferenceControl<bool> notificationPreviews;
   final AppPreferenceControl<LiveVoiceMode> liveVoiceMode;
+  final AppPreferenceControl<String> liveSubscriptionVoice;
+  final AppPreferenceControl<String> liveApiVoice;
+
+  AppPreferenceControl<String> liveVoiceFor(LiveVoiceMode mode) =>
+      switch (mode) {
+        LiveVoiceMode.subscription => liveSubscriptionVoice,
+        LiveVoiceMode.api => liveApiVoice,
+      };
   final AppPreferenceControl<AppVoiceProcessing> voiceInput;
   final AppPreferenceControl<AppVoiceProcessing> voiceOutput;
   final AppPreferenceControl<String> voiceLanguage;
@@ -236,6 +246,10 @@ class AppPreferences {
       _save(AppPreferenceField.notificationPreviews, value);
   Future<AppPreferenceSaveResult> setLiveVoiceMode(LiveVoiceMode value) =>
       _save(AppPreferenceField.liveVoiceMode, value.name);
+  Future<AppPreferenceSaveResult> setLiveSubscriptionVoice(String value) =>
+      _save(AppPreferenceField.liveSubscriptionVoice, value);
+  Future<AppPreferenceSaveResult> setLiveApiVoice(String value) =>
+      _save(AppPreferenceField.liveApiVoice, value);
   Future<AppPreferenceSaveResult> setVoiceInput(AppVoiceProcessing value) =>
       _save(AppPreferenceField.voiceInput, value.name);
   Future<AppPreferenceSaveResult> setVoiceOutput(AppVoiceProcessing value) =>
@@ -295,6 +309,16 @@ class AppPreferences {
       AppPreferenceField.liveVoiceMode,
       _values.liveVoiceMode,
       setLiveVoiceMode,
+    ),
+    liveSubscriptionVoice: _control(
+      AppPreferenceField.liveSubscriptionVoice,
+      _values.liveSubscriptionVoice,
+      setLiveSubscriptionVoice,
+    ),
+    liveApiVoice: _control(
+      AppPreferenceField.liveApiVoice,
+      _values.liveApiVoice,
+      setLiveApiVoice,
     ),
     voiceInput: _control(
       AppPreferenceField.voiceInput,
@@ -365,6 +389,8 @@ class AppPreferences {
           AppPreferenceField.textSize =>
             'Could not save the text size. Please retry.',
           AppPreferenceField.liveVoiceMode ||
+          AppPreferenceField.liveSubscriptionVoice ||
+          AppPreferenceField.liveApiVoice ||
           AppPreferenceField.voiceInput ||
           AppPreferenceField.voiceOutput ||
           AppPreferenceField.voiceLanguage ||

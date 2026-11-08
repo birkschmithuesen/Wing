@@ -33,6 +33,25 @@ void main() {
     explicitlyPresentVisibility: visibility,
   );
 
+  test('backup preserves separate GPT-Live choices', () async {
+    await open({});
+    await owner.setLiveSubscriptionVoice('breeze');
+    await owner.setLiveApiVoice('cedar');
+    final snapshot = await owner.exportBackupSnapshot(connectionIds: []);
+    expect(
+      snapshot.explicitlyPresent[AppPreferenceField.liveSubscriptionVoice],
+      'breeze',
+    );
+    expect(
+      snapshot.explicitlyPresent[AppPreferenceField.liveApiVoice],
+      'cedar',
+    );
+    await owner.setLiveSubscriptionVoice('cove');
+    await owner.restoreBackupPatch(patch(snapshot.explicitlyPresent));
+    expect(owner.current.liveSubscriptionVoice.selected, 'breeze');
+    expect(owner.current.liveApiVoice.selected, 'cedar');
+  });
+
   test(
     'export observes fresh sparse storage and refuses malformed presence',
     () async {

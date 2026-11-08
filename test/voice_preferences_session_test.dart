@@ -61,6 +61,20 @@ void main() {
     },
   );
 
+  test('GPT-Live save stays bound to its mode while settings change', () async {
+    await open({});
+    storage.hold = true;
+    final save = session.current.liveVoice!.choose!('breeze');
+    await storage.started.future;
+    expect(session.current.liveVoice!.busy, isTrue);
+    final modeChange = owner.setLiveVoiceMode(LiveVoiceMode.api);
+    storage.release.complete();
+    expect(await save, isTrue);
+    await modeChange;
+    expect(session.current.liveVoice!.selected, 'marin');
+    expect(owner.current.liveSubscriptionVoice.selected, 'breeze');
+  });
+
   test(
     'invalid inactive local fields remain repairable without blocking valid Hermes processing',
     () async {
