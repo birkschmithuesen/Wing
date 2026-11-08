@@ -11,6 +11,21 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-10-30
+
+### Chat images now show inline with a tap-to-zoom thumbnail
+- **What:** An image deliverable (`MEDIA:` reference to a `.png`/`.jpg`/`.jpeg`/`.gif`/`.webp`/`.bmp` file)
+  now renders as an inline thumbnail inside the chat message — full message width, aspect ratio kept, height
+  capped at about 60% of the screen — instead of only a Download/Open-preview file card. Tapping the thumbnail
+  opens the existing zoom preview. The Download/Open-preview row stays underneath the thumbnail. Bytes are
+  fetched through the same authenticated remote-file path the card's own actions already use, and cached in
+  memory by path so that scrolling the chat does not refetch an already-shown image. The file card is still
+  shown while the image is loading or if the fetch fails, and several `MEDIA:` images in one message stack as
+  separate thumbnails. SVG deliverables keep the file card unchanged — the app has no SVG renderer.
+- **Why:** Birk 2026-10-30, Robo-reported MEDIA images render as a file card instead of an inline thumbnail in
+  Wing conversational mode.
+- **Merge:** pending (branch `wt/t_3dcd191e`, not yet merged to `voice-offline`) · **Card:** t_3dcd191e
+
 ## 2026-10-20
 
 ### Barge-in into read-aloud also opens for Bluetooth headphones

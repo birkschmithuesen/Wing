@@ -22,6 +22,7 @@ class ProfileMessage extends StatelessWidget {
   final bool streaming;
   final Future<void> Function(ChatOutput output)? onOpenRemoteFile;
   final Future<bool> Function(ChatOutput output)? onDownloadRemoteFile;
+  final Future<Uint8List> Function(ChatOutput output)? onLoadRemoteImage;
   final UserAttachmentImageLoader? loadAttachmentImage;
   final VoidCallback? onReadAloud;
   final bool readingAloud;
@@ -32,6 +33,7 @@ class ProfileMessage extends StatelessWidget {
     this.streaming = false,
     this.onOpenRemoteFile,
     this.onDownloadRemoteFile,
+    this.onLoadRemoteImage,
     this.loadAttachmentImage,
     this.onReadAloud,
     this.readingAloud = false,
@@ -113,6 +115,7 @@ class ProfileMessage extends StatelessWidget {
                           data: result,
                           onOpenRemoteFile: onOpenRemoteFile,
                           onDownloadRemoteFile: onDownloadRemoteFile,
+                          onLoadRemoteImage: onLoadRemoteImage,
                           deliverables: true,
                         ),
                 ),
@@ -313,6 +316,7 @@ class ProfileMessage extends StatelessWidget {
                             streaming: streaming,
                             onOpenRemoteFile: onOpenRemoteFile,
                             onDownloadRemoteFile: onDownloadRemoteFile,
+                            onLoadRemoteImage: onLoadRemoteImage,
                             deliverables: true,
                           ),
                   ),

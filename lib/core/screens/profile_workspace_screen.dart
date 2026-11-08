@@ -1629,6 +1629,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             onOpenRemoteFile: (output) => _openAnswerOutput(chat, output),
             onDownloadRemoteFile: (output) =>
                 _downloadAnswerOutput(chat, output),
+            onLoadRemoteImage: (output) =>
+                _loadAttachmentImage(chat, output.path!),
           ),
         ],
       );
@@ -1677,6 +1679,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   onOpenRemoteFile: (output) => _openAnswerOutput(chat, output),
                   onDownloadRemoteFile: (output) =>
                       _downloadAnswerOutput(chat, output),
+                  onLoadRemoteImage: (output) =>
+                      _loadAttachmentImage(chat, output.path!),
                 ),
               ),
               Positioned(
@@ -1715,6 +1719,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             onOpenRemoteFile: (output) => _openAnswerOutput(chat, output),
             onDownloadRemoteFile: (output) =>
                 _downloadAnswerOutput(chat, output),
+            onLoadRemoteImage: (output) =>
+                _loadAttachmentImage(chat, output.path!),
           ),
       ],
     );
