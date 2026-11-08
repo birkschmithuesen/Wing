@@ -708,6 +708,27 @@ class ProfileMessage extends StatelessWidget {
         onShareResource: onShareRemoteFile,
       );
     }
+    if (message.kind == TranscriptMessageKind.voice) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(bottom: WingSpacing.xs),
+            child: Text(
+              '${role == 'user' ? 'You · voice' : 'GPT-Live'} · Not saved to Hermes',
+              textAlign: role == 'user' ? TextAlign.end : TextAlign.start,
+              style: theme.textTheme.bodySmall,
+            ),
+          ),
+          _dialogue(context, content, role),
+        ],
+      );
+    }
+    return _dialogue(context, content, role);
+  }
+
+  Widget _dialogue(BuildContext context, String content, String role) {
+    final theme = Theme.of(context);
     final user = role == 'user';
     final timestamp = _timestamp(
       context,

@@ -1,4 +1,5 @@
 import 'chat_runtime.dart';
+import 'live_voice_turn.dart';
 import 'hermes_question.dart';
 import 'answer_versions.dart';
 import 'review_notice.dart';
@@ -37,6 +38,35 @@ final class TranscriptTimeline {
   final List<TranscriptTimelineSection> sections;
   final bool hasLiveMessage;
   final Map<Object, Duration> _replyDurations;
+
+  /// Merge local speech for display, preserving every native row and its order.
+  /// Local timestamps place speech beside received task results; they never
+  /// become saved history timestamps or contribute to execution timing.
+  TranscriptTimeline withVoiceTurns(List<LiveVoiceTurn> turns) {
+    if (turns.isEmpty) return this;
+    final merged = <TranscriptTimelineEntry>[];
+    var next = 0;
+    for (final entry in entries) {
+      final timestamp = entry.timestamp;
+      while (next < turns.length &&
+          timestamp != null &&
+          turns[next].timestamp.isBefore(timestamp)) {
+        if (turns[next].text.isNotEmpty) {
+          merged.add(TranscriptTimelineEntry.voice(turns[next]));
+        }
+        next++;
+      }
+      merged.add(entry);
+    }
+    for (final turn in turns.skip(next)) {
+      if (turn.text.isNotEmpty) merged.add(TranscriptTimelineEntry.voice(turn));
+    }
+    return TranscriptTimeline._(
+      merged,
+      hasLiveMessage: hasLiveMessage || turns.any((turn) => !turn.complete),
+      replyDurations: _replyDurations,
+    );
+  }
 
   /// Message boundaries for the positioned live execution, before reasoning
   /// divides it into runs. Steering and internal notices are not new prompts.
@@ -358,6 +388,29 @@ _joinBotExchanges(List<Map<String, dynamic>> rows) {
 }
 
 final class TranscriptTimelineEntry {
+  TranscriptTimelineEntry.voice(LiveVoiceTurn turn)
+    : question = null,
+      sourceIndex = -1,
+      presentationId = ('voice', turn.id),
+      _row = const {},
+      isReview = false,
+      role = turn.user ? 'user' : 'assistant',
+      id = null,
+      suppressed = false,
+      emptyAssistant = false,
+      streaming = !turn.complete,
+      hasReasoning = false,
+      savedMessageId = null,
+      branchAnswer = false,
+      exchangeReceipts = const [],
+      messageProjection = ((_) => TranscriptMessage.voice(
+        id: turn.id,
+        user: turn.user,
+        text: turn.text,
+        timestamp: turn.timestamp,
+        complete: turn.complete,
+      ));
+
   TranscriptTimelineEntry.request(HermesQuestion request)
     : question = request,
       sourceIndex = -1,

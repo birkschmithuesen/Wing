@@ -50,6 +50,26 @@ void main() {
       await loader.load();
     }
   });
+  test(
+    'live conversation billing choice persists and invalid values require repair',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final owner = AppPreferences(preferences);
+      expect(owner.current.liveVoiceMode.selected, LiveVoiceMode.subscription);
+      await owner.setLiveVoiceMode(LiveVoiceMode.api);
+      await owner.reload();
+      expect(owner.current.liveVoiceMode.selected, LiveVoiceMode.api);
+      await preferences.setString('voice.live_mode', 'automatic');
+      await owner.reload();
+      expect(owner.current.liveVoiceMode.selected, isNull);
+      expect(owner.current.liveVoiceMode.notice, isNotNull);
+      await owner.setLiveVoiceMode(LiveVoiceMode.subscription);
+      expect(owner.current.liveVoiceMode.selected, LiveVoiceMode.subscription);
+      owner.dispose();
+    },
+  );
+
   Future<void> screenshot(WidgetTester tester, String name) async {
     if (!capture) return;
     final boundary = tester.renderObject<RenderRepaintBoundary>(
@@ -140,6 +160,28 @@ void main() {
     await tester.tap(find.text('Hermes · server profile').hitTestable().last);
     await tester.pumpAndSettle();
   }
+
+  testWidgets('live conversation setting explicitly selects API billing', (
+    tester,
+  ) async {
+    final owner = AppPreferences(await SharedPreferences.getInstance());
+    final device = VoiceDeviceFixture();
+    addTearDown(owner.dispose);
+    addTearDown(device.stream.close);
+    await show(tester, owner, device);
+    final field = find.byWidgetPredicate(
+      (widget) => widget is StudioSelect<LiveVoiceMode>,
+    );
+    await tester.tap(
+      find.descendant(of: field, matching: find.byType(TextField)),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OpenAI API').hitTestable().last);
+    await tester.pumpAndSettle();
+    expect(owner.current.liveVoiceMode.selected, LiveVoiceMode.api);
+    expect(find.textContaining('Voice usage is billed'), findsOneWidget);
+    await screenshot(tester, 'live-api-choice');
+  });
 
   testWidgets(
     'output selection persists; remote voice is a profile link, not a picker',

@@ -96,7 +96,7 @@ Use the order below for a broad pass; finish with [connected journeys](features/
 
 <a id="voice"></a>
 
-- [Dictate and hear replies](features/voice.md) — `voice`.
+- [Dictate, hear replies and have live conversations](features/voice.md) — `voice`.
 
 <a id="administration"></a>
 

@@ -16,6 +16,7 @@ enum TranscriptMessageKind {
   system,
   tool,
   dialogue,
+  voice,
   botMessage,
   discussion,
   discussionPass,
@@ -108,6 +109,23 @@ final class TranscriptMessage {
       ),
     );
   }
+
+  /// Local speech has no saved-history identity or revision authority.
+  factory TranscriptMessage.voice({
+    required String id,
+    required bool user,
+    required String text,
+    required DateTime timestamp,
+    required bool complete,
+  }) => TranscriptMessage._(
+    kind: TranscriptMessageKind.voice,
+    role: user ? 'user' : 'assistant',
+    id: id,
+    text: text,
+    copyText: text,
+    timestamp: timestamp,
+    streaming: !complete,
+  );
 
   factory TranscriptMessage.fromRow(
     Map<String, dynamic> row, {

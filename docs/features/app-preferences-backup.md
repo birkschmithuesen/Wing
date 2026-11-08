@@ -33,6 +33,10 @@ selected profile or the all-profile scope. Cancel sends no changes.
 Each profile keeps its own outcome; one failure does not hide other successes.
 Without a connection, the section explains that Hermes is required.
 
+Voice settings include the saved live conversation choice: ChatGPT subscription
+or OpenAI API. The portable preferences include this choice; a changed value
+applies to the next call and never changes an active call's billing mode.
+
 ## Driving it with Wing harnesses
 
 Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-preconditions). Use the [verification workflow](../../.agents/skills/verify-wing/SKILL.md) for launch, readiness, evidence and cleanup.

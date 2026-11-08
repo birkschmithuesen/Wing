@@ -18,6 +18,8 @@ enum AppTextSizePreference {
 
 enum AppVoiceProcessing { local, hermes }
 
+enum LiveVoiceMode { subscription, api }
+
 enum AppVoiceRate {
   slower('0.8', .8),
   normal('1.0', 1),
@@ -38,6 +40,7 @@ enum AppPreferenceField {
   completedNotifications('completion_notifications'),
   attentionNotifications('attention_notifications'),
   notificationPreviews('notification_message_previews'),
+  liveVoiceMode('voice.live_mode'),
   voiceInput('voice.input'),
   voiceOutput('voice.output'),
   voiceLanguage('voice.android_language'),
@@ -57,6 +60,7 @@ class AppPreferencesSnapshot {
     required this.completedNotifications,
     required this.attentionNotifications,
     required this.notificationPreviews,
+    required this.liveVoiceMode,
     required this.voiceInput,
     required this.voiceOutput,
     required this.voiceLanguage,
@@ -71,6 +75,7 @@ class AppPreferencesSnapshot {
   final bool completedNotifications;
   final bool attentionNotifications;
   final bool notificationPreviews;
+  final LiveVoiceMode liveVoiceMode;
   final AppVoiceProcessing voiceInput;
   final AppVoiceProcessing voiceOutput;
   final String voiceLanguage;
@@ -86,6 +91,7 @@ class AppPreferencesSnapshot {
     completedNotifications: true,
     attentionNotifications: true,
     notificationPreviews: true,
+    liveVoiceMode: LiveVoiceMode.subscription,
     voiceInput: AppVoiceProcessing.local,
     voiceOutput: AppVoiceProcessing.local,
     voiceLanguage: '',
@@ -103,6 +109,7 @@ class AppPreferencesSnapshot {
     AppPreferenceField.attentionNotifications.storageKey:
         attentionNotifications,
     AppPreferenceField.notificationPreviews.storageKey: notificationPreviews,
+    AppPreferenceField.liveVoiceMode.storageKey: liveVoiceMode.name,
     AppPreferenceField.voiceInput.storageKey: voiceInput.name,
     AppPreferenceField.voiceOutput.storageKey: voiceOutput.name,
     AppPreferenceField.voiceLanguage.storageKey: voiceLanguage,
@@ -160,6 +167,8 @@ class AppPreferencesValues {
       _values[AppPreferenceField.attentionNotifications] as bool?;
   bool? get notificationPreviews =>
       _values[AppPreferenceField.notificationPreviews] as bool?;
+  LiveVoiceMode? get liveVoiceMode =>
+      _named(AppPreferenceField.liveVoiceMode, LiveVoiceMode.values);
   AppVoiceProcessing? get voiceInput =>
       _named(AppPreferenceField.voiceInput, AppVoiceProcessing.values);
   AppVoiceProcessing? get voiceOutput =>
@@ -208,6 +217,9 @@ class AppPreferencesSchema {
         AppPreferenceField.completedNotifications ||
         AppPreferenceField.attentionNotifications ||
         AppPreferenceField.notificationPreviews => value is bool,
+        AppPreferenceField.liveVoiceMode => LiveVoiceMode.values.any(
+          (choice) => choice.name == value,
+        ),
         AppPreferenceField.voiceInput || AppPreferenceField.voiceOutput =>
           AppVoiceProcessing.values.any((choice) => choice.name == value),
         AppPreferenceField.voiceLanguage ||

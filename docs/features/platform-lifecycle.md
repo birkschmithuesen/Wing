@@ -36,6 +36,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   python3 scripts/test_nightly_native.py platform-plugins --output build/feature-verification/platform-lifecycle
   ```
 
+Live voice uses a microphone/media foreground service and a separate retained-engine lease. Home and screen lock keep the call; microphone/service teardown retires the lease. Calls are not resurrected after process death. The voice native recipe verifies the call separately from notification monitoring; see [voice](voice.md).
+
 ## Gotchas
 
 Owner recreation is not OS process death. Battery exemption, Android permissions and OEM background rules are separate boundaries. Never drive an existing physical phone for a disposable recipe.

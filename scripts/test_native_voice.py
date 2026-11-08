@@ -37,6 +37,8 @@ PERMISSION_STEPS = {
     'VOICE_BACKGROUND_CANCELLED',
 }
 
+DUPLEX_ORDER = ['VOICE_DUPLEX_READY', 'VOICE_DUPLEX_BACKGROUND', 'VOICE_DUPLEX_RESUMED', 'VOICE_DUPLEX_MUTED', 'VOICE_DUPLEX_ENDED']
+
 
 class Driver:
     def __init__(self, serial, output, timeout):
@@ -286,6 +288,44 @@ class Driver:
             self.shell('am', 'start', '-W', '-n', component)
             self.capture('capture-cancelled-resumed')
 
+    def duplex_marker(self, marker):
+        if marker == 'VOICE_DUPLEX_READY':
+            self.shell('input', 'keyevent', 'KEYCODE_HOME')
+            self.shell('input', 'keyevent', 'KEYCODE_SLEEP')
+        elif marker == 'VOICE_DUPLEX_BACKGROUND':
+            services = self.shell('dumpsys', 'activity', 'services', PACKAGE)
+            if 'LiveVoiceService' not in services or 'isForeground=true' not in services:
+                raise RuntimeError('Voice foreground service did not survive Home/lock')
+            self.evidence['native_actions'].append({'action': 'Duplex audio packets continued during Home and lock'})
+            self.capture('duplex-locked')
+            self.shell('input', 'keyevent', 'KEYCODE_WAKEUP')
+            self.shell('wm', 'dismiss-keyguard')
+            self.shell('am', 'start', '-W', '-n', PACKAGE + '/com.tarkilhk.wing.MainActivity')
+        elif marker in {'VOICE_DUPLEX_RESUMED', 'VOICE_DUPLEX_MUTED'}:
+            label = 'Mute' if marker == 'VOICE_DUPLEX_RESUMED' else 'End voice'
+            self.shell('cmd', 'statusbar', 'expand-notifications')
+            deadline = time.monotonic() + min(15, self.remaining(15))
+            while time.monotonic() < deadline:
+                nodes = self.nodes('duplex-notification-' + label.replace(' ', '-'))
+                node = next((n for n in nodes if n.get('text', '').lower() == label.lower()), None)
+                if node is not None:
+                    bounds = [int(v) for v in re.findall(r'\d+', node.get('bounds', ''))]
+                    if len(bounds) != 4:
+                        raise RuntimeError('Voice notification action has no bounds')
+                    self.shell('input', 'tap', str((bounds[0]+bounds[2])//2), str((bounds[1]+bounds[3])//2))
+                    return
+                time.sleep(.2)
+            raise RuntimeError('Voice notification action was not reachable: ' + label)
+        elif marker == 'VOICE_DUPLEX_ENDED':
+            deadline = time.monotonic() + min(10, self.remaining(10))
+            while time.monotonic() < deadline:
+                if 'LiveVoiceService' not in self.shell('dumpsys', 'activity', 'services', PACKAGE):
+                    self.evidence['native_actions'].append({'action': 'Notification mute/end released the voice service'})
+                    self.shell('cmd', 'statusbar', 'collapse')
+                    return
+                time.sleep(.1)
+            raise RuntimeError('Ended voice still owns a service')
+
     def stop_process(self):
         if self.process is None or self.process.poll() is not None:
             return
@@ -326,10 +366,14 @@ class Driver:
                         if required_markers:
                             for marker in re.findall(r'VOICE_[A-Z_]+', transcript):
                                 if marker in required_markers and marker not in seen:
-                                    expected = PERMISSION_ORDER[len(seen)]
+                                    order = DUPLEX_ORDER if name == 'duplex' else PERMISSION_ORDER
+                                    expected = order[len(seen)]
                                     if marker != expected:
                                         raise RuntimeError('Unexpected native permission marker order: ' + marker)
-                                    self.permission_marker(marker)
+                                    if name == 'duplex':
+                                        self.duplex_marker(marker)
+                                    else:
+                                        self.permission_marker(marker)
                                     seen.add(marker)
                     if exited:
                         break
@@ -401,6 +445,9 @@ def main():
                 raise RuntimeError('Microphone permission reset did not take effect')
             driver.evidence['microphone_reset'] = True
             driver.run_suite('permission', 'integration_test/voice_permission_native_test.dart', PERMISSION_STEPS)
+            driver.shell('pm', 'grant', PACKAGE, 'android.permission.POST_NOTIFICATIONS')
+            driver.shell('pm', 'grant', PACKAGE, 'android.permission.BLUETOOTH_CONNECT')
+            driver.run_suite('duplex', 'integration_test/live_voice_native_test.dart', set(DUPLEX_ORDER))
             driver.shell('pm', 'grant', PACKAGE, PERMISSION)
             if not driver.granted():
                 raise RuntimeError('Microphone permission is not granted before native capture suite')

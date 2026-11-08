@@ -39,8 +39,18 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         replies.add(result)
         if (closed) { result.error("cancelled", "Voice channel closed.", null); return }
         try {
+            if (LiveVoiceRuntime.audioOwned && call.method in listOf("start", "speak", "play")) {
+                result.error("voice_busy", "End the voice conversation before using other audio.", null)
+                return
+            }
             val id = call.argument<String>("id").orEmpty()
             when (call.method) {
+                "requestLivePermissions" -> {
+                    val audio = activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    val bluetooth = android.os.Build.VERSION.SDK_INT < 31 ||
+                        activity.checkSelfPermission(Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+                    if (audio && bluetooth) result.success(true) else requestPermission(call, result)
+                }
                 "requestPermission" -> {
                     if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) result.success(true)
                     else requestPermission(call, result)
@@ -78,7 +88,10 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     }
     private fun requestPermission(call: MethodCall, result: Reply) {
         permissions.begin(Permission(this, call, result))
-        try { activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST) }
+        val requested = if (call.method == "requestLivePermissions" && android.os.Build.VERSION.SDK_INT >= 31)
+            arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.BLUETOOTH_CONNECT)
+            else arrayOf(Manifest.permission.RECORD_AUDIO)
+        try { activity.requestPermissions(requested, PERMISSION_REQUEST) }
         catch (error: Exception) { permissions.finish(); throw error }
     }
     private fun start(call: MethodCall, result: MethodChannel.Result) {
@@ -99,7 +112,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         val permission = permissions.finish()
         if (permission == null || permission.cancelled || closed) return true
         val request = permission.value ?: return true
-        if (request.call.method == "requestPermission") {
+        if (request.call.method in listOf("requestPermission", "requestLivePermissions")) {
             request.reply.success(grants.firstOrNull() == PackageManager.PERMISSION_GRANTED)
         } else if (grants.firstOrNull() == PackageManager.PERMISSION_GRANTED) {
             try { start(request.call, request.reply) }

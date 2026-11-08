@@ -479,7 +479,8 @@
         "speak",
         "play",
         "stopPlayback",
-        "event"
+        "event",
+        "requestLivePermissions"
       ]
     },
     {
@@ -6827,6 +6828,57 @@
       "selector": [
         "compose"
       ]
+    },
+    {
+      "id": "channel-live-voice",
+      "kind": "platform-channel",
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/LiveVoiceService.kt",
+      "source": "lib/core/services/live_voice_transport.dart",
+      "purpose": "Call-owned microphone/media foreground service, engine retention and notification actions",
+      "status": "supported",
+      "selector": [
+        "prepare",
+        "start",
+        "muted",
+        "stop",
+        "action"
+      ]
+    },
+    {
+      "id": "host-test-test/live_voice_session_test.dart",
+      "kind": "host-test",
+      "path": "test/live_voice_session_test.dart",
+      "purpose": "Duplex voice protocol, ownership or native lifecycle regression",
+      "source": "docs/features/voice.md",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "host-test-test/live_voice_protocol_test.dart",
+      "kind": "host-test",
+      "path": "test/live_voice_protocol_test.dart",
+      "purpose": "Duplex voice protocol, ownership or native lifecycle regression",
+      "source": "docs/features/voice.md",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "host-test-test/live_voice_workspace_test.dart",
+      "kind": "host-test",
+      "path": "test/live_voice_workspace_test.dart",
+      "purpose": "Duplex voice protocol, ownership or native lifecycle regression",
+      "source": "docs/features/voice.md",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/live_voice_native_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/live_voice_native_test.dart",
+      "purpose": "Duplex voice protocol, ownership or native lifecycle regression",
+      "source": "docs/features/voice.md",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -16029,6 +16081,66 @@
       "path": "lib/core/widgets/wing_plugin_page.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/LiveVoiceService.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "integration_test/live_voice_native_test.dart",
+      "area": "integration_test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/models/live_voice_turn.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_protocol.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_session.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_transport.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/profile_workspace_live_voice.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/widgets/live_voice_scope.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/live_voice_protocol_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/live_voice_session_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/live_voice_workspace_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/support/live_voice_fixture.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {
@@ -17744,6 +17856,15 @@
       ],
       "status": "retain",
       "dynamic_evidence": "HermesProfile and WorkspaceScope use standalone immutable annotations without importing Flutter into native Dart proofs"
+    },
+    "flutter_webrtc": {
+      "kind": "dependencies",
+      "import_consumers": [
+        "integration_test/live_voice_native_test.dart",
+        "lib/core/services/live_voice_transport.dart"
+      ],
+      "status": "retain",
+      "dynamic_evidence": "Native WebRTC microphone/playback, peer connection and GPT-Live data channel; generated Flutter plugin registration"
     }
   }
 }

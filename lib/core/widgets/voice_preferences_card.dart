@@ -175,6 +175,23 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 16),
+          _select('Live conversation', state.liveMode, const [
+            (value: LiveVoiceMode.subscription, label: 'ChatGPT subscription'),
+            (value: LiveVoiceMode.api, label: 'OpenAI API'),
+          ], 'voice.live_mode'),
+          const SizedBox(height: 12),
+          Text(
+            state.liveMode.selected == LiveVoiceMode.api
+                ? 'Uses the Hermes profile’s OpenAI API key. Voice usage is billed to that API account.'
+                : 'Uses the Hermes profile’s ChatGPT sign-in and subscription voice limits.',
+          ),
+          const SizedBox(height: 8),
+          Text(
+            state.liveMode.selected == LiveVoiceMode.api
+                ? 'Uses Hermes’s built-in API voice. Changes apply to your next call.'
+                : 'Requires the Wing plugin enabled in this Hermes profile. Changes apply to your next call.',
+          ),
+          const SizedBox(height: 24),
           _select('Voice input', state.input, _engines, 'voice.input'),
           const SizedBox(height: 12),
           if (state.inputDescription case final description?) Text(description),

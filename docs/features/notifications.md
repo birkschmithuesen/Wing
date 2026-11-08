@@ -90,6 +90,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   python3 scripts/test_nightly_native.py notification-cold --output build/feature-verification/notifications
   ```
 
+Active live voice has its own ongoing Android notification with Mute/Unmute, End voice and return-to-chat actions. Its service lifetime is independent of ordinary chat notification monitoring. See [voice](voice.md).
+
 ## Gotchas
 
 Use only the owned QA package. Android notification permission and battery policy are prerequisites. Opening, reading and dismissing are different actions; verify restore and cold entry separately.

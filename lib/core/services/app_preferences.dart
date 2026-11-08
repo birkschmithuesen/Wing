@@ -81,6 +81,7 @@ class AppPreferencesState {
     required this.completedNotifications,
     required this.attentionNotifications,
     required this.notificationPreviews,
+    required this.liveVoiceMode,
     required this.voiceInput,
     required this.voiceOutput,
     required this.voiceLanguage,
@@ -108,6 +109,7 @@ class AppPreferencesState {
   final AppPreferenceControl<bool> completedNotifications;
   final AppPreferenceControl<bool> attentionNotifications;
   final AppPreferenceControl<bool> notificationPreviews;
+  final AppPreferenceControl<LiveVoiceMode> liveVoiceMode;
   final AppPreferenceControl<AppVoiceProcessing> voiceInput;
   final AppPreferenceControl<AppVoiceProcessing> voiceOutput;
   final AppPreferenceControl<String> voiceLanguage;
@@ -232,6 +234,8 @@ class AppPreferences {
       _save(AppPreferenceField.attentionNotifications, value);
   Future<AppPreferenceSaveResult> setNotificationPreviews(bool value) =>
       _save(AppPreferenceField.notificationPreviews, value);
+  Future<AppPreferenceSaveResult> setLiveVoiceMode(LiveVoiceMode value) =>
+      _save(AppPreferenceField.liveVoiceMode, value.name);
   Future<AppPreferenceSaveResult> setVoiceInput(AppVoiceProcessing value) =>
       _save(AppPreferenceField.voiceInput, value.name);
   Future<AppPreferenceSaveResult> setVoiceOutput(AppVoiceProcessing value) =>
@@ -286,6 +290,11 @@ class AppPreferences {
       AppPreferenceField.notificationPreviews,
       _values.notificationPreviews,
       setNotificationPreviews,
+    ),
+    liveVoiceMode: _control(
+      AppPreferenceField.liveVoiceMode,
+      _values.liveVoiceMode,
+      setLiveVoiceMode,
     ),
     voiceInput: _control(
       AppPreferenceField.voiceInput,
@@ -355,6 +364,7 @@ class AppPreferences {
             'Could not save the default action. Please retry.',
           AppPreferenceField.textSize =>
             'Could not save the text size. Please retry.',
+          AppPreferenceField.liveVoiceMode ||
           AppPreferenceField.voiceInput ||
           AppPreferenceField.voiceOutput ||
           AppPreferenceField.voiceLanguage ||

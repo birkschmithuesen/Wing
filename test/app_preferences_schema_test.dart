@@ -93,7 +93,7 @@ void main() {
     expect(read.values, AppPreferencesSchema.read({}).values);
     expect(
       AppPreferenceField.values.map((field) => field.storageKey).toSet(),
-      hasLength(12),
+      hasLength(13),
     );
     expect(
       AppPreferenceField.values.map((field) => field.storageKey).toSet(),
@@ -116,6 +116,7 @@ void main() {
       'completion_notifications': true,
       'attention_notifications': true,
       'notification_message_previews': true,
+      'voice.live_mode': 'subscription',
       'voice.input': 'local',
       'voice.output': 'local',
       'voice.android_language': '',

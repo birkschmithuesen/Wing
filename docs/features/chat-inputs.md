@@ -49,6 +49,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   python3 scripts/test_nightly_native.py queue-editing --output build/feature-verification/chat-inputs
   ```
 
+The waveform action starts live voice using the saved subscription/API choice. New queued voice work carries Hermes’s native voice surface and recent spoken context through the durable outbox. Voice work is independently queued or steered without consuming the typed draft; dictation is unavailable during a call. See [voice](voice.md).
+
 ## Gotchas
 
 A clarification set appears in one form. Stage every answer, including explicit
