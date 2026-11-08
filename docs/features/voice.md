@@ -69,8 +69,8 @@ calls. Host UI renders use `--dart-define=LIVE_VOICE_REVIEW=true` with
 `build/feature-verification/live-voice/`.
 Before that render suite, copy the Flutter SDK's material fonts
 `Roboto-Regular.ttf` and `MaterialIcons-Regular.otf` to
-`build/studio-roboto.ttf` and `build/studio-icons.otf`. Its keyboard and large-text
-geometry checks need real fonts; Flutter's placeholder font can fail those checks.
+`build/studio-roboto.ttf` and `build/studio-icons.otf`. Real fonts are required for visual captures; keyboard and large-text geometry
+checks run in both CI-font and real-font modes.
 
 Real subscription entitlement, API credits, provider delegation, audible
 barge-in/echo and physical headset routing still require an operator-authorized

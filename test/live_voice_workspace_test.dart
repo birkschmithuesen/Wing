@@ -536,7 +536,11 @@ void main() {
               await tester.pumpWidget(const SizedBox());
             } finally {
               await tester.pumpWidget(const SizedBox.shrink());
-              await session.end();
+              final ending = session.end();
+              if (!session.handshake.isCompleted) {
+                session.handshake.complete(const {});
+              }
+              await ending;
               session.dispose();
               controller.dispose();
               preferences.dispose();
