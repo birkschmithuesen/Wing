@@ -40,10 +40,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   while context is loading. Transcript tests cover replay, partial final events,
   identical distinct turns, profile isolation, hangup/disconnect retention and
   passive timeline projection. The UI suite checks both speakers, Copy, and
-  departure/reopening and collapsed/expanded Hermes task details in both themes at normal and enlarged text.
+  departure/reopening and collapsed/expanded Hermes task details in both themes at normal and enlarged text. CI-mode checks also keep the composer reachable above the keyboard and scroll long voice errors while Dismiss stays reachable; real-font captures verify the same layouts.
 
   ```sh
   flutter test --no-pub test/live_voice_session_test.dart test/live_voice_protocol_test.dart test/voice_preferences_test.dart test/voice_preferences_session_test.dart test/composer_draft_store_test.dart
+  flutter test --no-pub test/live_voice_workspace_test.dart
   flutter test --no-pub --dart-define=LIVE_VOICE_REVIEW=true test/live_voice_workspace_test.dart
   flutter test --no-pub test/profile_workspace_controller_test.dart --plain-name "live voice"
   flutter test --no-pub test/profile_composer_queue_test.dart
@@ -68,8 +69,8 @@ calls. Host UI renders use `--dart-define=LIVE_VOICE_REVIEW=true` with
 `build/feature-verification/live-voice/`.
 Before that render suite, copy the Flutter SDK's material fonts
 `Roboto-Regular.ttf` and `MaterialIcons-Regular.otf` to
-`build/studio-roboto.ttf` and `build/studio-icons.otf`. Its keyboard and large-text
-geometry checks need real fonts; Flutter's placeholder font can fail those checks.
+`build/studio-roboto.ttf` and `build/studio-icons.otf`. Real fonts are required for visual captures; keyboard and large-text geometry
+checks run in both CI-font and real-font modes.
 
 Real subscription entitlement, API credits, provider delegation, audible
 barge-in/echo and physical headset routing still require an operator-authorized

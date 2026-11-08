@@ -113,6 +113,8 @@ class _LiveVoiceDockState extends State<LiveVoiceDock> {
                             liveRegion: true,
                             child: Text(
                               status,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                               style: Theme.of(context).textTheme.bodySmall,
                             ),
                           ),
@@ -193,7 +195,14 @@ class _LiveVoiceDockState extends State<LiveVoiceDock> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Expanded(child: StudioError(voice.error!)),
+                    Expanded(
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 128),
+                        child: SingleChildScrollView(
+                          child: StudioError(voice.error!),
+                        ),
+                      ),
+                    ),
                     action(
                       'Dismiss voice error',
                       Icons.close,
