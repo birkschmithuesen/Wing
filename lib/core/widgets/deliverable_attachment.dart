@@ -15,6 +15,11 @@ final _inlineImageExtension = RegExp(
   caseSensitive: false,
 );
 
+/// Without a minimum, `Image`'s dry layout is zero-height until its bytes
+/// finish decoding (`RenderImage` has no aspect ratio to size from yet), so
+/// a tap landing in that instant would hit nothing.
+const _minThumbnailHeight = 160.0;
+
 /// Desktop's Download / Open preview actions adapted to a phone's width.
 class DeliverableAttachment extends StatefulWidget {
   const DeliverableAttachment({
@@ -211,6 +216,7 @@ class _DeliverableAttachmentState extends State<DeliverableAttachment> {
                 onTap: () => _openPreview(bytes),
                 child: ConstrainedBox(
                   constraints: BoxConstraints(
+                    minHeight: _minThumbnailHeight,
                     maxHeight: MediaQuery.sizeOf(context).height * 0.6,
                   ),
                   child: Image.memory(
