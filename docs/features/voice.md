@@ -86,6 +86,9 @@ Both modes use `/api/plugins/wing/voice/v2/status` and `/session`, with the sele
 Voice startup loads Hermes’s cached or saved system prompt; a fresh chat uses
 Hermes’s native profile inspector. Subscription supplies the prompt as a developer
 message in startup `initial_items`; API mode uses startup `instructions`.
+Both modes append a handoff instruction that binds the live speaker to the native
+profile identity from its first reply, including a voice name recorded in memory.
+The handoff preserves the full prompt and adds no hardcoded identity or user facts.
 Recent chat is passed separately as context. New-chat inspection uses profile
 defaults and a temporary memory-session identity; deeper retrieval and all tool
 work remain delegated to Hermes. Passive recording of all spoken turns still
@@ -97,7 +100,10 @@ similar wording is not treated as identity. Typed work that voice merely steers
 keeps its ordinary display. Task provenance is local to the chat reading. Ordinary delegated work still uses Hermes's chat processing.
 
 The Wing plugin's opt-in `tests/test_live_context.py` checks a real subscription
-call with spoken input, received audio and expected profile facts in the final
-answer. Its private `WING_LIVE_CONTEXT_TEST` configuration selects the profile
-and expected facts. Run it only with authorization for the account; an offline
+call with spoken input, received audio, self-identification in the first reply
+and expected user facts in the first answer. The question supplies no assistant
+name or context hint. Its private `WING_LIVE_CONTEXT_TEST` configuration selects
+the profile, expected identity/facts and number of independent fresh calls (1–5).
+Use three calls for identity changes because an unchanged prompt can sometimes
+produce the correct identity. Run it only with authorization for the account; an offline
 payload assertion or successful connection alone does not prove context recall.
