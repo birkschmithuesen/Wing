@@ -96,7 +96,7 @@ void main({
           expect(table, findsOneWidget);
           expect(
             find.descendant(of: table, matching: find.byType(Table)),
-            findsNothing,
+            findsOneWidget,
           );
           final tableState = tester.state(table);
           final field = find.byKey(const Key('profile-message-composer'));

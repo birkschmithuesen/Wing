@@ -8,7 +8,7 @@ Feature ID: `ui-foundations`.
 
 - `ui-foundations.feedback` — Show immediate visible action progress through settlement.
 - `ui-foundations.access` — Keep selection focus and controls usable.
-- `ui-foundations.phone-reading` — Reflow wide tables by available width and text size; compact conversation controls on landscape phones. Table full screen enters reading mode directly, with no duplicate header action.
+- `ui-foundations.phone-reading` — Open wide tables as horizontally scrolling grids, with stacked rows available from the toolbar; compact conversation controls on landscape phones. Table full screen enters reading mode directly, with no duplicate header action.
 - `ui-foundations.retain` — Preserve reader and recovery state.
 
 ## How to get to it (user POV)

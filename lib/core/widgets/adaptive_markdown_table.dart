@@ -25,9 +25,9 @@ class AdaptiveMarkdownTable extends StatefulWidget {
 
 class _TableState extends State<AdaptiveMarkdownTable> {
   final _scroll = ScrollController();
-  // Fit supplies the default; later content or layout changes must not replace
-  // the reader's explicit choice for this mounted table.
-  bool? _gridPreference;
+  // Start in table view; content or layout changes must not replace the
+  // reader's choice for this mounted table.
+  bool _gridPreference = true;
 
   @override
   void dispose() {
@@ -108,8 +108,7 @@ class _TableState extends State<AdaptiveMarkdownTable> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final fits = naturalWidth <= constraints.maxWidth;
-        final grid = _gridPreference ?? fits;
+        final grid = _gridPreference;
         final extra =
             math.max(0.0, constraints.maxWidth - naturalWidth) / columns;
         return Column(

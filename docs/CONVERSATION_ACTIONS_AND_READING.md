@@ -44,8 +44,8 @@ Messages show a local date/time in the footer when available. Long-press it for 
 
 A saved reply can show an approximate time beside **Used N tools**, measured from your saved sent message to the final saved reply. It includes thinking and tool work; missing timestamps leave it unavailable. See [Tool activity](TOOL_ACTIVITY.md#activity-timing).
 
-Wide tables use stacked header/value rows on narrow screens. Their icon controls
-switch between rows and a wrapped grid. Use a table's full-screen icon to enter
+Tables open as wrapped grids, scrolling horizontally when too wide. Their icon
+controls switch between stacked header/value rows and the table. Use a table's full-screen icon to enter
 conversation reading mode, hiding the composer and portrait context row without
 losing the draft. The same icon or Android Back restores it. Landscape combines
 the title and context into one header row. Code and literal output retain their

@@ -85,8 +85,8 @@ void main() {
             }
 
             expectSelection();
-            // New content crosses the automatic grid/rows threshold. It must
-            // not override an explicit selection in either direction.
+            // New content changes whether the table fits. It must not
+            // override an explicit selection in either direction.
             update(() => source = grid ? wide : small);
             await tester.pump();
             await tester.settleMarkdown();
@@ -173,7 +173,7 @@ void main() {
 
   for (final scale in [1.0, 2.0]) {
     testWidgets(
-      'wide tables reflow and explicit grid scrolls at text scale $scale',
+      'wide tables default to horizontally scrolling grids at text scale $scale',
       (tester) async {
         tester.view.physicalSize = const Size(320, 760);
         tester.view.devicePixelRatio = 1;
@@ -205,10 +205,8 @@ void main() {
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.byType(Table), findsNothing);
+        expect(find.byType(Table), findsOneWidget);
         expect(find.byTooltip('Read as stacked rows'), findsOneWidget);
-        await tester.tap(find.byTooltip('Read as table'));
-        await tester.pumpAndSettle();
         final horizontal = tester
             .stateList<ScrollableState>(find.byType(Scrollable))
             .where((state) => state.axisDirection == AxisDirection.right)

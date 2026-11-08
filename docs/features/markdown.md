@@ -7,7 +7,7 @@ Feature ID: `markdown`.
 ## Sub-features
 
 - `markdown.render` — Read partial and completed formatted content.
-- `markdown.tables` — Read wide tables as stacked header/value rows on narrow screens; use the icon controls to choose rows or a wrapped grid. The latest explicit choice stays with the table through message updates, completion and rotation. Full screen enters the containing conversation’s reading mode.
+- `markdown.tables` — Tables open as a wrapped grid, with horizontal scrolling when too wide; use the icon controls to choose stacked header/value rows or the table. The latest explicit choice stays with the table through message updates, completion and rotation. Full screen enters the containing conversation’s reading mode.
 - `markdown.links` — Open web links, linked Hermes files and email drafts. Email addresses open Android’s email app chooser, preserving recipients and any subject/body supplied by the link.
 - `markdown.copy` — Select or copy exact code and output.
 - `markdown.reuse` — Retain current content through asynchronous rendering.
@@ -29,8 +29,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   Document assertions distinguish whole prose segments from the table cells'
   nested renderers. Growing tables must retain exact cell content and selection
   bounds and match a fresh adaptive-table render.
-  Table controls must retain the latest manual choice when arriving content
-  crosses the automatic fit threshold, when the reply completes and when
+  Wide tables must open as horizontally scrolling grids at normal and enlarged
+  text sizes. Table controls must retain the latest manual choice when arriving
+  content changes whether the table fits, when the reply completes and when
   another reply appears. Phone-reading cases also exercise history updates and
   rotation through the production conversation screen.
 
