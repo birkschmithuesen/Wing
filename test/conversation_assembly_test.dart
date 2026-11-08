@@ -28,9 +28,7 @@ Future<void> _render(WidgetTester tester, String name) async {
     find.byType(ConversationComposer, skipOffstage: false),
     findsOneWidget,
   );
-  final attachment = find.byTooltip(
-    name.startsWith('group-') ? 'Add group attachment' : 'Attach file',
-  );
+  final attachment = find.byTooltip('Attach file');
   if (attachment.evaluate().isNotEmpty) {
     final surface = tester.getRect(
       find.byKey(const ValueKey('conversation-composer')),
@@ -47,13 +45,38 @@ Future<void> _render(WidgetTester tester, String name) async {
     expect(tester.getSize(attachment).width, 48);
     expect(attachment.hitTestable(), findsOneWidget);
   }
+  await _captureFrame(tester, name);
+  if (name.endsWith('-portrait') && !name.startsWith('worker-') ||
+      RegExp(r'^phone-table-(dark|light)-[12]\.0$').hasMatch(name)) {
+    final field = tester.widget<TextField>(find.byType(TextField).last);
+    final draft = field.controller!.text;
+    await tester.tap(attachment);
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(BottomSheet),
+      findsOneWidget,
+      reason: 'Every composer opens the standard attachment sheet',
+    );
+    for (final label in ['Camera', 'Photos', 'Files']) {
+      expect(find.widgetWithText(ListTile, label), findsOneWidget);
+    }
+    expect(find.byIcon(Icons.camera_alt_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.photo_library_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.insert_drive_file_outlined), findsOneWidget);
+    await _captureFrame(tester, '$name-attachments');
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(field.controller!.text, draft);
+  }
+}
+
+Future<void> _captureFrame(WidgetTester tester, String name) async {
   if (!_capture) return;
   await tester.pump();
-  final boundary = tester.renderObject<RenderRepaintBoundary>(
-    find.byType(RepaintBoundary).first,
-  );
+  final view = tester.binding.renderViews.first;
+  final layer = view.debugLayer! as OffsetLayer;
   await tester.runAsync(() async {
-    final image = await boundary.toImage();
+    final image = await layer.toImage(Offset.zero & view.size);
     final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
     final file = File('build/design-previews/conversation-assembly/$name.png');
     await file.parent.create(recursive: true);
@@ -81,6 +104,73 @@ void main() {
   });
 
   normal.main(capture: _render);
+
+  testWidgets(
+    'shared attachment picker dispatches choices and preserves drafts',
+    (tester) async {
+      final draft = TextEditingController(text: 'Keep this draft');
+      final focus = FocusNode();
+      addTearDown(draft.dispose);
+      addTearDown(focus.dispose);
+      final selected = <ComposerAttachmentSource>[];
+      Future<void> mount({required bool camera, required bool enabled}) =>
+          tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(Brightness.dark),
+              home: Scaffold(
+                body: ConversationComposer(
+                  field: TextField(
+                    controller: draft,
+                    focusNode: focus,
+                  ),
+                  focusNode: focus,
+                  primaryAction: const SizedBox.shrink(),
+                  canCapturePhoto: camera,
+                  onAttach: enabled
+                      ? (source) async {
+                          selected.add(source);
+                        }
+                      : null,
+                ),
+              ),
+            ),
+          );
+      await mount(camera: true, enabled: true);
+      for (final entry in {
+        'Camera': ComposerAttachmentSource.camera,
+        'Photos': ComposerAttachmentSource.photos,
+        'Files': ComposerAttachmentSource.files,
+      }.entries) {
+        await tester.tap(find.byTooltip('Attach file'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.widgetWithText(ListTile, entry.key));
+        await tester.pumpAndSettle();
+        expect(selected.last, entry.value);
+        expect(find.byType(BottomSheet), findsNothing);
+        expect(draft.text, 'Keep this draft');
+      }
+      await mount(camera: false, enabled: true);
+      await tester.tap(find.byTooltip('Attach file'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<ListTile>(find.widgetWithText(ListTile, 'Camera'))
+            .enabled,
+        isFalse,
+      );
+      await tester.binding.handlePopRoute();
+      await tester.pumpAndSettle();
+      expect(selected, ComposerAttachmentSource.values);
+      await mount(camera: false, enabled: false);
+      expect(
+        tester
+            .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.add))
+            .onPressed,
+        isNull,
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {

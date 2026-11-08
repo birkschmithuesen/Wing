@@ -1018,7 +1018,7 @@ void main() {
         );
         expect(find.byType(ConversationComposer), findsOneWidget);
         expect(find.byType(BotGroupMessage), findsOneWidget);
-        final attachment = find.byTooltip('Add group attachment');
+        final attachment = find.byTooltip('Attach file');
         expect(attachment, findsOneWidget);
         final surface = tester.getRect(
           find.byKey(const ValueKey('conversation-composer')),

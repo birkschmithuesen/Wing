@@ -591,7 +591,7 @@ void main() {
           fixture.commands.where((call) => call.$2 == 'groups.stop'),
           isEmpty,
         );
-        await tester.tap(find.byTooltip('Add group attachment'));
+        await tester.tap(find.byTooltip('Attach file'));
         await tester.pump(const Duration(milliseconds: 300));
         await tester.tap(find.text('Files'));
         await _native(

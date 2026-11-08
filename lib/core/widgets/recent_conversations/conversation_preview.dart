@@ -216,13 +216,6 @@ class _SavedChatComposerState extends State<_SavedChatComposer> {
       microphone: VoiceInputButton(enabled: true, onPressed: () {}),
     ),
     controls: [
-      const StudioButtonPress(
-        child: IconButton(
-          onPressed: null,
-          tooltip: 'Attach file',
-          icon: Icon(Icons.add),
-        ),
-      ),
       Expanded(
         child: Text(
           widget.modelLabel,
@@ -357,15 +350,6 @@ class _SavedGroupPageState extends State<_SavedGroupPage> {
           readOnly: true,
           microphone: VoiceInputButton(enabled: true, onPressed: () {}),
         ),
-        controls: [
-          StudioButtonPress(
-            child: IconButton(
-              tooltip: 'Add group attachment',
-              icon: const Icon(Icons.add),
-              onPressed: () {},
-            ),
-          ),
-        ],
         primaryAction: ComposerIconButton(
           focused: false,
           label: 'Send group message',

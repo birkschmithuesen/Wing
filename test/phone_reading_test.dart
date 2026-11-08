@@ -114,6 +114,8 @@ void main({
             findsNothing,
           );
           await capture?.call(tester, 'phone-table-${brightness.name}-$scale');
+          await tester.ensureVisible(find.byTooltip('Read as table'));
+          await tester.pump();
           await tester.tap(find.byTooltip('Read as table'));
           await tester.pump();
           expect(

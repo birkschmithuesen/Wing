@@ -1086,6 +1086,9 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                             : AttachmentPreviewImage(
                                 _session.attachmentPreview(attachment)!,
                               ),
+                        readPreview: _session
+                            .attachmentPreview(attachment)
+                            ?.readBytes,
                         onRemove: !_session.canAddAttachments
                             ? null
                             : () => _session.removeAttachment(attachment),
@@ -1123,18 +1126,17 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               ),
             ),
           ),
-          controls: [
-            StudioButtonPress(
-              child: PopupMenuButton<String>(
-                tooltip: 'Add group attachment',
-                enabled:
-                    _session.canAddAttachments &&
-                    !_voiceInput.active &&
-                    !_launchingCamera,
-                icon: const Icon(Icons.add),
-                onSelected: (choice) async {
-                  if (choice != 'camera') {
-                    await _pickAttachments(photos: choice == 'photos');
+          canCapturePhoto: widget.onCapturePhoto != null,
+          onAttach:
+              !_session.canAddAttachments ||
+                  _voiceInput.active ||
+                  _launchingCamera
+              ? null
+              : (choice) async {
+                  if (choice != ComposerAttachmentSource.camera) {
+                    await _pickAttachments(
+                      photos: choice == ComposerAttachmentSource.photos,
+                    );
                     return;
                   }
                   setState(() => _launchingCamera = true);
@@ -1151,24 +1153,6 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                     if (mounted) setState(() => _launchingCamera = false);
                   }
                 },
-                itemBuilder: (_) => [
-                  if (widget.onCapturePhoto != null)
-                    const StudioPopupMenuItem(
-                      value: 'camera',
-                      child: Text('Camera'),
-                    ),
-                  const StudioPopupMenuItem(
-                    value: 'photos',
-                    child: Text('Photos'),
-                  ),
-                  const StudioPopupMenuItem(
-                    value: 'files',
-                    child: Text('Files'),
-                  ),
-                ],
-              ),
-            ),
-          ],
           primaryAction: ComposerIconButton(
             focused: false,
             label: stopping

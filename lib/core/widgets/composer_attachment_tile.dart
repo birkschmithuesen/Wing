@@ -1,3 +1,8 @@
+import 'dart:typed_data';
+
+import 'chat_image_preview.dart';
+import 'resource_filename.dart';
+import 'studio_error.dart';
 import 'package:flutter/material.dart';
 import '../theme/wing_theme.dart';
 
@@ -178,7 +183,7 @@ class ComposerAttachmentTile extends StatelessWidget {
   final String? error;
   final AttachmentDraftKind kind;
   final ImageProvider? previewImage;
-  final VoidCallback? onPreview;
+  final Future<Uint8List> Function()? readPreview;
   final VoidCallback? onRemove;
 
   const ComposerAttachmentTile({
@@ -187,7 +192,7 @@ class ComposerAttachmentTile extends StatelessWidget {
     required this.kind,
     required this.previewImage,
     this.error,
-    this.onPreview,
+    this.readPreview,
     this.onRemove,
   }) : assert(kind != AttachmentDraftKind.image || previewImage != null);
 
@@ -226,7 +231,16 @@ class ComposerAttachmentTile extends StatelessWidget {
             child: Material(
               child: StudioButtonPress(
                 child: InkWell(
-                  onTap: onPreview,
+                  onTap: readPreview == null
+                      ? null
+                      : () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => _ComposerAttachmentPreview(
+                              name: name,
+                              readBytes: readPreview!,
+                            ),
+                          ),
+                        ),
                   child: Tooltip(
                     message: 'Preview $name',
                     child: Image(
@@ -283,4 +297,49 @@ class ComposerAttachmentTile extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ComposerAttachmentPreview extends StatefulWidget {
+  const _ComposerAttachmentPreview({
+    required this.name,
+    required this.readBytes,
+  });
+
+  final String name;
+  final Future<Uint8List> Function() readBytes;
+
+  @override
+  State<_ComposerAttachmentPreview> createState() =>
+      _ComposerAttachmentPreviewState();
+}
+
+class _ComposerAttachmentPreviewState
+    extends State<_ComposerAttachmentPreview> {
+  late final Future<Uint8List> _bytes;
+
+  @override
+  void initState() {
+    super.initState();
+    _bytes = Future<Uint8List>.sync(widget.readBytes);
+  }
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<Uint8List>(
+    future: _bytes,
+    builder: (context, snapshot) {
+      if (snapshot.data case final bytes?) {
+        return ChatImagePreview(bytes: bytes, title: widget.name);
+      }
+      return Scaffold(
+        appBar: ResourceViewerAppBar(context: context, title: widget.name),
+        body: Center(
+          child: snapshot.hasError
+              ? const StudioError('This image could not be previewed.')
+              : const CircularProgressIndicator(
+                  semanticsLabel: 'Loading image',
+                ),
+        ),
+      );
+    },
+  );
 }

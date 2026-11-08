@@ -75,7 +75,6 @@ import '../widgets/image_paste_menu.dart';
 import '../models/composer_action.dart';
 import '../widgets/composer_action_button.dart';
 import '../widgets/composer_attachment_tile.dart';
-import '../widgets/chat_image_preview.dart';
 import '../presentation/attachment_preview_image.dart';
 import '../services/owned_remote_files.dart';
 import '../widgets/profile_message.dart';
@@ -120,8 +119,6 @@ import '../services/android_voice.dart';
 import '../services/voice_preferences_session.dart';
 import 'administration/voice_settings_navigation.dart';
 import 'administration/provider_access_navigation.dart';
-
-enum _AttachmentChoice { camera, photos, files }
 
 /// Phone workspace with profile selection outside the conversation.
 /// Network work and drafts belong to the application controller.
@@ -3089,26 +3086,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                                       chat.composer.preview(file.id),
                                     )
                                   : null,
-                              onPreview: file.isImage
-                                  ? () => _run(() async {
-                                      final bytes = await chat.composer
-                                          .preview(file.id)
-                                          .readBytes();
-                                      if (!context.mounted ||
-                                          (controller.notificationChat ??
-                                                  controller.current?.chat) !=
-                                              chat) {
-                                        return;
-                                      }
-                                      await Navigator.of(context).push<void>(
-                                        MaterialPageRoute(
-                                          builder: (_) => ChatImagePreview(
-                                            bytes: bytes,
-                                            title: file.name,
-                                          ),
-                                        ),
-                                      );
-                                    })
+                              readPreview: file.isImage
+                                  ? chat.composer.preview(file.id).readBytes
                                   : null,
                               onRemove:
                                   !controller.canRemoveAttachment(chat, file.id)
@@ -3142,125 +3121,45 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                 focusNode: _composerFocus,
                 primaryAction: _composerActionButton(chat),
                 editing: chat.composer.observation.editingEntry != null,
+                canCapturePhoto: widget.onCapturePhoto != null,
+                onAttach: !controller.canAddAttachment(chat) || _launchingCamera
+                    ? null
+                    : (choice) => _run(() async {
+                        final target = chat.key;
+                        if (choice == ComposerAttachmentSource.camera) {
+                          if (_launchingCamera) {
+                            return;
+                          }
+                          setState(() => _launchingCamera = true);
+                          try {
+                            await widget.onCapturePhoto!(target);
+                          } finally {
+                            if (mounted) {
+                              setState(() => _launchingCamera = false);
+                            }
+                          }
+                          return;
+                        }
+                        final type = choice == ComposerAttachmentSource.photos
+                            ? FileType.image
+                            : FileType.any;
+                        final files = await FilePicker.pickFiles(type: type);
+                        if (files.isEmpty) {
+                          return;
+                        }
+                        if (files.any((file) => file.path == null)) {
+                          throw const AttachmentDraftException(
+                            'A selected file could not be opened. Select the files again.',
+                          );
+                        }
+                        await controller.addAttachments(chat, [
+                          for (final file in files)
+                            (path: file.path!, name: file.name),
+                        ]);
+                      }),
                 controls: chat.composer.observation.editingEntry != null
                     ? [Expanded(child: _queuedEditActions(chat))]
                     : [
-                        StudioButtonPress(
-                          child: IconButton(
-                            tooltip: 'Attach file',
-                            style: IconButton.styleFrom(
-                              minimumSize: const Size(48, 48),
-                            ),
-                            icon: const Icon(Icons.add),
-                            onPressed:
-                                !controller.canAddAttachment(chat) ||
-                                    _launchingCamera
-                                ? null
-                                : () => _run(() async {
-                                    final target = chat.key;
-                                    final choice =
-                                        await showModalBottomSheet<
-                                          _AttachmentChoice
-                                        >(
-                                          context: context,
-                                          showDragHandle: true,
-                                          builder: (context) => SafeArea(
-                                            child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                StudioButtonPress(
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons.camera_alt_outlined,
-                                                    ),
-                                                    title: const Text('Camera'),
-                                                    enabled:
-                                                        widget.onCapturePhoto !=
-                                                        null,
-                                                    onTap:
-                                                        widget.onCapturePhoto ==
-                                                            null
-                                                        ? null
-                                                        : () => Navigator.pop(
-                                                            context,
-                                                            _AttachmentChoice
-                                                                .camera,
-                                                          ),
-                                                  ),
-                                                ),
-                                                StudioButtonPress(
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons
-                                                          .photo_library_outlined,
-                                                    ),
-                                                    title: const Text('Photos'),
-                                                    onTap: () => Navigator.pop(
-                                                      context,
-                                                      _AttachmentChoice.photos,
-                                                    ),
-                                                  ),
-                                                ),
-                                                StudioButtonPress(
-                                                  child: ListTile(
-                                                    leading: const Icon(
-                                                      Icons
-                                                          .insert_drive_file_outlined,
-                                                    ),
-                                                    title: const Text('Files'),
-                                                    onTap: () => Navigator.pop(
-                                                      context,
-                                                      _AttachmentChoice.files,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                    if (choice == null) {
-                                      return;
-                                    }
-                                    if (choice == _AttachmentChoice.camera) {
-                                      if (_launchingCamera) {
-                                        return;
-                                      }
-                                      setState(() => _launchingCamera = true);
-                                      try {
-                                        await widget.onCapturePhoto!(target);
-                                      } finally {
-                                        if (mounted) {
-                                          setState(
-                                            () => _launchingCamera = false,
-                                          );
-                                        }
-                                      }
-                                      return;
-                                    }
-                                    final type =
-                                        choice == _AttachmentChoice.photos
-                                        ? FileType.image
-                                        : FileType.any;
-                                    final files = await FilePicker.pickFiles(
-                                      type: type,
-                                    );
-                                    if (files.isEmpty) {
-                                      return;
-                                    }
-                                    if (files.any(
-                                      (file) => file.path == null,
-                                    )) {
-                                      throw const AttachmentDraftException(
-                                        'A selected file could not be opened. Select the files again.',
-                                      );
-                                    }
-                                    await controller.addAttachments(chat, [
-                                      for (final file in files)
-                                        (path: file.path!, name: file.name),
-                                    ]);
-                                  }),
-                          ),
-                        ),
                         _composerContextRing(chat),
                         Expanded(
                           child: Align(

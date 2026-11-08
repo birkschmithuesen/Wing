@@ -10,6 +10,7 @@ import 'package:wing/core/models/attachment_draft.dart';
 import 'package:wing/core/presentation/attachment_preview_image.dart';
 import 'package:wing/core/services/attachment_draft_service.dart';
 import 'package:wing/core/widgets/composer_attachment_tile.dart';
+import 'package:wing/core/widgets/chat_image_preview.dart';
 
 Future<ui.Image> _decode(ImageProvider provider) async {
   final stream = provider.resolve(ImageConfiguration.empty);
@@ -70,6 +71,92 @@ Future<void> _settleNative(WidgetTester tester, bool Function() settled) async {
 }
 
 void main() {
+  for (final synchronous in [true, false]) {
+    testWidgets('draft viewer catches immediate read failure $synchronous', (
+      tester,
+    ) async {
+      final bytes = Uint8List.fromList(
+        image.encodePng(image.Image(width: 1, height: 1)),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ComposerAttachmentTile(
+              name: 'Draft.png',
+              kind: AttachmentDraftKind.image,
+              previewImage: MemoryImage(bytes),
+              readPreview: () {
+                if (synchronous) throw StateError('Unavailable');
+                return Future.error(StateError('Unavailable'));
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('Preview Draft.png'));
+      await tester.pumpAndSettle();
+      expect(find.text('This image could not be previewed.'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final outcome in ['success', 'failure', 'departure']) {
+    testWidgets('shared draft image viewer handles $outcome', (tester) async {
+      final pending = Completer<Uint8List>();
+      final bytes = Uint8List.fromList(
+        image.encodePng(image.Image(width: 1, height: 1)),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ComposerAttachmentTile(
+              name: 'Draft.png',
+              kind: AttachmentDraftKind.image,
+              previewImage: MemoryImage(bytes),
+              readPreview: () => pending.future,
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byTooltip('Preview Draft.png'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 350));
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.text('Draft.png'), findsOneWidget);
+      if (outcome == 'departure') {
+        await tester.pageBack();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 350));
+      }
+      if (outcome == 'failure') {
+        pending.completeError(StateError('Preview unavailable'));
+      } else {
+        pending.complete(bytes);
+      }
+      await tester.pump();
+      if (outcome == 'success') {
+        await _settleNative(
+          tester,
+          () => find.byType(CircularProgressIndicator).evaluate().isEmpty,
+        );
+      }
+      await tester.pumpAndSettle();
+      expect(
+        find.byType(ChatImagePreview),
+        outcome == 'success' ? findsOneWidget : findsNothing,
+      );
+      if (outcome == 'failure') {
+        expect(find.text('This image could not be previewed.'), findsOneWidget);
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+      }
+      if (outcome != 'success') {
+        expect(find.byType(ComposerAttachmentTile), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
+
   testWidgets('composer preview bounds both decoded axes for a valid tall image', (
     tester,
   ) async {
