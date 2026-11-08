@@ -13,9 +13,11 @@ Feature ID: `voice`.
 - `voice.speak` — Start stop or interrupt reply playback.
 - `voice.recover` — Handle permission, capability and provider failure; distinguish a missing plugin from server authentication and provider access failures. Rejected provider updates remain visible without ending a connected call; closure messages describe the received reason without assuming account limits.
 
+- `voice.live-voice` — Choose a GPT-Live voice in the existing Voice settings; retain separate subscription/API choices on the phone. Apply changes to the next call and report an unsupported plugin voice before negotiation.
+
 ## How to get to it (user POV)
 
-In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
+In App settings → Voice choose ChatGPT subscription or OpenAI API for live conversation, choose its GPT-Live voice, then tap the waveform icon beside the microphone in a connected chat’s message field. Subscription requires the standalone Wing plugin (`wing`) enabled in the chat’s profile and that profile's Codex sign-in. Enablement in `default` does not enable other profiles. API mode also requires the Wing plugin, using Hermes’s native voice configuration and the profile’s API credentials. The app dock and persistent Android notification own call controls.
 
 For dictation/read-aloud, in App settings choose device or Hermes input/output. Tap the chat or group microphone to dictate into an editable draft, and use a reply playback action to hear it. Stop or cancel explicitly.
 
@@ -27,6 +29,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   The controller tests cover explicit subscription/API billing modes, no billing
   fallback, profile binding, safe errors and retirement during negotiation.
+  Settings checks select a voice, switch modes, reopen the page, and retain both
+  choices independently of Android speech. Startup checks capture the voice before
+  a settings change and verify the selected voice in the provider request.
   They also pass the provider's native text delegation through the call owner
   into the original chat once. The protocol suite replays a real subscription
   delegation captured during the spoken tool test. It verifies lossless bounded

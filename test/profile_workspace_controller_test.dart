@@ -390,6 +390,9 @@ class Host {
             'available': query['mode'] == 'api' ? liveVoiceApiAvailable : true,
             'authOwner': 'hermes-profile',
             'modes': ['subscription', 'api'],
+            'voices': query['mode'] == 'api'
+                ? ['marin', 'cedar']
+                : ['cove', 'breeze'],
           };
         }
 
@@ -977,7 +980,9 @@ void main() {
       final chat = await controller.createChat(canDispatch: () => true);
       await controller.updateDraft(chat, 'Keep my typed draft');
       await appPreferences.setLiveVoiceMode(LiveVoiceMode.api);
+      await appPreferences.setLiveApiVoice('cedar');
       final voice = controller.liveVoiceConversation(chat);
+      await appPreferences.setLiveApiVoice('marin');
       expect(voice.mode, LiveVoiceMode.api);
       await appPreferences.setLiveVoiceMode(LiveVoiceMode.subscription);
       final result = await voice.negotiate('offer');
@@ -988,6 +993,7 @@ void main() {
       );
       expect(negotiation.$1, chat.key.workspace.profileName);
       expect(negotiation.$3['offer'], 'offer');
+      expect(negotiation.$3['voice'], 'cedar');
       expect(host.voiceEndpoints, [
         'plugins/wing/voice/v2/session?profile=${chat.key.workspace.profileName}',
       ]);
@@ -1016,7 +1022,29 @@ void main() {
     },
   );
 
+  test(
+    'live voice rejects a voice missing from plugin support before startup',
+    () async {
+      await appPreferences.setLiveSubscriptionVoice('ember');
+      final chat = await controller.createChat(canDispatch: () => true);
+      final voice = controller.liveVoiceConversation(chat);
+      addTearDown(voice.release);
+      await expectLater(
+        voice.negotiate('offer'),
+        throwsA(
+          isA<LiveVoiceStartException>().having(
+            (error) => error.message,
+            'message',
+            contains('does not support this voice'),
+          ),
+        ),
+      );
+      expect(host.voiceEndpoints, isEmpty);
+    },
+  );
+
   test('live voice subscription uses only the Wing plugin contract', () async {
+    await appPreferences.setLiveSubscriptionVoice('breeze');
     final chat = await controller.createChat(canDispatch: () => true);
     final voice = controller.liveVoiceConversation(chat);
     final result = await voice.negotiate('offer');
@@ -1026,7 +1054,7 @@ void main() {
     ]);
     expect(host.calls.singleWhere((c) => c.$2 == 'voice.negotiate').$3, {
       'offer': 'offer',
-      'voice': 'cove',
+      'voice': 'breeze',
       'mode': 'subscription',
       'system_prompt':
           'Native saved prompt for ${chat.key.workspace.profileName}',

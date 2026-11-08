@@ -22,6 +22,11 @@ and plan voice limits. API uses that profile's OpenAI voice API key and bills
 usage to its API account. Wing never switches billing modes automatically. A
 changed choice applies to the next call.
 
+Choose **GPT-Live voice** below the mode selector. Wing remembers separate
+subscription and API voices on this phone, including in settings backups. This
+choice does not change Android read-aloud voices or the Hermes profile defaults.
+Use the current Wing plugin to enable voice selection.
+
 Both live modes require the **Wing plugin** (`wing`) installed and enabled
 for the chat's Hermes profile. Enabling it in `default` does not enable it in
 other profiles. The plugin uses current stock Hermes and, for subscription mode, the profile's

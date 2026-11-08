@@ -36,11 +36,17 @@ extension WorkspaceLiveVoice on ProfileWorkspaceController {
         'Choose a live conversation mode in Voice settings first.',
       );
     }
+    final choice = appPreferences.current.liveVoiceFor(mode);
+    final voice = choice.selected;
+    if (voice == null || choice.busy) {
+      throw StateError('Choose a GPT-Live voice in Voice settings first.');
+    }
     final conversation = _WorkspaceLiveVoiceConversation(
       this,
       resource,
       chat,
       mode,
+      voice,
     );
     (_liveVoiceChats[chat] ??= {}).add(conversation);
     _changed();
@@ -54,8 +60,10 @@ class _WorkspaceLiveVoiceConversation implements LiveVoiceConversation {
     this.resource,
     this.chat,
     this.mode,
+    this.voice,
   ) : key = chat.key,
       _runtime = chat.runtime.runtimeId;
+  final String voice;
   final ProfileWorkspaceController owner;
   final ProfileWorkspaceData resource;
   final ProfileChat chat;
@@ -185,6 +193,12 @@ class _WorkspaceLiveVoiceConversation implements LiveVoiceConversation {
               : 'API voice is unavailable. Configure OpenAI API credentials in this Hermes profile.',
         );
       }
+      if (status['voices'] is! List ||
+          !(status['voices'] as List).contains(voice)) {
+        throw const LiveVoiceStartException(
+          'The Wing plugin does not support this voice. Update the plugin or choose another GPT-Live voice in settings.',
+        );
+      }
       final info = await resource.gateway.call('session.info', {
         'session_id': _runtime,
       });
@@ -202,7 +216,7 @@ class _WorkspaceLiveVoiceConversation implements LiveVoiceConversation {
             {
               'offer': offer,
               'mode': mode.name,
-              'voice': 'cove',
+              'voice': voice,
               'system_prompt': prompt,
               'cwd': info['cwd'] as String? ?? '',
               'history': context,
