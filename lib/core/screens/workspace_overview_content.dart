@@ -116,27 +116,21 @@ class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
         child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            for (final error in {
-              ...controller.recentsProfileErrors.values,
-              ...widget.bots.state.errors,
-            })
+            if (_session.catalog.error case final error?)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: StudioError(error),
               ),
-            if (items.isEmpty && _session.contentAvailable)
+            if (items.isEmpty &&
+                _session.contentAvailable &&
+                _session.catalog.error == null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 48),
                 child: Column(
                   children: [
                     const Icon(Icons.history, size: 40),
                     const SizedBox(height: 16),
-                    Text(
-                      controller.recentsProfileErrors.isEmpty &&
-                              widget.bots.state.errors.isEmpty
-                          ? 'No recent chats'
-                          : 'No recent chats found in available profiles',
-                    ),
+                    const Text('No recent chats'),
                   ],
                 ),
               ),

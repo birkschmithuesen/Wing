@@ -2,6 +2,7 @@ import 'package:wing/core/services/group_observations.dart';
 import 'package:wing/core/services/workspace_recents_session.dart';
 import 'package:wing/core/services/bots_repository.dart';
 import 'package:wing/core/widgets/bot_avatar.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'support/bots_fixture.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/app_preferences.dart';
@@ -165,6 +166,7 @@ void main() {
   late BotsSession bots;
   late WorkspaceRecentsSession recents;
   late BotsFixture fixture;
+  late DateTime now;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     host = _ActivityHost()..includeHistory = true;
@@ -209,6 +211,7 @@ void main() {
       },
     ];
     await controller.refreshRecents();
+    now = DateTime.now();
     fixture = BotsFixture();
     fixture.profiles.first['name'] = 'main';
     fixture.profiles.first['ui_meta']['hermes-bots']['title'] = 'Scout';
@@ -237,6 +240,7 @@ void main() {
           ownership: fixture.ownership,
         ),
       ],
+      now: () => now,
     );
     await bots.refresh();
     recents = WorkspaceRecentsSession(controller, bots);
@@ -403,6 +407,105 @@ void main() {
       });
     }
   }
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'gateway outage has one notice in ${brightness.name} at $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final frame = GlobalKey();
+          now = now.add(const Duration(minutes: 5));
+          controller.connectionStatus.onInterruption = null;
+          host.failed.add('main');
+          fixture.readHook = (_, _, _) async =>
+              throw const SocketException('offline');
+          controller.connectionStatus.accessFailed(
+            const SocketException('offline'),
+          );
+          controller.connectionStatus.liveChanged('outage-test', false);
+          await controller.refreshRecents();
+          await bots.refresh();
+          expect(bots.state.errors.length, greaterThan(1));
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: RepaintBoundary(key: frame, child: child),
+              ),
+              home: Scaffold(
+                appBar: AppBar(title: const Text('Recents')),
+                body: WorkspaceActivityContent(
+                  recents: recents,
+                  visible: false,
+                  onOpen: (_, _) {},
+                  onOpenGroup: (_) async {},
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          if (_capture) {
+            final boundary =
+                frame.currentContext!.findRenderObject()!
+                    as RenderRepaintBoundary;
+            await tester.runAsync(() async {
+              final image = await boundary.toImage();
+              final bytes = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/recents-review/${brightness.name}-$scale-outage.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(bytes!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+          expect(find.byType(StudioError), findsOneWidget);
+          expect(
+            find.text('Connection interrupted. Try again.'),
+            findsOneWidget,
+          );
+          expect(find.text('Draft the setup guide'), findsOneWidget);
+          expect(find.text('Live status could not be loaded.'), findsNothing);
+          expect(tester.takeException(), isNull);
+
+          // Transport recovery alone must update the notice without a catalog read.
+          controller.connectionStatus.accessAvailable();
+          controller.connectionStatus.liveChanged('outage-test', true);
+          await tester.pumpAndSettle();
+          expect(find.text('Connection interrupted. Try again.'), findsNothing);
+          expect(
+            find.text('Some recent conversations could not be loaded.'),
+            findsOneWidget,
+          );
+          // Refresh success clears the summary and retains cached content.
+          host.failed.clear();
+          fixture.readHook = null;
+          now = now.add(const Duration(minutes: 5));
+          await controller.refreshRecents();
+          await bots.refresh();
+          await tester.pumpAndSettle();
+          expect(find.byType(StudioError), findsNothing);
+          await tester.scrollUntilVisible(
+            find.text('Draft the setup guide'),
+            150,
+            scrollable: find.byType(Scrollable),
+          );
+          expect(find.text('Draft the setup guide'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
   testWidgets('retains partial status failures with usable chats', (
     tester,
   ) async {
@@ -421,7 +524,10 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('Live status could not be loaded.'), findsOneWidget);
+    expect(
+      find.text('Some recent conversations could not be loaded.'),
+      findsOneWidget,
+    );
     expect(find.text('No recent chats'), findsNothing);
     expect(find.text('Draft the setup guide'), findsOneWidget);
     await tester.pumpWidget(const SizedBox());

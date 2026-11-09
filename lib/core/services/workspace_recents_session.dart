@@ -6,6 +6,7 @@ import '../models/recent_conversation.dart';
 import 'bots_session.dart';
 import 'profile_workspace_controller.dart';
 import 'recent_conversation_snapshots.dart';
+import 'server_connection_status.dart';
 import 'workspace_recents_cache.dart';
 
 /// Workspace-owned Recents catalog shared by the list and conversation sources.
@@ -15,6 +16,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
   WorkspaceRecentsSession(this.controller, this.bots) {
     bots.attachGroupMessages(groupMessages);
     controller.addListener(_changed);
+    controller.connectionStatus.addListener(_changed);
     bots.addListener(_changed);
     bots.groupReads.addListener(_changed);
     _publish();
@@ -173,6 +175,11 @@ class WorkspaceRecentsSession extends ChangeNotifier
     final error =
         controller.recentsProfileErrors.isEmpty && bots.state.errors.isEmpty
         ? null
+        : controller.connectionStatus.access ==
+                  ConnectionAvailability.unavailable ||
+              controller.connectionStatus.live ==
+                  ConnectionAvailability.unavailable
+        ? 'Connection interrupted. Try again.'
         : 'Some recent conversations could not be loaded.';
     final loadingFacts = (
       initialLoading: !_initialLoadSettled && _refreshing != null,
@@ -259,6 +266,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
     groupMessages.dispose();
     _poll?.cancel();
     controller.removeListener(_changed);
+    controller.connectionStatus.removeListener(_changed);
     bots.removeListener(_changed);
     bots.groupReads.removeListener(_changed);
     super.dispose();
