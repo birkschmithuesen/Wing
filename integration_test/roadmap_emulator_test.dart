@@ -1518,6 +1518,10 @@ void main() {
           widget is SourceCodeText &&
           widget.text == 'Emulator child is checking the release.',
     );
+    await _pumpUntil(
+      tester,
+      () => find.text('Loading live output...').evaluate().isEmpty,
+    );
     await tester.scrollUntilVisible(
       childOutput,
       160,
@@ -1624,15 +1628,10 @@ void main() {
     await tapJourneyControl(tester, find.byTooltip('Stop process'));
     await _settle(tester);
     expect(find.text('dart run roadmap_worker.dart'), findsNothing);
-    await tester.ensureVisible(find.text('dart test roadmap_check.dart'));
-    await _settle(tester);
-    await tapJourneyControl(tester, find.text('dart test roadmap_check.dart'));
-    await _settle(tester);
-    await tester.ensureVisible(find.byTooltip('Dismiss'));
-    await _settle(tester);
-    await tapJourneyControl(tester, find.byTooltip('Dismiss'));
-    await _settle(tester);
     expect(find.text('dart test roadmap_check.dart'), findsNothing);
+    expect(chat.runtime.executionActive, isFalse);
+    expect(chat.currentProcesses, isEmpty);
+    expect(backgroundTab, findsNothing);
 
     final loopRequest = harness.fixture.supervisionRequests.singleWhere(
       (request) =>
