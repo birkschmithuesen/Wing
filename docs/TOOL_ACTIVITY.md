@@ -157,5 +157,5 @@ but no task creation timestamps for chronological sorting.
 Background discovers terminal commands when the chat becomes visible and follows running processes automatically. Expand a command for its full command and recent output, then use the icon-only Stop or Dismiss action. Close and reopen the tab to refresh or retry. These are terminal processes, separate from the Tasks checklist and recurring schedules.
 
 Background process completion notices appear inside Activity’s Timeline. Open
-Activity and then Output to inspect the command and result, including failures
+Activity and then Process update to inspect the command and result, including failures
 and batches. They do not appear as separate conversation cards.

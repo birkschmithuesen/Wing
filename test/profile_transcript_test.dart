@@ -12,6 +12,7 @@ import 'package:wing/core/models/chat_output.dart';
 import 'package:wing/core/services/profile_supervision_session.dart';
 import 'package:wing/core/widgets/conversation_activity.dart';
 import 'package:wing/core/widgets/profile_tool_call.dart';
+import 'package:wing/core/widgets/compact_activity_row.dart';
 import 'dart:ui' as ui;
 import 'package:wing/core/models/transcript_reading.dart';
 import 'support/composer_fixture.dart';
@@ -226,12 +227,12 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
-      testWidgets('process completion stays inside Activity '
+      testWidgets('process notices match neighboring Activity rows '
           '${brightness.name} $scale', (tester) async {
         realisticMessages = true;
         const envelope =
-            '[IMPORTANT: Background process proc_test completed '
-            'normally (exit code 0).\nCommand: python3 audit.py\n'
+            '[IMPORTANT: Background process proc_test '
+            'matched watch pattern "DevTools listening".\nCommand: python3 audit.py\n'
             'Output:\nVerified all 68 files.\n]';
         final messages = <Map<String, dynamic>>[
           {'id': 1, 'role': 'user', 'content': 'Check the merge.'},
@@ -242,7 +243,8 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
             'content': envelope,
             'display_kind': 'process_complete',
             'display_metadata': {
-              'display_text': 'Background Process Finished: python3 audit.py',
+              'display_text':
+                  'Background process proc_test matched watch pattern "DevTools listening".',
             },
           },
           {
@@ -251,7 +253,13 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
             'tool_name': 'terminal',
             'content': 'Merge checked.',
           },
-          {'id': 5, 'role': 'assistant', 'content': 'The merge is verified.'},
+          {
+            'id': 5,
+            'role': 'assistant',
+            'content': '',
+            'reasoning': 'Checking Room 7 details',
+          },
+          {'id': 6, 'role': 'assistant', 'content': 'The merge is verified.'},
         ];
         chat.reading.installSavedHistory(messages);
         await show(
@@ -262,7 +270,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
         );
         await tester.settleMarkdown();
         expect(
-          find.textContaining('Background Process Finished'),
+          find.textContaining('Background process proc_test'),
           findsNothing,
         );
         expect(find.text('Output'), findsNothing);
@@ -277,7 +285,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
         await tester.tap(activity);
         await tester.pumpAndSettle();
         final notice = find.text(
-          'Background Process Finished: python3 audit.py',
+          'Background process proc_test matched watch pattern "DevTools listening".',
         );
         expect(notice, findsOneWidget);
         expect(
@@ -287,18 +295,70 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
           ),
           findsOneWidget,
         );
+        final processRow = find.ancestor(
+          of: find.text('Process update'),
+          matching: find.byType(CompactActivityRow),
+        );
+        final toolRow = find.ancestor(
+          of: find.text('Ran command'),
+          matching: find.byType(CompactActivityRow),
+        );
+        expect(processRow, findsOneWidget);
+        expect(toolRow, findsOneWidget);
+        expect(find.text('Output'), findsNothing);
+        final processRect = tester.getRect(processRow);
+        final toolRect = tester.getRect(toolRow);
+        expect(processRect.height, closeTo(toolRect.height, 1));
+        expect(toolRect.top - processRect.bottom, closeTo(0, 1));
+        expect(
+          tester.getTopLeft(find.text('Process update')).dx,
+          closeTo(tester.getTopLeft(find.text('Ran command')).dx, 1),
+        );
+        final processIcon = find.descendant(
+          of: processRow,
+          matching: find.byIcon(Icons.terminal_rounded),
+        );
+        final toolIcon = find.descendant(
+          of: toolRow,
+          matching: find.byIcon(Icons.terminal_rounded),
+        );
+        expect(
+          tester.getTopLeft(processIcon).dx,
+          closeTo(tester.getTopLeft(toolIcon).dx, 1),
+        );
+        expect(
+          tester.widget<Text>(find.text('Process update')).style,
+          tester.widget<Text>(find.text('Ran command')).style,
+        );
+        expect(find.text('Reasoning'), findsOneWidget);
+        await tester.drag(list, const Offset(0, -300));
+        await tester.pumpAndSettle();
+        expect(tester.getTopLeft(processRow).dy, greaterThan(56));
+        expect(
+          tester.getBottomLeft(toolRow).dy,
+          lessThan(MediaQuery.sizeOf(tester.element(toolRow)).height - 48),
+        );
+        await captureHistory(tester, 'process-peers-${brightness.name}-$scale');
         await Scrollable.ensureVisible(
-          tester.element(find.text('Output')),
+          tester.element(find.text('Process update')),
           alignment: 0.4,
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Output'));
+        await tester.tap(find.text('Process update'));
         await tester.pumpAndSettle();
-        final output = find.textContaining('Verified all 68 files.');
+        final output = find.byWidgetPredicate(
+          (widget) =>
+              widget is SourceCodeText &&
+              widget.text ==
+                  'Command: python3 audit.py\nOutput:\nVerified all 68 files.',
+        );
         expect(output, findsOneWidget);
         await tester.ensureVisible(output);
         await tester.pumpAndSettle();
+        await tester.drag(list, const Offset(0, -260));
+        await tester.pumpAndSettle();
         expect(find.text(envelope), findsNothing);
+        expect(find.text('Output'), findsOneWidget);
         expect(chat.reading.messages, messages);
         await captureHistory(tester, 'process-open-${brightness.name}-$scale');
         expect(tester.takeException(), isNull);

@@ -10,7 +10,6 @@ import '../theme/wing_theme.dart';
 import 'profile_execution_activity.dart';
 import 'profile_activity_tabs.dart';
 import 'profile_tool_activity.dart';
-import 'profile_message.dart';
 import 'activity_time.dart';
 import 'anchored_expansion_tile.dart';
 import 'recent_conversations/conversation_gestures.dart';
@@ -167,7 +166,6 @@ class _ProfileLiveExecutionState extends State<ProfileLiveExecution>
               : null,
           detailsBuilder: (_) => ProfileActivityTimeline(
             groups: saved,
-            noticeBuilder: (entry) => ProfileMessage(message: entry.message),
             newestFirst: true,
             currentActivity: [
               if (live.isNotEmpty)

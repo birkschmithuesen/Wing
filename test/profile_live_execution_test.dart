@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:wing/core/models/transcript_message.dart';
+import 'package:wing/core/widgets/compact_activity_row.dart';
+import 'package:wing/core/widgets/source_code_text.dart';
+import 'support/process_batch_fixture.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/chat_runtime.dart';
 import 'package:wing/core/models/gateway_activity.dart';
@@ -48,11 +53,115 @@ void main() {
     await tester.tap(find.text('Activity').last);
     await tester.pumpAndSettle();
     expect(find.text('Background check finished'), findsOneWidget);
-    await tester.tap(find.text('Output'));
+    await tester.tap(find.text('Process update'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Process result'), findsOneWidget);
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is SourceCodeText &&
+            widget.text == 'Command: check\nOutput:\nProcess result',
+      ),
+      findsOneWidget,
+    );
     expect(tester.takeException(), isNull);
   });
+
+  for (final sample in <String, Map<String, dynamic>>{
+    'completed': {
+      'content':
+          '[IMPORTANT: Background process proc_a completed normally (exit code 0).\nCommand: check\nOutput:\ndone\n]',
+    },
+    'failed': {
+      'content':
+          '[IMPORTANT: Background process proc_a exited (exit code 1).\nCommand: check\nOutput:\nfailed\n]',
+    },
+    'watch match': {
+      'content':
+          '[IMPORTANT: Background process proc_a matched watch pattern "DevTools listening".\nCommand: check\nOutput:\nlistening\n]',
+    },
+    'batch': {'content': processBatchEnvelope},
+    'missing body': {'content': '', 'display_kind': 'process_complete'},
+  }.entries) {
+    testWidgets('process row keeps ${sample.key} details and focus', (
+      tester,
+    ) async {
+      final row = {'id': 8, 'role': 'user', ...sample.value};
+      final message = TranscriptMessage.fromRow(row);
+      final timeline = TranscriptTimeline.project([
+        row,
+      ], presentationId: (_) => 8);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: ProfileActivityTimeline(
+                groups: timeline.sections.single.groups,
+                expandedMessageId: 8,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(CompactActivityRow), findsOneWidget);
+      expect(find.byType(ActivityDetailsCard), findsOneWidget);
+      expect(find.text('Process update'), findsOneWidget);
+      expect(find.text('Update'), findsOneWidget);
+      expect(find.byTooltip('Copy Update'), findsOneWidget);
+      expect(find.text(message.text), findsWidgets);
+      expect(find.byTooltip('Stop process'), findsNothing);
+      final output = message.noticeResult;
+      if (output == null) {
+        expect(find.text('Output'), findsNothing);
+      } else {
+        expect(
+          find.byWidgetPredicate(
+            (widget) => widget is SourceCodeText && widget.text == output,
+          ),
+          findsOneWidget,
+        );
+        String? copied;
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await tester.ensureVisible(find.byTooltip('Copy Output'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byTooltip('Copy Output'));
+        await tester.pumpAndSettle();
+        expect(copied, output);
+        if (sample.key == 'batch') {
+          final open = find.byTooltip('Open Output');
+          expect(open, findsOneWidget);
+          await tester.ensureVisible(open);
+          await tester.pumpAndSettle();
+          await tester.tap(open);
+          await tester.pumpAndSettle();
+          expect(
+            find.byWidgetPredicate(
+              (widget) => widget is SourceCodeText && widget.text == output,
+            ),
+            findsOneWidget,
+          );
+          await tester.pageBack();
+          await tester.pumpAndSettle();
+          expect(find.text('Process update'), findsOneWidget);
+        }
+      }
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   test('reasoning keeps its first posting time through deltas and sealing', () {
     final runtime = execution.ChatRuntime(runtimeId: 'timed-reasoning');

@@ -83,8 +83,9 @@ the draft while attachment completes. History access does not grant write author
 For `journeys.conversation`, the Background dock recipe in
 [chat activity](chat-activity.md) verifies discovery without recurring work,
 live output, Stop/Dismiss and draft retention alongside Tasks and Subagents.
-Saved completion receipts remain inside Activity; its Output disclosure preserves
-the result when the live process has gone.
+Saved process receipts use the same compact rows as neighboring tools and
+reasoning in Activity; expanding Process update preserves the full result after
+the live process has gone.
 
 ### Selected Hermes features on an existing production gateway
 

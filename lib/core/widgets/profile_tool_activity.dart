@@ -13,6 +13,12 @@ import '../models/transcript_message.dart';
 import '../models/transcript_timeline.dart';
 import 'profile_review_notice_card.dart';
 import 'profile_transcript_disclosure.dart';
+import 'compact_activity_row.dart';
+import 'activity_time.dart';
+import 'tool_activity_details.dart';
+import '../presentation/tool_activity_details.dart'
+    show ToolDetailBlock, ToolDetailFormat, ToolDetailRole;
+import '../theme/wing_theme.dart';
 
 /// Shared disclosure for saved tool calls and current execution details.
 class ProfileActivitySection extends StatefulWidget {
@@ -201,7 +207,6 @@ class ProfileActivityContents extends StatelessWidget {
             label: 'Timeline',
             child: ProfileActivityTimeline(
               groups: groups,
-              noticeBuilder: noticeBuilder,
               expandedMessageId: expandedMessageId,
               focusedMessageKey: focusedMessageKey,
               currentActivity: currentActivity,
@@ -260,7 +265,6 @@ class ProfileActivityTimeline extends StatelessWidget {
     this.focusedMessageKey,
     this.currentActivity = const [],
     this.newestFirst = false,
-    this.noticeBuilder,
     this.loadImage,
     this.onOpenResource,
     this.onShareResource,
@@ -271,7 +275,6 @@ class ProfileActivityTimeline extends StatelessWidget {
   final GlobalKey? focusedMessageKey;
   final List<Widget> currentActivity;
   final bool newestFirst;
-  final Widget Function(TranscriptTimelineEntry)? noticeBuilder;
   final Future<Uint8List> Function(String)? loadImage;
   final Future<void> Function(ChatOutput)? onOpenResource;
   final Future<void> Function(ChatOutput)? onShareResource;
@@ -316,11 +319,12 @@ class ProfileActivityTimeline extends StatelessWidget {
           )
         else if (group.isProcessNotice)
           for (final entry in group.messages)
-            Container(
+            ProfileProcessActivityRow(
               key: entry.id == expandedMessageId
                   ? focusedMessageKey
                   : ValueKey(('saved-process-notice', entry.presentationId)),
-              child: noticeBuilder!(entry),
+              message: entry.message,
+              initiallyExpanded: entry.id == expandedMessageId,
             )
         else if (!group.isAgentNotice)
           ProfileToolActivity(
@@ -337,6 +341,70 @@ class ProfileActivityTimeline extends StatelessWidget {
             focusedMessageKey: focusedMessageKey,
           ),
       if (!newestFirst) ...currentActivity,
+    ],
+  );
+}
+
+/// Process notices share row geometry and detail actions with tool receipts.
+class ProfileProcessActivityRow extends StatelessWidget {
+  const ProfileProcessActivityRow({
+    super.key,
+    required this.message,
+    this.initiallyExpanded = false,
+  });
+
+  final TranscriptMessage message;
+  final bool initiallyExpanded;
+
+  @override
+  Widget build(BuildContext context) => CompactActivityRow(
+    icon: Icon(
+      ProfileToolCall.iconFor('terminal'),
+      color: WingTokens.of(context).muted,
+      size: 16,
+    ),
+    title: const Text(
+      'Process update',
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, height: 1.3),
+    ),
+    lines: [
+      Text(
+        message.text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 12,
+          height: 1.5,
+          color: WingTokens.of(context).muted,
+        ),
+      ),
+    ],
+    time: const ActivityTime(),
+    initiallyExpanded: initiallyExpanded,
+    details: [
+      ActivityDetailsCard(
+        children: [
+          ActivityDetailSection(
+            block: ToolDetailBlock(
+              label: 'Update',
+              text: message.text,
+              copyable: true,
+            ),
+          ),
+          if (message.noticeResult case final output?)
+            ActivityDetailSection(
+              block: ToolDetailBlock(
+                label: 'Output',
+                text: output,
+                copyable: true,
+                format: ToolDetailFormat.source,
+                role: ToolDetailRole.output,
+              ),
+            ),
+        ],
+      ),
     ],
   );
 }
