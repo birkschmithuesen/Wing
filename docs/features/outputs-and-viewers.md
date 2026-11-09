@@ -6,7 +6,7 @@ Feature ID: `outputs-and-viewers`.
 
 ## Sub-features
 
-- `outputs-and-viewers.discover` — Find outputs belonging to the chat.
+- `outputs-and-viewers.discover` — Find outputs belonging to the chat. Literal code paths and code examples are excluded from implicit discovery; explicit Markdown links, `MEDIA:` references and producer receipts remain available.
 - `outputs-and-viewers.preview` — Open readable original content.
 - `outputs-and-viewers.export` — Copy, save or share the intended result. File downloads have no fixed size cap in Wing.
 
@@ -21,7 +21,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/chat_outputs_session_test.dart test/pdf_preview_service_test.dart test/resource_preview_owner_test.dart
+  flutter test --no-pub test/chat_output_test.dart test/chat_outputs_screen_test.dart test/chat_outputs_session_test.dart test/pdf_preview_service_test.dart test/resource_preview_owner_test.dart
   flutter test --no-pub test/remote_files_client_test.dart test/remote_file_saver_test.dart test/deliverable_attachment_test.dart
   ```
 

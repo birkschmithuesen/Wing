@@ -27,7 +27,7 @@ List<md.Node> _stock(
       ? [
           MediaReferenceSyntax(),
           DeliverableLinkSyntax(),
-          DeliverableCodeSyntax(guard: guardCode),
+          LiteralCodeSyntax(guard: guardCode),
           HtmlFilePathSyntax(),
         ]
       : null,
@@ -51,6 +51,20 @@ void _mutate(List<md.Node> nodes) {
 }
 
 void main() {
+  test('cached and fresh parsing keep file-shaped code literal', () {
+    final parser = MarkdownInlineParser(deliverables: true);
+    for (final path in [
+      '/hermes-button-actions/contents/README.md',
+      '/api/files/report.md',
+      '/srv/report.md',
+    ]) {
+      final source = '`$path`';
+      final expected = md.Document(encodeHtml: false).parse(source);
+      expect(_ast(parser.parse(source)), _ast(expected));
+      expect(_ast(parser.parse(source)), _ast(expected));
+    }
+  });
+
   test('measurement switch leaves output unchanged and gates every metric', () {
     final parser = MarkdownInlineParser(deliverables: false);
     const source =

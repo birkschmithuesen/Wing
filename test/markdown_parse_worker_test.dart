@@ -23,6 +23,33 @@ String proseText(MarkdownParseResult result) => result.segments
 
 void main() {
   test(
+    'worker keeps API suffix literal through streamed and cached snapshots',
+    () async {
+      final worker = MarkdownParseWorker();
+      addTearDown(worker.dispose);
+      const source = '`/hermes-button-actions/contents/README.md`';
+      for (final text in [
+        source.substring(0, source.length - 1),
+        source,
+        source,
+      ]) {
+        final result = await worker.parse(
+          owner: 11,
+          source: text,
+          deliverables: true,
+        );
+        final nodes = result.segments.whereType<MarkdownProseSegment>().expand(
+          (segment) => segment.nodes,
+        );
+        expect(
+          nodes.map(ast),
+          md.Document(encodeHtml: false).parse(text).map(ast),
+        );
+      }
+    },
+  );
+
+  test(
     'whole-message results carry exact fences and independently parsed prose',
     () async {
       final worker = MarkdownParseWorker();

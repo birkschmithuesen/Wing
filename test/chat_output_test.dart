@@ -4,6 +4,52 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/chat_output.dart';
 
 void main() {
+  test('API request suffix in inline code is not a generated file', () {
+    final outputs = extractChatOutputs([
+      {
+        'role': 'assistant',
+        'content':
+            'Request ending in:\n\n'
+            '`/hermes-button-actions/contents/README.md`',
+      },
+    ]);
+    expect(outputs, isEmpty);
+  });
+
+  test('code examples are excluded while explicit deliveries remain', () {
+    const target = '/hermes-button-actions/contents/README.md';
+    for (final source in [
+      '`$target`',
+      '`` $target ``',
+      '```text\n$target\n```',
+      '    $target',
+      '`[Read]($target)`',
+    ]) {
+      expect(
+        extractChatOutputs([
+          {'role': 'assistant', 'content': source},
+        ]),
+        isEmpty,
+        reason: source,
+      );
+    }
+    for (final source in [
+      '[Read]($target)',
+      '[Read][file]\n\n[file]: $target',
+      'MEDIA:$target',
+      '`MEDIA:$target`',
+      'MEDIA:`$target`',
+    ]) {
+      expect(
+        extractChatOutputs([
+          {'role': 'assistant', 'content': source},
+        ]).map((output) => output.path),
+        [target],
+        reason: source,
+      );
+    }
+  });
+
   test('document links resolve relative paths and keep decoded anchors', () {
     const document = '/srv/reports/pilot/report.md';
     final cases = {

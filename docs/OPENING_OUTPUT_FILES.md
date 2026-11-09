@@ -1,8 +1,11 @@
 # Output viewers and downloads
 
-Files referenced in an answer appear as cards with separate Download and Open
-preview icons. The chat's **Outputs** list also collects references, including
-older history. Download opens Android's destination picker; cancelling saves
+Explicit Markdown file links and `MEDIA:` references in an answer appear as
+cards with separate Download and Open preview icons. Inline code remains literal,
+even when it looks like a file path: API request paths and code examples are not
+file attachments. To offer a file, use a Markdown link such as
+`[Read the report](/srv/report.md)` or `MEDIA:/srv/report.md`. The chat's
+**Outputs** list also collects references, including older history. Download opens Android's destination picker; cancelling saves
 nothing. Open preview opens the reader, and Back returns to the conversation.
 
 Files are fetched from their original connection and profile. Old paths can

@@ -52,7 +52,7 @@ class _ObservedHtml extends HtmlFilePathSyntax {
   RegExp get pattern => probe;
 }
 
-class _ObservedCode extends DeliverableCodeSyntax {
+class _ObservedCode extends LiteralCodeSyntax {
   late final probe = _RegexProbe(super.pattern);
   @override
   RegExp get pattern => probe;
@@ -82,7 +82,7 @@ md.Document _document(md.InlineSyntax media, md.InlineSyntax html) =>
       inlineSyntaxes: [
         media,
         DeliverableLinkSyntax(),
-        DeliverableCodeSyntax(),
+        LiteralCodeSyntax(),
         html,
       ],
       extensionSet: md.ExtensionSet.gitHubFlavored,

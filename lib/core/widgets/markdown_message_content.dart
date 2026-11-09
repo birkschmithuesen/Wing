@@ -76,9 +76,7 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   final _deliverableSyntaxes = <md.InlineSyntax>[
     MediaReferenceSyntax(),
     DeliverableLinkSyntax(),
-    DeliverableCodeSyntax(
-      guard: markdownQaVariant != MarkdownQaVariant.baseline,
-    ),
+    LiteralCodeSyntax(guard: markdownQaVariant != MarkdownQaVariant.baseline),
     HtmlFilePathSyntax(),
   ];
   final _headingKeys = <String, GlobalKey>{};

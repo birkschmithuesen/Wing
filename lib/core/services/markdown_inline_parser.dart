@@ -75,7 +75,7 @@ class _CachingDocument extends md.Document {
             ? [
                 MediaReferenceSyntax(),
                 DeliverableLinkSyntax(),
-                DeliverableCodeSyntax(guard: owner.guardCode),
+                LiteralCodeSyntax(guard: owner.guardCode),
                 HtmlFilePathSyntax(),
               ]
             : null,
