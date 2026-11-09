@@ -201,6 +201,7 @@ class ProfileActivityContents extends StatelessWidget {
             label: 'Timeline',
             child: ProfileActivityTimeline(
               groups: groups,
+              noticeBuilder: noticeBuilder,
               expandedMessageId: expandedMessageId,
               focusedMessageKey: focusedMessageKey,
               currentActivity: currentActivity,
@@ -259,6 +260,7 @@ class ProfileActivityTimeline extends StatelessWidget {
     this.focusedMessageKey,
     this.currentActivity = const [],
     this.newestFirst = false,
+    this.noticeBuilder,
     this.loadImage,
     this.onOpenResource,
     this.onShareResource,
@@ -269,6 +271,7 @@ class ProfileActivityTimeline extends StatelessWidget {
   final GlobalKey? focusedMessageKey;
   final List<Widget> currentActivity;
   final bool newestFirst;
+  final Widget Function(TranscriptTimelineEntry)? noticeBuilder;
   final Future<Uint8List> Function(String)? loadImage;
   final Future<void> Function(ChatOutput)? onOpenResource;
   final Future<void> Function(ChatOutput)? onShareResource;
@@ -311,6 +314,14 @@ class ProfileActivityTimeline extends StatelessWidget {
                 expandedMessageId != null &&
                 group.containsMessage(expandedMessageId!),
           )
+        else if (group.isProcessNotice)
+          for (final entry in group.messages)
+            Container(
+              key: entry.id == expandedMessageId
+                  ? focusedMessageKey
+                  : ValueKey(('saved-process-notice', entry.presentationId)),
+              child: noticeBuilder!(entry),
+            )
         else if (!group.isAgentNotice)
           ProfileToolActivity(
             results: newestFirst

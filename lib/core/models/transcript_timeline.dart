@@ -467,6 +467,7 @@ final class TranscriptTimelineEntry {
   bool get isAgentNotice =>
       role == 'user' &&
       transcriptNoticeKind(_row) == 'async_delegation_complete';
+  bool get isProcessNotice => _isProcessReceipt(_row);
   final TranscriptMessage Function(Map<String, dynamic>)? messageProjection;
   late final TranscriptMessage message =
       messageProjection?.call(_row) ??
@@ -505,12 +506,14 @@ final class TranscriptTimelineGroup {
   );
   bool get isTool => !isReasoning && messages.last.role == 'tool';
   bool get isAgentNotice => !isReasoning && messages.last.isAgentNotice;
+  bool get isProcessNotice => !isReasoning && messages.last.isProcessNotice;
   HermesQuestion? get question => messages.last.question;
   String? get reviewText => messages.last.reviewText;
   bool get isActivity =>
       isReasoning ||
       isTool ||
       isAgentNotice ||
+      isProcessNotice ||
       messages.last.isReview ||
       question != null;
   List<TranscriptToolResult> get toolResults =>

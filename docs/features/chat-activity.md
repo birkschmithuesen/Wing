@@ -7,6 +7,7 @@ Feature ID: `chat-activity`.
 ## Sub-features
 
 - `chat-activity.inspect` — Open the compact latest-reasoning row to inspect a newest-first stack of reasoning and tool runs. Expand exact requests/results; late completion keeps its original position and incoming work retains open details and the reading anchor. Streaming runs retain fixed durations across reasoning boundaries and a live counter for the current run.
+- Background process completion receipts stay inside Activity’s Timeline, including batches and failures. Open Activity, then Output to read the exact command/result; no separate completion card interrupts the answer. Saved receipts have no live process controls.
 - Live tools show supplied progress against their exact call identity. Progress disappears when the call settles or recovery starts; saved histories never replay a live counter.
 - Active recurring work shows a next-wakeup countdown with compact days/hours for long delays and the exact scheduled time in its tooltip. Paused work, a pending response and work deferred by a goal do not show a countdown; an overdue deadline says Due now without implying execution began.
 - `chat-activity.respond` — Answer the current question or approval. Live approvals in normal, bot and group chats share command-review content with notification review. The exact command starts visible; completed request receipts remain under collapsed Activity. Native prompts stay bound to their turn, while server-request prompts retain their own reply identity. Reopening keeps all waiting native questions in order and a settled request cannot close a newer one.
@@ -44,6 +45,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```sh
   flutter test --no-pub test/profile_live_work_route_test.dart test/profile_execution_activity_test.dart test/subagent_timeline_session_test.dart test/saved_activity_test.dart
   ```
+
+- **Saved completion placement:** `flutter test --no-pub test/internal_message_visibility_test.dart test/profile_transcript_test.dart test/profile_live_execution_test.dart` checks saved/live-adjacent grouping, retained identities, batches/failures, and opening Output through the conversation Activity in both themes at normal and enlarged text.
 
 - **Background process discovery and live updates:** the owner tests exercise empty-list discovery, coalesced receipts and held reads, unchanged snapshots, route departure/resume, runtime replacement, failures and recovery. The production-route matrix opens Background without preloading rows, follows output and uses Stop/Dismiss beside Tasks/Subagents at 390 dp and 320 dp/200% text, both themes, including keyboard and held/failed reads.
 

@@ -16,6 +16,44 @@ import 'package:wing/core/widgets/tool_activity_details.dart';
 import 'helpers/pump_markdown_widget.dart';
 
 void main() {
+  testWidgets('live Activity retains a saved process completion output', (
+    tester,
+  ) async {
+    final saved = TranscriptTimeline.project([
+      {
+        'id': 1,
+        'role': 'user',
+        'display_kind': 'process_complete',
+        'content':
+            '[IMPORTANT: Background process proc_test completed normally '
+            '(exit code 0).\nCommand: check\nOutput:\nProcess result\n]',
+        'display_metadata': {'display_text': 'Background check finished'},
+      },
+    ], presentationId: (row) => row['id'] as int).sections.single;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ProfileLiveExecution(
+            entries: const [],
+            savedActivity: saved,
+            running: false,
+          ),
+        ),
+      ),
+    );
+    expect(find.text('Background check finished'), findsNothing);
+    await tester.tap(find.text('Activity').first);
+    await tester.pumpAndSettle();
+    // The outer live disclosure contains the existing execution-run disclosure.
+    await tester.tap(find.text('Activity').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Background check finished'), findsOneWidget);
+    await tester.tap(find.text('Output'));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Process result'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
   test('reasoning keeps its first posting time through deltas and sealing', () {
     final runtime = execution.ChatRuntime(runtimeId: 'timed-reasoning');
     runtime.beginTurn(submitting: false);

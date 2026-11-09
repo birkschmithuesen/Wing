@@ -47,6 +47,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
     const fontDirectory = String.fromEnvironment('CAPTURE_FONT_DIR');
     for (final entry in {
       'Roboto': '$fontDirectory/Roboto-Regular.ttf',
+      'monospace': '$fontDirectory/mono.ttf',
       'MaterialIcons': '$fontDirectory/MaterialIcons-Regular.otf',
       'WingIcons': 'assets/fonts/wing-icons.ttf',
     }.entries) {
@@ -221,6 +222,88 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
         image.dispose();
       }
     });
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('process completion stays inside Activity '
+          '${brightness.name} $scale', (tester) async {
+        realisticMessages = true;
+        const envelope =
+            '[IMPORTANT: Background process proc_test completed '
+            'normally (exit code 0).\nCommand: python3 audit.py\n'
+            'Output:\nVerified all 68 files.\n]';
+        final messages = <Map<String, dynamic>>[
+          {'id': 1, 'role': 'user', 'content': 'Check the merge.'},
+          {'id': 2, 'role': 'assistant', 'content': 'I started the check.'},
+          {
+            'id': 3,
+            'role': 'user',
+            'content': envelope,
+            'display_kind': 'process_complete',
+            'display_metadata': {
+              'display_text': 'Background Process Finished: python3 audit.py',
+            },
+          },
+          {
+            'id': 4,
+            'role': 'tool',
+            'tool_name': 'terminal',
+            'content': 'Merge checked.',
+          },
+          {'id': 5, 'role': 'assistant', 'content': 'The merge is verified.'},
+        ];
+        chat.reading.installSavedHistory(messages);
+        await show(
+          tester,
+          brightness: brightness,
+          scale: scale,
+          surfaceSize: Size(scale == 1 ? 390 : 320, 800),
+        );
+        await tester.settleMarkdown();
+        expect(
+          find.textContaining('Background Process Finished'),
+          findsNothing,
+        );
+        expect(find.text('Output'), findsNothing);
+        final activity = find.text('Activity · 1 tool');
+        expect(activity, findsOneWidget);
+        expect(find.text('The merge is verified.'), findsOneWidget);
+        await captureHistory(
+          tester,
+          'process-closed-${brightness.name}-$scale',
+        );
+        await tester.ensureVisible(activity);
+        await tester.tap(activity);
+        await tester.pumpAndSettle();
+        final notice = find.text(
+          'Background Process Finished: python3 audit.py',
+        );
+        expect(notice, findsOneWidget);
+        expect(
+          find.ancestor(
+            of: notice,
+            matching: find.byType(ProfileActivityTimeline),
+          ),
+          findsOneWidget,
+        );
+        await Scrollable.ensureVisible(
+          tester.element(find.text('Output')),
+          alignment: 0.4,
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Output'));
+        await tester.pumpAndSettle();
+        final output = find.textContaining('Verified all 68 files.');
+        expect(output, findsOneWidget);
+        await tester.ensureVisible(output);
+        await tester.pumpAndSettle();
+        expect(find.text(envelope), findsNothing);
+        expect(chat.reading.messages, messages);
+        await captureHistory(tester, 'process-open-${brightness.name}-$scale');
+        expect(tester.takeException(), isNull);
+      });
+    }
   }
 
   for (final brightness in Brightness.values) {

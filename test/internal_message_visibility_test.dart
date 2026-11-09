@@ -719,7 +719,7 @@ void main() {
           chat.reading.messages,
           presentationId: chat.reading.messagePresentationId,
         );
-        for (final id in [3, 12]) {
+        for (final id in [3, 5, 9, 12]) {
           expect(
             timeline.sections
                 .singleWhere((s) => s.containsMessage(id))
@@ -751,7 +751,7 @@ void main() {
         expect(find.text(_skillEnvelope), findsNothing);
         expect(find.text('/work fix the leak'), findsOneWidget);
         expect(find.text(processBatchEnvelope), findsNothing);
-        expect(find.text('16 background processes completed'), findsOneWidget);
+        expect(find.text('16 background processes completed'), findsNothing);
         expect(find.byKey(const ValueKey('edit-message-9')), findsNothing);
         expect(find.textContaining(snapshotHeader), findsNothing);
         expect(find.byKey(const ValueKey('edit-message-10')), findsNothing);
@@ -869,6 +869,77 @@ void main() {
       });
     }
   }
+
+  test(
+    'process receipts group with Activity without changing history or timing',
+    () {
+      for (final receipt in <Map<String, dynamic>>[
+        {'role': 'user', 'content': _processEnvelope},
+        {'role': 'user', 'content': processBatchEnvelope},
+        {
+          'role': 'user',
+          'content': _processEnvelope,
+          'display_kind': 'process_complete',
+        },
+        {
+          'role': 'user',
+          'content': _processEnvelope.replaceFirst(
+            'exit code 0',
+            'exit code 1',
+          ),
+          'display_kind': 'process_complete',
+        },
+        {'role': 'user', 'content': '', 'display_kind': 'process_complete'},
+      ]) {
+        final rows = <Map<String, dynamic>>[
+          {'id': 1, 'role': 'user', 'content': 'Run it', 'timestamp': 100},
+          {
+            'id': 2,
+            'role': 'assistant',
+            'content': 'Started',
+            'timestamp': 110,
+          },
+          {'id': 3, ...receipt, 'timestamp': 200},
+          {
+            'id': 4,
+            'role': 'tool',
+            'tool_name': 'terminal',
+            'content': 'Checked',
+          },
+          {'id': 5, 'role': 'assistant', 'content': 'Done', 'timestamp': 210},
+        ];
+        final timeline = TranscriptTimeline.project(
+          rows,
+          presentationId: (row) => row['id'] as int,
+        );
+        final section = timeline.sections.singleWhere(
+          (s) => s.containsMessage(3),
+        );
+        expect(section.isActivity, isTrue);
+        expect(section.messages.map((m) => m.id), [3, 4]);
+        expect(section.toolCount, 1);
+        expect(section.replyDuration, isNull);
+        expect(timeline.entries.map((m) => m.id), [1, 2, 3, 4, 5]);
+        expect(
+          timeline
+              .nearby(3)!
+              .sections
+              .any((s) => s.isActivity && s.containsMessage(3)),
+          isTrue,
+        );
+      }
+      final quote = {
+        'role': 'user',
+        'content': 'Explain this:\n$_processEnvelope',
+      };
+      expect(
+        TranscriptTimeline.project([
+          quote,
+        ], presentationId: (_) => 1).sections.single.isActivity,
+        isFalse,
+      );
+    },
+  );
 
   test('Desktop envelope matching preserves ordinary technical discussion', () {
     for (final text in [
