@@ -119,6 +119,10 @@ If the chat is open in another app, close it there, then use Retry. The refusal
 alone does not prove another app holds it; Hermes can also fail to verify its
 ownership records. Wing does not force ownership away from another process.
 Retry shows the pulsating Wing in the header while messages stay usable.
+Temporary connection failures and resume snapshots superseded by newer live
+updates recover automatically, retaining messages and drafts. Retries continue
+with delays capped at 30 seconds; permanent ownership refusal still requires the
+recovery described above. See the [connection recovery recipe](connections.md).
 Clients sharing a chat must use the same canonical gateway. A standalone
 Dashboard on the same machine can hold an independent runtime over the same
 saved transcript; sharing the host or database does not establish shared access.

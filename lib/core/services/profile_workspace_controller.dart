@@ -2254,13 +2254,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
       await _drainQueuedPrompts(chat);
     } catch (failure) {
       if (!valid()) return;
-      if (isTemporaryWorkspaceFailure(failure) &&
-          _notificationAttempts < _maxRecoveryRetries) {
+      if (isTemporaryWorkspaceFailure(failure)) {
         _error = null;
-        // Give a waking network a short burst, then wait for focus or a network
-        // change to restart recovery. Never replay a submitted prompt.
+        // Keep recovering a waking network without requiring another tap.
+        // Never replay a submitted prompt.
         final delay = _recoveryDelay(_notificationAttempts);
         _notificationAttempts++;
+        connectionStatus.waitForRecovery('notification');
         _notificationRetry = Timer(delay, () {
           if (valid()) unawaited(_retryNotification());
         });
@@ -2594,9 +2594,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
-  static const _maxRecoveryRetries = 5;
   static Duration _recoveryDelay(int attempt) =>
-      Duration(seconds: 1 << attempt);
+      Duration(seconds: attempt >= 5 ? 30 : 1 << attempt);
 
   void _initializationFailed(Object failure, [StackTrace? stack]) {
     _initializationFailure = failure;
@@ -2620,10 +2619,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         : failure is ProfileSelectionRepairRequired
         ? failure.message
         : workspaceFailureMessage(failure);
-    if (_recoveringInitialization &&
-        !_closed &&
-        _notificationTarget == null &&
-        _initializationAttempt < _maxRecoveryRetries) {
+    if (_recoveringInitialization && !_closed && _notificationTarget == null) {
       logConnectionDiagnostic(
         'workspace.initialization_retry_scheduled',
         details: {
@@ -2633,6 +2629,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         },
       );
       _initializationRetry?.cancel();
+      connectionStatus.waitForRecovery('initialization');
       _initializationRetry = Timer(
         _recoveryDelay(_initializationAttempt++),
         () {
@@ -2652,7 +2649,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       );
       if (_notificationTarget != null ||
           failure is ProfileSelectionRepairRequired) {
-        // Notification opening owns its outer retry burst; profile-selection
+        // Notification opening owns its outer retry timer; profile-selection
         // repair has its own presentation and is not a connection failure.
         connectionStatus.endRecovery('initialization');
       } else {
@@ -2913,7 +2910,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     try {
       final profiles = discovery ?? await source.gateway.discover();
       // Borrow the source socket. Passive observation must not open transport
-      // or bypass the workspace's bounded recovery attempts. Explicit refresh
+      // or bypass the workspace's recovery backoff. Explicit refresh
       // and recovery establish it; an unavailable socket preserves uncertainty.
       // Target resources below supply scoped metadata, never attachments.
       if (_closed || generation != _detachedWorkGeneration) return;
@@ -10084,26 +10081,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_closed || resource._retry != null || resource._reconnecting) {
       return;
     }
-    if (resource._reconnectAttempt >= _maxRecoveryRetries) {
-      logConnectionDiagnostic(
-        'workspace.recovery_exhausted',
-        details: {
-          'connection': connection.id,
-          'profile': resource.scope.profileName,
-          'attempts': resource._reconnectAttempt,
-        },
-      );
-      // A restored transport is not proof the conversation was restored.
-      resource._recovering = true;
-      connectionStatus.failRecovery(
-        resource.scope.profileName,
-        'Could not restore the conversation. Retry to continue.',
-      );
-      _changed();
-      return;
-    }
     resource._recovering = true;
-    connectionStatus.beginRecovery(resource.scope.profileName);
+    connectionStatus.waitForRecovery(resource.scope.profileName);
     final delay = _recoveryDelay(resource._reconnectAttempt);
     logConnectionDiagnostic(
       'workspace.recovery_scheduled',
@@ -10114,7 +10093,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'delay_ms': delay.inMilliseconds,
       },
     );
-    // Further attempts are driven by app/screen focus or network changes.
+    // Cap the delay, not the number of attempts: the network can return while
+    // the user stays on this screen without another focus/connectivity event.
     resource._reconnectAttempt++;
     resource._retry = Timer(delay, () {
       resource._retry = null;

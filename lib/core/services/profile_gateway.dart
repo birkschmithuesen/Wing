@@ -1212,6 +1212,7 @@ class ProfileGateway {
         'cwd_explicit': cwdExplicit,
         'title': ?title,
       }, canDispatch),
+      operation: 'session.create',
     );
     // Stock Hermes resolves the destination and acknowledges it in info.cwd.
     // An unavailable directory can resolve elsewhere even with cwd_explicit.
@@ -1251,11 +1252,13 @@ class ProfileGateway {
       'display_projection': true,
     });
     if (_resumeVersions[durableId] != version) {
-      throw StateError(
+      throw JsonRpcError(
+        'session.resume',
         'A newer conversation refresh superseded this response.',
+        reason: 'snapshot_superseded',
       );
     }
-    return _ownedSession(result);
+    return _ownedSession(result, operation: 'session.resume');
   }
 
   Future<Map<String, dynamic>> branch(
@@ -1324,7 +1327,7 @@ class ProfileGateway {
   /// The canonical snapshot identifies durable storage separately from the
   /// attached runtime. A runtime identity never substitutes for storage.
   String resumeDurableId(Map<String, dynamic> result) {
-    _ownedSession(result);
+    _ownedSession(result, operation: 'session.resume');
     final id = result['stored_session_id'];
     if (id is! String || id.trim().isEmpty) {
       throw const FormatException('Resume response has no durable identity');
@@ -1332,7 +1335,10 @@ class ProfileGateway {
     return id;
   }
 
-  Map<String, dynamic> _ownedSession(Map<String, dynamic> result) {
+  Map<String, dynamic> _ownedSession(
+    Map<String, dynamic> result, {
+    required String operation,
+  }) {
     final info = result['info'];
     // Canonical non-local snapshots may expose only desktop_protocol in info.
     // The request is already profile-scoped; local snapshots echo their owner.
@@ -1349,8 +1355,10 @@ class ProfileGateway {
       throw const FormatException('Session response has no runtime identity');
     }
     if (!canonical.snapshot(result)) {
-      throw StateError(
+      throw JsonRpcError(
+        operation,
         'Newer conversation updates arrived while refreshing. Refresh again.',
+        reason: 'snapshot_superseded',
       );
     }
     return result;
@@ -1856,7 +1864,9 @@ class ProfileGateway {
         StateError('Profile changed. Open the menu again.'),
       );
     }
-    final ownerId = _ownedSession(prepared)['session_id'] as String;
+    final ownerId =
+        _ownedSession(prepared, operation: 'session.resume')['session_id']
+            as String;
     final fence = await _rowMutationFence(ownerId);
     final result = await _browserCommand('session.mutate', {
       'session_id': ownerId,

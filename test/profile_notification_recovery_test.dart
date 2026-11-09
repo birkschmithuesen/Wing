@@ -448,7 +448,7 @@ void main() {
     },
   );
 
-  testWidgets('notification waits for focus after its short retry burst', (
+  testWidgets('notification retries automatically after a prolonged outage', (
     tester,
   ) async {
     host.resumeError = TimeoutException('Synthetic resume timeout');
@@ -457,16 +457,16 @@ void main() {
       await tester.pump(Duration(seconds: seconds));
     }
     expect(host.resumeCalls, 6);
-    expect(chat.runtime.openingError, isNotNull);
+    expect(chat.runtime.openingError, isNull);
     expect(
       controller.connectionStatus.phase,
-      ServerConnectionPhase.disconnected,
+      ServerConnectionPhase.reconnecting,
     );
     expect(chat.composer.observation.text, 'My unsent follow-up');
     host.resumeError = null;
-    await tester.pump(const Duration(minutes: 2));
+    await tester.pump(const Duration(seconds: 29));
     expect(host.resumeCalls, 6);
-    await controller.resumeConnection();
+    await tester.pump(const Duration(seconds: 1));
     expect(host.resumeCalls, 7);
     expect(controller.notificationChat, isNull);
     expect(chat.runtime.opening, isFalse);
@@ -474,7 +474,7 @@ void main() {
     expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
   });
 
-  testWidgets('reopening a cached chat retries its exhausted recovery', (
+  testWidgets('reopening a cached chat bypasses its pending recovery delay', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -494,10 +494,7 @@ void main() {
     for (final seconds in [1, 2, 4, 8, 16]) {
       await tester.pump(Duration(seconds: seconds));
     }
-    expect(
-      chat.runtime.openingError,
-      'Couldn’t reopen this chat. Retry to continue.',
-    );
+    expect(chat.runtime.openingError, isNull);
     final calls = host.resumeCalls;
     host.resumeError = null;
 

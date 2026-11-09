@@ -12,6 +12,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/recent_conversation_session.dart';
+import 'package:wing/core/services/ws_client.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'profile_workspace_controller_test.dart' show Host;
@@ -334,6 +336,64 @@ void main() {
     expect(chat.runtime.execution, ChatExecution.completed);
     expect(controller.current!.recovering, isFalse);
     expect(controller.current!.reconnectScheduled, isFalse);
+  });
+
+  testWidgets('live updates during resume recover without a manual retry', (
+    tester,
+  ) async {
+    await controller.updateDraft(chat, 'Keep my draft');
+    final delay = Completer<void>();
+    host
+      ..resumeStarted = Completer<void>()
+      ..resumeDelay = delay;
+    final recovering = controller.reconnect(chat.key.workspace);
+    await host.resumeStarted!.future;
+    final gateway = controller.current!.gateway;
+    // The server captured revision 0 for resume, then a live observation
+    // advanced authority before that response reached the client.
+    host.canonicalRevisions['a:${chat.runtime.runtimeId}'] = 1;
+    gateway.onEvent!(
+      StreamEvent(
+        type: 'session.usage',
+        sessionId: chat.runtime.runtimeId,
+        data: {
+          'revision': 1,
+          'usage': {'input_tokens': 42},
+        },
+      ),
+    );
+    delay.complete();
+    await recovering;
+    expect(controller.error, isNull);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
+    expect(controller.current!.recovering, isFalse);
+    expect(gateway.canonical.session(chat.runtime.runtimeId)!.revision, 1);
+    expect(chat.composer.observation.text, 'Keep my draft');
+    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+  });
+
+  testWidgets('overlapping resume reads cannot strand profile recovery', (
+    tester,
+  ) async {
+    final delay = Completer<void>();
+    host
+      ..resumeStarted = Completer<void>()
+      ..resumeDelay = delay;
+    final recovering = controller.reconnect(chat.key.workspace);
+    await host.resumeStarted!.future;
+    await controller.current!.gateway.resume(chat.key.sessionId);
+    delay.complete();
+    await recovering;
+    expect(controller.error, isNull);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
+    expect(controller.current!.reconnectScheduled, isFalse);
+    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
   });
 
   test('superseded history failure cannot fail a recovered profile', () async {

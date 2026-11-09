@@ -19,7 +19,7 @@ class ServerConnectionStatus extends ChangeNotifier {
   final String label;
   ConnectionAvailability access = ConnectionAvailability.unchecked;
   final Map<String, ConnectionAvailability> _live = {};
-  final Set<String> _recoveries = {};
+  final Map<String, bool> _recoveries = {};
   final Map<String, String> _failedRecoveries = {};
   String? _accessProblem;
   bool? _chatEndpointSupported;
@@ -29,6 +29,8 @@ class ServerConnectionStatus extends ChangeNotifier {
       ? chatEndpointFailureMessage
       : recoveryProblem ?? _accessProblem;
   Future<void> Function()? retry;
+  bool get recoveryAttemptInProgress =>
+      _recoveries.values.any((active) => active);
   VoidCallback? onInterruption;
   bool _closed = false;
 
@@ -91,10 +93,15 @@ class ServerConnectionStatus extends ChangeNotifier {
     _changed();
   }
 
-  void beginRecovery(String owner) {
+  void beginRecovery(String owner) => _setRecovery(owner, active: true);
+
+  /// The destination still needs recovery, but Retry can bypass its backoff.
+  void waitForRecovery(String owner) => _setRecovery(owner, active: false);
+
+  void _setRecovery(String owner, {required bool active}) {
     if (_closed) return;
     _failedRecoveries.remove(owner);
-    _recoveries.add(owner);
+    _recoveries[owner] = active;
     _changed();
   }
 

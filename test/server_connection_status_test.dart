@@ -5,6 +5,23 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/server_connection_status.dart';
 
 void main() {
+  test('waiting recovery permits retry unless another owner is active', () {
+    final status = ServerConnectionStatus('Claw');
+    addTearDown(status.dispose);
+    status.waitForRecovery('chat');
+    expect(status.phase, ServerConnectionPhase.reconnecting);
+    expect(status.recoveryAttemptInProgress, isFalse);
+    status.beginRecovery('other');
+    expect(status.recoveryAttemptInProgress, isTrue);
+    status.endRecovery('other');
+    expect(status.recoveryAttemptInProgress, isFalse);
+    status.beginRecovery('chat');
+    expect(status.recoveryAttemptInProgress, isTrue);
+    status.failRecovery('chat', 'Sign-in required');
+    expect(status.recoveryAttemptInProgress, isFalse);
+    expect(status.phase, ServerConnectionPhase.disconnected);
+  });
+
   test('HTTP success cannot hide a chat endpoint mismatch', () {
     final status = ServerConnectionStatus('Claw');
     addTearDown(status.dispose);

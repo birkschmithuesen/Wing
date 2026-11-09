@@ -511,8 +511,7 @@ class _ConnectionDetails extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 16),
                   child: StudioButtonPress(
                     child: IconButton.outlined(
-                      onPressed:
-                          status?.phase == ServerConnectionPhase.reconnecting
+                      onPressed: status?.recoveryAttemptInProgress == true
                           ? null
                           : () => status!.retry!(),
                       icon: const Icon(Icons.refresh),

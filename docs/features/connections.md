@@ -11,7 +11,7 @@ Feature ID: `connections`.
 - Saved instance aliases appear in workspace and conversation headers as well as
   the instance picker. Renaming an instance updates a retained workspace without
   replacing its open chat, draft or connection.
-- `connections.recover` — Retry authentication or cancel setup safely.
+- `connections.recover` — Recover temporary connection and conversation failures automatically, with retry delays capped at 30 seconds. Foreground return, network changes and Retry bypass the delay. Authentication or configuration failures remain actionable; setup can be cancelled safely.
 
 ## How to get to it (user POV)
 
@@ -57,5 +57,22 @@ existing origin-bound authentication owner.
 
 For deployed chat readiness, also run the [read-only saved-chat recipe](conversation.md).
 Fixture success does not prove the configured deployment can reopen chats.
+
+Recovery continues while the saved connection is retained, including when the
+server returns after the first five attempts. A healthy socket alone does not
+finish conversation recovery. Newer live updates can supersede a resume snapshot;
+Wing reads again without treating that race as a connection-settings failure.
+The existing header Wing shows recovery while history and drafts remain usable.
+The icon-only Retry action remains available between automatic attempts and
+disables while a recovery request is running.
+Leaving a notification opening or disposing its workspace cancels its retries.
+
+```sh
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
+```
+
+These regressions cover live-update and overlapping-read races, prolonged
+startup/chat/notification outages, capped delays, immediate manual/foreground
+recovery, permanent failures, disposal and avoiding duplicate submissions.
 
 A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.

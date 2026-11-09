@@ -135,6 +135,10 @@ void main() {
             findsOneWidget,
           );
           await snapshot(tester, '${brightness.name}-$enlarged-ready');
+          status.waitForRecovery('chat');
+          await tester.pump();
+          expect(tester.widget<IconButton>(retry).onPressed, isNotNull);
+          await snapshot(tester, '${brightness.name}-$enlarged-backoff');
           final gesture = await tester.startGesture(tester.getCenter(retry));
           await tester.pump(const Duration(milliseconds: 100));
           await tester.pump(const Duration(milliseconds: 120));
@@ -258,6 +262,14 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('connection-status-target')));
     await tester.pumpAndSettle();
     expect(find.text('Disconnected'), findsOneWidget);
+    status.waitForRecovery('chat');
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.refresh))
+          .onPressed,
+      isNotNull,
+    );
     await tester.tap(find.widgetWithIcon(IconButton, Icons.refresh));
     await tester.pumpAndSettle();
     expect(retries, 1);

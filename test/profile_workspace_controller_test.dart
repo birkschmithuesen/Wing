@@ -4277,48 +4277,43 @@ void main() {
     expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
   });
 
-  testWidgets('startup LED stays recovering until its retry burst stops', (
-    tester,
-  ) async {
-    final access = controller.access;
-    controller.dispose();
-    controller = ProfileWorkspaceController(
-      access: access,
-      connectionIdentity: 'original-settings',
-      preferences: preferences,
-      appPreferences: appPreferences,
-      gatewayFactory: host.gateway,
-    );
-    host.discoveryFailure = const SocketException('Network asleep');
-    await controller.initialize();
-    expect(
-      controller.connectionStatus.phase,
-      isNot(ServerConnectionPhase.disconnected),
-    );
-    for (final seconds in [1, 2, 4, 8, 16]) {
-      await tester.pump(Duration(seconds: seconds));
+  testWidgets(
+    'startup recovery continues at a capped delay until the server returns',
+    (tester) async {
+      final access = controller.access;
+      controller.dispose();
+      controller = ProfileWorkspaceController(
+        access: access,
+        connectionIdentity: 'original-settings',
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      host.discoveryFailure = const SocketException('Network asleep');
+      await controller.initialize();
       expect(
         controller.connectionStatus.phase,
-        seconds == 16
-            ? ServerConnectionPhase.disconnected
-            : ServerConnectionPhase.reconnecting,
+        isNot(ServerConnectionPhase.disconnected),
       );
-    }
-    await tester.pump(const Duration(minutes: 2));
-    expect(
-      controller.connectionStatus.phase,
-      ServerConnectionPhase.disconnected,
-    );
-    host.discoveryFailure = null;
-    await controller.resumeConnection();
-    await tester.pump();
-    expect(controller.initialized, isTrue);
-    expect(
-      controller.connectionStatus.phase,
-      isNot(ServerConnectionPhase.disconnected),
-    );
-    expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
-  });
+      for (final seconds in [1, 2, 4, 8, 16, 30, 30]) {
+        await tester.pump(Duration(seconds: seconds));
+        expect(
+          controller.connectionStatus.phase,
+          ServerConnectionPhase.reconnecting,
+        );
+      }
+      host.discoveryFailure = null;
+      await tester.pump(const Duration(seconds: 30));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(controller.initialized, isTrue);
+      expect(
+        controller.connectionStatus.phase,
+        isNot(ServerConnectionPhase.disconnected),
+      );
+      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
+    },
+  );
 
   testWidgets('refresh keeps loaded chats visible while the network stalls', (
     tester,
@@ -4489,7 +4484,7 @@ void main() {
     expect(controller.current!.reconnectScheduled, isFalse);
   });
 
-  testWidgets('app focus restarts recovery after the short retry burst', (
+  testWidgets('app focus restarts recovery during capped backoff', (
     tester,
   ) async {
     final chat = await controller.createChat(canDispatch: () => true);
@@ -4522,9 +4517,8 @@ void main() {
     expect(saved.text, isEmpty);
     expect(saved.queuedPrompts.single.text, 'Keep this draft');
     expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
-    // No perpetual polling after the initial burst. Returning to Wing is
-    // enough to retry immediately, without a tap on Retry.
-    await tester.pump(const Duration(minutes: 2));
+    // Returning to Wing bypasses the pending 30-second retry.
+    await tester.pump(const Duration(seconds: 29));
     expect(host.connectsByProfile['a']! - before, 5);
     host.rosterFailure = JsonRpcError(
       'subagent.roster',
@@ -4680,7 +4674,7 @@ void main() {
     },
   );
 
-  testWidgets('network change restarts exhausted chat-list recovery', (
+  testWidgets('network change bypasses chat-list recovery backoff', (
     tester,
   ) async {
     host.connectFailures = 5;
@@ -4690,7 +4684,7 @@ void main() {
     }
     expect(controller.connectionStatus.liveAvailable('a'), isFalse);
     final calls = host.connectCalls;
-    await tester.pump(const Duration(minutes: 2));
+    await tester.pump(const Duration(seconds: 29));
     expect(host.connectCalls, calls);
     await tester.runAsync(
       () => controller.resumeConnection(networkChanged: true),
@@ -4700,69 +4694,99 @@ void main() {
     expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
   });
 
-  testWidgets(
-    'each recovery burst is bounded and an explicit retry restarts it',
-    (tester) async {
-      host.connectFailures = 20;
-      host.gateways['a']!.onConnectionChanged!(false);
-      expect(
-        controller.connectionStatus.phase,
-        isNot(ServerConnectionPhase.disconnected),
-      );
-      for (final seconds in [1, 2, 4, 8, 16]) {
-        await tester.pump(Duration(seconds: seconds));
-        expect(
-          controller.connectionStatus.phase,
-          seconds == 16
-              ? ServerConnectionPhase.disconnected
-              : ServerConnectionPhase.reconnecting,
-        );
-      }
-      final calls = host.connectCalls;
-      await tester.pump(const Duration(minutes: 2));
-      expect(host.connectCalls, calls);
-      expect(controller.current!.reconnectScheduled, isFalse);
-      expect(controller.recovering, isTrue);
-      expect(controller.current!.reconnectAttempt, 5);
-      host.connectFailures = 0;
-      await tester.runAsync(controller.resumeConnection);
-      await tester.pump();
-      expect(controller.connectionStatus.description, 'Connected');
-      expect(controller.current!.reconnectScheduled, isFalse);
-      expect(
-        controller.connectionStatus.phase,
-        isNot(ServerConnectionPhase.disconnected),
-      );
-    },
-  );
-
-  testWidgets('exhausted session recovery cannot show a green connection', (
+  testWidgets('recovery caps its delay and an explicit retry bypasses it', (
     tester,
   ) async {
-    final chat = await controller.createChat(canDispatch: () => true);
-    await controller.updateDraft(chat, 'Keep this draft');
-    host.running = false;
-    host.resumeFailures = 5;
+    host.connectFailures = 20;
     host.gateways['a']!.onConnectionChanged!(false);
+    expect(
+      controller.connectionStatus.phase,
+      isNot(ServerConnectionPhase.disconnected),
+    );
     for (final seconds in [1, 2, 4, 8, 16]) {
       await tester.pump(Duration(seconds: seconds));
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.reconnecting,
+      );
     }
-    // An independent activity read can restore the transport without restoring
-    // this conversation. That must not clear its failed recovery indicator.
-    await tester.runAsync(() => controller.current!.gateway.connect());
-    expect(controller.connectionStatus.liveAvailable('a'), isTrue);
+    final calls = host.connectCalls;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      await tester.pump(const Duration(seconds: 29));
+      expect(host.connectCalls, calls + attempt - 1);
+      await tester.pump(const Duration(seconds: 1));
+      expect(host.connectCalls, calls + attempt);
+    }
+    expect(controller.current!.reconnectScheduled, isTrue);
     expect(controller.recovering, isTrue);
+    expect(controller.current!.reconnectAttempt, 9);
+    host.connectFailures = 0;
+    await tester.runAsync(controller.resumeConnection);
+    await tester.pump();
+    expect(controller.connectionStatus.description, 'Connected');
     expect(controller.current!.reconnectScheduled, isFalse);
     expect(
       controller.connectionStatus.phase,
-      ServerConnectionPhase.disconnected,
+      isNot(ServerConnectionPhase.disconnected),
     );
-    expect(controller.connectionStatus.recoveryProblem, isNotNull);
-    await tester.runAsync(controller.connectionStatus.retry!);
-    expect(controller.recovering, isFalse);
-    expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
-    expect(chat.composer.observation.text, 'Keep this draft');
-    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+  });
+
+  testWidgets(
+    'session recovery continues when the transport is already healthy',
+    (tester) async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      await controller.updateDraft(chat, 'Keep this draft');
+      host.running = false;
+      host.resumeFailures = 5;
+      host.gateways['a']!.onConnectionChanged!(false);
+      for (final seconds in [1, 2, 4, 8, 16]) {
+        await tester.pump(Duration(seconds: seconds));
+      }
+      // An independent activity read can restore the transport without restoring
+      // this conversation. That must not clear its failed recovery indicator.
+      await tester.runAsync(() => controller.current!.gateway.connect());
+      expect(controller.connectionStatus.liveAvailable('a'), isTrue);
+      expect(controller.recovering, isTrue);
+      expect(controller.current!.reconnectScheduled, isTrue);
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.reconnecting,
+      );
+      expect(controller.connectionStatus.recoveryProblem, isNull);
+      await tester.pump(const Duration(seconds: 30));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(controller.recovering, isFalse);
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.connected,
+      );
+      expect(chat.composer.observation.text, 'Keep this draft');
+      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+    },
+  );
+
+  testWidgets('disposing a workspace cancels prolonged recovery', (
+    tester,
+  ) async {
+    final offlineHost = Host();
+    final retiring = ProfileWorkspaceController(
+      access: controller.access,
+      connectionIdentity: 'retiring',
+      preferences: preferences,
+      appPreferences: appPreferences,
+      gatewayFactory: offlineHost.gateway,
+    );
+    await retiring.initialize();
+    offlineHost.connectError = const SocketException('Offline');
+    offlineHost.gateways['a']!.onConnectionChanged!(false);
+    for (final seconds in [1, 2, 4, 8, 16]) {
+      await tester.pump(Duration(seconds: seconds));
+    }
+    final calls = offlineHost.connectCalls;
+    retiring.dispose();
+    await tester.pump(const Duration(minutes: 2));
+    expect(offlineHost.connectCalls, calls);
   });
 
   testWidgets('sign-in rejection stops automatic live recovery', (

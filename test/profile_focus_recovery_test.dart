@@ -343,7 +343,7 @@ void main() {
       for (final seconds in [1, 2, 4, 8, 16]) {
         await tester.pump(Duration(seconds: seconds));
       }
-      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(controller.current!.reconnectScheduled, isTrue);
       expect(controller.connectionStatus.liveAvailable('a'), isFalse);
       final calls = host.connectCalls;
       host.connectError = null;

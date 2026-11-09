@@ -325,7 +325,7 @@ void main() {
   );
 
   testWidgets(
-    'recovery logs retain failure, retry exhaustion and successful resume',
+    'recovery logs retain failure, capped retry and successful resume',
     (tester) async {
       host.connectFailures = 5;
       host.gateways['a']!.onConnectionChanged!(false);
@@ -340,9 +340,11 @@ void main() {
       expect(failures.first['causes'], [
         {'type': 'TimeoutException'},
       ]);
-      expect(events().last['event'], 'workspace.recovery_exhausted');
+      expect(events().last['event'], 'workspace.recovery_scheduled');
+      expect(events().last['delay_ms'], 30000);
       expect(controller.error, isNull);
-      await tester.runAsync(controller.resumeConnection);
+      await tester.pump(const Duration(seconds: 30));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
       await tester.pump();
       expect(events().last['event'], 'workspace.recovered');
       expect(controller.connectionStatus.liveAvailable('a'), isTrue);

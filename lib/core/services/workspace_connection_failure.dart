@@ -32,10 +32,12 @@ bool isTemporaryWorkspaceFailure(Object error) {
               // Stock session.resume can race disconnect cleanup or fail while
               // rebuilding its runtime. The WS dispatcher reports an uncaught
               // handler failure as -32603 rather than the resume handler's 5000.
+              // A client-rejected stale resume snapshot is also a read race.
               // These observations may be retried;
               // identical codes on prompt.submit must not replay a message.
               error.method == 'session.resume' &&
-                  ({5000, -32603}.contains(error.code) ||
+                  (error.reason == 'snapshot_superseded' ||
+                      {5000, -32603}.contains(error.code) ||
                       error.code == 4009 &&
                           error.message ==
                               'session disconnect interrupt settling' ||
@@ -114,7 +116,11 @@ Map<String, Object?> workspaceFailureDiagnostic(Object error) {
       if (error.code != null) 'rpc_code': error.code,
       if ({4000, -32602}.contains(error.code)) 'rpc_failure': 'invalid_params',
       if (error.code == -32601) 'rpc_failure': 'method_not_found',
-      if ({'connection_closed', 'request_timeout'}.contains(error.reason))
+      if ({
+        'connection_closed',
+        'request_timeout',
+        'snapshot_superseded',
+      }.contains(error.reason))
         'rpc_reason': error.reason,
     },
   };
