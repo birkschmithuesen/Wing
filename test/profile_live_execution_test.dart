@@ -14,6 +14,7 @@ import 'package:wing/core/widgets/profile_execution_activity.dart';
 import 'package:wing/core/widgets/profile_activity_tabs.dart';
 import 'package:wing/core/widgets/profile_live_execution.dart';
 import 'package:wing/core/widgets/activity_time.dart';
+import 'package:wing/core/widgets/anchored_expansion_tile.dart';
 import 'package:wing/core/widgets/profile_tool_call.dart';
 import 'package:wing/core/widgets/profile_tool_activity.dart';
 import 'package:wing/core/widgets/tool_activity_details.dart';
@@ -21,6 +22,11 @@ import 'package:wing/core/widgets/tool_activity_details.dart';
 import 'helpers/pump_markdown_widget.dart';
 
 void main() {
+  Finder runLabel(String label) => find.descendant(
+    of: find.byType(ProfileActivitySection),
+    matching: find.text(label),
+  );
+
   testWidgets('live Activity retains a saved process completion output', (
     tester,
   ) async {
@@ -316,9 +322,9 @@ void main() {
 
       await show([saved.first]);
       await tester.openLiveActivity(tools: false);
-      await tester.ensureVisible(find.text('Activity · 5 tools'));
+      await tester.ensureVisible(runLabel('5 tools'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Activity · 5 tools'));
+      await tester.tap(runLabel('5 tools'));
       await tester.pumpAndSettle();
       final originalRun = tester.element(
         find.byType(ProfileActivitySection).last,
@@ -339,13 +345,13 @@ void main() {
         same(originalTool),
       );
       expect(
-        tester.getTopLeft(find.text('Activity · 5 tools')).dy,
+        tester.getTopLeft(runLabel('5 tools')).dy,
         greaterThan(
           tester.getTopLeft(find.byType(ProfileReasoningDisclosure)).dy,
         ),
       );
       expect(find.text('Timeline'), findsNothing);
-      expect(find.text('Activity · 1 tool'), findsOneWidget);
+      expect(runLabel('1 tool'), findsOneWidget);
       expect(projection.rows.map((row) => row['id']), [1]);
       expect(saved[1]['reasoning'], 'Checking updates.\n\n$commentary');
       expect(
@@ -355,10 +361,10 @@ void main() {
             .text,
         'Checking updates.',
       );
-      await tester.tap(find.text('Activity · 5 tools'));
+      await tester.tap(runLabel('5 tools'));
       await tester.pumpAndSettle();
       expect(find.text('Timeline'), findsNothing);
-      await tester.tap(find.text('Activity · 5 tools'));
+      await tester.tap(runLabel('5 tools'));
       await tester.pumpAndSettle();
       expect(find.byType(ProfileToolCall), findsNWidgets(5));
     },
@@ -627,7 +633,7 @@ void main() {
       lessThan(80),
     );
     await open(tester);
-    expect(find.text('Activity'), findsOneWidget);
+    expect(find.text('Reasoning'), findsOneWidget);
     expect(find.text('Latest update'), findsOneWidget);
     expect(find.text('First update'), findsOneWidget);
     expect(find.byType(ProfileToolCall, skipOffstage: false), findsNothing);
@@ -636,7 +642,7 @@ void main() {
       find.byType(ProfileActivitySection),
     );
     expect(rows, hasLength(2));
-    final headers = find.text('Activity · 1 tool');
+    final headers = runLabel('1 tool');
     expect(
       tester.getTopLeft(headers.first).dy,
       lessThan(tester.getTopLeft(find.text('Latest update')).dy),
@@ -652,12 +658,59 @@ void main() {
     await tester.tap(find.text('Latest update'));
     await tester.pumpAndSettle();
     await tester.settleMarkdown();
-    expect(
-      find.text('Full reasoning body.', findRichText: true),
-      findsOneWidget,
-    );
+    expect(find.text('Full reasoning body.', findRichText: true), findsNothing);
+    expect(find.text('Raw details'), findsNothing);
+    expect(find.byType(ActivityDetailsCard), findsNothing);
     await open(tester);
     expect(find.text('Latest update'), findsOneWidget);
+  });
+
+  testWidgets('title-only reasoning restores full details after streaming', (
+    tester,
+  ) async {
+    final entries = [
+      reasoning(
+        'one',
+        '## Preparing isolated browser launch\n\nExact reasoning body.',
+      ),
+      tool('one'),
+    ];
+    await show(tester, entries);
+    await open(tester);
+    final row = find.byType(ProfileReasoningDisclosure);
+    expect(find.text('Reasoning'), findsOneWidget);
+    expect(find.text('Preparing isolated browser launch'), findsOneWidget);
+    expect(find.text('Activity'), findsNothing);
+    expect(find.text('Activity · 1 tool'), findsNothing);
+    expect(
+      find.descendant(of: row, matching: find.byType(AnchoredExpansionTile)),
+      findsNothing,
+    );
+    expect(find.text('Raw details'), findsNothing);
+    await tester.tap(find.text('Preparing isolated browser launch'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Exact reasoning body.', findRichText: true),
+      findsNothing,
+    );
+
+    await show(tester, entries, running: false);
+    expect(find.text('Activity'), findsOneWidget);
+    await open(tester);
+    expect(find.text('Activity · 1 tool'), findsOneWidget);
+    expect(
+      find.descendant(of: row, matching: find.byType(AnchoredExpansionTile)),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Preparing isolated browser launch'));
+    await tester.pumpAndSettle();
+    await tester.settleMarkdown();
+    expect(
+      find.text('Exact reasoning body.', findRichText: true),
+      findsOneWidget,
+    );
+    expect(find.text('Raw details'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('late tool completion stays below a later reasoning block', (
@@ -677,7 +730,7 @@ void main() {
     final old = tester.element(call('slow'));
     expect(
       tester.getTopLeft(find.text('Next thought')).dy,
-      lessThan(tester.getTopLeft(find.text('Activity · 1 tool')).dy),
+      lessThan(tester.getTopLeft(runLabel('1 tool')).dy),
     );
     runtime.observeTool('tool.complete', {
       'tool_id': 'slow',
@@ -688,7 +741,7 @@ void main() {
     expect(tester.element(call('slow')), same(old));
     expect(
       tester.getTopLeft(find.text('Next thought')).dy,
-      lessThan(tester.getTopLeft(find.text('Activity · 1 tool')).dy),
+      lessThan(tester.getTopLeft(runLabel('1 tool')).dy),
     );
     expect(tester.widget<ProfileToolCall>(call('slow')).call.result, isNotNull);
   });
@@ -765,7 +818,7 @@ void main() {
             .map((w) => w.call.callId),
         ['native', 'saved-2', 'saved-1'],
       );
-      expect(find.text('Activity · 3 tools'), findsOneWidget);
+      expect(runLabel('3 tools'), findsOneWidget);
     },
   );
 
@@ -801,15 +854,15 @@ void main() {
     await open(tester);
     expect(
       tester.getTopLeft(find.text('Native heading')).dy,
-      lessThan(tester.getTopLeft(find.text('Activity · 2 tools')).dy),
+      lessThan(tester.getTopLeft(runLabel('2 tools')).dy),
     );
     expect(
-      tester.getTopLeft(find.text('Activity · 2 tools')).dy,
+      tester.getTopLeft(runLabel('2 tools')).dy,
       lessThan(tester.getTopLeft(find.text('Saved heading')).dy),
     );
     expect(
       tester.getTopLeft(find.text('Saved heading')).dy,
-      lessThan(tester.getTopLeft(find.text('Activity · 1 tool')).dy),
+      lessThan(tester.getTopLeft(runLabel('1 tool')).dy),
     );
   });
 
@@ -951,7 +1004,7 @@ void main() {
     ];
     await show(tester, entries);
     await tester.openLiveActivity();
-    final header = find.text('Activity · 9 tools');
+    final header = runLabel('9 tools');
     final before = tester.getTopLeft(header).dy;
     await show(tester, [
       ...entries,

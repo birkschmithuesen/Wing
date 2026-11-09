@@ -1689,7 +1689,7 @@ void main() {
     );
     // Opening the compact stack reveals newest-first reasoning and tool runs.
     await tester.openLiveActivity(tools: false);
-    expect(find.text('Activity · 1 tool'), findsNWidgets(2));
+    expect(find.text('1 tool'), findsNWidgets(2));
     expect(find.text('Inspect the contract.'), findsOneWidget);
     expect(find.text('Compare the results.'), findsOneWidget);
     expect(find.byType(ProfileToolCall), findsNothing);

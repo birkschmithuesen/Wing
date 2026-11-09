@@ -156,7 +156,9 @@ class _ProfileLiveExecutionState extends State<ProfileLiveExecution>
       rows.add((
         ('run', boundary),
         ProfileActivitySection(
-          label: count == 0
+          label: widget.running
+              ? '$count ${count == 1 ? 'tool' : 'tools'}'
+              : count == 0
               ? 'Activity'
               : 'Activity · $count ${count == 1 ? 'tool' : 'tools'}',
           subtitle:
@@ -200,6 +202,7 @@ class _ProfileLiveExecutionState extends State<ProfileLiveExecution>
           ProfileReasoningDisclosure(
             text: entry.reasoning,
             heading: reasoningHeading(entry.reasoning),
+            titleOnly: widget.running,
           ),
         ));
       } else if (!group.isAgentNotice) {
@@ -221,6 +224,7 @@ class _ProfileLiveExecutionState extends State<ProfileLiveExecution>
             ProfileReasoningDisclosure(
               text: entry.text,
               heading: reasoningHeading(entry.text),
+              titleOnly: widget.running,
               running: entry.running,
               source: entry.source,
               availableText: entry.availableText,
@@ -233,7 +237,9 @@ class _ProfileLiveExecutionState extends State<ProfileLiveExecution>
     _rowKeys.removeWhere((identity, _) => !_order.contains(identity));
     if (rows.isEmpty) return const SizedBox.shrink();
     final tokens = WingTokens.of(context);
-    final heading = _expanded || !widget.running
+    final heading = _expanded && widget.running
+        ? 'Reasoning'
+        : _expanded || !widget.running
         ? 'Activity'
         : latestReasoning == null
         ? 'Working'

@@ -353,6 +353,7 @@ class ProfileReasoningDisclosure extends StatelessWidget {
   final String? source;
   final String? availableText;
   final String? heading;
+  final bool titleOnly;
 
   const ProfileReasoningDisclosure({
     super.key,
@@ -362,6 +363,7 @@ class ProfileReasoningDisclosure extends StatelessWidget {
     this.source,
     this.availableText,
     this.heading,
+    this.titleOnly = false,
   });
 
   @override
@@ -393,46 +395,51 @@ class ProfileReasoningDisclosure extends StatelessWidget {
           ),
         ),
     ],
-    details: [
-      ActivityDetailsCard(
-        children: [
-          ActivityDetailSection(
-            block: ToolDetailBlock(
-              label: 'Reasoning',
-              text: text,
-              markdown: true,
-              copyable: true,
-            ),
-          ),
-        ],
-      ),
-      if (source != null || availableText != null)
-        ProfileTranscriptDisclosure(
-          label: 'Raw details',
-          icon: Icons.data_object,
-          maintainState: false,
-          children: [
+    details: titleOnly
+        ? const []
+        : [
             ActivityDetailsCard(
               children: [
-                if (source != null)
-                  ActivityDetailSection(
-                    copyable: false,
-                    viewable: false,
-                    block: ToolDetailBlock(label: 'Source', text: source!),
+                ActivityDetailSection(
+                  block: ToolDetailBlock(
+                    label: 'Reasoning',
+                    text: text,
+                    markdown: true,
+                    copyable: true,
                   ),
-                if (availableText != null)
-                  ActivityDetailSection(
-                    block: ToolDetailBlock(
-                      label: 'Available reasoning',
-                      text: availableText!,
-                      markdown: true,
-                      copyable: true,
-                    ),
-                  ),
+                ),
               ],
             ),
+            if (source != null || availableText != null)
+              ProfileTranscriptDisclosure(
+                label: 'Raw details',
+                icon: Icons.data_object,
+                maintainState: false,
+                children: [
+                  ActivityDetailsCard(
+                    children: [
+                      if (source != null)
+                        ActivityDetailSection(
+                          copyable: false,
+                          viewable: false,
+                          block: ToolDetailBlock(
+                            label: 'Source',
+                            text: source!,
+                          ),
+                        ),
+                      if (availableText != null)
+                        ActivityDetailSection(
+                          block: ToolDetailBlock(
+                            label: 'Available reasoning',
+                            text: availableText!,
+                            markdown: true,
+                            copyable: true,
+                          ),
+                        ),
+                    ],
+                  ),
+                ],
+              ),
           ],
-        ),
-    ],
   );
 }

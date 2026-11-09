@@ -463,7 +463,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
           expect(find.text('1 tool'), findsOneWidget);
           expect(find.text('Using Terminal · python report.py'), findsNothing);
           await tester.openLiveActivity();
-          expect(find.text('Activity · 1 tool'), findsOneWidget);
+          expect(find.text('1 tool'), findsNWidgets(2));
           expect(find.text('Timeline'), findsNothing);
           expect(find.byType(StudioLoading), findsOneWidget);
           runtime.beginRecovery();

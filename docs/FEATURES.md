@@ -63,7 +63,7 @@ decisions use their operation icon and error color.
 - **See skill changes.** Expand Managed skills to see each reported skill, modified filename and action. Tap the filename for its full path. Exact tool output stays in Raw details.
 - **Read the whole story.** Follow streamed replies, code, tables, tool activity and available reasoning. Python, shell commands and other identified source languages have syntax coloring in chat, Activity and file previews, with exact selection/copy and wrapping. Use the wrap icon beside Copy to switch code between wrapped lines and horizontal scrolling, including in the full Activity code viewer. Large and dense source blocks color within the visible viewport. Live code stays plain until the response finishes; unsupported or unlabelled source stays plain, and coloring failures preserve readable text. Find a message in a chat, open a result, or return to the latest reply.
 - **Understand each action.** Open Activity for readable call titles,
-  targets, exception notices and available timings. While replies stream, a compact latest-reasoning row opens a newest-first stack of expandable reasoning and tool runs; saved answers retain their Activity tabs. Expand a call for its request
+  targets, exception notices and available timings. While replies stream, a compact latest-reasoning row opens a newest-first Reasoning stack of titles and expandable tool runs; saved answers retain their Activity tabs. Expand a call for its request
   and reported result: code/output, file content, Find/Replace and returned diffs,
   images/questions, search matches or readable tool data. Icon actions copy exact
   text, preview or share files/images, expand long previews, open a full view and wrap code; explanation text

@@ -325,7 +325,7 @@ void main() {
         );
         final outer = find.byKey(const ValueKey('live-activity-toggle'));
         expect(
-          find.descendant(of: outer, matching: find.text('Activity')),
+          find.descendant(of: outer, matching: find.text('Reasoning')),
           findsOneWidget,
         );
         expect(

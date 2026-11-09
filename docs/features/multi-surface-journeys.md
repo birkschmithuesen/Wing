@@ -5,7 +5,7 @@ Use several features together and retain the exact connection, profile, conversa
 ## Sub-features
 
 - `journeys.connect-reopen` — check a connection without moving the form, inspect its status LEDs, use Next or animated swipes with results retained for five minutes, then save it, enter its workspace, leave and reopen its credentials.
-- `journeys.conversation` — find a chat, prepare a referenced/attached prompt, send or queue it, open the compact live Activity stack to inspect newest-first reasoning and tool results without losing the draft, and revisit a saved answer.
+- `journeys.conversation` — find a chat, prepare a referenced/attached prompt, send or queue it, open the compact live Reasoning stack to inspect newest-first reasoning titles and tool results without losing the draft, and revisit a saved answer.
 - `journeys.restore` — restore staged work after process death without repeating a submission or upload.
 - `journeys.notification` — receive, open, read or dismiss a request in the exact conversation, including cold entry. Reply alerts open at the beginning of the answer after its formatted content settles.
 - `journeys.voice` — grant/refuse permission, record or cancel, play or interrupt and recover a missing capability.

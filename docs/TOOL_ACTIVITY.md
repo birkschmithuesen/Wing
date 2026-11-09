@@ -1,14 +1,14 @@
 # Tool activity
 
 While a reply is streaming, one compact row shows the latest reasoning heading
-and tool count. Tap it to open **Activity**. Newest work appears at the top and
+and tool count. Tap it to open **Reasoning**. Newest work appears at the top and
 oldest at the bottom. Tools appear above the reasoning that preceded them; a
 late result updates its existing tool row without moving it.
 
-Expand a reasoning row to read its full text, or an Activity run to inspect its
-tools and results. Open details and your reading position remain stable as newer
+Reasoning rows show only their title while streaming. Expand an **X tools** row
+to inspect its tools and results. Open details and your reading position remain stable as newer
 work arrives. Partial saved history joins the same stack. When the reply ends,
-the stack folds; saved answers retain their ordinary historical Activity tabs.
+the stack folds; saved answers retain their ordinary historical Activity labels, tabs and expandable reasoning details.
 
 Use the compact **Subagents / Tasks / Background** bar above your draft. It remains available while Hermes waits for subagents and after
 the parent response finishes. Tap a side to open its drawer, swipe left/right to

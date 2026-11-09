@@ -588,7 +588,7 @@ void main() {
     await tester.settleMarkdown();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ProfileActivitySection), findsNWidgets(2));
-    expect(find.text('Activity · 1 tool'), findsNWidgets(2));
+    expect(find.text('1 tool'), findsNWidgets(2));
     expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
     await tester.openLiveActivity();
     expect(
@@ -1612,24 +1612,13 @@ void main() {
           expect(chat.runtime.executionActive, isTrue);
           expect(find.text('Thinking'), findsNothing);
           expect(headingLabel, findsOneWidget);
-          expect(find.text('Reasoning'), findsNothing);
+          expect(find.text('Reasoning'), findsOneWidget);
           expect(find.byType(ProfileActivitySection), findsNWidgets(2));
           expect(find.byType(ProfileToolCall), findsOneWidget);
           // Opening the earlier run preserves its header. Move through the
           // viewport to inspect the reasoning and the next collapsed run.
-          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
-            await Scrollable.ensureVisible(
-              tester.element(headingLabel),
-              alignment: .5,
-            );
-            await settle();
-            await tester.tap(headingLabel);
-            await settle();
-            await tester.settleMarkdown();
-          }
-          await tester.ensureVisible(
-            find.text(reasoningBody, findRichText: true),
-          );
+          expect(find.text(reasoningBody, findRichText: true), findsNothing);
+          await tester.ensureVisible(headingLabel);
           await settle();
           final latest = find.byKey(const ValueKey('jump-to-latest'));
           if (latest.evaluate().isNotEmpty) {
@@ -1642,19 +1631,8 @@ void main() {
           expect(find.byType(ProfileToolCall), findsNWidgets(2));
           expect(tester.getRect(composer), bounds);
           expect(chat.composer.observation.displayedText, 'Keep my draft');
-          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
-            await Scrollable.ensureVisible(
-              tester.element(headingLabel),
-              alignment: .5,
-            );
-            await settle();
-            await tester.tap(headingLabel);
-            await settle();
-            await tester.settleMarkdown();
-          }
-          await tester.ensureVisible(
-            find.text(reasoningBody, findRichText: true),
-          );
+          expect(find.text(reasoningBody, findRichText: true), findsNothing);
+          await tester.ensureVisible(headingLabel);
           await settle();
           await picture('tool-handoff-readable');
           host.event('a', 'tool.complete', {
@@ -1702,19 +1680,8 @@ void main() {
           expect(find.text('Timeline'), findsNothing);
           expect(find.byType(ProfileToolCall), findsNWidgets(17));
           expect(tester.getRect(composer), bounds);
-          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
-            await Scrollable.ensureVisible(
-              tester.element(headingLabel),
-              alignment: .5,
-            );
-            await settle();
-            await tester.tap(headingLabel);
-            await settle();
-            await tester.settleMarkdown();
-          }
-          await tester.ensureVisible(
-            find.text(reasoningBody, findRichText: true),
-          );
+          expect(find.text(reasoningBody, findRichText: true), findsNothing);
+          await tester.ensureVisible(headingLabel);
           await settle();
           await picture('multiple-cycles-readable');
           host.historyMessages = [
@@ -1740,8 +1707,8 @@ void main() {
           await controller.refreshHistory(chat);
           await settle();
           expect(find.byType(ProfileActivitySection), findsNWidgets(3));
-          expect(find.text('Activity · 12 tools'), findsOneWidget);
-          expect(find.text('Activity · 4 tools'), findsOneWidget);
+          expect(find.text('12 tools'), findsOneWidget);
+          expect(find.text('4 tools'), findsOneWidget);
           expect(headingLabel, findsOneWidget);
           expect(
             find.text(
@@ -1752,23 +1719,12 @@ void main() {
           );
           expect(chat.reading.messages.any((row) => row['id'] == 3), isTrue);
           expect(tester.getRect(composer), bounds);
-          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
-            await Scrollable.ensureVisible(
-              tester.element(headingLabel),
-              alignment: .5,
-            );
-            await settle();
-            await tester.tap(headingLabel);
-            await settle();
-            await tester.settleMarkdown();
-          }
-          await tester.ensureVisible(
-            find.text(reasoningBody, findRichText: true),
-          );
+          expect(find.text(reasoningBody, findRichText: true), findsNothing);
+          await tester.ensureVisible(headingLabel);
           await settle();
           await picture('history-refreshed-readable');
-          // Saved current-turn reasoning uses the same readable body. Receipt
-          // persistence does not introduce another Activity or hide the prose.
+          // Saved current-turn reasoning stays title-only while streaming.
+          // Receipt persistence does not restore an expandable body.
           expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
           await tester.openLiveActivity();
           await settle();
