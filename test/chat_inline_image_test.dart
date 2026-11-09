@@ -93,7 +93,6 @@ void main() {
     'MEDIA:/srv/bouquet.jpg',
     '[Bouquet](/srv/bouquet.jpg)',
     '![Bouquet](/srv/bouquet.jpg)',
-    '`/srv/bouquet.jpg`',
     '| Flowers |\n| --- |\n| [Bouquet](/srv/bouquet.jpg) |',
   ]) {
     testWidgets('remote image renders inline: $source', (tester) async {
@@ -115,6 +114,24 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets('inline-code image paths remain literal text', (tester) async {
+    final requests = <String>[];
+    await tester.pumpMarkdownWidget(
+      message(
+        '`/srv/bouquet.jpg`',
+        load: (path) async {
+          requests.add(path);
+          return bytes;
+        },
+      ),
+    );
+    await settleImages(tester);
+    expect(requests, isEmpty);
+    expect(find.byType(ChatInlineImage), findsNothing);
+    expect(find.text('/srv/bouquet.jpg', findRichText: true), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('image actions retain exact paths and copy source', (
     tester,

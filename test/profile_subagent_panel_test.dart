@@ -403,7 +403,10 @@ void main() {
       'the child timeline with saved and live tools',
     );
     expect(
-      find.text('12 tools'),
+      find.descendant(
+        of: find.byKey(const ValueKey('live-activity-toggle')),
+        matching: find.text('12 tools'),
+      ),
       findsOneWidget,
       reason: tester
           .widgetList<Text>(find.byType(Text))
@@ -424,7 +427,10 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(
-      find.text('12 tools'),
+      find.descendant(
+        of: find.byKey(const ValueKey('live-activity-toggle')),
+        matching: find.text('12 tools'),
+      ),
       findsOneWidget,
       reason:
           'Saved work and the retained final replay must stay in one reply Activity',
@@ -556,31 +562,23 @@ void main() {
           expect(field.hitTestable(), findsOneWidget);
           expect(steer.hitTestable(), findsOneWidget);
           expect(find.byTooltip('Interrupt'), findsOneWidget);
-          final reasoning = find.byWidgetPredicate(
-            (w) =>
-                w is MarkdownMessageContent &&
-                w.data.startsWith('**Fixing database issues**'),
-          );
           await tester.openLiveActivity(tools: false);
-          final reasoningHeading = find.text('Fixing database issues');
-          await tester.ensureVisible(reasoningHeading);
+          final reasoning = find.text('Fixing database issues');
+          await tester.ensureVisible(reasoning);
           await tester.pump(const Duration(milliseconds: 300));
-          final reasoningCaret = find.descendant(
-            of: find.ancestor(
-              of: reasoningHeading,
-              matching: find.byType(ExpansionTile),
-            ),
-            matching: find.byIcon(Icons.expand_more),
+          expect(reasoning, findsOneWidget);
+          expect(
+            find.ancestor(of: reasoning, matching: find.byType(ExpansionTile)),
+            findsNothing,
           );
-          expect(reasoningCaret.hitTestable(), findsOneWidget);
-          await tester.tap(reasoningCaret);
-          await tester.pumpAndSettle();
-          await tester.settleMarkdown();
-          await tester.ensureVisible(reasoning);
-          await tester.pump();
-          await tester.settleMarkdown();
-          await tester.ensureVisible(reasoning);
-          await tester.pump(const Duration(milliseconds: 300));
+          expect(
+            find.byWidgetPredicate(
+              (w) =>
+                  w is MarkdownMessageContent &&
+                  w.data.startsWith('**Fixing database issues**'),
+            ),
+            findsNothing,
+          );
           expect(
             tester
                 .getRect(reasoning)

@@ -93,10 +93,15 @@ Future<void> _inspectLiveImage(
 ) async {
   final live = find.byType(ProfileLiveExecution);
   await tester.openLiveActivity(tools: false);
-  final section = tester.widget<ProfileActivitySection>(
-    find.descendant(of: live, matching: find.byType(ProfileActivitySection)),
+  final sectionFinder = find.descendant(
+    of: live,
+    matching: find.byType(ProfileActivitySection),
   );
-  final header = find.descendant(of: live, matching: find.text(section.label));
+  final section = tester.widget<ProfileActivitySection>(sectionFinder);
+  final header = find.descendant(
+    of: sectionFinder,
+    matching: find.text(section.label),
+  );
   await Scrollable.ensureVisible(tester.element(header), alignment: 0.5);
   await _frames(tester);
   await tester.tap(header);
