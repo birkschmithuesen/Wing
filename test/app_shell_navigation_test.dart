@@ -1,5 +1,6 @@
 import 'package:wing/core/services/group_observations.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/wing_app_bar.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/widgets/server_connection_label.dart';
@@ -343,9 +344,21 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Recents unavailable.'), findsNothing);
         expect(
-          find.text('Recent chats unavailable for personal.'),
+          find.text('Some recent conversations could not be loaded.'),
           findsOneWidget,
         );
+        expect(
+          find.descendant(
+            of: find.byType(WorkspaceActivityContent),
+            matching: find.byType(StudioError),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          find.text('Recent chats unavailable for personal.'),
+          findsNothing,
+        );
+        expect(find.text('Recent chats unavailable for work.'), findsNothing);
         await snapshot(tester, 'recents-errors-${brightness.name}-$scale');
         expect(tester.takeException(), isNull);
       });

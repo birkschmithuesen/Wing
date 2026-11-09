@@ -50,7 +50,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/chat_browser_transport_test.dart test/profile_workspace_browser_test.dart test/profile_row_actions_test.dart
-  flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart
+  flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart test/app_shell_navigation_test.dart
   flutter test --no-pub test/project_picker_design_test.dart
   flutter test --no-pub test/server_files_repository_test.dart test/profile_project_management_test.dart test/profile_project_actions_test.dart test/project_folder_picker_test.dart test/project_icon_picker_test.dart
   ```
@@ -64,7 +64,8 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 The Recents outage matrix covers simultaneous chat/bot/group refresh failures,
 cached content, transport-only notice updates and successful recovery in both
 themes at normal and doubled text size. Add `--dart-define=CAPTURE_RECENTS=true`
-to the activity suite to capture its rendered states.
+to the activity suite to capture its rendered states. The app-shell Recents route
+checks also require one summary when both profiles fail to refresh.
 
 The creation-route host checks enter New project through its FAB and menu,
 verify the profile default and generated location, save the proposed path, and
