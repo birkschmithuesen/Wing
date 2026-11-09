@@ -267,13 +267,14 @@ void main() {
       expect(fresh.text, 'Fresh thought while offline');
       expect(fresh.queuedPrompts.single.text, 'My unsent thought');
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
-      for (final seconds in [1, 2, 4, 8, 16]) {
+      for (final seconds in [1, 2, 4, 8, 16, 30, 30]) {
         await tester.pump(Duration(seconds: seconds));
       }
       expect(
         controller.connectionStatus.phase,
-        ServerConnectionPhase.disconnected,
+        ServerConnectionPhase.reconnecting,
       );
+      expect(controller.connectionStatus.recoveryAttemptInProgress, isFalse);
       expect(controller.notificationChat!.key, key);
       expect(
         controller.notificationChat!.composer.observation.text,

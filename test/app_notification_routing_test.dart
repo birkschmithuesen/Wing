@@ -967,9 +967,11 @@ void main() {
         }
         expect(
           harness.controller.connectionStatus.phase,
-          scenario.held
-              ? ServerConnectionPhase.reconnecting
-              : ServerConnectionPhase.disconnected,
+          ServerConnectionPhase.reconnecting,
+        );
+        expect(
+          harness.controller.connectionStatus.recoveryAttemptInProgress,
+          scenario.held,
         );
         expect(alerts.alerts, isEmpty);
         final attempts = harness.host.connectCalls;
@@ -1025,12 +1027,16 @@ void main() {
           );
           expect(alerts.alerts, isEmpty);
         } else {
-          for (final seconds in [1, 2, 4, 8, 16]) {
+          for (final seconds in [1, 2, 4, 8, 16, 30, 30]) {
             await tester.pump(Duration(seconds: seconds));
           }
           expect(
             harness.controller.connectionStatus.phase,
-            ServerConnectionPhase.disconnected,
+            ServerConnectionPhase.reconnecting,
+          );
+          expect(
+            harness.controller.connectionStatus.recoveryAttemptInProgress,
+            isFalse,
           );
           expect(notices, isEmpty);
           expect(alerts.alerts, isEmpty);

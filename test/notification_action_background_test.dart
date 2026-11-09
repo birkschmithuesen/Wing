@@ -102,7 +102,7 @@ Future<void> checkDisconnectedNotification(
   }
   expect(chat.runtime.approval?.requestId, 'background-once');
   tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-  host.connectFailures = 20;
+  host.connectError = TimeoutException('Offline');
   host.gateways['a']!.onConnectionChanged!(false);
   var handled = false;
   unawaited(
@@ -123,22 +123,27 @@ Future<void> checkDisconnectedNotification(
   );
   if (expectsReview) {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
+    final offlineStatus = find.text(
+      'Offline—approval not sent. Reconnect to retry.',
+    );
+    for (
+      var frame = 0;
+      frame < 100 && offlineStatus.evaluate().isEmpty;
+      frame++
+    ) {
+      await tester.pump(const Duration(milliseconds: 20));
+    }
     expect(
       find.byType(ProfileWorkspaceScreen),
       findsNothing,
       reason: 'Notification review must not stack a chat approval underneath',
     );
-    expect(
-      find.text('Offline—approval not sent. Reconnect to retry.'),
-      findsOneWidget,
-    );
+    expect(offlineStatus, findsOneWidget);
     expect(host.calls.where((c) => c.$2 == 'approval.respond'), isEmpty);
     await tester.tap(find.byTooltip('Cancel approval decision'));
-    await tester.pumpAndSettle();
   }
-  for (var frame = 0; frame < 10 && !handled; frame++) {
-    await tester.pump(const Duration(milliseconds: 10));
+  for (var frame = 0; frame < 100 && !handled; frame++) {
+    await tester.pump(const Duration(milliseconds: 20));
   }
   expect(handled, isTrue);
   final decisions = host.calls
