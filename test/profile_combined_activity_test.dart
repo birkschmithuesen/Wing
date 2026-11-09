@@ -441,19 +441,19 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
+      find.byKey(const ValueKey('live-activity-toggle')),
       findsOneWidget,
     );
     expect(find.text('Tool activity'), findsNothing);
-    expect(find.text('Activity · 68 tools'), findsOneWidget);
+    expect(find.text('68 tools'), findsOneWidget);
     expect(find.text('Activity · 1 tool'), findsNothing);
     expect(find.text('Timeline'), findsNothing);
     expect(find.text('Running command'), findsNothing);
     expect(find.text('Search'), findsNothing);
-    await tester.tap(find.text('Activity · 68 tools'));
+    await tester.openLiveActivity();
     await tester.pumpAndSettle();
     expect(find.text('Search'), findsNWidgets(67));
-    expect(find.text('Timeline'), findsOneWidget);
+    expect(find.text('Timeline'), findsNothing);
     await tester.enterText(
       find.byKey(const Key('profile-message-composer')),
       'Keep Activity open while typing',
@@ -467,7 +467,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Search').first);
     await tester.pumpAndSettle();
-    expect(find.text('Result 2'), findsOneWidget);
+    expect(find.text('Result 68'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

@@ -325,6 +325,7 @@ void main() {
         'dispatched-agents',
         'agents',
         'work',
+        'processes',
         'goals',
         'reasoning',
         'search',
@@ -354,6 +355,7 @@ void main() {
             controller: controller,
             chat: chat,
           );
+          if (specimenName == 'processes') await session.refreshProcesses();
           addTearDown(() {
             session.dispose();
             controller.dispose();
@@ -457,6 +459,7 @@ void main() {
               session: session,
               initiallyExpanded: true,
             ),
+            'processes': ProfileProcessPanel(session: session),
             'goals': ProfileGoalPanel(
               session: session,
               initiallyExpanded: true,
@@ -564,7 +567,7 @@ void main() {
             } else if (entry.key == 'agents') {
               await tester.tap(find.text(_agentHeading));
               await tester.pumpAndSettle();
-            } else if (entry.key == 'work') {
+            } else if (entry.key == 'processes') {
               await tester.ensureVisible(find.text('python report.py'));
               await tester.pumpAndSettle();
               await tester.tap(find.text('python report.py'));

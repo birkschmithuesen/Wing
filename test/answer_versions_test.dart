@@ -171,6 +171,7 @@ class AnswerHost {
       },
       rpc: (method, params) async {
         calls.add((method, params));
+        if (method == 'process.list') return {'processes': <dynamic>[]};
         final profile = scope.profileName;
         final id = (params['session_id'] as String? ?? 'original').replaceFirst(
           'runtime-',

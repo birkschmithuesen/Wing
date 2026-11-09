@@ -399,11 +399,11 @@ void main() {
     await tester.tap(find.text('Inspect the release'));
     await until(
       tester,
-      () => find.text('Activity · 12 tools').evaluate().isNotEmpty,
+      () => find.text('12 tools').evaluate().isNotEmpty,
       'the child timeline with saved and live tools',
     );
     expect(
-      find.text('Activity · 12 tools'),
+      find.text('12 tools'),
       findsOneWidget,
       reason: tester
           .widgetList<Text>(find.byType(Text))
@@ -411,6 +411,8 @@ void main() {
           .whereType<String>()
           .join(' | '),
     );
+    expect(find.byType(ProfileLiveExecution), findsOneWidget);
+    await tester.openLiveActivity();
     expect(find.byType(ProfileActivitySection), findsOneWidget);
     fixture.childEvents.add({
       'session_id': 'child-session',
@@ -422,11 +424,13 @@ void main() {
     await tester.pump();
     await tester.pumpAndSettle();
     expect(
-      find.text('Activity · 12 tools'),
+      find.text('12 tools'),
       findsOneWidget,
       reason:
           'Saved work and the retained final replay must stay in one reply Activity',
     );
+    expect(find.byType(ProfileLiveExecution), findsOneWidget);
+    await tester.openLiveActivity();
     expect(find.byType(ProfileActivitySection), findsOneWidget);
     await tester.tap(find.byTooltip('Close subagent activity'));
     await tester.pump();
@@ -557,6 +561,20 @@ void main() {
                 w is MarkdownMessageContent &&
                 w.data.startsWith('**Fixing database issues**'),
           );
+          await tester.openLiveActivity(tools: false);
+          final reasoningHeading = find.text('Fixing database issues');
+          await tester.ensureVisible(reasoningHeading);
+          await tester.pump(const Duration(milliseconds: 300));
+          final reasoningCaret = find.descendant(
+            of: find.ancestor(
+              of: reasoningHeading,
+              matching: find.byType(ExpansionTile),
+            ),
+            matching: find.byIcon(Icons.expand_more),
+          );
+          expect(reasoningCaret.hitTestable(), findsOneWidget);
+          await tester.tap(reasoningCaret);
+          await tester.pumpAndSettle();
           await tester.settleMarkdown();
           await tester.ensureVisible(reasoning);
           await tester.pump();

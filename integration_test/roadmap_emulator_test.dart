@@ -6,6 +6,7 @@ import 'package:wing/core/models/chat_runtime.dart';
 import 'package:wing/core/widgets/profile_goal_panel.dart';
 import 'package:wing/core/widgets/profile_activity_tabs.dart';
 import 'package:wing/core/widgets/profile_live_execution.dart';
+import 'package:wing/core/widgets/profile_tool_call.dart';
 import 'package:wing/core/widgets/gateway_approval_panel.dart';
 import 'package:wing/core/widgets/source_code_text.dart';
 import '../test/support/composer_fixture.dart';
@@ -1415,21 +1416,19 @@ void main() {
         chat.reading.messages.where((row) => row['id'] == 4),
         hasLength(1),
       );
-      final activity = find
-          .textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$'))
-          .first;
-      await tester.ensureVisible(activity);
-      await _settle(tester);
-      await tapJourneyControl(tester, activity);
+      await tester.openLiveActivity();
       await _settle(tester);
       final liveTabs = find.descendant(
         of: find.byType(ProfileLiveExecution),
         matching: find.byType(ProfileActivityTabs),
       );
-      expect(liveTabs, findsWidgets);
-      for (final tabs in tester.widgetList<ProfileActivityTabs>(liveTabs)) {
-        expect(tabs.tabs.map((tab) => tab.id), ['timeline']);
-      }
+      expect(liveTabs, findsNothing);
+      final liveTools = find.descendant(
+        of: find.byType(ProfileLiveExecution),
+        matching: find.byType(ProfileToolCall),
+      );
+      expect(liveTools, findsOneWidget);
+      expect(tester.widget<ProfileToolCall>(liveTools).call.name, 'read_file');
       expect(
         find.text('Subagent Task Completed: Inspect the emulator release'),
         findsNothing,
@@ -1609,6 +1608,13 @@ void main() {
     await _settle(tester);
     expect(find.text('Loop · Paused'), findsOneWidget);
     expect(find.textContaining('Next in '), findsNothing);
+    final backgroundTab = find.byKey(
+      const ValueKey(('live-work-tab', 2, false)),
+    );
+    await tester.ensureVisible(backgroundTab);
+    await _settle(tester);
+    await tapJourneyControl(tester, backgroundTab);
+    await _settle(tester);
     await tester.ensureVisible(find.text('dart run roadmap_worker.dart'));
     await _settle(tester);
     await tapJourneyControl(tester, find.text('dart run roadmap_worker.dart'));

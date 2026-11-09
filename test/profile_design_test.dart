@@ -382,7 +382,11 @@ void main() {
       final live = find.byType(ProfileLiveExecution);
       expect(live, findsOneWidget);
       expect(
-        find.text(activity == 'tool' ? 'Running command' : 'Thinking'),
+        find.text(
+          activity == 'tool'
+              ? 'Running command'
+              : 'Native reasoning after the saved review',
+        ),
         findsOneWidget,
       );
       if (activity == 'reasoning') {
@@ -481,8 +485,8 @@ void main() {
       await show(tester);
       await tester.openLiveActivity();
       expect(
-        find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
-        findsNWidgets(2),
+        find.byType(ProfileToolActivitySection),
+        findsOneWidget,
       );
       expect(find.text('Running command', skipOffstage: false), findsOneWidget);
       expect(
@@ -490,8 +494,11 @@ void main() {
         findsOneWidget,
       );
       expect(
-        find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
-        findsNWidgets(2),
+        find.descendant(
+          of: find.byType(ProfileLiveExecution),
+          matching: find.byType(ProfileActivitySection),
+        ),
+        findsOneWidget,
       );
       expect(find.text('Visible saved reply'), findsOneWidget);
       final savedHeader = find.descendant(
@@ -502,7 +509,6 @@ void main() {
       await tester.tap(savedHeader);
       await tester.pumpAndSettle();
       expect(find.text('Running command', skipOffstage: false), findsOneWidget);
-      expect(find.text('Thinking', skipOffstage: false), findsOneWidget);
       expect(
         find.text('Current private reasoning', skipOffstage: false),
         findsOneWidget,
