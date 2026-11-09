@@ -6951,6 +6951,15 @@
       "source": "docs/features/voice.md",
       "status": "supported",
       "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/background_processes_prod_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/background_processes_prod_test.dart",
+      "purpose": "Explicit production Android process acceptance; owned QA chat, bounded processes and operator authorization required",
+      "source": "docs/features/chat-activity.md; integration_test/background_processes_prod_test.dart",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -16288,6 +16297,11 @@
       "path": "test/support/live_voice_fixture.dart",
       "area": "test",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "integration_test/background_processes_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
     }
   ],
   "direct_dependencies": {

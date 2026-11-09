@@ -1,18 +1,20 @@
 # Tool activity
 
-While a reply is streaming, reasoning appears as readable Markdown between tool
-runs. Each run has its own **Activity** disclosure, collapsed by default. Open a
-run to inspect its tools; later reasoning stays visible and starts a new tool run
-below it. Opened runs keep their expanded tool details as work arrives. Once the
-reply finishes and saved history arrives, saved reasoning and tools use the
-ordinary collapsed Activity. Partial history updates keep current reasoning
-readable and merge consecutive saved/live tools into the same run.
+While a reply is streaming, one compact row shows the latest reasoning heading
+and tool count. Tap it to open **Activity**. Newest work appears at the top and
+oldest at the bottom. Tools appear above the reasoning that preceded them; a
+late result updates its existing tool row without moving it.
 
-Use the compact **Subagents / Tasks** bar above your draft. It remains available while Hermes waits for subagents and after
+Expand a reasoning row to read its full text, or an Activity run to inspect its
+tools and results. Open details and your reading position remain stable as newer
+work arrives. Partial saved history joins the same stack. When the reply ends,
+the stack folds; saved answers retain their ordinary historical Activity tabs.
+
+Use the compact **Subagents / Tasks / Background** bar above your draft. It remains available while Hermes waits for subagents and after
 the parent response finishes. Tap a side to open its drawer, swipe left/right to
 switch, and tap the selected side or outside to close. Tasks shows completed/total;
 cancelled tasks do not count as completed. Empty categories stay hidden. During
-streaming, current Tasks and Subagents appear only in this drawer, including
+streaming, current Tasks, Subagents and processes appear only in this drawer, including
 completed subagents whose parent is still answering.
 When their parent turn ends, completed subagents leave this drawer immediately.
 Their saved results remain in that turn's Activity → Agents tab. Running and
@@ -24,7 +26,7 @@ expand or downward to close. Diagonal swipes follow
 the larger horizontal or vertical movement. At full height, rows scroll while the
 summary stays fixed; scroll back to the top and continue down to close. Tapping
 the smaller top handle toggles height. Reopening by tap starts compact. Both Tasks
-and Subagents use this behavior.
+Subagents and Background use this behavior. At enlarged text, three tab labels scroll sideways within the same bar.
 
 Past answers retain their received Activity and Work details. Tools and agent
 results share the Timeline and Agents tabs within the same Activity. Activity shows the
@@ -151,3 +153,5 @@ Tasks start individually collapsed with a short preview and status. Use each
 task's chevron to expand its full selectable text. Live updates and reordering
 retain the correct task's expansion. Hermes supplies the list order and nesting,
 but no task creation timestamps for chronological sorting.
+
+Background discovers terminal commands when the chat becomes visible and follows running processes automatically. Expand a command for its full command and recent output, then use the icon-only Stop or Dismiss action. Close and reopen the tab to refresh or retry. These are terminal processes, separate from the Tasks checklist and recurring schedules.

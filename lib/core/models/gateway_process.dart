@@ -31,6 +31,21 @@ class GatewayProcessActivity {
     this.notifyOnComplete = false,
   });
 
+  /// Value identity for quiet registry refreshes; unchanged rows keep readers.
+  Object get observation => (
+    id,
+    command,
+    commandSource,
+    cwd,
+    outputTail,
+    status,
+    exitCode,
+    uptimeSeconds,
+    pid,
+    detached,
+    notifyOnComplete,
+  );
+
   bool get isRunning => status == GatewayProcessStatus.running;
 
   static GatewayProcessActivity? fromJson(Map<String, dynamic> value) {

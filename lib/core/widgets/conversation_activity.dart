@@ -6,6 +6,7 @@ import '../models/chat_output.dart';
 import '../models/gateway_todo.dart';
 import '../models/profile_supervision.dart';
 import 'profile_activity_status.dart';
+import 'profile_chat_indicator.dart';
 import 'profile_execution_activity.dart';
 import 'profile_live_execution.dart';
 import 'profile_live_work_dock.dart';
@@ -25,6 +26,10 @@ final class ConversationActivity {
     required this.taskCount,
     required this.agentCount,
     this.beforeMessagePresentationId,
+    this.processCount,
+    this.processes,
+    this.processSummary,
+    this.onProcessesSelected,
   });
   final ChatRuntimeObservation runtime;
   final List<ChatActivityEntry> entries;
@@ -32,6 +37,9 @@ final class ConversationActivity {
   final SubagentInspectionSession inspection;
   final Widget Function() agentsBuilder;
   final bool live;
+  final int? processCount;
+  final Widget? processes, processSummary;
+  final Future<void> Function()? onProcessesSelected;
   // A received native suffix receipt establishes this conversation boundary
   // while the earlier tool history is still being backfilled.
   final Object? beforeMessagePresentationId;
@@ -41,7 +49,34 @@ final class ConversationActivity {
   final int? taskCount;
   final int? agentCount;
 
-  bool get hasDock => todos.isNotEmpty || inspection.state.subagents.isNotEmpty;
+  bool get _hasVisibleLiveExecution =>
+      live &&
+      entries.any(
+        (entry) => switch (entry) {
+          ChatReasoningEntry() => entry.text.trim().isNotEmpty,
+          ChatToolEntry() || ChatRequestEntry() => true,
+        },
+      );
+
+  // Only facts that change the shared work indicator invalidate its retained
+  // transcript presentation; growing answer text does not.
+  Object get indicatorRevision => (
+    runtime.execution,
+    runtime.reconnecting,
+    runtime.needsInput,
+    runtime.opening,
+    runtime.offline,
+    inspection.state.subagents.any(
+      (item) =>
+          !item.isTerminal &&
+          !inspection.state.unconfirmedSubagentIds.contains(item.id),
+    ),
+  );
+
+  bool get hasDock =>
+      todos.isNotEmpty ||
+      inspection.state.subagents.isNotEmpty ||
+      processCount != null;
   int get completedTasks =>
       todos.where((todo) => todo.status == GatewayTodoStatus.completed).length;
   int get toolCount => live ? 0 : entries.whereType<ChatToolEntry>().length;
@@ -69,6 +104,14 @@ final class ConversationActivity {
           startedAt: startedAt,
           endedAt: endedAt,
           running: live,
+          indicator: _hasVisibleLiveExecution
+              ? ProfileChatIndicator(
+                  runtime: runtime,
+                  subagents: inspection.state.subagents,
+                  unconfirmedSubagentIds:
+                      inspection.state.unconfirmedSubagentIds,
+                )
+              : null,
           loadImage: loadImage,
           onOpenResource: onOpenResource,
           onShareResource: onShareResource,
@@ -101,6 +144,7 @@ final class ConversationActivity {
     subagents: inspection.state.subagents,
     unconfirmedSubagentIds: inspection.state.unconfirmedSubagentIds,
     saving: saving,
+    executionInTranscript: _hasVisibleLiveExecution,
   );
 
   Widget dock({
@@ -113,6 +157,10 @@ final class ConversationActivity {
           taskCount: taskCount,
           completedTasks: completedTasks,
           subagentCount: agentCount,
+          processCount: processCount,
+          processes: processes,
+          processSummary: processSummary,
+          onProcessesSelected: onProcessesSelected,
           taskSummary: ProfileTodoSummary(todos: todos),
           subagentSummary: ListenableBuilder(
             listenable: inspection,

@@ -269,6 +269,7 @@ class ProfileBrowserFixture {
       };
     },
     rpc: (method, params) async {
+      if (method == 'process.list') return {'processes': <Object>[]};
       calls.add((scope.profileName, method, params));
       if (method == 'profiles.list') {
         await botAppearanceDelay?.future;

@@ -55,9 +55,8 @@ class _ProfileBackgroundWorkPanelState
     });
   }
 
-  Future<void> _refresh() => widget.session.refreshWork();
+  Future<void> _refresh() => widget.session.refreshControl();
   Future<void> _refreshSessionControl() => widget.session.refreshControl();
-  Future<void> _refreshProcesses() => widget.session.refreshProcesses();
   Future<void> _control(SessionControlAction action) async {
     await widget.session.control(action);
   }
@@ -87,9 +86,6 @@ class _ProfileBackgroundWorkPanelState
     }
   }
 
-  Future<void> _stopProcess(GatewayProcessActivity process) =>
-      widget.session.stopProcess(process.id);
-
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: widget.session,
@@ -100,7 +96,7 @@ class _ProfileBackgroundWorkPanelState
           chat.actionBusy ||
           chat.sessionControlLoading ||
           chat.sessionControlWorking;
-      final refreshing = chat.sessionControlLoading || chat.processesLoading;
+      final refreshing = chat.sessionControlLoading;
       return ProfileTranscriptDisclosure(
         key: ValueKey(('background-work', chat.key)),
         initiallyExpanded: widget.initiallyExpanded,
@@ -139,42 +135,46 @@ class _ProfileBackgroundWorkPanelState
             Align(alignment: Alignment.centerLeft, child: StudioError(error)),
           if (chat.sessionControlNotice case final notice?)
             Align(alignment: Alignment.centerLeft, child: Text(notice)),
-          const Divider(),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Processes',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          if (chat.processesError case final error?)
-            _ErrorRow(
-              message: error,
-              onRetry: chat.processesLoading ? null : _refreshProcesses,
-            ),
-          if (chat.processes.isEmpty && chat.processesError == null)
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text('No background processes are running or retained.'),
-            ),
-          for (final process in chat.processes)
-            _ProcessTile(
-              process: process,
-
-              confirmed: widget.session.active && chat.processesError == null,
-              stopping: chat.stopping.contains(process.id),
-              error: chat.processErrors[process.id],
-              onStop: () => _stopProcess(process),
-              onDismiss: () => widget.session.dismissProcess(process.id),
-            ),
           Align(
             alignment: Alignment.centerRight,
             child: ActivityDetailAction(
               onPressed: refreshing || chat.actionBusy ? null : _refresh,
+              busy: refreshing,
               icon: Icons.refresh,
               label: 'Refresh',
             ),
           ),
+        ],
+      );
+    },
+  );
+}
+
+/// Borrowed process rows in the live-work dock. The workspace owns discovery
+/// and refresh lifetime; mounting a kept-alive page performs no I/O.
+class ProfileProcessPanel extends StatelessWidget {
+  const ProfileProcessPanel({super.key, required this.session});
+  final ProfileSupervisionSession session;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: session,
+    builder: (context, _) {
+      final state = session.state;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (state.processesError case final error?) StudioError(error),
+          for (final process in state.processes)
+            _ProcessTile(
+              key: ValueKey(process.id),
+              process: process,
+              confirmed: session.active && state.processesError == null,
+              stopping: state.stopping.contains(process.id),
+              error: state.processErrors[process.id],
+              onStop: () => session.stopProcess(process.id),
+              onDismiss: () => session.dismissProcess(process.id),
+            ),
         ],
       );
     },
@@ -339,6 +339,7 @@ class _ProcessTile extends StatelessWidget {
   final VoidCallback onDismiss;
 
   const _ProcessTile({
+    super.key,
     required this.process,
     required this.stopping,
     required this.confirmed,
@@ -355,10 +356,17 @@ class _ProcessTile extends StatelessWidget {
       color: WingTokens.of(context).muted,
       size: 16,
     ),
-    title: Text(process.command, style: WingTokens.of(context).typography.mono),
+    title: Text(
+      process.command,
+      maxLines: 2,
+      overflow: TextOverflow.ellipsis,
+      style: WingTokens.of(context).typography.mono,
+    ),
     lines: [
       Text(
-        _processStatus(process),
+        process.isRunning && !confirmed
+            ? 'Last seen running'
+            : _processStatus(process),
         style: WingTokens.of(context).typography.label,
       ),
     ],
@@ -422,7 +430,7 @@ class _ProcessTile extends StatelessWidget {
           ActivityDetailStatus(
             working: confirmed && process.isRunning,
             label: process.isRunning
-                ? 'Running'
+                ? (confirmed ? 'Running' : 'Last seen running')
                 : process.exitCode != null && process.exitCode != 0
                 ? 'Failed'
                 : process.exitCode == null
@@ -448,7 +456,9 @@ class _ProcessTile extends StatelessWidget {
                 label: process.isRunning ? 'Stop process' : 'Dismiss',
                 icon: process.isRunning ? Icons.stop : Icons.close,
                 busy: stopping,
-                onPressed: process.isRunning ? onStop : onDismiss,
+                onPressed: process.isRunning
+                    ? (confirmed ? onStop : null)
+                    : onDismiss,
               ),
             ],
           ),

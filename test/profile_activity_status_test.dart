@@ -109,11 +109,12 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
     appPreferences.dispose();
   });
 
-  String? label() => ProfileActivityStatus(
+  String? label({bool executionInTranscript = false}) => ProfileActivityStatus(
     runtime: chat.runtime,
     subagents: chat.subagents,
     unconfirmedSubagentIds: chat.unconfirmedSubagentIds,
     saving: chat.composer.observation.saving,
+    executionInTranscript: executionInTranscript,
   ).label;
 
   testWidgets('opening and offline reading omit the composer status', (
@@ -459,27 +460,58 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
             'args': {'command': 'python report.py'},
           });
           await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text('1 tool'), findsOneWidget);
+          expect(find.text('Using Terminal · python report.py'), findsNothing);
+          await tester.openLiveActivity();
           expect(find.text('Activity · 1 tool'), findsOneWidget);
           expect(find.text('Timeline'), findsNothing);
-          final activity = find.byKey(const ValueKey('live-activity'));
-          final expand = find.descendant(
-            of: activity,
-            matching: find.byIcon(Icons.keyboard_arrow_right_rounded),
-          );
-          await tester.ensureVisible(expand);
+          expect(find.byType(StudioLoading), findsOneWidget);
+          runtime.beginRecovery();
+          tester
+              .element(
+                find
+                    .ancestor(
+                      of: find.byType(ProfileTranscript),
+                      matching: find.byType(ListenableBuilder),
+                    )
+                    .first,
+              )
+              .markNeedsBuild();
           await tester.pump(const Duration(milliseconds: 300));
-          expect(expand.hitTestable(), findsOneWidget);
-          await tester.tap(expand);
+          final activity = find.byKey(const ValueKey('live-activity'));
+          expect(
+            find.descendant(
+              of: activity,
+              matching: find.byType(StudioWorkingIndicator),
+            ),
+            findsNothing,
+          );
+          expect(
+            find.descendant(
+              of: activity,
+              matching: find.byIcon(Icons.wifi_off_rounded),
+            ),
+            findsOneWidget,
+          );
+          runtime.recovered();
+          tester
+              .element(
+                find
+                    .ancestor(
+                      of: find.byType(ProfileTranscript),
+                      matching: find.byType(ListenableBuilder),
+                    )
+                    .first,
+              )
+              .markNeedsBuild();
           await tester.pump(const Duration(milliseconds: 300));
           expect(
             find.descendant(
               of: activity,
-              matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
+              matching: find.byType(StudioWorkingIndicator),
             ),
             findsOneWidget,
           );
-          expect(find.text('Timeline'), findsOneWidget);
-          expect(find.byType(StudioLoading), findsOneWidget);
           expect(find.byIcon(Icons.terminal_rounded), findsWidgets);
           await tester.ensureVisible(find.byType(ProfileToolCall));
           await tester.pump(const Duration(milliseconds: 300));
@@ -748,6 +780,27 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
     runtime.finishCommand();
     expect(label(), isNull);
   });
+  test('compact execution suppresses only generic work feedback', () {
+    host.event('a', 'message.start');
+    expect(label(executionInTranscript: true), isNull);
+    host.event('a', 'status.update', {'kind': 'compacting'});
+    expect(label(executionInTranscript: true), 'Summarizing conversation…');
+    host.event('a', 'reasoning.delta', {'text': 'Inspect the result'});
+    expect(label(executionInTranscript: true), isNull);
+    host.event('a', 'clarify', {
+      'request_id': 'city',
+      'question': 'Which city?',
+    });
+    expect(label(executionInTranscript: true), 'Waiting for your reply');
+    runtime.cancelRequest({'id': 'city', 'method': 'clarify'});
+    runtime.completeTurn(failed: false, cancelled: false, error: null);
+    runtime.beginCommand();
+    expect(label(executionInTranscript: true), 'Running command…');
+    runtime.finishCommand();
+    runtime.failTurn('Turn failed');
+    expect(label(executionInTranscript: true), 'Something went wrong');
+  });
+
   test('unfinished child work stays visible after the main turn is idle', () {
     host.event('a', 'subagent.start', {'subagent_id': 'child'});
     expect(label(), 'Waiting for 1 subagent…');

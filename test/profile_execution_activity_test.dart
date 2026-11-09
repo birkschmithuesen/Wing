@@ -1683,17 +1683,18 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 300));
     await tester.settleMarkdown();
-    // Reasoning remains readable between independently collapsed tool runs.
-    expect(find.text('Activity · 1 tool'), findsNWidgets(2));
-    expect(find.text('Inspect the contract.'), findsOneWidget);
-    expect(find.text('Compare the results.'), findsOneWidget);
-    expect(find.byType(ProfileToolCall), findsNothing);
     expect(
       find.text('The native response.', findRichText: true),
       findsOneWidget,
     );
+    // Opening the compact stack reveals newest-first reasoning and tool runs.
+    await tester.openLiveActivity(tools: false);
+    expect(find.text('Activity · 1 tool'), findsNWidgets(2));
+    expect(find.text('Inspect the contract.'), findsOneWidget);
+    expect(find.text('Compare the results.'), findsOneWidget);
+    expect(find.byType(ProfileToolCall), findsNothing);
     await tester.openLiveActivity();
-    expect(find.byType(ProfileReasoningDisclosure), findsNothing);
+    expect(find.byType(ProfileReasoningDisclosure), findsNWidgets(2));
     final first = find.byWidgetPredicate(
       (widget) => widget is ProfileToolCall && widget.call.callId == 'first',
     );
@@ -1702,17 +1703,17 @@ void main() {
     );
     expect(
       tester.getTopLeft(find.text('Inspect the contract.')).dy,
-      lessThan(tester.getTopLeft(first).dy),
+      greaterThan(tester.getTopLeft(first).dy),
     );
     expect(
       tester.getTopLeft(first).dy,
-      lessThan(tester.getTopLeft(find.text('Compare the results.')).dy),
+      greaterThan(tester.getTopLeft(find.text('Compare the results.')).dy),
     );
     expect(
       tester.getTopLeft(find.text('Compare the results.')).dy,
-      lessThan(tester.getTopLeft(second).dy),
+      greaterThan(tester.getTopLeft(second).dy),
     );
-    expect(find.text('Timeline'), findsNWidgets(2));
+    expect(find.text('Timeline'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

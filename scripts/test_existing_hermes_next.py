@@ -30,6 +30,10 @@ from scripts.test_nightly_native import Runner, DEV
 from tools.qa import run_notification_gate as android
 
 EXPECTED = {
+    'processes': frozenset({
+        'production Android discovers follows and stops background processes',
+        'production Android compact activity preserves streamed order and details',
+    }),
     'admin': frozenset({
         'Production N18 plugin maintenance confirms isolated inventory',
         'Production N19 cached MCP refresh retains disabled connector',
@@ -54,6 +58,7 @@ EXPECTED = {
 }
 
 TARGETS = {
+    'processes': 'background_processes_prod_test.dart',
     'admin': 'hermes_next_admin_prod_test.dart',
     'conversation': 'hermes_next_conversation_prod_test.dart',
     'groups': 'hermes023_groups_tasks_prod_test.dart',

@@ -789,6 +789,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       activity.beforeMessagePresentationId,
       timing,
       activity.live,
+      activity.indicatorRevision,
       widget.loadImage != null,
       widget.onOpenResource != null,
       widget.onShareResource != null,

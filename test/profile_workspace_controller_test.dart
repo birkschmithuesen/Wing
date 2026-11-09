@@ -478,6 +478,7 @@ class Host {
       },
       rpc: (method, params) async {
         calls.add((name, method, params));
+        if (method == 'process.list') return {'processes': <Object>[]};
         if (method == 'config.set') return {'value': params['value']};
         if (method == 'subagent.roster') {
           if (rosterFailure != null) throw rosterFailure!;

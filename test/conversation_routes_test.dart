@@ -34,6 +34,7 @@ import 'package:wing/core/widgets/chat_inline_image.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/wing_app_bar.dart';
 
+import 'helpers/pump_markdown_widget.dart';
 import 'support/bots_fixture.dart';
 import 'support/composer_fixture.dart';
 import 'support/profile_browser_fixture.dart';
@@ -81,7 +82,7 @@ void _expectCollapsedActivity() {
       matching: find.byType(MarkdownMessageContent, skipOffstage: false),
       skipOffstage: false,
     ),
-    findsOneWidget,
+    findsNothing,
   );
 }
 
@@ -91,6 +92,7 @@ Future<void> _inspectLiveImage(
   String name,
 ) async {
   final live = find.byType(ProfileLiveExecution);
+  await tester.openLiveActivity(tools: false);
   final section = tester.widget<ProfileActivitySection>(
     find.descendant(of: live, matching: find.byType(ProfileActivitySection)),
   );
@@ -420,7 +422,7 @@ void main() {
           });
           await controller.refreshHistory(chat);
           await _frames(tester);
-          expect(find.byType(ProfileReasoningContent), findsOneWidget);
+          expect(find.byType(ProfileReasoningDisclosure), findsOneWidget);
           expect(
             tester.element(find.byType(ProfileActivitySection)),
             same(liveRun),

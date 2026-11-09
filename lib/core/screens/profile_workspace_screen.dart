@@ -1,3 +1,4 @@
+import '../widgets/tool_activity_details.dart';
 import '../widgets/email_draft_card.dart';
 import '../widgets/live_voice_scope.dart';
 import '../widgets/anchored_expansion_tile.dart';
@@ -2543,8 +2544,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               : [
                   if (chat.sessionControl?.goal != null ||
                       chat.sessionControl?.loop != null ||
-                      chat.sessionControl?.heartbeat != null ||
-                      chat.processes.isNotEmpty)
+                      chat.sessionControl?.heartbeat != null)
                     ProfileActivityTab(
                       id: 'work',
                       label: 'Work',
@@ -2557,8 +2557,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                               session: _supervisionFor(chat),
                             ),
                           if (chat.sessionControl?.loop != null ||
-                              chat.sessionControl?.heartbeat != null ||
-                              chat.processes.isNotEmpty)
+                              chat.sessionControl?.heartbeat != null)
                             ProfileBackgroundWorkPanel(
                               key: ValueKey(('background', chat.key)),
                               session: _supervisionFor(chat),
@@ -2575,8 +2574,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               ),
             if (liveAnswering &&
                 (chat.sessionControl?.loop != null ||
-                    chat.sessionControl?.heartbeat != null ||
-                    chat.processes.isNotEmpty))
+                    chat.sessionControl?.heartbeat != null))
               ProfileBackgroundWorkPanel(
                 key: ValueKey(('background', chat.key)),
                 session: _supervisionFor(chat),
@@ -2787,6 +2785,17 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     live: _liveAnswering(chat),
     taskCount: chat.todoRevision == null ? null : chat.currentTodos.length,
     agentCount: chat.subagentsAvailable ? chat.currentSubagents.length : null,
+    processCount: chat.processes.isNotEmpty || chat.processesError != null
+        ? chat.processes.length
+        : null,
+    processes: ProfileProcessPanel(session: _supervisionFor(chat)),
+    processSummary: ListenableBuilder(
+      listenable: _supervisionFor(chat),
+      builder: (context, _) => ActivityDetailFacts(
+        facts: [_supervisionFor(chat).state.processSummary],
+      ),
+    ),
+    onProcessesSelected: _supervisionFor(chat).refreshProcesses,
   );
 
   bool _showLiveWorkDock(ProfileChat chat) =>

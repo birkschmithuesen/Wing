@@ -29,7 +29,7 @@ extension PumpMarkdownWidget on WidgetTester {
     await settleMarkdown();
   }
 
-  Future<void> openLiveActivity() async {
+  Future<void> openLiveActivity({bool tools = true}) async {
     final section = find.byKey(const ValueKey('live-activity'));
     if (section.evaluate().isEmpty) {
       final retained = find.byKey(
@@ -43,6 +43,27 @@ extension PumpMarkdownWidget on WidgetTester {
       await pump();
       await pump(const Duration(milliseconds: 300));
     }
+    final toggle = find.descendant(
+      of: section,
+      matching: find.byKey(const ValueKey('live-activity-toggle')),
+    );
+    if (toggle.evaluate().isNotEmpty &&
+        find
+            .descendant(of: toggle, matching: find.byIcon(Icons.chevron_right))
+            .evaluate()
+            .isNotEmpty) {
+      await ensureVisible(toggle);
+      await pump(const Duration(milliseconds: 300));
+      final caret = find.descendant(
+        of: toggle,
+        matching: find.byIcon(Icons.chevron_right),
+      );
+      expect(caret.hitTestable(), findsOneWidget);
+      await tap(caret);
+      await pump();
+      await pump(const Duration(milliseconds: 300));
+    }
+    if (!tools) return;
     final disclosures = find.descendant(
       of: section,
       matching: find.byType(ProfileActivitySection),
@@ -71,10 +92,10 @@ extension PumpMarkdownWidget on WidgetTester {
         );
         continue;
       }
-      await ensureVisible(expand);
+      await Scrollable.ensureVisible(this.element(header), alignment: .5);
       await pump(const Duration(milliseconds: 300));
-      expect(expand.hitTestable(), findsOneWidget);
-      await tap(expand);
+      expect(header.hitTestable(at: const Alignment(-.9, 0)), findsOneWidget);
+      await tapAt(getRect(header).centerLeft + const Offset(12, 0));
       await pump();
       await pump(const Duration(milliseconds: 300));
       await settleMarkdown();

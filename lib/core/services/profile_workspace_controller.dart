@@ -162,6 +162,8 @@ class ProfileChat {
   int _subagentsLoadGeneration = 0;
   List<GatewayProcessActivity> _processes = [];
   bool _processesLoading = false;
+  final _processReads = <String, int>{};
+  (String, Future<bool>)? _automaticProcessRead;
   String? _processesError;
   final Set<String> _dismissedProcessIds = {};
   final Set<String> _stoppingProcessIds = {};
@@ -244,7 +246,7 @@ class ProfileChat {
       _sessionControlWorking,
       _sessionControlError,
       _sessionControlNotice,
-      _processesReadGeneration,
+      _processes,
       _processesLoading,
       _processesError,
     );
@@ -624,6 +626,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _visibleRoutes.remove(route);
     }
     _scheduleRetention();
+    _syncProcessWatch();
   }
 
   /// A covered or disposed route releases only its own visibility claim. The
@@ -637,6 +640,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     } else {
       _visibleRoutes.remove(route);
     }
+    _syncProcessWatch();
   }
 
   int _generation = 0;
@@ -1939,6 +1943,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   void _changed({ProfileSessionKey? browserChat, bool saveReading = true}) {
     if (_closed) return;
+    _syncProcessWatch();
     _publishDeletedDraftCleanupPresentation();
     if (_closed) return;
     // Every general update already exposes the latest ingested text. Cancel
@@ -3671,8 +3676,100 @@ class ProfileWorkspaceController extends ChangeNotifier {
         (before.isTerminal || !currentActivity.isTerminal);
   }
 
+  Timer? _processWatchTimer;
+  (ProfileChat, String)? _processWatchTarget;
+  Object? _processWatchRead;
+  bool _processWatchPending = false;
+  bool _processWatchPolling = false;
+
+  void _syncProcessWatch() {
+    final chat = notificationChat ?? _current?.chat;
+    final target =
+        !_closed &&
+            visible &&
+            chat != null &&
+            !chat.runtime.offline &&
+            !chat.runtime.opening &&
+            !chat.runtime.reconnecting
+        ? (chat, chat.runtime.runtimeId)
+        : null;
+    if (_processWatchPolling &&
+        target != null &&
+        (target.$1.processesError != null ||
+            !target.$1._processes.any((process) => process.isRunning))) {
+      _processWatchTimer?.cancel();
+      _processWatchTimer = null;
+      _processWatchPolling = false;
+    }
+    if (_processWatchTarget != target) {
+      _processWatchTimer?.cancel();
+      _processWatchTimer = null;
+      _processWatchRead = null;
+      _processWatchPending = false;
+      _processWatchTarget = target;
+      if (target != null) _queueProcessWatch(Duration.zero);
+    } else if (target != null &&
+        _processWatchRead == null &&
+        _processWatchTimer == null &&
+        !target.$1.processesLoading &&
+        target.$1.processesError == null &&
+        target.$1._processes.any((process) => process.isRunning)) {
+      _queueProcessWatch(const Duration(seconds: 5), polling: true);
+    }
+  }
+
+  // The foreground route is the only polling consumer. Events discover new
+  // processes even when the current snapshot is empty; a burst costs one read.
+  void _processToolSettled(ProfileChat chat) {
+    if (_processWatchTarget?.$1 != chat) return;
+    if (_processWatchRead != null) {
+      _processWatchPending = true;
+    } else {
+      _processWatchTimer?.cancel();
+      _processWatchTimer = null;
+      _queueProcessWatch(const Duration(milliseconds: 200));
+    }
+  }
+
+  void _queueProcessWatch(Duration delay, {bool polling = false}) {
+    final target = _processWatchTarget;
+    if (target == null || _processWatchTimer != null) return;
+    _processWatchPolling = polling;
+    _processWatchTimer = Timer(delay, () async {
+      _processWatchPolling = false;
+      _processWatchTimer = null;
+      if (_closed || _processWatchTarget != target) return;
+      if ((target.$1._processReads[target.$2] ?? 0) > 0) {
+        _queueProcessWatch(const Duration(seconds: 5));
+        return;
+      }
+      final read = _processWatchRead = Object();
+      final future = _refreshProcesses(target.$1, quiet: true);
+      target.$1._automaticProcessRead = (target.$2, future);
+      await future;
+      if (target.$1._automaticProcessRead?.$2 == future) {
+        target.$1._automaticProcessRead = null;
+      }
+      if (_closed ||
+          _processWatchRead != read ||
+          _processWatchTarget != target) {
+        return;
+      }
+      _processWatchRead = null;
+      if (_processWatchPending) {
+        _processWatchPending = false;
+        _queueProcessWatch(const Duration(milliseconds: 200));
+      } else {
+        _syncProcessWatch();
+      }
+    });
+  }
+
   Future<void> refreshProcesses(ProfileChat chat) async {
-    await _refreshProcesses(chat);
+    final automatic = chat._automaticProcessRead;
+    await (automatic?.$1 == chat.runtime.runtimeId
+        ? automatic!.$2
+        : _refreshProcesses(chat));
   }
 
   // A destructive command needs its own accepted read. Ordinary refreshes may
@@ -3680,14 +3777,19 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Future<bool> _refreshProcesses(
     ProfileChat chat, {
     bool requireCurrentRead = false,
+    bool quiet = false,
   }) async {
     final resource = _owned(chat);
     final runtime = chat.runtime.runtimeId;
     final before = chat._processes;
     final generation = ++chat._processesReadGeneration;
-    chat._processesLoading = true;
-    chat._processesError = null;
-    _changed();
+    final previousError = chat._processesError;
+    chat._processReads.update(runtime, (count) => count + 1, ifAbsent: () => 1);
+    if (!quiet) {
+      chat._processesLoading = true;
+      chat._processesError = null;
+      _changed(saveReading: false);
+    }
     try {
       final response = await resource.gateway.call('process.list', {
         'session_id': runtime,
@@ -3712,9 +3814,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
         if (reported.add(process.id)) next.add(process);
       }
       chat._dismissedProcessIds.retainWhere(reported.contains);
-      chat._processes = next
+      final admitted = next
           .where((process) => !chat._dismissedProcessIds.contains(process.id))
           .toList();
+      if (!listEquals(
+        before.map((process) => process.observation).toList(),
+        admitted.map((process) => process.observation).toList(),
+      )) {
+        chat._processes = admitted;
+      }
+      chat._processesError = null;
       return true;
     } catch (_) {
       if (_processReadIsCurrent(resource, chat, runtime, before, generation)) {
@@ -3724,10 +3833,20 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       return !requireCurrentRead;
     } finally {
+      final remainingReads = chat._processReads[runtime]! - 1;
+      if (remainingReads == 0) {
+        chat._processReads.remove(runtime);
+      } else {
+        chat._processReads[runtime] = remainingReads;
+      }
       if (_processOwnerIsCurrent(resource, chat, runtime) &&
           chat._processesReadGeneration == generation) {
         chat._processesLoading = false;
-        _changed();
+        if (!quiet ||
+            !identical(before, chat._processes) ||
+            previousError != chat._processesError) {
+          _changed(browserChat: chat.key, saveReading: false);
+        }
       }
     }
   }
@@ -9161,6 +9280,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
       case 'tool.start':
       case 'tool.progress':
       case 'tool.complete':
+        if (event.type == 'tool.complete' &&
+            const {
+              'terminal',
+              'process',
+              'process_manage',
+            }.contains(event.data['name'])) {
+          _processToolSettled(chat);
+        }
         applyChatTranscriptEvent(
           runtime: chat._runtime,
           reading: chat.reading,
@@ -10691,6 +10818,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
     appPreferences.state.removeListener(_visibilityChanged);
     _profileSelection.removeListener(_selectionChanged);
     _closed = true;
+    _processWatchTimer?.cancel();
+    _processWatchTarget = null;
+    _processWatchRead = null;
     _activeReadingWindow = null;
     for (final resource in _resources.values) {
       for (final chat in resource._chats.values) {

@@ -689,8 +689,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
   ];
 
   Future<void> openLiveFile(WidgetTester tester) async {
-    await tester.tap(find.text('Activity · 1 tool'));
-    await tester.pumpAndSettle();
+    await tester.openLiveActivity();
     final tool = find.byWidgetPredicate(
       (widget) =>
           widget is ProfileToolCall && widget.call.callId == 'retained-file',
@@ -785,21 +784,22 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
         ),
       );
       await tester.pumpAndSettle();
-      final activity = find.text('Activity · 2 tools');
+      final activity = find.byKey(const ValueKey('live-activity-toggle'));
+      expect(find.text('2 tools'), findsOneWidget);
       final answer = find.text('The received final answer.');
       expect(activity, findsOneWidget);
       expect(
         tester.getTopLeft(activity).dy,
         lessThan(tester.getTopLeft(answer).dy),
       );
-      await tester.tap(activity);
+      await tester.openLiveActivity();
       await tester.pumpAndSettle();
       final calls = tester
           .widgetList<ProfileToolCall>(find.byType(ProfileToolCall))
           .toList();
       expect(
         calls.map((widget) => widget.call.callId ?? widget.call.requestId),
-        ['before', 'decision', 'after'],
+        ['after', 'decision', 'before'],
       );
       expect(
         find.descendant(

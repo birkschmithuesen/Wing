@@ -125,6 +125,151 @@ void main() {
     appPreferences.dispose();
   });
 
+  int reads() => host.calls.where((call) => call.$2 == 'process.list').length;
+
+  testWidgets(
+    'visible chat discovers and follows processes without idle polling',
+    (tester) async {
+      final route = Object();
+      host.listResponse = {
+        'processes': [_process('bg-1', 'running')],
+      };
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(chat.processes.single.id, 'bg-1');
+      expect(reads(), 1);
+      final revision = chat.workRevision;
+      await tester.pump(const Duration(seconds: 5));
+      expect(reads(), 2);
+      expect(
+        chat.workRevision,
+        same(revision),
+        reason: 'Quiet unchanged polls do not invalidate the dock',
+      );
+      host.listResponse = {
+        'processes': [
+          {..._process('bg-1', 'running'), 'output_tail': 'new output'},
+        ],
+      };
+      await tester.pump(const Duration(seconds: 5));
+      expect(chat.processes.single.outputTail, 'new output');
+      controller.setRouteVisibility(route, false);
+      final hiddenReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), hiddenReads);
+      host.listResponse = {
+        'processes': [_process('bg-1', 'exited')],
+      };
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(chat.processes.single.isRunning, isFalse);
+      final settledReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), settledReads);
+      controller.setRouteVisibility(route, false);
+    },
+  );
+
+  testWidgets(
+    'terminal receipts discover from empty and coalesce in-flight changes',
+    (tester) async {
+      final route = Object();
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      expect(chat.processes, isEmpty);
+      final emptyReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), emptyReads);
+      void receipt(String name) => host.event('a', 'tool.complete', {
+        'name': name,
+        'tool_call_id': name,
+      });
+      receipt('web_search');
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(reads(), emptyReads);
+      final pending = host.pendingList = Completer<Map<String, dynamic>>();
+      for (var i = 0; i < 10; i++) {
+        receipt('terminal');
+      }
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(reads(), emptyReads + 1);
+      final selectionRead = controller.refreshProcesses(chat);
+      receipt('process_manage');
+      await tester.pump(const Duration(seconds: 20));
+      expect(
+        reads(),
+        emptyReads + 1,
+        reason: 'Slow reads never overlap polls or event refreshes',
+      );
+      host.pendingList = null;
+      host.listResponse = {
+        'processes': [_process('bg-1', 'exited')],
+      };
+      pending.complete({
+        'processes': [_process('bg-1', 'running')],
+      });
+      await selectionRead;
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(reads(), emptyReads + 2);
+      expect(chat.processes.single.isRunning, isFalse);
+      controller.setRouteVisibility(route, false);
+    },
+  );
+
+  testWidgets(
+    'failed automatic read retains rows and stops until explicit recovery',
+    (tester) async {
+      final route = Object();
+      host.listResponse = {
+        'processes': [_process('bg-1', 'running')],
+      };
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      host.listFails = true;
+      await tester.pump(const Duration(seconds: 5));
+      expect(chat.processes.single.id, 'bg-1');
+      expect(chat.processesError, isNotNull);
+      final failedReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), failedReads);
+      host.listFails = false;
+      await controller.refreshProcesses(chat);
+      expect(chat.processesError, isNull);
+      await tester.pump(const Duration(seconds: 5));
+      expect(reads(), failedReads + 2);
+      controller.setRouteMounted(route, false);
+      final retiredReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), retiredReads);
+    },
+  );
+
+  testWidgets('replaced runtime ignores a held automatic snapshot', (
+    tester,
+  ) async {
+    final route = Object();
+    final pending = host.pendingList = Completer<Map<String, dynamic>>();
+    controller.setRouteVisibility(route, true);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(reads(), 1);
+    host.pendingList = null;
+    host.listResponse = {
+      'processes': [_process('replacement', 'running')],
+    };
+    host.runtimeForResume['a'] = 'replacement-runtime';
+    await controller.openSession(chat.key);
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(chat.runtime.runtimeId, 'replacement-runtime');
+    expect(chat.processes.single.id, 'replacement');
+    pending.complete({
+      'processes': [_process('stale', 'running')],
+    });
+    await tester.pump();
+    expect(chat.processes.single.id, 'replacement');
+    controller.setRouteVisibility(route, false);
+  });
+
   test(
     'refresh is scoped and a stale read cannot replace a newer list',
     () async {

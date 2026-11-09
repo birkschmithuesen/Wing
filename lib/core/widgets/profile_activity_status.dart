@@ -20,9 +20,11 @@ class ProfileActivityStatus extends StatelessWidget {
     required this.subagents,
     required this.unconfirmedSubagentIds,
     required this.saving,
+    this.executionInTranscript = false,
   });
 
   final bool saving;
+  final bool executionInTranscript;
 
   String? get label {
     if (runtime.openingError != null) {
@@ -64,6 +66,7 @@ class ProfileActivityStatus extends StatelessWidget {
       if (runtime.error != null) return 'History needs attention';
       return null;
     }
+    if (executionInTranscript) return null;
     final mainLabel = switch (runtime.mainActivity) {
       ChatMainActivity.writing => 'Writing response…',
       ChatMainActivity.thinking => 'Thinking…',

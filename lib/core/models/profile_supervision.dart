@@ -85,6 +85,16 @@ final class ProfileSupervisionObservation {
   final Set<String> stopping;
   final Map<String, String> processErrors;
 
+  String get processSummary {
+    if (processesError != null) return 'Last received processes';
+    final running = processes.where((process) => process.isRunning).length;
+    final exited = processes.length - running;
+    return [
+      if (running > 0) '$running running',
+      if (exited > 0) '$exited exited',
+    ].join(' · ');
+  }
+
   List<SessionControlAction> get goalActions {
     final goal = sessionControl?.goal;
     return List.unmodifiable([
@@ -145,10 +155,7 @@ final class ProfileSupervisionObservation {
       sessionControl?.loop,
       sessionControl?.heartbeat,
     ].where((value) => value != null).length;
-    final running = processes.where((value) => value.isRunning).length;
-    return recurring == 0 && processes.isEmpty
-        ? 'Server state'
-        : '$recurring recurring · $running running';
+    return recurring == 0 ? 'Server state' : '$recurring recurring';
   }
 }
 

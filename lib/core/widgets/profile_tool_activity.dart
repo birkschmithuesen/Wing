@@ -258,6 +258,7 @@ class ProfileActivityTimeline extends StatelessWidget {
     this.expandedMessageId,
     this.focusedMessageKey,
     this.currentActivity = const [],
+    this.newestFirst = false,
     this.loadImage,
     this.onOpenResource,
     this.onShareResource,
@@ -267,6 +268,7 @@ class ProfileActivityTimeline extends StatelessWidget {
   final int? expandedMessageId;
   final GlobalKey? focusedMessageKey;
   final List<Widget> currentActivity;
+  final bool newestFirst;
   final Future<Uint8List> Function(String)? loadImage;
   final Future<void> Function(ChatOutput)? onOpenResource;
   final Future<void> Function(ChatOutput)? onShareResource;
@@ -275,7 +277,8 @@ class ProfileActivityTimeline extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      for (final group in groups)
+      if (newestFirst) ...currentActivity,
+      for (final group in newestFirst ? groups.reversed : groups)
         if (group.isReasoning)
           ProfileReasoningDisclosure(
             key:
@@ -310,7 +313,9 @@ class ProfileActivityTimeline extends StatelessWidget {
           )
         else if (!group.isAgentNotice)
           ProfileToolActivity(
-            results: group.toolResults,
+            results: newestFirst
+                ? group.toolResults.toList().reversed
+                : group.toolResults,
             loadImage: loadImage,
             onOpenResource: onOpenResource,
             onShareResource: onShareResource,
@@ -320,7 +325,7 @@ class ProfileActivityTimeline extends StatelessWidget {
             focusedMessageId: expandedMessageId,
             focusedMessageKey: focusedMessageKey,
           ),
-      ...currentActivity,
+      if (!newestFirst) ...currentActivity,
     ],
   );
 }

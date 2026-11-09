@@ -617,6 +617,93 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'background joins a populated dock and retires without moving the composer',
+    (tester) async {
+      int? processes;
+      var agents = 2, tasks = 1;
+      var processReads = 0;
+      late StateSetter update;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: wingTheme(Brightness.dark),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.bottomCenter,
+              child: SizedBox(
+                width: 360,
+                child: StatefulBuilder(
+                  builder: (context, setState) {
+                    update = setState;
+                    return Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ProfileLiveWorkDock(
+                          key: dock,
+                          taskCount: tasks,
+                          completedTasks: 0,
+                          subagentCount: agents,
+                          processCount: processes,
+                          taskSummary: const Text('Tasks summary'),
+                          subagentSummary: const Text('Agents summary'),
+                          processSummary: const Text('Process summary'),
+                          tasks: const SizedBox(height: 80),
+                          subagents: const SizedBox(height: 80),
+                          processes: const SizedBox(
+                            height: 80,
+                            child: Text('Command'),
+                          ),
+                          onAgentsSelected: () async {},
+                          onProcessesSelected: () async {
+                            processReads++;
+                          },
+                        ),
+                        const TextField(key: ValueKey('draft')),
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final composer = tester.getRect(find.byKey(const ValueKey('draft')));
+      await tester.tap(tab(1, overlay: false));
+      await tester.pumpAndSettle();
+      update(() => processes = 1);
+      await tester.pumpAndSettle();
+      final pages = tester.widget<PageView>(find.byType(PageView)).controller!;
+      expect(pages.page, 1);
+      expect(processReads, 0, reason: 'Kept-alive pages do not initiate reads');
+      for (final id in [0, 1, 2]) {
+        expect(tester.getSize(tab(id)).width, 120);
+      }
+      await tester.tap(tab(2));
+      await tester.pumpAndSettle();
+      expect(pages.page, 2);
+      expect(processReads, 1);
+      await tester.fling(find.byType(PageView), const Offset(220, 0), 1000);
+      await tester.pumpAndSettle();
+      expect(pages.page, 1);
+      await tester.tap(tab(2));
+      await tester.pumpAndSettle();
+      update(() {
+        agents = 0;
+        tasks = 0;
+      });
+      await tester.pumpAndSettle();
+      expect(pages.page, 0);
+      expect(tester.getSize(tab(2)).width, 360);
+      expect(tester.getRect(find.byKey(const ValueKey('draft'))), composer);
+      update(() => processes = null);
+      await tester.pumpAndSettle();
+      expect(find.byType(PageView), findsNothing);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('selected subagent read has immediate retained feedback', (
     tester,
   ) async {

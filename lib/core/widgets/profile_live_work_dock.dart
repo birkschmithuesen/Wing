@@ -20,6 +20,10 @@ class ProfileLiveWorkDock extends StatefulWidget {
     required this.subagents,
     required this.onAgentsSelected,
     this.onOpenChanged,
+    this.processCount,
+    this.processes,
+    this.processSummary,
+    this.onProcessesSelected,
   });
 
   static const slideDuration = Duration(milliseconds: 220);
@@ -28,6 +32,9 @@ class ProfileLiveWorkDock extends StatefulWidget {
   final Widget taskSummary, subagentSummary;
   final Future<void> Function() onAgentsSelected;
   final VoidCallback? onOpenChanged;
+  final int? processCount;
+  final Widget? processes, processSummary;
+  final Future<void> Function()? onProcessesSelected;
 
   @override
   ProfileLiveWorkDockState createState() => ProfileLiveWorkDockState();
@@ -39,14 +46,17 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
   final _link = LayerLink();
   final _target = GlobalKey();
   final _pages = PageController();
+  final _closedBarScroll = ScrollController();
+  var _openBarScroll = ScrollController();
   late final AnimationController _reveal, _split;
   final _contentHeights = <int, double>{};
-  int _singleTab = 0;
-  bool _open = false, _refreshingAgents = false, _openingPages = false;
+  Map<int, double> _fromShares = {};
+  bool _open = false, _openingPages = false;
+  final _refreshing = <int>{};
   bool _instantHeight = false;
   bool _expanded = false;
   double? _dragHeight;
-  final _rowScroll = {0: ScrollController(), 1: ScrollController()};
+  final _rowScroll = {for (var id = 0; id < 3; id++) id: ScrollController()};
   Offset? _barDistance;
   _WorkPanelPan? _panelPan;
   DragStartDetails? _panStart;
@@ -62,6 +72,7 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
   List<int> get _tabs => [
     if ((widget.subagentCount ?? 0) > 0) 0,
     if ((widget.taskCount ?? 0) > 0) 1,
+    if (widget.processCount != null) 2,
   ];
 
   double get _pagePosition =>
@@ -86,11 +97,10 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
   void initState() {
     super.initState();
     _selected = _tabs.firstOrNull ?? 0;
-    _singleTab = _selected;
     _split = AnimationController(
       vsync: this,
       duration: ProfileLiveWorkDock.slideDuration,
-      value: _tabs.length == 2 ? 1 : 0,
+      value: 1,
     );
     _reveal = AnimationController(
       vsync: this,
@@ -105,20 +115,16 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
     final oldTabs = [
       if ((oldWidget.subagentCount ?? 0) > 0) 0,
       if ((oldWidget.taskCount ?? 0) > 0) 1,
+      if (oldWidget.processCount != null) 2,
     ];
     final tabs = _tabs;
     if (oldTabs.length == tabs.length && oldTabs.every(tabs.contains)) return;
     _cancelPan();
-    if (tabs.length == 2) {
-      _singleTab = oldTabs.firstOrNull ?? _selected;
-      if (_reduced) {
-        _split.value = 1;
-      } else {
-        _split.forward();
-      }
+    _fromShares = _shares(oldTabs);
+    if (_reduced || tabs.length < oldTabs.length) {
+      _split.value = 1;
     } else {
-      _split.value = 0;
-      _singleTab = tabs.firstOrNull ?? 0;
+      _split.forward(from: 0);
     }
     _contentHeights.removeWhere((id, _) => !tabs.contains(id));
     if (tabs.isEmpty) {
@@ -139,7 +145,7 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
         if (!mounted || !_open || !_pages.hasClients) return;
         _pages.jumpToPage(_tabs.indexOf(_selected));
         setState(() => _openingPages = false);
-        if (selectionRemoved && _selected == 0) _refreshAgents();
+        if (selectionRemoved) _refreshTab(_selected);
       });
     }
   }
@@ -151,15 +157,20 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
     setState(() => _contentHeights[id] = height);
   }
 
-  Future<void> _refreshAgents() async {
-    if (_refreshingAgents) return;
-    setState(() => _refreshingAgents = true);
+  Future<void> _refreshTab(int id) async {
+    final refresh = switch (id) {
+      0 => widget.onAgentsSelected,
+      2 => widget.onProcessesSelected,
+      _ => null,
+    };
+    if (refresh == null || _refreshing.contains(id)) return;
+    setState(() => _refreshing.add(id));
     try {
-      await widget.onAgentsSelected();
+      await refresh();
     } catch (_) {
-      // The borrowed panel shows the error; reopening retries the roster read.
+      // Borrowed panels retain errors; reopening retries their read.
     } finally {
-      if (mounted) setState(() => _refreshingAgents = false);
+      if (mounted) setState(() => _refreshing.remove(id));
     }
   }
 
@@ -177,6 +188,7 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
       _selected = index;
     });
     if (!wasOpen) widget.onOpenChanged?.call();
+    _revealBarTab(index);
     _portal.show();
     if (!wasOpen) {
       _expanded = false;
@@ -204,7 +216,7 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
         );
       }
     }
-    if (index == 0) _refreshAgents();
+    _refreshTab(index);
   }
 
   Future<void> _close({bool keyboard = false}) async {
@@ -521,20 +533,66 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
       controller.dispose();
     }
     _pages.dispose();
+    _closedBarScroll.dispose();
+    _openBarScroll.dispose();
     _reveal.dispose();
     _split.dispose();
     super.dispose();
   }
 
-  Widget _bar(double width, double height, {required bool overlay}) =>
-      AnimatedBuilder(
-        animation: _split,
-        builder: (_, _) => _buildBar(width, height, overlay: overlay),
-      );
+  Map<int, double> _shares(List<int> tabs) {
+    final split = Curves.easeOutCubic.transform(_split.value);
+    return {
+      for (final id in tabs)
+        id: (_fromShares[id] ?? 0) * (1 - split) + split / tabs.length,
+    };
+  }
+
+  double _barContentWidth(double width) {
+    final minTabWidth = MediaQuery.textScalerOf(context).scale(11) * 6 + 40;
+    return _tabs.length > 2
+        ? math.max(width, _tabs.length * minTabWidth)
+        : width;
+  }
+
+  void _revealBarTab(int id) {
+    final box = _target.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final width = box.size.width;
+    final contentWidth = _barContentWidth(width);
+    final offset =
+        ((_tabs.indexOf(id) + 1) * contentWidth / _tabs.length - width)
+            .clamp(0.0, math.max(0.0, contentWidth - width))
+            .toDouble();
+    if (_openBarScroll.hasClients) {
+      _openBarScroll.jumpTo(offset);
+    } else {
+      _openBarScroll.dispose();
+      _openBarScroll = ScrollController(initialScrollOffset: offset);
+    }
+  }
+
+  Widget _bar(double width, double height, {required bool overlay}) {
+    // Three enlarged labels scroll horizontally rather than growing another
+    // row above the draft or overriding the user's text-size preference.
+    final contentWidth = _barContentWidth(width);
+    final bar = AnimatedBuilder(
+      animation: _split,
+      builder: (_, _) => _buildBar(contentWidth, height, overlay: overlay),
+    );
+    return contentWidth > width
+        ? SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            controller: overlay ? _openBarScroll : _closedBarScroll,
+            child: bar,
+          )
+        : bar;
+  }
 
   Widget _buildBar(double width, double height, {required bool overlay}) {
     final tokens = WingTokens.of(context);
-    final large = MediaQuery.textScalerOf(context).scale(12) > 16;
+    final large =
+        MediaQuery.textScalerOf(context).scale(12) > 16 || _tabs.length > 2;
     final labels = [
       widget.subagentCount == null
           ? 'Subagents'
@@ -542,13 +600,15 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
       widget.taskCount == null
           ? 'Tasks'
           : 'Tasks ${widget.completedTasks}/${widget.taskCount}',
+      (widget.processCount ?? 0) > 0
+          ? 'Background ${widget.processCount}'
+          : 'Background',
     ];
     final tabs = _tabs;
-    final split = Curves.easeOutCubic.transform(_split.value);
-    final firstWidth = tabs.length == 1
-        ? (tabs.first == 0 ? width : 0.0)
-        : width * (_singleTab == 0 ? 1 - split / 2 : split / 2);
-    final widths = [firstWidth, width - firstWidth];
+    final shares = _shares(tabs);
+    final widths = {for (final id in tabs) id: width * shares[id]!};
+    double leftOf(int page) =>
+        tabs.take(page).fold(0.0, (sum, id) => sum + widths[id]!);
     return Focus(
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent || !_open) return KeyEventResult.ignored;
@@ -556,13 +616,17 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
           _close(keyboard: true);
           return KeyEventResult.handled;
         }
-        final index = switch (event.logicalKey) {
-          LogicalKeyboardKey.arrowLeft => 0,
+        final direction = switch (event.logicalKey) {
+          LogicalKeyboardKey.arrowLeft => -1,
           LogicalKeyboardKey.arrowRight => 1,
           _ => null,
         };
-        if (index == null) return KeyEventResult.ignored;
-        if (_selected != index) _select(index, keyboard: true);
+        if (direction == null) return KeyEventResult.ignored;
+        final page = (tabs.indexOf(_selected) + direction).clamp(
+          0,
+          tabs.length - 1,
+        );
+        if (_selected != tabs[page]) _select(tabs[page], keyboard: true);
         return KeyEventResult.handled;
       },
       child: SizedBox(
@@ -594,12 +658,14 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
               AnimatedBuilder(
                 animation: _pages,
                 builder: (_, _) {
-                  final progress = tabs.length == 1
-                      ? tabs.first.toDouble()
-                      : _pagePosition;
-                  final left = progress * firstWidth;
+                  final progress = _pagePosition;
+                  final from = progress.floor(), to = progress.ceil();
+                  final fraction = progress - from;
+                  final left =
+                      leftOf(from) + (leftOf(to) - leftOf(from)) * fraction;
                   final selectedWidth =
-                      widths[0] + (widths[1] - widths[0]) * progress;
+                      widths[tabs[from]]! +
+                      (widths[tabs[to]]! - widths[tabs[from]]!) * fraction;
                   return Positioned(
                     left: 3 + left,
                     bottom: 3,
@@ -618,24 +684,29 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                   );
                 },
               ),
-            if (!_open && tabs.length == 2)
-              Positioned(
-                left: firstWidth,
-                bottom: (height - 16) / 2,
-                child: Container(
-                  key: const ValueKey('live-work-divider'),
-                  width: 1,
-                  height: 16,
-                  color: Color.lerp(tokens.border, tokens.muted, .4),
+            if (!_open)
+              for (var page = 1; page < tabs.length; page++)
+                Positioned(
+                  left: leftOf(page),
+                  bottom: (height - 16) / 2,
+                  child: Container(
+                    key: ValueKey(
+                      page == 1
+                          ? 'live-work-divider'
+                          : 'live-work-divider-$page',
+                    ),
+                    width: 1,
+                    height: 16,
+                    color: Color.lerp(tokens.border, tokens.muted, .4),
+                  ),
                 ),
-              ),
             Positioned.fill(
               child: Row(
                 children: [
                   for (final index in tabs)
                     SizedBox(
                       key: ValueKey(('live-work-tab-slot', index, overlay)),
-                      width: widths[index],
+                      width: widths[index]!,
                       child: _tabGesture(
                         index,
                         ClipRect(
@@ -645,12 +716,19 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                 : Alignment.centerRight,
                             minHeight: height + 12,
                             maxHeight: height + 12,
-                            minWidth: math.min(width / 2, widths[index]),
-                            maxWidth: math.max(width / 2, widths[index]),
+                            minWidth: math.min(
+                              width / tabs.length,
+                              widths[index]!,
+                            ),
+                            maxWidth: math.max(
+                              width / tabs.length,
+                              widths[index]!,
+                            ),
                             child: Opacity(
-                              opacity: tabs.length == 2 && index != _singleTab
-                                  ? split
-                                  : 1,
+                              opacity: (shares[index]! * tabs.length).clamp(
+                                0.0,
+                                1.0,
+                              ),
                               child: Semantics(
                                 button: true,
                                 expanded: _open && _selected == index,
@@ -684,19 +762,18 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                         if (!large) ...[
                                           SizedBox.square(
                                             dimension: 16,
-                                            child:
-                                                index == 0 && _refreshingAgents
-                                                ? const CircularProgressIndicator(
+                                            child: _refreshing.contains(index)
+                                                ? CircularProgressIndicator(
                                                     strokeWidth: 1.5,
-                                                    semanticsLabel:
-                                                        'Refreshing subagents',
+                                                    semanticsLabel: index == 0
+                                                        ? 'Refreshing subagents'
+                                                        : 'Refreshing background processes',
                                                   )
-                                                : Icon(
-                                                    index == 0
-                                                        ? Icons.people_outline
-                                                        : Icons.checklist,
-                                                    size: 16,
-                                                  ),
+                                                : Icon(switch (index) {
+                                                    0 => Icons.people_outline,
+                                                    1 => Icons.checklist,
+                                                    _ => Icons.terminal_rounded,
+                                                  }, size: 16),
                                           ),
                                           const SizedBox(width: 8),
                                         ],
@@ -713,14 +790,14 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                         ),
                                         const SizedBox(width: 4),
                                         if (large &&
-                                            index == 0 &&
-                                            _refreshingAgents)
-                                          const SizedBox.square(
+                                            _refreshing.contains(index))
+                                          SizedBox.square(
                                             dimension: 16,
                                             child: CircularProgressIndicator(
                                               strokeWidth: 1.5,
-                                              semanticsLabel:
-                                                  'Refreshing subagents',
+                                              semanticsLabel: index == 0
+                                                  ? 'Refreshing subagents'
+                                                  : 'Refreshing background processes',
                                             ),
                                           )
                                         else
@@ -882,15 +959,14 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                                         setState(
                                                           () => _selected = id,
                                                         );
-                                                        if (id == 0) {
-                                                          _refreshAgents();
-                                                        }
+                                                        _revealBarTab(id);
+                                                        _refreshTab(id);
                                                       }
                                                     },
                                                     children: [
                                                       for (final id in tabs)
                                                         _WorkPage(
-                                                          key: PageStorageKey((
+                                                          key: ValueKey((
                                                             'live-work-page',
                                                             id,
                                                           )),
@@ -901,11 +977,17 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                                                 id,
                                                                 value,
                                                               ),
-                                                          summary: id == 0
-                                                              ? widget
-                                                                    .subagentSummary
-                                                              : widget
-                                                                    .taskSummary,
+                                                          summary: switch (id) {
+                                                            0 =>
+                                                              widget
+                                                                  .subagentSummary,
+                                                            1 =>
+                                                              widget
+                                                                  .taskSummary,
+                                                            _ =>
+                                                              widget
+                                                                  .processSummary!,
+                                                          },
                                                           child: NotificationListener<ScrollNotification>(
                                                             onNotification:
                                                                 (
@@ -929,11 +1011,16 @@ class ProfileLiveWorkDockState extends State<ProfileLiveWorkDock>
                                                                       dragDevices:
                                                                           const {},
                                                                     ),
-                                                              child: id == 0
-                                                                  ? widget
-                                                                        .subagents
-                                                                  : widget
-                                                                        .tasks,
+                                                              child: switch (id) {
+                                                                0 =>
+                                                                  widget
+                                                                      .subagents,
+                                                                1 =>
+                                                                  widget.tasks,
+                                                                _ =>
+                                                                  widget
+                                                                      .processes!,
+                                                              },
                                                             ),
                                                           ),
                                                         ),

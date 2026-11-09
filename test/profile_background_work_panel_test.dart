@@ -21,6 +21,7 @@ class _BackgroundFixture extends ProfileActionsFixture {
 
   final requests = <(String, Map<String, dynamic>)>[];
   bool running = true;
+  bool recurring = true;
   bool rejectStop = false;
   String loopStatus = 'active';
   String heartbeatStatus = 'active';
@@ -53,23 +54,25 @@ class _BackgroundFixture extends ProfileActionsFixture {
 
   Map<String, dynamic> get control => {
     'goal': null,
-    'loop': {
-      'prompt': 'Check the release queue',
-      'status': loopStatus,
-      'mode': 'interval',
-      'interval_seconds': 300,
-      'current_delay': 300,
-      'times': 6,
-      'until': '',
-      'max_ticks': 0,
-      'ticks_fired': 3,
-      'created_at': 1,
-      'last_fired_at': 2,
-      'next_due_at': 1893456000,
-      'awaiting_response': true,
-      'deferred_by_goal': true,
-    },
-    'heartbeat': heartbeatPresent
+    'loop': !recurring
+        ? null
+        : {
+            'prompt': 'Check the release queue',
+            'status': loopStatus,
+            'mode': 'interval',
+            'interval_seconds': 300,
+            'current_delay': 300,
+            'times': 6,
+            'until': '',
+            'max_ticks': 0,
+            'ticks_fired': 3,
+            'created_at': 1,
+            'last_fired_at': 2,
+            'next_due_at': 1893456000,
+            'awaiting_response': true,
+            'deferred_by_goal': true,
+          },
+    'heartbeat': recurring && heartbeatPresent
         ? {
             'prompt': 'Report deployment health',
             'status': heartbeatStatus,
@@ -168,6 +171,7 @@ void main() {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    await supervision.refreshProcesses();
     await tester.pumpWidget(
       MaterialApp(
         builder: (context, child) => MediaQuery(
@@ -184,6 +188,7 @@ void main() {
                 session: supervision,
                 initiallyExpanded: true,
               ),
+              ProfileProcessPanel(session: supervision),
             ],
           ),
         ),
@@ -388,33 +393,38 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('conversation opens background work without any tools', (
-    tester,
-  ) async {
-    await supervision.refreshWork();
-    await tester.pumpWidget(
-      MaterialApp(
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(disableAnimations: true),
-          child: child!,
+  testWidgets(
+    'conversation discovers processes without recurring work or tools',
+    (tester) async {
+      fixture.recurring = false;
+      expect(chat.processes, isEmpty);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => []),
+          ),
         ),
-        home: ProfileWorkspaceScreen(
-          controller: controller,
-          createBotsSession: () => BotsSession((_) async => []),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Background work'), findsNothing);
-    await tester.tap(find.text('Activity'));
-    await tester.pumpAndSettle();
-    expect(find.text('Work'), findsOneWidget);
-    await tester.ensureVisible(find.text('Background work'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Background work'));
-    await tester.pumpAndSettle();
-    expect(find.text('Check the release queue'), findsOneWidget);
-    expect(find.text('Report deployment health'), findsOneWidget);
-    expect(find.text('dart run worker.dart'), findsWidgets);
-  });
+      );
+      await tester.pumpAndSettle();
+      expect(chat.processes, hasLength(2));
+      await tester.tap(find.text('Background 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('dart run worker.dart'), findsOneWidget);
+      expect(find.text('1 running · 1 exited'), findsOneWidget);
+      expect(find.text('Background work'), findsNothing);
+      await tester.tap(find.text('dart run worker.dart'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Stop process'));
+      await tester.tap(find.byTooltip('Stop process'));
+      await tester.pumpAndSettle();
+      expect(chat.processes.where((process) => process.isRunning), isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

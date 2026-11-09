@@ -34,6 +34,10 @@ import 'profile_workspace_controller_test.dart' show Host;
 class _LiveWorkHost extends Host {
   Completer<Map<String, dynamic>>? pendingRoster;
   int rosterReads = 0;
+  List<Map<String, dynamic>> processes = [];
+  Completer<Map<String, dynamic>>? pendingProcesses;
+  bool processReadFails = false;
+
   final agents = [
     for (var i = 0; i < 2; i++)
       {
@@ -59,6 +63,26 @@ class _LiveWorkHost extends Host {
       close: base.close,
       get: base.read,
       rpc: (method, params) {
+        if (method == 'process.list') {
+          calls.add((scope.profileName, method, params));
+          if (processReadFails) return Future.error(StateError('offline'));
+          return pendingProcesses?.future ??
+              Future.value({'processes': processes});
+        }
+        if (method == 'process.kill') {
+          calls.add((scope.profileName, method, params));
+          processes = [
+            for (final row in processes)
+              if (row['session_id'] == params['process_id'])
+                {...row, 'status': 'exited', 'exit_code': 0}
+              else
+                row,
+          ];
+          return Future.value({
+            'status': 'killed',
+            'session_id': params['process_id'],
+          });
+        }
         if (method == 'subagent.list') {
           rosterReads++;
           return pendingRoster?.future ?? Future.value({'subagents': agents});
@@ -254,6 +278,7 @@ void main() {
     if (!capture) return;
     for (final font in {
       'Roboto': 'build/studio-roboto.ttf',
+      'monospace': 'build/studio-mono.ttf',
       'MaterialIcons': 'build/studio-icons.otf',
       'WingIcons': 'assets/fonts/wing-icons.ttf',
     }.entries) {
@@ -263,6 +288,218 @@ void main() {
           .load();
     }
   });
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'background dock discovers updates and controls processes ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          SharedPreferences.setMockInitialValues({});
+          final prefs = await SharedPreferences.getInstance();
+          final app = AppPreferences(prefs);
+          final host = _LiveWorkHost()
+            ..processes = [
+              {
+                'session_id': 'process-1',
+                'command':
+                    'python3 /workspace/research_hotels.py --city Newcastle',
+                'status': 'running',
+                'output_tail': 'Comparing hotel availability',
+                'uptime_seconds': 12,
+              },
+            ];
+          final controller = ProfileWorkspaceController(
+            connectionIdentity: 'background-dock',
+            access: ConnectionAccess(
+              connection: identityTestConnection(),
+              dashboardOAuth: null,
+            ),
+            preferences: prefs,
+            appPreferences: app,
+            gatewayFactory: host.gateway,
+          );
+          addTearDown(() {
+            controller.dispose();
+            app.dispose();
+          });
+          await controller.initialize();
+          final chat = await controller.createChat(canDispatch: () => true);
+          expect(chat.processes, isEmpty);
+          host.event('a', 'todo.updated', {
+            'revision': 1,
+            'todos': [
+              {
+                'id': 'plan-1',
+                'content': 'Compare hotel prices',
+                'status': 'in_progress',
+              },
+            ],
+          });
+          await controller.refreshSubagents(chat);
+          final frame = GlobalKey();
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: RepaintBoundary(key: frame, child: child!),
+              ),
+              home: ProfileWorkspaceScreen(
+                controller: controller,
+                createBotsSession: () => BotsSession((_) async => []),
+              ),
+            ),
+          );
+          Future<void> settle() async {
+            await tester.pump(const Duration(milliseconds: 350));
+            await tester.settleMarkdown();
+            await tester.pump(const Duration(milliseconds: 350));
+            await tester.pump(const Duration(milliseconds: 16));
+            await tester.pump(const Duration(milliseconds: 16));
+          }
+
+          Future<void> picture(String state) async {
+            if (!capture) return;
+            await tester.runAsync(() async {
+              final image =
+                  await (frame.currentContext!.findRenderObject()!
+                          as RenderRepaintBoundary)
+                      .toImage();
+              final bytes = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final dir = Directory(
+                'build/design-previews/background-processes',
+              )..createSync(recursive: true);
+              await File(
+                '${dir.path}/${brightness.name}-$scale-$state.png',
+              ).writeAsBytes(bytes!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+
+          Finder tab(int id, bool overlay) =>
+              find.byKey(ValueKey(('live-work-tab', id, overlay)));
+          await settle();
+          expect(chat.processes, hasLength(1));
+          expect(tab(0, false), findsOneWidget);
+          expect(tab(1, false), findsOneWidget);
+          expect(tab(2, false), findsOneWidget);
+          final draft = find.byType(TextField).last;
+          await tester.enterText(draft, 'Keep my hotel notes');
+          FocusManager.instance.primaryFocus?.unfocus();
+          await settle();
+          final composer = tester.getRect(draft);
+          await picture('closed');
+          tester.view.viewInsets = const FakeViewPadding(bottom: 300);
+          await settle();
+          await tester.ensureVisible(tab(2, false));
+          await tester.tap(tab(2, false));
+          await settle();
+          expect(
+            tester.getRect(find.byKey(const ValueKey('live-work-panel'))).top,
+            greaterThanOrEqualTo(0),
+          );
+          final panelOpacity = find
+              .descendant(
+                of: find.byKey(const ValueKey('live-work-panel')),
+                matching: find.byType(Opacity),
+              )
+              .first;
+          expect(tester.widget<Opacity>(panelOpacity).opacity, 1);
+          await picture('keyboard');
+          await tester.ensureVisible(tab(2, true));
+          await tester.tap(tab(2, true));
+          await settle();
+          tester.view.resetViewInsets();
+          await settle();
+          await tester.ensureVisible(tab(2, false));
+          await tester.tap(tab(2, false));
+          await settle();
+          expect(tester.getRect(draft), composer);
+          expect(find.text('1 running'), findsOneWidget);
+          await tester.ensureVisible(tab(2, true));
+          await tester.tap(tab(2, true));
+          await settle();
+          final held = host.pendingProcesses =
+              Completer<Map<String, dynamic>>();
+          await tester.ensureVisible(tab(2, false));
+          await tester.tap(tab(2, false));
+          await tester.pump();
+          expect(
+            find.descendant(
+              of: tab(2, true),
+              matching: find.byType(CircularProgressIndicator),
+            ),
+            findsOneWidget,
+          );
+          expect(
+            tester.getRect(tab(2, true)).right,
+            lessThanOrEqualTo(tester.view.physicalSize.width),
+          );
+          await tester.pump(const Duration(milliseconds: 350));
+          await picture('pending');
+          held.completeError(StateError('Temporary process read failure'));
+          await settle();
+          expect(
+            find.text('Background processes could not be refreshed. Retry.'),
+            findsOneWidget,
+          );
+          await picture('failed');
+          host.pendingProcesses = null;
+          await tester.ensureVisible(tab(2, true));
+          await tester.tap(tab(2, true));
+          await settle();
+          await tester.ensureVisible(tab(2, false));
+          await tester.tap(tab(2, false));
+          await settle();
+          expect(chat.processesError, isNull);
+          expect(find.text('1 running'), findsOneWidget);
+
+          final command = host.processes.single['command'] as String;
+          await tester.tap(find.text(command));
+          await settle();
+          await picture('open');
+          // Source readers inside the process disclosure must not share the
+          // expansion boolean's PageStorage identity with a scroll offset.
+          expect(tester.takeException(), isNull);
+          host.processes = [
+            {
+              ...host.processes.single,
+              'output_tail': 'Found three available hotels',
+            },
+          ];
+          await tester.pump(const Duration(seconds: 5));
+          await settle();
+          expect(
+            chat.processes.single.outputTail,
+            'Found three available hotels',
+          );
+          await tester.tap(find.byKey(const ValueKey('live-work-handle')));
+          await settle();
+          await tester.ensureVisible(find.byTooltip('Stop process'));
+          await settle();
+          await picture('details');
+          await tester.tap(find.byTooltip('Stop process'));
+          await settle();
+          expect(chat.processes.single.isRunning, isFalse);
+          expect(find.byTooltip('Dismiss'), findsOneWidget);
+          await tester.ensureVisible(find.byTooltip('Dismiss'));
+          await tester.tap(find.byTooltip('Dismiss'));
+          await settle();
+          expect(tab(2, true), findsNothing);
+          expect(find.text('Keep my hotel notes'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
   testWidgets('saved partial history preserves readable live reasoning', (
     tester,
   ) async {
@@ -312,7 +549,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.settleMarkdown();
     await tester.pump(const Duration(milliseconds: 300));
-    expect(find.byType(ProfileActivitySection), findsNWidgets(2));
+    expect(find.byType(ProfileActivitySection), findsNothing);
+    expect(find.text('Later live reasoning'), findsOneWidget);
     expect(find.text('Timeline'), findsNothing);
     await tester.openLiveActivity();
     expect(
@@ -351,13 +589,13 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.byType(ProfileActivitySection), findsNWidgets(2));
     expect(find.text('Activity · 1 tool'), findsNWidgets(2));
-    expect(find.byType(ProfileReasoningDisclosure), findsNothing);
+    expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
     await tester.openLiveActivity();
     expect(
       find.text('Later live reasoning', findRichText: true),
       findsOneWidget,
     );
-    expect(find.byType(ProfileReasoningDisclosure), findsNothing);
+    expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
     expect(
       find.text('Earlier saved reasoning', findRichText: true),
       findsOneWidget,
@@ -394,14 +632,17 @@ void main() {
     await tester.pump(const Duration(milliseconds: 300));
     await tester.settleMarkdown();
     expect(
-      find.byType(ProfileActivitySection),
+      find.byType(ProfileActivitySection, skipOffstage: false),
       findsOneWidget,
       reason: 'Received final answer must not split saved and retained work',
     );
     persistence.complete();
     await tester.pump(const Duration(milliseconds: 300));
     await tester.settleMarkdown();
-    expect(find.byType(ProfileActivitySection), findsOneWidget);
+    expect(
+      find.byType(ProfileActivitySection, skipOffstage: false),
+      findsOneWidget,
+    );
 
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -476,20 +717,27 @@ void main() {
           );
           await tester.pump(const Duration(milliseconds: 300));
           await tester.settleMarkdown();
+          await tester.openLiveActivity(tools: false);
           final intervals = tester
               .widgetList<ActivityTime>(
                 find.descendant(
-                  of: find.byType(ProfileLiveExecution),
+                  of: find.byType(ProfileActivitySection),
                   matching: find.byType(ActivityTime),
                 ),
               )
               .toList();
           expect(intervals, hasLength(2));
-          expect(intervals.first.durationSeconds, closeTo(84, 2));
-          expect(intervals.last.durationSeconds, isNull);
+          expect(intervals.last.durationSeconds, closeTo(84, 2));
+          expect(intervals.first.durationSeconds, isNull);
           expect(find.text('· 1m 24s'), findsOneWidget);
           expect(find.byType(ProfileToolCall), findsNothing);
-          for (final time in find.byType(ActivityTime).evaluate()) {
+          for (final time
+              in find
+                  .descendant(
+                    of: find.byType(ProfileActivitySection),
+                    matching: find.byType(ActivityTime),
+                  )
+                  .evaluate()) {
             final bounds = tester.getRect(
               find.byElementPredicate((element) => element == time),
             );
@@ -550,11 +798,12 @@ void main() {
               alignment: .5,
             );
             await tester.pump(const Duration(milliseconds: 300));
-            await tester.tap(
-              find.descendant(
-                of: header,
-                matching: find.byIcon(Icons.keyboard_arrow_right_rounded),
-              ),
+            expect(
+              header.hitTestable(at: const Alignment(-.9, 0)),
+              findsOneWidget,
+            );
+            await tester.tapAt(
+              tester.getRect(header).centerLeft + const Offset(12, 0),
             );
             await tester.pump(const Duration(milliseconds: 300));
             await tester.settleMarkdown();
@@ -564,11 +813,12 @@ void main() {
               alignment: .5,
             );
             await tester.pump(const Duration(milliseconds: 300));
-            await tester.tap(
-              find.descendant(
-                of: header,
-                matching: find.byIcon(Icons.keyboard_arrow_down_rounded),
-              ),
+            expect(
+              header.hitTestable(at: const Alignment(-.9, 0)),
+              findsOneWidget,
+            );
+            await tester.tapAt(
+              tester.getRect(header).centerLeft + const Offset(12, 0),
             );
             await tester.pump(const Duration(milliseconds: 300));
           }
@@ -715,7 +965,7 @@ void main() {
         expect(find.byType(ProfileLiveWorkDock), findsOneWidget);
         expect(find.text('Tasks 3/7'), findsNothing);
         expect(find.text('2 subagents'), findsOneWidget);
-        expect(find.byType(ProfileReasoningDisclosure), findsNothing);
+        expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
         // Both tool runs stay visible around the received reasoning.
         expect(find.byType(ProfileToolCall), findsNWidgets(2));
         await tester.enterText(
@@ -1017,10 +1267,7 @@ void main() {
           of: find.byType(ProfileLiveExecution),
           matching: find.byType(ProfileActivityTabs),
         );
-        expect(liveTabs, findsWidgets);
-        for (final tabs in tester.widgetList<ProfileActivityTabs>(liveTabs)) {
-          expect(tabs.tabs.map((tab) => tab.id), ['timeline']);
-        }
+        expect(liveTabs, findsNothing);
         expect(
           find.text('Subagent Task Completed: Inspect source mappings'),
           findsNothing,
@@ -1311,11 +1558,12 @@ void main() {
 
           await settle();
           expect(find.text('Timeline'), findsNothing);
-          expect(find.text('Activity · 1 tool'), findsOneWidget);
+          expect(find.text('1 tool'), findsOneWidget);
+          expect(find.byType(ProfileToolCall), findsNothing);
           await picture('tools-collapsed');
           await tester.openLiveActivity();
           await settle();
-          expect(find.text('Timeline'), findsOneWidget);
+          expect(find.text('Timeline'), findsNothing);
           await tester.enterText(
             find.byKey(const Key('profile-message-composer')),
             'Keep my draft',
@@ -1325,6 +1573,9 @@ void main() {
           final bounds = tester.getRect(composer);
           await picture('tools-only');
           const heading = 'Searching for Tokyo hotels';
+          final headingLabel = find.byWidgetPredicate(
+            (widget) => widget is Text && widget.data == heading,
+          );
           const reasoningBody = 'Check the official booking pages for Gotanda.';
           host.event('a', 'reasoning.delta', {
             'text': '**$heading**\n\n$reasoningBody',
@@ -1332,10 +1583,26 @@ void main() {
           await settle();
           await tester.openLiveActivity();
           await settle();
-          expect(find.text('Thinking'), findsOneWidget);
-          expect(find.text(heading, findRichText: true), findsOneWidget);
+          expect(find.text('Thinking'), findsNothing);
+          expect(headingLabel, findsOneWidget);
           expect(tester.getRect(composer), bounds);
           await picture('thinking');
+          final activityToggle = find.byKey(
+            const ValueKey('live-activity-toggle'),
+          );
+          await tester.ensureVisible(activityToggle);
+          await settle();
+          final collapse = find.descendant(
+            of: activityToggle,
+            matching: find.byIcon(Icons.expand_less),
+          );
+          expect(collapse.hitTestable(), findsOneWidget);
+          await tester.tap(collapse);
+          await settle();
+          expect(find.text(heading), findsOneWidget);
+          await picture('reasoning-collapsed');
+          await tester.openLiveActivity(tools: false);
+          await settle();
           host.event('a', 'tool.start', {
             'tool_id': 'booking',
             'name': 'web_search',
@@ -1344,12 +1611,22 @@ void main() {
           await settle();
           expect(chat.runtime.executionActive, isTrue);
           expect(find.text('Thinking'), findsNothing);
-          expect(find.text(heading, findRichText: true), findsOneWidget);
-          expect(find.text('Reasoning'), findsOneWidget);
+          expect(headingLabel, findsOneWidget);
+          expect(find.text('Reasoning'), findsNothing);
           expect(find.byType(ProfileActivitySection), findsNWidgets(2));
           expect(find.byType(ProfileToolCall), findsOneWidget);
           // Opening the earlier run preserves its header. Move through the
           // viewport to inspect the reasoning and the next collapsed run.
+          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
+            await Scrollable.ensureVisible(
+              tester.element(headingLabel),
+              alignment: .5,
+            );
+            await settle();
+            await tester.tap(headingLabel);
+            await settle();
+            await tester.settleMarkdown();
+          }
           await tester.ensureVisible(
             find.text(reasoningBody, findRichText: true),
           );
@@ -1361,10 +1638,20 @@ void main() {
           }
           await picture('tool-handoff-collapsed');
           await tester.openLiveActivity();
-          expect(find.text('Timeline'), findsNWidgets(2));
+          expect(find.text('Timeline'), findsNothing);
           expect(find.byType(ProfileToolCall), findsNWidgets(2));
           expect(tester.getRect(composer), bounds);
           expect(chat.composer.observation.displayedText, 'Keep my draft');
+          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
+            await Scrollable.ensureVisible(
+              tester.element(headingLabel),
+              alignment: .5,
+            );
+            await settle();
+            await tester.tap(headingLabel);
+            await settle();
+            await tester.settleMarkdown();
+          }
           await tester.ensureVisible(
             find.text(reasoningBody, findRichText: true),
           );
@@ -1404,7 +1691,7 @@ void main() {
           await settle();
           expect(find.byType(ProfileActivitySection), findsNWidgets(3));
           await tester.openLiveActivity();
-          expect(find.text(heading, findRichText: true), findsOneWidget);
+          expect(headingLabel, findsOneWidget);
           expect(
             find.text(
               'Check the restaurant menu and opening hours.',
@@ -1412,9 +1699,19 @@ void main() {
             ),
             findsOneWidget,
           );
-          expect(find.text('Timeline'), findsNWidgets(3));
+          expect(find.text('Timeline'), findsNothing);
           expect(find.byType(ProfileToolCall), findsNWidgets(17));
           expect(tester.getRect(composer), bounds);
+          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
+            await Scrollable.ensureVisible(
+              tester.element(headingLabel),
+              alignment: .5,
+            );
+            await settle();
+            await tester.tap(headingLabel);
+            await settle();
+            await tester.settleMarkdown();
+          }
           await tester.ensureVisible(
             find.text(reasoningBody, findRichText: true),
           );
@@ -1445,7 +1742,7 @@ void main() {
           expect(find.byType(ProfileActivitySection), findsNWidgets(3));
           expect(find.text('Activity · 12 tools'), findsOneWidget);
           expect(find.text('Activity · 4 tools'), findsOneWidget);
-          expect(find.text(heading, findRichText: true), findsOneWidget);
+          expect(headingLabel, findsOneWidget);
           expect(
             find.text(
               'Check the restaurant menu and opening hours.',
@@ -1455,6 +1752,16 @@ void main() {
           );
           expect(chat.reading.messages.any((row) => row['id'] == 3), isTrue);
           expect(tester.getRect(composer), bounds);
+          if (find.text(reasoningBody, findRichText: true).evaluate().isEmpty) {
+            await Scrollable.ensureVisible(
+              tester.element(headingLabel),
+              alignment: .5,
+            );
+            await settle();
+            await tester.tap(headingLabel);
+            await settle();
+            await tester.settleMarkdown();
+          }
           await tester.ensureVisible(
             find.text(reasoningBody, findRichText: true),
           );
@@ -1462,10 +1769,10 @@ void main() {
           await picture('history-refreshed-readable');
           // Saved current-turn reasoning uses the same readable body. Receipt
           // persistence does not introduce another Activity or hide the prose.
-          expect(find.byType(ProfileReasoningDisclosure), findsNothing);
+          expect(find.byType(ProfileReasoningDisclosure), findsWidgets);
           await tester.openLiveActivity();
           await settle();
-          expect(find.text('Timeline'), findsNWidgets(3));
+          expect(find.text('Timeline'), findsNothing);
           final savedReasoning = find.text(
             'Saved planning before the first tool.',
             findRichText: true,
@@ -1474,10 +1781,14 @@ void main() {
           await tester.ensureVisible(savedReasoning);
           await settle();
           await picture('reasoning');
-          await tester.ensureVisible(find.text(heading, findRichText: true));
+          await Scrollable.ensureVisible(
+            tester.element(headingLabel),
+            alignment: .5,
+          );
+          await settle();
           await settle();
           await picture('live-reasoning');
-          expect(find.text(heading, findRichText: true), findsOneWidget);
+          expect(headingLabel, findsOneWidget);
           expect(chat.runtime.executionActive, isTrue);
           expect(tester.getRect(composer), bounds);
           expect(tester.takeException(), isNull);

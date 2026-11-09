@@ -1,7 +1,7 @@
 # Subagent supervision
 
 While Hermes works, tap **Subagents** above your draft to inspect known children.
-Only populated categories appear; swipe between Subagents and Tasks when both
+Only populated categories appear; swipe between Subagents, Tasks and Background when they
 are available. The drawer keeps its summary visible while longer lists scroll.
 Swipe up on the Subagents bar to open it at its compact height, then swipe up
 again to maximize. Swipe anywhere in the drawer up to expand or down to close;
