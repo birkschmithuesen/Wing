@@ -30,11 +30,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   The file-reference regression is also covered by:
 
   ```sh
-  flutter test --no-pub test/deliverable_attachment_test.dart test/chat_output_test.dart test/markdown_inline_parser_test.dart test/markdown_parse_worker_test.dart
+  flutter test --no-pub test/deliverable_attachment_test.dart test/chat_inline_image_test.dart test/chat_output_test.dart test/markdown_inline_parser_test.dart test/markdown_parse_worker_test.dart
   ```
 
   These checks preserve literal API request suffixes in messages, exact message
-  copying, cached/worker parsing and Outputs discovery. The message test also
+  copying, cached/worker parsing and Outputs discovery. Image paths in inline
+  code stay readable without loading image bytes; explicit image references
+  still render previews. The message test also
   opens an explicit Markdown file link through the production HTTP client,
   holds the read to check visible progress and then verifies rendered content.
 

@@ -22,7 +22,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/chat_output_test.dart test/chat_outputs_screen_test.dart test/chat_outputs_session_test.dart test/pdf_preview_service_test.dart test/resource_preview_owner_test.dart
-  flutter test --no-pub test/remote_files_client_test.dart test/remote_file_saver_test.dart test/deliverable_attachment_test.dart
+  flutter test --no-pub test/remote_files_client_test.dart test/remote_file_saver_test.dart test/deliverable_attachment_test.dart test/chat_inline_image_test.dart
   ```
 
 - **Android `file-transfer`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
