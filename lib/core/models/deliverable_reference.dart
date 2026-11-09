@@ -30,18 +30,13 @@ class DeliverableLinkSyntax extends md.LinkSyntax {
   }
 }
 
-/// A complete file path in inline code is a deliverable, just like a file link.
-/// Let the Markdown code parser own delimiters and ordinary code semantics.
-class DeliverableCodeSyntax extends md.CodeSyntax {
-  DeliverableCodeSyntax({this.guard = true});
+/// Literal code is never evidence of a file: API paths have the same shape.
+/// Keep the cheap matching guard while leaving content to Markdown CodeSyntax.
+class LiteralCodeSyntax extends md.CodeSyntax {
+  LiteralCodeSyntax({this.guard = true});
 
   // QA compares this fast rejection with the unchanged matcher explicitly.
   final bool guard;
-
-  static final _path = RegExp(
-    r'^(?:/|~[\\/]|\.\.?[\\/]|[A-Za-z]:[\\/]|\\\\)'
-    r'[^\r\n<>|]*[^\\/\s]\.\w+$',
-  );
 
   @override
   bool tryMatch(md.InlineParser parser, [int? startMatchPos]) {
@@ -55,23 +50,6 @@ class DeliverableCodeSyntax extends md.CodeSyntax {
     // CodeSyntax owns delimiter-run handling and uses parser.pos, including
     // when a caller supplies startMatchPos. Preserve that behavior exactly.
     return super.tryMatch(parser, startMatchPos);
-  }
-
-  @override
-  bool onMatch(md.InlineParser parser, Match match) {
-    var code = match[2]!;
-    if (code.length > 1 && code.startsWith(' ') && code.endsWith(' ')) {
-      code = code.substring(1, code.length - 1);
-    }
-    if (_path.hasMatch(code)) {
-      // Code spans contain literal filenames, not URL-encoded destinations.
-      final output = mediaRemoteFileOutput(code);
-      if (output != null) {
-        parser.addNode(_fileElement(output));
-        return true;
-      }
-    }
-    return super.onMatch(parser, match);
   }
 }
 

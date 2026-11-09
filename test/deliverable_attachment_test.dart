@@ -1,3 +1,11 @@
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:wing/core/screens/chat_outputs_screen.dart';
+import 'package:wing/core/services/chat_outputs_session.dart';
+import 'package:wing/core/services/remote_files_client.dart';
+import 'package:wing/core/services/owned_remote_files.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/source_code_text.dart';
 import 'package:wing/core/models/transcript_message.dart';
 import 'dart:async';
@@ -48,6 +56,7 @@ void main() {
     const directory = String.fromEnvironment('CAPTURE_FONT_DIR');
     for (final entry in {
       'Roboto': 'Roboto-Regular.ttf',
+      'monospace': 'RobotoMono-Regular.ttf',
       'MaterialIcons': 'MaterialIcons-Regular.otf',
     }.entries) {
       await (FontLoader(entry.key)..addFont(
@@ -57,6 +66,101 @@ void main() {
           ))
           .load();
     }
+  });
+
+  testWidgets('explicit Markdown file opens from its message through HTTP', (
+    tester,
+  ) async {
+    const path = '/srv/README.md';
+    const suffix = '/hermes-button-actions/contents/README.md';
+    final response = Completer<http.Response>();
+    final requests = <Uri>[];
+    final client = RemoteFilesClient(
+      dashboard: DashboardClient(
+        host: 'hermes.test',
+        port: 9119,
+        proxied: true,
+        httpClient: MockClient((request) {
+          requests.add(request.url);
+          expect(request.url.path, '/api/fs/read-text');
+          expect(request.url.queryParameters, {
+            'path': path,
+            'profile': 'default',
+            'session_id': 'origin-chat',
+          });
+          return response.future;
+        }),
+      ),
+    );
+    final files = OwnedRemoteFiles(
+      source: client,
+      profileName: 'default',
+      storedSessionId: 'origin-chat',
+      release: client.close,
+    );
+    addTearDown(files.dispose);
+    await tester.pumpMarkdownWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => Scaffold(
+            body: SingleChildScrollView(
+              child: ProfileMessage(
+                message: TranscriptMessage.fromRow(const {
+                  'role': 'assistant',
+                  'content':
+                      'Request ending in `$suffix`.\n\n[Read the file]($path)',
+                }),
+                onOpenRemoteFile: (output) => Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => ChatOutputsScreen(
+                      chatTitle: 'Original chat',
+                      initialOutput: output,
+                      createSession: () => ChatOutputsSession(
+                        loadHistory: (_) async =>
+                            throw StateError('Unexpected history read'),
+                        readText: files.readText,
+                        download: files.download,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(find.byType(DeliverableAttachment), findsOneWidget);
+    expect(find.textContaining(suffix, findRichText: true), findsOneWidget);
+    await tester.tap(find.byTooltip('Open preview'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 350));
+    expect(find.byType(ChatOutputsScreen), findsOneWidget);
+    expect(find.byType(StudioLoading), findsOneWidget);
+    expect(tester.getSize(find.byType(StudioLoading)), const Size(18, 18));
+    expect(requests, hasLength(1));
+    response.complete(
+      http.Response(
+        jsonEncode({
+          'path': path,
+          'text': '# A real Markdown document',
+          'language': 'markdown',
+          'mimeType': 'text/markdown',
+          'binary': false,
+          'truncated': false,
+        }),
+        200,
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.settleMarkdown();
+    expect(
+      find.textContaining('A real Markdown document', findRichText: true),
+      findsWidgets,
+    );
+    expect(find.byType(StudioLoading), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets(
@@ -108,7 +212,7 @@ void main() {
     },
   );
 
-  testWidgets('screenshot report paths open independently and copy verbatim', (
+  testWidgets('explicit report links open independently and copy verbatim', (
     tester,
   ) async {
     const report =
@@ -116,8 +220,8 @@ void main() {
     const questions =
         '/home/tarkil/projects/memory-maintenance/evaluation/private/monthly-pilot-20260927-151620/case-review.md';
     const source =
-        '**Report**\n\nThe dashboard is here:\n\n`$report`\n\n'
-        'The private question sheet is here:\n\n`$questions`';
+        '**Report**\n\nThe dashboard is here:\n\n[Report]($report)\n\n'
+        'The private question sheet is here:\n\n[Questions]($questions)';
     final opened = <String>[];
     String? copied;
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
@@ -154,6 +258,111 @@ void main() {
     expect(copied, source);
   });
 
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'API request suffix stays literal ${brightness.name} scale $scale',
+        (tester) async {
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.resetPhysicalSize);
+          addTearDown(tester.view.resetDevicePixelRatio);
+          const suffix = '/hermes-button-actions/contents/README.md';
+          const source =
+              'Please approve the request in '
+              '[OneCLI](https://example.test) ending in:\n\n`$suffix`';
+          final boundary = GlobalKey();
+          String? copied;
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            (call) async {
+              if (call.method == 'Clipboard.setData') {
+                copied = (call.arguments as Map)['text'];
+              }
+              return null;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(SystemChannels.platform, null),
+          );
+          await tester.pumpMarkdownWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: RepaintBoundary(
+                key: boundary,
+                child: Scaffold(
+                  body: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: ProfileMessage(
+                      message: TranscriptMessage.fromRow(const {
+                        'role': 'assistant',
+                        'content': source,
+                      }),
+                      onOpenRemoteFile: (_) async => fail('Code opened a file'),
+                      onDownloadRemoteFile: (_) async =>
+                          fail('Code downloaded a file'),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          expect(find.byType(DeliverableAttachment), findsNothing);
+          expect(
+            find.textContaining(suffix, findRichText: true),
+            findsOneWidget,
+          );
+          expect(find.byTooltip('Open preview'), findsNothing);
+          expect(find.byTooltip('Download'), findsNothing);
+          await tester.tap(find.byTooltip('Copy message'));
+          await tester.pump();
+          expect(copied, source);
+          expect(tester.takeException(), isNull);
+          if (const bool.fromEnvironment('CAPTURE_DELIVERABLES')) {
+            await tester.runAsync(() async {
+              final image =
+                  await (boundary.currentContext!.findRenderObject()!
+                          as RenderRepaintBoundary)
+                      .toImage();
+              final data = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/deliverables-review/code-${brightness.name}-$scale.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(data!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+        },
+      );
+    }
+  }
+
+  for (final path in [
+    '/api/files/report.md',
+    '/repos/owner/repo/contents/README.md',
+    '/srv/report.md',
+    '/srv/report.html',
+    '~/reports/report.md',
+    '../reports/report.md',
+    r'C:\Users\a\report.md',
+  ]) {
+    testWidgets('file-shaped code stays literal: $path', (tester) async {
+      await tester.pumpMarkdownWidget(message('`$path`', open: (_) async {}));
+      expect(find.byType(DeliverableAttachment), findsNothing);
+      expect(find.textContaining(path, findRichText: true), findsOneWidget);
+    });
+  }
+
   final references = {
     htmlReportPath: htmlReportPath,
     'Open ($htmlReportPath).': htmlReportPath,
@@ -165,16 +374,8 @@ void main() {
     '../reports/index.html': '../reports/index.html',
     r'C:\reports\index.html': r'C:\reports\index.html',
     '/srv/report%23final.html': '/srv/report%23final.html',
-    '`$htmlReportPath`': htmlReportPath,
     '[HTML report]($htmlReportPath)': htmlReportPath,
     'MEDIA:$htmlReportPath': htmlReportPath,
-    '`$reportPath`': reportPath,
-    '`` /srv/My report.md ``': '/srv/My report.md',
-    '`/srv/report%23final.md`': '/srv/report%23final.md',
-    '`/srv/report#final?.md`': '/srv/report#final?.md',
-    '`~/reports/report.md`': '~/reports/report.md',
-    '`../reports/report.md`': '../reports/report.md',
-    r'`C:\Users\a\report.md`': r'C:\Users\a\report.md',
     'MEDIA:/srv/My report.pdf': '/srv/My report.pdf',
     'MEDIA: "/srv/final report.custom"': '/srv/final report.custom',
     '`MEDIA:/srv/report.md`': '/srv/report.md',
