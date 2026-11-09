@@ -161,6 +161,7 @@ class ProfileChat {
   String? _subagentsError;
   int _subagentsLoadGeneration = 0;
   List<GatewayProcessActivity> _processes = [];
+  final Map<String, int> _processCompletionTurns = {};
   bool _processesLoading = false;
   final _processReads = <String, int>{};
   (String, Future<bool>)? _automaticProcessRead;
@@ -280,6 +281,16 @@ class ProfileChat {
       _subagentsRevision > 0 || _subagents.isNotEmpty;
   String? get subagentsError => _subagentsError;
   List<GatewayProcessActivity> get processes => List.unmodifiable(_processes);
+
+  /// Running work survives its parent; exited rows belong only to their round.
+  List<GatewayProcessActivity> get currentProcesses => List.unmodifiable(
+    _processes.where(
+      (process) =>
+          process.isRunning ||
+          runtime.executionActive &&
+              _processCompletionTurns[process.id] == _runtime.turnRevision,
+    ),
+  );
   bool get processesLoading => _processesLoading;
   String? get processesError => _processesError;
   SessionControlSnapshot? get sessionControl =>
@@ -3782,6 +3793,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     final resource = _owned(chat);
     final runtime = chat.runtime.runtimeId;
     final before = chat._processes;
+    final turn = chat._runtime.turnRevision;
     final generation = ++chat._processesReadGeneration;
     final previousError = chat._processesError;
     chat._processReads.update(runtime, (count) => count + 1, ifAbsent: () => 1);
@@ -3814,6 +3826,17 @@ class ProfileWorkspaceController extends ChangeNotifier {
         if (reported.add(process.id)) next.add(process);
       }
       chat._dismissedProcessIds.retainWhere(reported.contains);
+      chat._processCompletionTurns.removeWhere(
+        (id, _) => !reported.contains(id),
+      );
+      for (final process in next) {
+        if (!process.isRunning) {
+          chat._processCompletionTurns.putIfAbsent(
+            process.id,
+            () => chat.runtime.executionActive ? turn : -1,
+          );
+        }
+      }
       final admitted = next
           .where((process) => !chat._dismissedProcessIds.contains(process.id))
           .toList();
@@ -10619,6 +10642,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat._subagentsError = null;
       chat._subagentsLoadGeneration++;
       chat._processes = [];
+      chat._processCompletionTurns.clear();
       chat._processesLoading = false;
       chat._processesError = null;
       chat._dismissedProcessIds.clear();

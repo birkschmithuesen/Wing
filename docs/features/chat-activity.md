@@ -12,7 +12,7 @@ Feature ID: `chat-activity`.
 - Active recurring work shows a next-wakeup countdown with compact days/hours for long delays and the exact scheduled time in its tooltip. Paused work, a pending response and work deferred by a goal do not show a countdown; an overdue deadline says Due now without implying execution began.
 - `chat-activity.respond` — Answer the current question or approval. Live approvals in normal, bot and group chats share command-review content with notification review. The exact command starts visible; completed request receipts remain under collapsed Activity. Native prompts stay bound to their turn, while server-request prompts retain their own reply identity. Reopening keeps all waiting native questions in order and a settled request cannot close a newer one.
 - `chat-activity.delegate` — Follow a child and retain its saved result.
-- `chat-activity.processes` — Discover and follow background terminal commands in the optional Background tab above the composer. Read recent output, stop a running command or dismiss an exited row. Discovery happens on entering or returning to a visible connected chat; relevant tool receipts and a five-second running-work refresh keep it current. Hidden/offline chats and settled lists do not poll. Failed reads retain the last rows; reopen Background to retry.
+- `chat-activity.processes` — Discover and follow background terminal commands in the optional Background tab above the composer. Read recent output, stop a running command or dismiss an exited row during its active response. Exited rows leave the dock when that response ends and do not return on later turns; running processes remain visible until they exit. Discovery happens on entering or returning to a visible connected chat; relevant tool receipts and a five-second running-work refresh keep it current. Hidden/offline chats and settled lists do not poll. Failed reads retain the last rows; reopen Background to retry.
 - `chat-activity.tasks` — Follow the current task batch above the composer. Once every task is completed or cancelled and its response ends, read the batch in that response's Activity Tasks tab. Later rounds and replayed updates do not restore it to the composer.
 
 ## How to get to it (user POV)
@@ -48,7 +48,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 - **Saved completion placement:** `flutter test --no-pub test/internal_message_visibility_test.dart test/profile_transcript_test.dart test/profile_live_execution_test.dart` checks saved/live-adjacent grouping, retained identities, batches/failures, and opening process details through the conversation Activity in both themes at normal and enlarged text. The phone matrix compares the process row with its neighboring command row: equal compact height, aligned icons/text, matching typography and no inter-row gap. The live suite checks completion/watch/failure/batch/body-less details and exact-output Copy.
 
-- **Background process discovery and live updates:** the owner tests exercise empty-list discovery, coalesced receipts and held reads, unchanged snapshots, route departure/resume, runtime replacement, failures and recovery. The production-route matrix opens Background without preloading rows, follows output and uses Stop/Dismiss beside Tasks/Subagents at 390 dp and 320 dp/200% text, both themes, including keyboard and held/failed reads.
+- **Background process discovery and live updates:** the owner tests exercise empty-list discovery, coalesced receipts and held reads, unchanged snapshots, route departure/resume, runtime replacement, failures and recovery. Lifetime regressions cover old idle registry entries, completion/error, late reads, later turns and processes that outlive their parent. The production-route matrix opens Background without preloading rows, follows output and uses Stop/Dismiss beside Tasks/Subagents at 390 dp and 320 dp/200% text, both themes, including keyboard and held/failed reads.
 
   ```sh
   flutter test --no-pub test/profile_background_work_test.dart test/profile_background_work_panel_test.dart test/profile_live_work_route_test.dart
@@ -80,7 +80,7 @@ readable reasoning, checks newest-first tool/reasoning placement and the unique
 expanded header, retains open details and an unsent draft across incoming work,
 and verifies the saved final answer. The process case checks discovery,
   changing output, Tasks/Subagents/Background together, native keyboard/draft
-  retention, natural exit, Stop with backend readback and Dismiss. Require its
+  retention, natural exit, Stop with backend readback and automatic retirement after the parent response ends. Manual Dismiss during an active response is covered by the focused panel suite. Require its
   named verdict and confirmed owned-chat cleanup; no existing chat or profile
   setting is changed. Captures and source/backend identities remain in the output.
 
@@ -101,4 +101,4 @@ the production Activity and recovery controls.
 
 Streaming durations start at the preceding user message or Reasoning block; native reasoning boundaries use their first receipt time on the phone. Missing or reversed timestamps omit the interval. Historical results have no live controls. Completed children remain current only while their parent turn is active. Task batches with unfinished work remain current after a response; fully settled batches retire when their response ends, before history finishes loading. A request must belong to the displayed chat.
 
-Tasks are plan items, while Background contains terminal processes. A process row retains exited output until dismissal or the server removes it. Automatic refreshes stay quiet; selecting Background shows a pending cue through its read. Stop uses the exact session-owned process and requires a server acknowledgement.
+Tasks are plan items, while Background contains terminal processes. An exited process remains in the dock only during the response in which its completion was observed. When that response ends, Background hides finished rows and disappears if no running work remains. Opening an idle chat does not restore old exited registry entries; saved receipts remain in Activity. Automatic refreshes stay quiet; selecting Background shows a pending cue through its read. Stop uses the exact session-owned process and requires a server acknowledgement.

@@ -327,6 +327,7 @@ void main() {
           await controller.initialize();
           final chat = await controller.createChat(canDispatch: () => true);
           expect(chat.processes, isEmpty);
+          host.event('a', 'message.start');
           host.event('a', 'todo.updated', {
             'revision': 1,
             'todos': [
@@ -488,11 +489,15 @@ void main() {
           await settle();
           expect(chat.processes.single.isRunning, isFalse);
           expect(find.byTooltip('Dismiss'), findsOneWidget);
-          await tester.ensureVisible(find.byTooltip('Dismiss'));
-          await tester.tap(find.byTooltip('Dismiss'));
+          host.event('a', 'message.complete', {'text': 'Research finished.'});
           await settle();
           expect(tab(2, true), findsNothing);
+          expect(tab(2, false), findsNothing);
           expect(find.text('Keep my hotel notes'), findsOneWidget);
+          host.event('a', 'message.start');
+          await controller.refreshProcesses(chat);
+          await settle();
+          expect(tab(2, false), findsNothing);
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         },

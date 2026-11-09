@@ -11,6 +11,7 @@ import 'package:wing/core/models/session_control.dart';
 import 'package:wing/core/models/side_question_delivery.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/profile_supervision_session.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
@@ -126,6 +127,88 @@ void main() {
   });
 
   int reads() => host.calls.where((call) => call.$2 == 'process.list').length;
+
+  test(
+    'idle process registry stays out of the live dock across later turns',
+    () async {
+      final session = ProfileSupervisionSession(
+        controller: controller,
+        chat: chat,
+      );
+      addTearDown(session.dispose);
+      host.listResponse = {
+        'processes': [for (var i = 0; i < 7; i++) _process('old-$i', 'exited')],
+      };
+      await controller.refreshProcesses(chat);
+      expect(chat.runtime.executionActive, isFalse);
+      expect(chat.processes, hasLength(7));
+      expect(session.state.processes, isEmpty);
+      host.event('a', 'message.start');
+      await controller.refreshProcesses(chat);
+      expect(session.state.processes, isEmpty);
+    },
+  );
+
+  for (final event in ['message.complete', 'turn.end', 'turn.error']) {
+    test(
+      'parent $event retires exited processes while running work survives',
+      () async {
+        final session = ProfileSupervisionSession(
+          controller: controller,
+          chat: chat,
+        );
+        addTearDown(session.dispose);
+        host.event('a', 'message.start');
+        host.listResponse = {
+          'processes': [
+            _process('finished', 'exited'),
+            _process('working', 'running'),
+          ],
+        };
+        await controller.refreshProcesses(chat);
+        expect(session.state.processes, hasLength(2));
+        host.event('a', event, {
+          'text': 'Done',
+          'status': event == 'turn.error' ? 'error' : 'completed',
+        });
+        expect(chat.runtime.executionActive, isFalse);
+        expect(session.state.processes.map((p) => p.id), ['working']);
+        await controller.refreshProcesses(chat);
+        expect(session.state.processes.map((p) => p.id), ['working']);
+        host.event('a', 'message.start');
+        await controller.refreshProcesses(chat);
+        expect(session.state.processes.map((p) => p.id), ['working']);
+      },
+    );
+  }
+
+  for (final nextTurn in [false, true]) {
+    test(
+      'process exit read after response, next turn $nextTurn, stays retired',
+      () async {
+        final session = ProfileSupervisionSession(
+          controller: controller,
+          chat: chat,
+        );
+        addTearDown(session.dispose);
+        host.event('a', 'message.start');
+        host.listResponse = {
+          'processes': [_process('working', 'running')],
+        };
+        await controller.refreshProcesses(chat);
+        final pending = host.pendingList = Completer<Map<String, dynamic>>();
+        final refresh = controller.refreshProcesses(chat);
+        host.event('a', 'message.complete', {'text': 'Done'});
+        expect(session.state.processes.single.isRunning, isTrue);
+        if (nextTurn) host.event('a', 'message.start');
+        pending.complete({
+          'processes': [_process('working', 'exited')],
+        });
+        await refresh;
+        expect(session.state.processes, isEmpty);
+      },
+    );
+  }
 
   testWidgets(
     'visible chat discovers and follows processes without idle polling',

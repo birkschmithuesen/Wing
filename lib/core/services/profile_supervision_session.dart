@@ -51,7 +51,7 @@ final class ProfileSupervisionSession extends ChangeNotifier
     sessionControlWorking: _chat.sessionControlWorking,
     sessionControlError: _chat.sessionControlError,
     sessionControlNotice: _chat.sessionControlNotice,
-    processes: _chat.processes,
+    processes: _chat.currentProcesses,
     processesLoading: _chat.processesLoading,
     processesError: _chat.processesError,
     actionBusy: _actionBusy,

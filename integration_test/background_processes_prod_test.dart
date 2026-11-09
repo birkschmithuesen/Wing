@@ -197,21 +197,22 @@ void main() {
               reason: 'Independent backend read confirms the stop',
             );
             await captureJourney(tester, 'prod-process-stopped');
-            await tapJourneyControl(tester, find.byTooltip('Dismiss'));
-            expect(chat.processes.any((p) => p.id == longId), isFalse);
-            await tapJourneyControl(tester, find.text(short.command));
-            await tapJourneyControl(tester, find.byTooltip('Dismiss'));
-            await tester.pump(const Duration(milliseconds: 400));
-            expect(chat.processes, isEmpty);
+            await waitForProductionState(
+              tester,
+              () => !chat.runtime.executionActive,
+              'The parent response settles after its child finishes',
+              seconds: 90,
+            );
+            expect(chat.currentProcesses, isEmpty);
             expect(tab(2), findsNothing);
             expect(tab(2, open: true), findsNothing);
             expect(
               chat.composer.observation.text,
               'Retain my unsent process QA draft',
             );
-            await captureJourney(tester, 'prod-process-dismissed');
+            await captureJourney(tester, 'prod-process-retired');
             debugPrint(
-              'WING_PROD_PROCESSES ${jsonEncode({'discovered': true, 'automatic_output': true, 'three_categories': true, 'natural_exit': true, 'stop_readback': true, 'dismissed': true, 'keyboard': true, 'draft_retained': true})}',
+              'WING_PROD_PROCESSES ${jsonEncode({'discovered': true, 'automatic_output': true, 'three_categories': true, 'natural_exit': true, 'stop_readback': true, 'retired_after_response': true, 'keyboard': true, 'draft_retained': true})}',
             );
           } finally {
             // Fresh authoritative rows identify only jobs created in this exact

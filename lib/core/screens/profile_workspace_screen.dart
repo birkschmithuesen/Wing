@@ -2785,8 +2785,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     live: _liveAnswering(chat),
     taskCount: chat.todoRevision == null ? null : chat.currentTodos.length,
     agentCount: chat.subagentsAvailable ? chat.currentSubagents.length : null,
-    processCount: chat.processes.isNotEmpty || chat.processesError != null
-        ? chat.processes.length
+    processCount:
+        chat.currentProcesses.isNotEmpty || chat.processesError != null
+        ? chat.currentProcesses.length
         : null,
     processes: ProfileProcessPanel(session: _supervisionFor(chat)),
     processSummary: ListenableBuilder(

@@ -9,6 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'support/composer_fixture.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/widgets/profile_background_work_panel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -171,6 +172,7 @@ void main() {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    emitChatEvent(controller, chat, 'message.start');
     await supervision.refreshProcesses();
     await tester.pumpWidget(
       MaterialApp(
@@ -412,10 +414,11 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(chat.processes, hasLength(2));
-      await tester.tap(find.text('Background 2'));
+      await tester.tap(find.text('Background 1'));
       await tester.pumpAndSettle();
       expect(find.text('dart run worker.dart'), findsOneWidget);
-      expect(find.text('1 running · 1 exited'), findsOneWidget);
+      expect(find.text('1 running'), findsOneWidget);
+      expect(find.text('dart test'), findsNothing);
       expect(find.text('Background work'), findsNothing);
       await tester.tap(find.text('dart run worker.dart'));
       await tester.pumpAndSettle();

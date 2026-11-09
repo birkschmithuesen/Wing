@@ -85,7 +85,7 @@ For `journeys.conversation`, the Background dock recipe in
 live output, Stop/Dismiss and draft retention alongside Tasks and Subagents.
 Saved process receipts use the same compact rows as neighboring tools and
 reasoning in Activity; expanding Process update preserves the full result after
-the live process has gone.
+the live process has gone. Exited processes leave the composer when their response ends; running processes remain visible, and later turns do not restore old exited rows.
 
 ### Selected Hermes features on an existing production gateway
 
