@@ -259,9 +259,20 @@ class _BlockReusingMarkdownBodyState extends State<MarkdownWidget> {
       final children =
           widget.selectable &&
               node is md.Element &&
-              node.tag == 'p' &&
-              !widget.builders.containsKey('p')
-          ? retainMarkdownParagraphText(built)
+              _retainedTextTags.contains(node.tag) &&
+              !_hasCustomTextBlock(node, widget.builders)
+          ? [
+              for (final (position, child) in retainMarkdownText(built).indexed)
+                // A grammar change (for example prose becoming a heading)
+                // starts a new control lifetime even if both use a Column.
+                KeyedSubtree(
+                  key: ValueKey((index, node.tag, position)),
+                  // Opaque nested blocks (such as stock code fences) still
+                  // need the enclosing selection boundary. Retained inline
+                  // controls own their nested boundaries independently.
+                  child: viewportSelection(child),
+                ),
+            ]
           : [for (final child in built) viewportSelection(child)];
       if (CompletionDiagnostics.enabled) {
         builderUs += CompletionDiagnostics.start() - builderStart;
@@ -397,3 +408,30 @@ class _AdaptiveTableBuilder extends MarkdownElementBuilder {
     cellBuilder: cellBuilder,
   );
 }
+
+// Only these stock blocks use the layout containers understood by the retained
+// text adapter. A custom block anywhere inside keeps its own control lifetime.
+const _retainedTextTags = {
+  'p',
+  'h1',
+  'h2',
+  'h3',
+  'h4',
+  'h5',
+  'h6',
+  'ul',
+  'ol',
+  'li',
+  'blockquote',
+};
+
+bool _hasCustomTextBlock(
+  md.Node node,
+  Map<String, MarkdownElementBuilder> builders,
+) =>
+    node is md.Element &&
+    ((builders[node.tag]?.isBlockElement() ?? false) ||
+        (_retainedTextTags.contains(node.tag) &&
+            builders.containsKey(node.tag)) ||
+        (node.children?.any((child) => _hasCustomTextBlock(child, builders)) ??
+            false));

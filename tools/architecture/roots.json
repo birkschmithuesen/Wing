@@ -7184,6 +7184,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/KeyboardInsetsSync.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/MainActivity.kt",
       "area": "android",
       "provenance": "tracked"
@@ -7417,6 +7422,11 @@
       "path": "android/app/src/profile/AndroidManifest.xml",
       "area": "android",
       "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/test/java/io/flutter/plugin/editing/KeyboardInsetsSyncTest.java",
+      "area": "android",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "android/app/src/test/kotlin/com/tarkilhk/wing/BoundedIntakeQueueTest.kt",

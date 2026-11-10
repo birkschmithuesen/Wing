@@ -40,6 +40,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   opens an explicit Markdown file link through the production HTTP client,
   holds the read to check visible progress and then verifies rendered content.
 
+  Growing paragraphs, headings, list items and quotes retain native text
+  controls without repeating clipboard/text-action queries. Selection survives
+  append-only updates; links use current callbacks, syntax changes retire old
+  controls, and custom builders keep their own widgets and interactions.
+
   Document assertions distinguish whole prose segments from the table cells'
   nested renderers. Growing tables must retain exact cell content and selection
   bounds and match a fresh adaptive-table render.

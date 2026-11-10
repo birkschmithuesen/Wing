@@ -14,6 +14,14 @@ final _slashLiteralPrefixPattern = RegExp(
   r'|[/\\])(?:\.\.?|[A-Za-z]:)$|(?:^|\s)[^\s]*://[^\s]*$',
   unicode: true,
 );
+final _slashQueryPattern = RegExp(
+  '(^|$_slashSeparator)(/$_slashQueryName)\$',
+  unicode: true,
+);
+final _leadingSlashQueryPattern = RegExp(
+  '^/$_slashName(?:\\s[\\s\\S]*)\$',
+  unicode: true,
+);
 
 bool _slashIsLiteral(String text, int start) =>
     _slashLiteralPrefixPattern.hasMatch(text.substring(0, start));
@@ -178,18 +186,15 @@ class SlashCompletion {
 
   /// The active inline token, or the leading command and its arguments.
   static String? queryToken(String prefix) {
-    final inline = RegExp(
-      '(^|$_slashSeparator)(/$_slashQueryName)\$',
-      unicode: true,
-    ).firstMatch(prefix);
+    // Ordinary drafts are checked while typing and during workspace updates.
+    // Without a slash there cannot be a command or inline skill token.
+    if (!prefix.contains('/')) return null;
+    final inline = _slashQueryPattern.firstMatch(prefix);
     if (inline != null &&
         !_slashIsLiteral(prefix, inline.end - inline[2]!.length)) {
       return inline[2];
     }
-    if (RegExp(
-      '^/$_slashName(?:\\s[\\s\\S]*)\$',
-      unicode: true,
-    ).hasMatch(prefix)) {
+    if (_leadingSlashQueryPattern.hasMatch(prefix)) {
       return prefix;
     }
     return null;

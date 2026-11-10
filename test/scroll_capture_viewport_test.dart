@@ -20,6 +20,108 @@ Future<Object?> _native(String method, Map<String, Object> args) async {
 }
 
 void main() {
+  testWidgets(
+    'content changes keep native registration while capture reads fresh metrics',
+    (tester) async {
+      final registrations = <Map<Object?, Object?>>[];
+      final messenger =
+          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      messenger.setMockMethodCallHandler(ScrollCaptureBridge.channel, (
+        call,
+      ) async {
+        if (call.method == 'register') {
+          registrations.add(Map<Object?, Object?>.from(call.arguments as Map));
+        }
+        return null;
+      });
+      addTearDown(
+        () => messenger.setMockMethodCallHandler(
+          ScrollCaptureBridge.channel,
+          null,
+        ),
+      );
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      var contentHeight = 2000.0;
+      var footerHeight = 100.0;
+      late StateSetter update;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              update = setState;
+              return Scaffold(
+                body: Column(
+                  children: [
+                    Expanded(
+                      child: ScrollCaptureViewport(
+                        controller: controller,
+                        onCaptureChanged: (_) {},
+                        child: SingleChildScrollView(
+                          controller: controller,
+                          child: SizedBox(
+                            height: contentHeight,
+                            child: const Text('Growing answer'),
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: footerHeight),
+                  ],
+                ),
+              );
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final initialRegistrations = registrations.length;
+      final id = registrations.last['id'] as int;
+      final initial = await _native('metrics', {'id': id}) as Map;
+      for (var delta = 0; delta < 20; delta++) {
+        update(() => contentHeight += 50);
+        await tester.pumpAndSettle();
+        controller.jumpTo((delta + 1) * 10);
+        await tester.pumpAndSettle();
+      }
+      final current = await _native('metrics', {'id': id}) as Map;
+      expect(current['max'], greaterThan(initial['max'] as num));
+      expect(
+        current['offset'],
+        controller.offset * tester.view.devicePixelRatio,
+      );
+      expect(
+        registrations.length,
+        initialRegistrations,
+        reason:
+            'Content growth and scroll offsets do not change the Android capture target',
+      );
+
+      update(() => footerHeight += 50);
+      await tester.pumpAndSettle();
+      expect(registrations.length, initialRegistrations + 1);
+      final resized = await _native('metrics', {'id': id}) as Map;
+      expect(resized['bottom'], lessThan(current['bottom'] as num));
+
+      final other = ScrollCaptureBridge((_, _) async => null);
+      await other.update({
+        'left': 0.0,
+        'top': 0.0,
+        'right': 10.0,
+        'bottom': 10.0,
+      });
+      final beforeReturn = registrations.length;
+      update(() {});
+      await tester.pumpAndSettle();
+      expect(registrations.length, beforeReturn + 1);
+      expect(registrations.last['id'], id);
+      await other.dispose();
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+    },
+    variant: TargetPlatformVariant({TargetPlatform.android}),
+  );
+
   for (final (reversed, centered) in [
     (false, false),
     (true, false),

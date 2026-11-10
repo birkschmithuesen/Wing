@@ -32,10 +32,18 @@ class _ScrollCaptureViewportState extends State<ScrollCaptureViewport> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scheduled = false;
       if (!mounted) return;
-      final data = _metrics();
-      if (data != null && (!_bridge.isCurrent || !_sameBounds(data))) {
-        _lastBounds = data;
-        unawaited(_bridge.update(data));
+      final metrics = _metrics();
+      if (metrics == null) return;
+      // Android registers the viewport rectangle. Offset and extent are read
+      // through its metrics/start callbacks when a capture actually requests
+      // them; streaming growth must not reinstall the same native target.
+      final bounds = {
+        for (final key in const ['left', 'top', 'right', 'bottom'])
+          key: metrics[key]!,
+      };
+      if (!_bridge.isCurrent || !_sameBounds(bounds)) {
+        _lastBounds = bounds;
+        unawaited(_bridge.update(bounds));
       }
     });
   }

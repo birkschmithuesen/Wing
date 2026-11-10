@@ -1,37 +1,66 @@
 import 'selection_viewport.dart';
 import 'package:flutter/material.dart';
 
-/// Retains stock Markdown paragraph text controls without changing its spans or
-/// layout. Images and custom inline widgets remain owned by their builders.
-List<Widget> retainMarkdownParagraphText(List<Widget> children) => [
-  for (final child in children)
-    if (child is Column)
-      Column(
-        key: child.key,
-        mainAxisAlignment: child.mainAxisAlignment,
-        mainAxisSize: child.mainAxisSize,
-        crossAxisAlignment: child.crossAxisAlignment,
-        textDirection: child.textDirection,
-        verticalDirection: child.verticalDirection,
-        textBaseline: child.textBaseline,
-        spacing: child.spacing,
-        children: [
-          for (final (index, run) in child.children.indexed)
-            _retainInlineRun(run, index),
-        ],
-      )
-    else
-      child,
+/// Retains stock Markdown text controls without changing their spans or layout.
+/// Stop at inline wraps so images and custom inline widgets stay builder-owned.
+List<Widget> retainMarkdownText(List<Widget> children) => [
+  for (final (index, child) in children.indexed) _retainBlock(child, index),
 ];
 
-Widget _retainInlineRun(Widget child, int index) {
-  if (child is Padding && child.child is Wrap) {
+Widget _retainBlock(Widget child, int index) {
+  if (child is Column) {
+    return Column(
+      key: child.key,
+      mainAxisAlignment: child.mainAxisAlignment,
+      mainAxisSize: child.mainAxisSize,
+      crossAxisAlignment: child.crossAxisAlignment,
+      textDirection: child.textDirection,
+      verticalDirection: child.verticalDirection,
+      textBaseline: child.textBaseline,
+      spacing: child.spacing,
+      children: retainMarkdownText(child.children),
+    );
+  }
+  if (child is Row) {
+    return Row(
+      key: child.key,
+      mainAxisAlignment: child.mainAxisAlignment,
+      mainAxisSize: child.mainAxisSize,
+      crossAxisAlignment: child.crossAxisAlignment,
+      textDirection: child.textDirection,
+      verticalDirection: child.verticalDirection,
+      textBaseline: child.textBaseline,
+      spacing: child.spacing,
+      children: retainMarkdownText(child.children),
+    );
+  }
+  if (child is Flexible) {
+    return Flexible(
+      key: child.key,
+      flex: child.flex,
+      fit: child.fit,
+      child: _retainBlock(child.child, index),
+    );
+  }
+  if (child is DecoratedBox && child.child != null) {
+    return DecoratedBox(
+      key: child.key,
+      decoration: child.decoration,
+      position: child.position,
+      child: _retainBlock(child.child!, index),
+    );
+  }
+  if (child is Padding && child.child != null) {
     return Padding(
       key: child.key,
       padding: child.padding,
-      child: _retainInlineRun(child.child!, index),
+      child: _retainBlock(child.child!, index),
     );
   }
+  return _retainInlineRun(child, index);
+}
+
+Widget _retainInlineRun(Widget child, int index) {
   if (child is! Wrap) return child;
   return Wrap(
     key: child.key,
@@ -125,7 +154,7 @@ class _ParagraphTextState extends State<_ParagraphText> {
   @override
   Widget build(BuildContext context) {
     final text = widget.text;
-    // These are the exact properties set by the stock paragraph builder. Its
+    // These are the exact properties set by the stock text builder. Its
     // original selection callback and current link recognizers remain intact.
     return viewportSelection(
       SelectableText.rich(

@@ -124,15 +124,24 @@ class _StockDelegate implements MarkdownBuilderDelegate {
 }
 
 void main() {
-  testWidgets(
-    'real streaming message retains growing paragraph states and selection',
-    (tester) async {
+  for (final (kind, prefix) in [
+    ('paragraph', ''),
+    ('heading', '### '),
+    ('list', '- '),
+    ('numbered list', '1. '),
+    ('quote', '> '),
+    ('quoted list', '> - '),
+  ]) {
+    testWidgets('growing $kind retains text state and selection', (
+      tester,
+    ) async {
       const fixed = 'Completed paragraph stays fixed.';
       const start = 'Growing paragraph';
+      final sourceStart = '$prefix$start';
       await tester.pumpMarkdownWidget(
         _host(
-          const MarkdownMessageContent(
-            data: '$fixed\n\n$start',
+          MarkdownMessageContent(
+            data: '$fixed\n\n$sourceStart',
             streaming: true,
           ),
         ),
@@ -152,7 +161,7 @@ void main() {
         await tester.pumpMarkdownWidget(
           _host(
             MarkdownMessageContent(
-              data: '$fixed\n\n$growing',
+              data: '$fixed\n\n$prefix$growing',
               streaming: update != 4,
             ),
           ),
@@ -169,12 +178,11 @@ void main() {
         expect(selection.textInside(growing), 'Growing');
         expect(tester.takeException(), isNull);
       }
-    },
-  );
+    });
 
-  testWidgets(
-    'paragraph appends do not repeat native editable initialization',
-    (tester) async {
+    testWidgets('$kind appends do not repeat native editable initialization', (
+      tester,
+    ) async {
       final calls = <String, int>{};
       void record(MethodCall call) =>
           calls.update(call.method, (count) => count + 1, ifAbsent: () => 1);
@@ -199,8 +207,8 @@ void main() {
 
       await tester.pumpMarkdownWidget(
         _host(
-          const MarkdownMessageContent(
-            data: 'Fixed paragraph.\n\nGrowing paragraph',
+          MarkdownMessageContent(
+            data: 'Fixed paragraph.\n\n${prefix}Growing paragraph',
             streaming: true,
           ),
         ),
@@ -222,7 +230,8 @@ void main() {
         await tester.pumpMarkdownWidget(
           _host(
             MarkdownMessageContent(
-              data: 'Fixed paragraph.\n\nGrowing paragraph${' more' * update}',
+              data:
+                  'Fixed paragraph.\n\n${prefix}Growing paragraph${' more' * update}',
               streaming: true,
             ),
           ),
@@ -234,87 +243,96 @@ void main() {
         }, baseline);
         expect(tester.takeException(), isNull);
       }
-    },
-  );
+    });
+  }
 
-  testWidgets('equal-text paragraphs retain distinct state and current links', (
-    tester,
-  ) async {
-    final key = GlobalKey();
-    final calls = <String>[];
-    Widget content(String source, String owner) => _host(
-      BlockReusingMarkdownBody(
-        key: key,
-        data: source,
-        selectable: true,
-        onTapLink: (_, href, _) => calls.add('$owner $href'),
-      ),
-    );
-    await tester.pumpMarkdownWidget(
-      content(
-        '[Repeat](https://example.test/first)\n\n'
-            '[Repeat](https://example.test/second)',
-        'old',
-      ),
-    );
-    final before = _texts(tester);
-    expect(before, hasLength(2));
-    expect(before.map((text) => text.textSpan!.toPlainText()), [
-      'Repeat',
-      'Repeat',
-    ]);
-    final firstState = tester.state(find.byWidget(before.first));
-    final secondState = tester.state(find.byWidget(before.last));
-    expect(firstState, isNot(same(secondState)));
-    final firstEditable = _editable(tester, before.first);
-    final secondEditable = _editable(tester, before.last);
-
-    await tester.pumpMarkdownWidget(
-      content(
-        '[Repeat](https://example.test/updated) **bold** `code`\n\n'
-            '[Repeat](https://example.test/second)',
-        'new',
-      ),
-    );
-    final after = _texts(tester);
-    expect(after, hasLength(2));
-    expect(tester.state(find.byWidget(after.first)), same(firstState));
-    expect(tester.state(find.byWidget(after.last)), same(secondState));
-    expect(_editable(tester, after.first), same(firstEditable));
-    expect(_editable(tester, after.last), same(secondEditable));
-    expect(after.last, same(before.last));
-    expect(after.first.textSpan!.toPlainText(), 'Repeat bold code');
-    expect(firstEditable.widget.controller.text, 'Repeat bold code');
-    expect(
-      _spans(
-        after.first,
-      ).any((span) => span.style?.fontWeight == FontWeight.bold),
-      isTrue,
-    );
-    for (final text in after) {
-      final links = _spans(text)
-          .map((span) => span.recognizer)
-          .whereType<TapGestureRecognizer>()
-          .toSet()
-          .toList();
-      expect(links, hasLength(1));
-      final editable = _editable(tester, text).renderEditable;
-      await tester.tapAt(
-        editable.localToGlobal(
-          editable.getLocalRectForCaret(const TextPosition(offset: 3)).center,
+  for (final (kind, prefix) in [
+    ('paragraphs', ''),
+    ('headings', '### '),
+    ('list items', '- '),
+    ('quotes', '> '),
+  ]) {
+    testWidgets('equal-text $kind retain distinct state and current links', (
+      tester,
+    ) async {
+      final key = GlobalKey();
+      final calls = <String>[];
+      Widget content(String source, String owner) => _host(
+        BlockReusingMarkdownBody(
+          key: key,
+          data: source,
+          selectable: true,
+          onTapLink: (_, href, _) => calls.add('$owner $href'),
         ),
       );
-      await tester.pump();
-    }
-    expect(calls, [
-      'new https://example.test/updated',
-      'new https://example.test/second',
-    ]);
-    await tester.pumpMarkdownWidget(const SizedBox());
-    expect(firstEditable.mounted, isFalse);
-    expect(secondEditable.mounted, isFalse);
-    expect(tester.takeException(), isNull);
-  });
+      await tester.pumpMarkdownWidget(
+        content(
+          '$prefix[Repeat](https://example.test/first)\n\n'
+              '$prefix[Repeat](https://example.test/second)',
+          'old',
+        ),
+      );
+      final before = _texts(tester);
+      expect(before, hasLength(2));
+      expect(before.map((text) => text.textSpan!.toPlainText()), [
+        'Repeat',
+        'Repeat',
+      ]);
+      final firstState = tester.state(find.byWidget(before.first));
+      final secondState = tester.state(find.byWidget(before.last));
+      expect(firstState, isNot(same(secondState)));
+      final firstEditable = _editable(tester, before.first);
+      final secondEditable = _editable(tester, before.last);
+
+      await tester.pumpMarkdownWidget(
+        content(
+          '$prefix[Repeat](https://example.test/updated) **bold** `code`\n\n'
+              '$prefix[Repeat](https://example.test/second)',
+          'new',
+        ),
+      );
+      final after = _texts(tester);
+      expect(after, hasLength(2));
+      expect(tester.state(find.byWidget(after.first)), same(firstState));
+      expect(tester.state(find.byWidget(after.last)), same(secondState));
+      expect(_editable(tester, after.first), same(firstEditable));
+      expect(_editable(tester, after.last), same(secondEditable));
+      // List items share one AST block, so their widgets update together;
+      // their mounted controls above must still survive independently.
+      if (kind != 'list items') expect(after.last, same(before.last));
+      expect(after.first.textSpan!.toPlainText(), 'Repeat bold code');
+      expect(firstEditable.widget.controller.text, 'Repeat bold code');
+      expect(
+        _spans(
+          after.first,
+        ).any((span) => span.style?.fontWeight == FontWeight.bold),
+        isTrue,
+      );
+      for (final text in after) {
+        final links = _spans(text)
+            .map((span) => span.recognizer)
+            .whereType<TapGestureRecognizer>()
+            .toSet()
+            .toList();
+        expect(links, hasLength(1));
+        final editable = _editable(tester, text).renderEditable;
+        await tester.tapAt(
+          editable.localToGlobal(
+            editable.getLocalRectForCaret(const TextPosition(offset: 3)).center,
+          ),
+        );
+        await tester.pump();
+      }
+      expect(calls, [
+        'new https://example.test/updated',
+        'new https://example.test/second',
+      ]);
+      await tester.pumpMarkdownWidget(const SizedBox());
+      expect(firstEditable.mounted, isFalse);
+      expect(secondEditable.mounted, isFalse);
+      expect(tester.takeException(), isNull);
+    });
+  }
 
   final transformations = <String, (String, String)>{
     'heading': ('Heading', 'Heading\n---'),
@@ -444,47 +462,55 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('custom paragraph builder keeps its key and interaction', (
-    tester,
-  ) async {
-    var taps = 0;
-    final builder = _CustomParagraphBuilder(() => taps++);
-    final builders = <String, MarkdownElementBuilder>{'p': builder};
-    final key = GlobalKey();
-    for (final source in ['Paragraph', 'Paragraph grows']) {
-      await tester.pumpMarkdownWidget(
-        _host(
-          BlockReusingMarkdownBody(
-            key: key,
-            data: source,
-            selectable: true,
-            builders: builders,
-            fitContent: false,
-          ),
-        ),
-      );
-      final text = _texts(tester).single;
-      expect(text.key, const ValueKey('custom-paragraph'));
-      expect(text.textSpan!.toPlainText(), 'Custom $source');
-      expect(text.maxLines, 3);
-      await tester.tap(find.byWidget(text));
-      await tester.pump();
-      expect(tester.takeException(), isNull);
-      final rendered = _rendered(tester);
-      await tester.pumpMarkdownWidget(
-        _host(
-          MarkdownBody(
-            data: source,
-            selectable: true,
-            builders: builders,
-            fitContent: false,
-          ),
-        ),
-      );
-      expect(_rendered(tester), rendered);
-    }
-    expect(taps, 2);
-  });
+  for (final (tag, prefix) in [
+    ('p', ''),
+    ('h3', '### '),
+    ('li', '- '),
+    ('p', '> '),
+  ]) {
+    testWidgets(
+      'custom $tag builder in $prefix keeps its key and interaction',
+      (tester) async {
+        var taps = 0;
+        final builder = _CustomParagraphBuilder(() => taps++);
+        final builders = <String, MarkdownElementBuilder>{tag: builder};
+        final key = GlobalKey();
+        for (final source in ['Paragraph', 'Paragraph grows']) {
+          await tester.pumpMarkdownWidget(
+            _host(
+              BlockReusingMarkdownBody(
+                key: key,
+                data: '$prefix$source',
+                selectable: true,
+                builders: builders,
+                fitContent: false,
+              ),
+            ),
+          );
+          final text = _texts(tester).single;
+          expect(text.key, const ValueKey('custom-paragraph'));
+          expect(text.textSpan!.toPlainText(), 'Custom $source');
+          expect(text.maxLines, 3);
+          await tester.tap(find.byWidget(text));
+          await tester.pump();
+          expect(tester.takeException(), isNull);
+          final rendered = _rendered(tester);
+          await tester.pumpMarkdownWidget(
+            _host(
+              MarkdownBody(
+                data: '$prefix$source',
+                selectable: true,
+                builders: builders,
+                fitContent: false,
+              ),
+            ),
+          );
+          expect(_rendered(tester), rendered);
+        }
+        expect(taps, 2);
+      },
+    );
+  }
 
   testWidgets(
     'growing inline deliverable keeps rendering and current actions',
