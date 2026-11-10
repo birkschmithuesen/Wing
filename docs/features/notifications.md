@@ -44,6 +44,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   Startup Recents reads must preserve the retained notification stream and its
   later reply events. The background device fixture supplies the independent
   Bots transport too; it must not contact a real server during catalog warming.
+  Repeated questions use distinct request identities in live events and
+  recovery snapshots, so a later question stops monitoring after earlier work
+  was answered and completed.
 
   Long-answer cases verify the first line is visible after Markdown settles,
   in both themes at 390 dp/100% and 320 dp/200%. Opening alone does not mark

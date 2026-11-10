@@ -61,6 +61,7 @@ class NotificationCoverageHost {
   Map<String, dynamic> resumeOverrides = {};
   final workingProfiles = <String>{};
   final waitingProfiles = <String>{};
+  final questionIds = {'a': 'question-a', 'b': 'question-b'};
   final failedMetadataProfiles = <String>{};
 
   Future<ProfileDiscovery> discover() async => ProfileDiscovery(
@@ -252,7 +253,7 @@ class NotificationCoverageHost {
               if (method == 'session.resume' &&
                   waitingProfiles.contains(scope.profileName))
                 {
-                  'id': 'question-${scope.profileName}',
+                  'id': questionIds[scope.profileName]!,
                   'method': 'clarify',
                   'params': {
                     'session_id': '$sessionId-runtime',
@@ -456,6 +457,23 @@ void main() {
         (profile: 'a', session: 'loaded', input: true),
         (profile: 'a', session: 'loaded', input: false),
       ]);
+      host.workingProfiles.add('a');
+      chat.composer.editText('Start another task');
+      await controller.send(chat);
+      host.startTurn('a', chat.runtime.runtimeId);
+      host.workingProfiles.remove('a');
+      host.waitingProfiles.add('a');
+      host.questionIds['a'] = 'question-a-next';
+      event('clarify', {
+        'request_id': host.questionIds['a'],
+        'question': 'Continue?',
+      });
+      await Future<void>.delayed(Duration.zero);
+      expect(chat.runtime.needsInput, isTrue);
+      expect(controller.hasActiveChats, isFalse);
+      await controller.reconnect(chat.key.workspace);
+      expect(chat.runtime.pendingQuestion!.requestId, 'question-a-next');
+      expect(controller.hasActiveChats, isFalse);
     },
   );
 

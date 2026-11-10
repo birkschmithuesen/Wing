@@ -113,6 +113,7 @@ Future<void> _runFixture(_NotificationPollProbe probe) async {
   await sink.initialize();
   var alerts = 0;
   var nextReplyId = 1;
+  var nextQuestionId = 1;
   final generation = DateTime.now().microsecondsSinceEpoch.toString();
   // Stock session.create returns a new identity. A recreated fixture engine
   // must not accidentally reopen an earlier generation's persisted outbox.
@@ -257,14 +258,15 @@ Future<void> _runFixture(_NotificationPollProbe probe) async {
         } else if (state == 'idle') {
           host.completeTurn(profile, chat.runtime.runtimeId, reply);
         } else {
+          // A new question is not a replay of the previous answered request.
+          // Recovery must observe the same unique identity as the live event.
+          final questionId = 'question-$profile-${nextQuestionId++}';
+          host.questionIds[profile] = questionId;
           host.gateways[profile]!.onEvent!(
             StreamEvent(
               type: 'clarify',
               sessionId: chat.runtime.runtimeId,
-              data: {
-                'request_id': 'question-$profile',
-                'question': 'Continue?',
-              },
+              data: {'request_id': questionId, 'question': 'Continue?'},
             ),
           );
         }
