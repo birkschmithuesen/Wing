@@ -43,11 +43,10 @@ Future<void> _render(WidgetTester tester, String name) async {
       reason: 'Every composer anchors its attachment glyph at the leading edge',
     );
     expect(tester.getSize(attachment).width, 48);
-    if (name.startsWith('phone-link-menu-')) {
-      expect(attachment.hitTestable(), findsNothing);
-    } else {
-      expect(attachment.hitTestable(), findsOneWidget);
-    }
+    expect(
+      attachment.hitTestable(),
+      name.startsWith('phone-link-menu-') ? findsNothing : findsOneWidget,
+    );
   }
   await _captureFrame(tester, name);
   if (name.endsWith('-portrait') && !name.startsWith('worker-') ||
@@ -99,9 +98,9 @@ void main() {
       'MaterialIcons': 'MaterialIcons-Regular.otf',
     }.entries) {
       await (FontLoader(entry.key)..addFont(
-            File('$directory/${entry.value}')
-                .readAsBytes()
-                .then(ByteData.sublistView),
+            File(
+              '$directory/${entry.value}',
+            ).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
     }
@@ -123,10 +122,7 @@ void main() {
               theme: wingTheme(Brightness.dark),
               home: Scaffold(
                 body: ConversationComposer(
-                  field: TextField(
-                    controller: draft,
-                    focusNode: focus,
-                  ),
+                  field: TextField(controller: draft, focusNode: focus),
                   focusNode: focus,
                   primaryAction: const SizedBox.shrink(),
                   canCapturePhoto: camera,
@@ -204,8 +200,9 @@ void main() {
               debugShowCheckedModeBanner: false,
               theme: wingTheme(brightness),
               builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context)
-                    .copyWith(textScaler: TextScaler.linear(scale)),
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
                 child: child!,
               ),
               home: BotGroupScreen(

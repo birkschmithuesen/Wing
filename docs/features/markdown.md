@@ -81,6 +81,7 @@ The conversation UI suite taps email links, checks exact mailto handoff, held-la
 
 ```sh
 flutter test --no-pub test/profile_conversation_ui_test.dart --name 'link context menu|link taps use the current preference'
+flutter test --no-pub test/conversation_assembly_test.dart --plain-name 'phone reading preserves chat and draft'
 ```
 
 Hold a formatted reply link and check that the anchored menu appears before
@@ -91,5 +92,7 @@ The browser choices send the exact URL to the chosen destination and show
 progress through handoff. A refused **Open here** shows an error in Wing.
 Change the saved destination and tap the already-rendered link again. A
 one-time menu choice does not change the destination of the next regular tap.
+The shared conversation capture also checks that the open menu blocks taps
+on the composer underneath it and that Back returns to the same draft.
 The fixture covers launch requests; an Android run with an installed browser
 is needed to observe the actual handoff and Back behavior.

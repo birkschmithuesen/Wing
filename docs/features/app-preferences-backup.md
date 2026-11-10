@@ -58,8 +58,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/app_preferences_settings_test.dart test/app_preferences_composition_test.dart test/app_settings_design_test.dart test/config_backup_service_test.dart test/web_preview_test.dart
   ```
 
-  The link setting checks cover held saves, recovery, app-wide dispatch,
-  reopened preferences and backup round trips.
+  The link setting checks cover the popup below the row's trailing edge for
+  either selected destination, held saves, recovery, app-wide dispatch, reopened
+  preferences and backup round trips.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
