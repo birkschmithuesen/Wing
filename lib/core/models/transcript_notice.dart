@@ -11,7 +11,8 @@ String? transcriptNoticeKind(Map<String, dynamic> message) {
 }
 
 UserMessageDelivery? transcriptUserDelivery(Map<String, dynamic> message) =>
-    message['role'] == 'user' && !_noticeKinds.contains(message['display_kind'])
+    answerMessageDisplayRole(message) == 'user' &&
+        !_noticeKinds.contains(message['display_kind'])
     ? userMessageDelivery(answerMessageDisplayText(message))
     : null;
 

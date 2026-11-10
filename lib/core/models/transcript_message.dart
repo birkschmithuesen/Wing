@@ -52,6 +52,8 @@ final class TranscriptMessage {
        ]);
 
   final TranscriptMessageKind kind;
+
+  /// Presentation role, not authority to replay or modify the saved row.
   final String role;
   final bool streaming;
   final Object? id;
@@ -131,7 +133,7 @@ final class TranscriptMessage {
     Map<String, dynamic> row, {
     bool streaming = false,
   }) {
-    final role = row['role']?.toString() ?? '';
+    final role = answerMessageDisplayRole(row) ?? '';
     final rawId = row['id'];
     final id = rawId is int || rawId is String ? rawId : null;
     if (isHiddenAnswerMessage(row)) {

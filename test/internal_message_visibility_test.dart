@@ -134,7 +134,217 @@ class _NoticeHistory extends ProfileHistoryFixture {
   ];
 }
 
-void main() {
+const _morningHandoff =
+    '## Morning handoff\n\n'
+    '**The new scenic route and hotel comparisons are live.** '
+    'This morning I fetched all 37 published HTML pages without the proxy '
+    'and verified their SHA256 hashes against the final publication record, '
+    'repository `dist` and preview output.\n\n'
+    '**12 of 12 stop results are valid.** Every market comparison remains '
+    '**partial**, not proof of the cheapest available accommodation.';
+
+Map<String, dynamic> _internalNotification() => {
+  'id': 275487,
+  'role': 'user',
+  'content': _morningHandoff,
+  'timestamp': 1794270827.6890209,
+  'display_kind': 'internal_notification',
+  'display_metadata': {
+    'completion_note': ['["cron","agent:main:local:dm:chat-0","delivery"]'],
+    'completion_admission': 'notification-admission',
+  },
+};
+
+class _InternalNotificationHistory extends ProfileHistoryFixture {
+  @override
+  List<Map<String, dynamic>> historyRows(String profile, String id) => [
+    _internalNotification(),
+  ];
+}
+
+void main({Future<void> Function(WidgetTester, String)? captureNotification}) {
+  test(
+    'internal notification displays as assistant without rewriting history',
+    () {
+      final row = _internalNotification();
+      final before = Map<String, dynamic>.from(row);
+      final timeline = TranscriptTimeline.project([
+        row,
+      ], presentationId: (_) => 1);
+      final entry = timeline.entries.single;
+      expect(entry.role, 'user');
+      expect(entry.message.role, 'assistant');
+      expect(entry.message.kind, TranscriptMessageKind.dialogue);
+      expect(entry.message.text, _morningHandoff);
+      expect(entry.message.copyText, _morningHandoff);
+      expect(entry.message.id, 275487);
+      expect(entry.message.timestamp, isNotNull);
+      expect(entry.editablePrompt, isFalse);
+      expect(entry.branchAnswer, isFalse);
+      expect(row, before);
+      final cached = captureReadingSnapshotMessage(row);
+      expect(cached['role'], 'user');
+      expect(TranscriptMessage.fromRow(cached).role, 'assistant');
+      expect(isHumanAnswerPrompt(row), isFalse);
+      expect(AnswerTarget.at([row], 0), isNull);
+      // Typed notification provenance wins even when its prose resembles a
+      // different delivery envelope. Ordinary user rows keep their own identity.
+      for (final body in [_agentEnvelope, _processEnvelope, _morningHandoff]) {
+        final notification = {...row, 'content': body};
+        expect(transcriptUserDelivery(notification), isNull);
+        expect(TranscriptMessage.fromRow(notification).role, 'assistant');
+        expect(TranscriptMessage.fromRow(notification).text, body);
+      }
+      for (final kind in [null, 'unknown']) {
+        expect(
+          TranscriptMessage.fromRow({...row, 'display_kind': kind}).role,
+          'user',
+        );
+      }
+      expect(
+        TranscriptMessage.fromRow({...row, 'role': 'system'}).role,
+        'system',
+      );
+      expect(
+        TranscriptMessage.fromRow({
+          ...row,
+          'display_metadata': {'model_only': true},
+        }).kind,
+        TranscriptMessageKind.hidden,
+      );
+    },
+  );
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'internal notification assistant route ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          SharedPreferences.setMockInitialValues({});
+          final host = _InternalNotificationHistory();
+          final preferences = await SharedPreferences.getInstance();
+          final appPreferences = AppPreferences(preferences);
+          addTearDown(appPreferences.dispose);
+          final controller = ProfileWorkspaceController(
+            access: ConnectionAccess(
+              connection: identityTestConnection(),
+              dashboardOAuth: null,
+            ),
+            connectionIdentity: 'handoff-history',
+            preferences: preferences,
+            appPreferences: appPreferences,
+            gatewayFactory: host.gateway,
+          );
+          addTearDown(controller.dispose);
+          await controller.initialize();
+          final chat = await openFixtureChat(
+            controller: controller,
+            key: ProfileSessionKey(controller.current!.scope, 'chat-0'),
+            title: 'Morning handoff',
+          );
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: ProfileWorkspaceScreen(
+                controller: controller,
+                createBotsSession: () => BotsSession((_) async => const []),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          await tester.settleTranscript();
+          for (var refresh = 0; refresh < 2; refresh++) {
+            final message = find.byWidgetPredicate(
+              (w) => w is ProfileMessage && w.message.id == 275487,
+            );
+            expect(message, findsOneWidget);
+            expect(
+              tester.widget<ProfileMessage>(message).message.role,
+              'assistant',
+            );
+            expect(
+              find.byKey(const ValueKey(('user-message-bubble', 275487))),
+              findsNothing,
+            );
+            expect(find.byTooltip('Edit message'), findsNothing);
+            expect(find.byTooltip('Restore checkpoint'), findsNothing);
+            expect(find.byTooltip('Read aloud'), findsOneWidget);
+            expect(chat.reading.messages.single['role'], 'user');
+            expect(
+              chat.reading.messages.single['display_kind'],
+              'internal_notification',
+            );
+            if (refresh == 0) {
+              await Scrollable.ensureVisible(
+                tester.element(find.byTooltip('Copy message')),
+                alignment: .25,
+              );
+              await tester.pumpAndSettle();
+              await captureNotification?.call(
+                tester,
+                'notification-${brightness.name}-$scale',
+              );
+            }
+            await controller.refreshHistory(chat);
+            await tester.pumpAndSettle();
+            await tester.settleTranscript();
+          }
+          String? copied;
+          tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            (call) async {
+              if (call.method == 'Clipboard.setData') {
+                copied = (call.arguments as Map)['text'] as String;
+              }
+              return null;
+            },
+          );
+          addTearDown(
+            () => tester.binding.defaultBinaryMessenger
+                .setMockMethodCallHandler(SystemChannels.platform, null),
+          );
+          await Scrollable.ensureVisible(
+            tester.element(find.byTooltip('Copy message')),
+            alignment: .25,
+          );
+          await tester.pumpAndSettle();
+          expect(find.byTooltip('Copy message').hitTestable(), findsOneWidget);
+          await tester.tap(find.byTooltip('Copy message'));
+          await tester.pumpAndSettle();
+          expect(copied, _morningHandoff);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
+  testWidgets('internal notification Find result uses assistant identity', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: _findSheet(
+          loadHistory: (_) async =>
+              ProfileHistoryPage('chat', [_internalNotification()], 0, 500),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'Morning handoff');
+    await tester.pumpAndSettle();
+    expect(find.text('assistant'), findsOneWidget);
+    expect(find.text('user'), findsNothing);
+  });
+
   const capture = bool.fromEnvironment('STUDIO_REVIEW');
   setUpAll(() async {
     if (!capture) return;

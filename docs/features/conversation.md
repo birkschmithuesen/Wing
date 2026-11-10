@@ -8,6 +8,7 @@ Feature ID: `conversation`.
 
 - `conversation.read` — Reconcile live and saved messages. Steering becomes a normal user bubble when it appears in saved history, including on reopen and cached reading; see the [steering recipe](chat-inputs.md#gotchas). Saved history opens independently of runtime attachment; an attachment refusal keeps messages and drafts visible, with Retry to enable sending.
 - Normal chats, canonical Bot Chats and group discussions share the conversation frame and reading layout. Passive Recents cards use the same frame and composer presentation.
+- Automated updates stored by Hermes as `user` + `internal_notification` appear as assistant messages, including formatted content, Copy and the assistant identity in Find. Their stored role stays unchanged; these updates are not editable human prompts or regeneratable answers.
 - `conversation.reading-mode` — Use a table’s full-screen icon to hide the composer and portrait context row without leaving the conversation. The same icon or Android Back restores it; drafts remain intact. Landscape puts title and scope in one header row.
 - `conversation.email-draft` — With Wing plugin 0.3.0 enabled in the selected Hermes profile and its email tools available, ask Hermes to draft an email. A returned `wing-email-draft` card shows To, optional Cc/Bcc, subject and full body. Tap the envelope-arrow icon (Open in email app) to choose a composer with those exact fields. Sending and final edits happen there. Older cards keep their original version after revisions. Missing drafts show Retry; ordinary email prose is not interpreted as a draft.
 - `conversation.search` — Find and open older content.
@@ -41,6 +42,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/internal_message_visibility_test.dart
   flutter test --no-pub test/profile_composer_actions_test.dart --plain-name 'automation start preserves'
   ```
+
+  The internal-notification cases exercise the real conversation route in both
+  themes at normal and doubled text size, history refresh, exact source copying,
+  Find identity, cached-row projection and unchanged stored roles/action rights.
+  `message_timestamp_test.dart` also covers notification layout in Bot Chats.
 
   The reading-position suite covers thread departure, covered conversations,
   app return and local prompts becoming saved history. For the real Send control

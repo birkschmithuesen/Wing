@@ -2,6 +2,15 @@ import 'skill_invocation.dart';
 import 'user_message_delivery.dart';
 import 'composer_reference.dart';
 
+/// Reading identity only. Hermes stores automated notes as user input; their
+/// notification kind presents them as incoming assistant content in Wing.
+/// Replay, ordering and saved-message actions must use the authoritative row.
+String? answerMessageDisplayRole(Map<String, dynamic> message) =>
+    message['role'] == 'user' &&
+        message['display_kind'] == 'internal_notification'
+    ? 'assistant'
+    : message['role']?.toString();
+
 /// Text projection for gateway display messages and stored multimodal content.
 String answerMessageText(Map<String, dynamic> message) {
   final value = message['content'] ?? message['text'];
@@ -44,7 +53,9 @@ final _steeringEnvelope = RegExp(
 /// producer-owned suffix while hydrating user messages, then regenerates from
 /// that hydrated text. Assistant content must stay byte-for-byte visible.
 String answerMessageDisplayText(Map<String, dynamic> message) {
-  if (message['role'] != 'user') return answerMessageText(message);
+  if (answerMessageDisplayRole(message) != 'user') {
+    return answerMessageText(message);
+  }
   final steering = steeringMessageText(message);
   if (steering != null) {
     return PreparedComposerMessage.parse(steering)?.displayMessage ?? steering;

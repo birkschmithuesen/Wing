@@ -201,7 +201,7 @@ final class _ReadingRow {
             ? transcriptUserDelivery(row)!.sender!
             : transcriptNoticeKind(row) != null
             ? 'system'
-            : row['role']?.toString() ?? 'message',
+            : answerMessageDisplayRole(row) ?? 'message',
         canSelect: row['id'] is int,
       );
 

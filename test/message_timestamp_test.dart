@@ -457,7 +457,7 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
-      for (final surface in ['group', 'bot']) {
+      for (final surface in ['group', 'bot', 'notification']) {
         testWidgets(
           'shared bot conversation $surface ${brightness.name} $scale',
           (tester) async {
@@ -516,7 +516,11 @@ void main() {
                   )
                 : TranscriptMessage.fromRow({
                     'id': id,
-                    'role': role,
+                    'role': surface == 'notification' && role == 'assistant'
+                        ? 'user'
+                        : role,
+                    if (surface == 'notification' && role == 'assistant')
+                      'display_kind': 'internal_notification',
                     'content': text,
                     'timestamp': _date.millisecondsSinceEpoch / 1000,
                   });
