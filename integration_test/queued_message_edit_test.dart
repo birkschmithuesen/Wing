@@ -50,9 +50,16 @@ class _QueueFixture extends ProfileActionsFixture {
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
     final base = super.gateway(scope);
-    return gateways[scope.profileName] = ProfileGateway(
+    late final ProfileGateway gateway;
+    gateway = ProfileGateway(
       scope: scope,
       discover: base.discover,
+      connect: () async {
+        await base.connect();
+        // Startup catalog readers close after their read; queue events belong
+        // to the retained conversation gateway that has a stream consumer.
+        if (gateway.onEvent != null) gateways[scope.profileName] = gateway;
+      },
       get: base.read,
       rpc: (method, params) async {
         if (method == 'prompt.submit') {
@@ -127,6 +134,7 @@ class _QueueFixture extends ProfileActionsFixture {
         return base.call(method, params);
       },
     );
+    return gateway;
   }
 
   void finish(ProfileChat chat) {
