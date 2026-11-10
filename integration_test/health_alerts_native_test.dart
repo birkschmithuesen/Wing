@@ -22,6 +22,7 @@ import 'package:wing/core/services/profile_workspace_registry.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/core/widgets/health_alerts/health_alerts_scope.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/main.dart';
 
 import '../test/helpers/journey_controls.dart' show tapJourneyControl;
@@ -768,8 +769,8 @@ void main() {
         tester,
         () =>
             observations.analyticsReads.length > readsBeforeRefresh &&
-            unavailable.evaluate().isEmpty &&
-            tester.widget<IconButton>(refresh).onPressed != null,
+            find.byType(StudioLoading).evaluate().isEmpty &&
+            unavailable.evaluate().isEmpty,
         'New analytics reads complete and clear the visible error',
       );
       expect(unavailable, findsNothing);

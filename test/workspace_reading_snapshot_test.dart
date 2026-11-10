@@ -171,7 +171,8 @@ void main() {
       expect(find.byType(UserMessageAttachmentTile), findsNWidgets(2));
       expect(find.text('Original report.pdf'), findsOneWidget);
       expect(find.text('Shared photo.jpg'), findsOneWidget);
-      expect(find.text('Preview unavailable'), findsOneWidget);
+      expect(find.text('Can’t load image'), findsOneWidget);
+      expect(find.byTooltip('Retry image preview'), findsOneWidget);
       await tester.tap(find.text('Memory and skills review'));
       await tester.pumpAndSettle();
       expect(find.text('Reported changes'), findsOneWidget);

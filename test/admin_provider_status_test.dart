@@ -172,6 +172,7 @@ void main() {
           );
           fail = false;
           final refresh = find.text('Check status');
+          await tester.scrollUntilVisible(refresh, -200, scrollable: pageScroll);
           await tester.ensureVisible(refresh);
           await tester.pumpAndSettle();
           await tester.tap(refresh);

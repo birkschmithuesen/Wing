@@ -555,24 +555,34 @@ void main() {
             (widget) =>
                 widget is IconButton && widget.tooltip == 'Refresh usage',
           );
-          Future<void> revealRefresh() async {
-            await tester.scrollUntilVisible(
-              refresh,
-              300,
-              scrollable: find
-                  .byWidgetPredicate(
-                    (widget) =>
-                        widget is Scrollable &&
-                        widget.axisDirection == AxisDirection.down,
-                  )
-                  .first,
-            );
-            await tester.pumpAndSettle();
-            await tester.ensureVisible(refresh);
+          Future<void> revealAnalytics(Finder target) async {
+            final scrollable = find
+                .descendant(
+                  of: find.byType(ListView).first,
+                  matching: find.byType(Scrollable),
+                )
+                .first;
+            final position = tester.state<ScrollableState>(scrollable).position;
+            if (target.evaluate().isEmpty) {
+              position.jumpTo(0);
+              await tester.pump();
+              for (
+                var step = 0;
+                target.evaluate().isEmpty && step < 30;
+                step++
+              ) {
+                position.jumpTo(
+                  (position.pixels + 180).clamp(0, position.maxScrollExtent),
+                );
+                await tester.pump();
+              }
+            }
+            expect(target, findsOneWidget);
+            await tester.ensureVisible(target);
             await tester.pumpAndSettle();
           }
 
-          await revealRefresh();
+          await revealAnalytics(refresh);
           held = Completer<void>();
           await tester.tap(refresh);
           await tester.pump();
@@ -587,16 +597,17 @@ void main() {
           held = null;
           await tester.pumpAndSettle();
           expect(find.byType(StudioLoading), findsNothing);
-          expect(
-            find.textContaining('work: Could not load model totals.'),
-            findsOneWidget,
+          final modelError = find.textContaining(
+            'work: Could not load model totals.',
           );
+          await revealAnalytics(modelError);
+          expect(modelError, findsOneWidget);
           await screenshot(
             tester,
             'analytics-failed-${brightness.name}-$scale',
           );
           fail = false;
-          await revealRefresh();
+          await revealAnalytics(refresh);
           await tester.tap(refresh);
           await tester.pumpAndSettle();
           expect(

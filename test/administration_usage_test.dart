@@ -398,17 +398,28 @@ void main() {
           expect(find.byType(StudioLoading), findsOneWidget);
           const modelError = 'usage-retained-models-error';
           final geometry = await sectionGeometry(tester, extra: [modelError]);
-          final withModelError = {
-            for (final entry in original.entries)
-              entry.key: entry.key.startsWith('usage-trend-')
-                  ? entry.value.translate(0, geometry[modelError]!.height)
-                  : entry.value,
-          };
-          expectSameGeometry(geometry, withModelError);
+          const calendar = 'usage-calendar-slot';
+          // Sliver coordinates can rebase when a tall error is inserted offscreen.
+          // Compare the retained sections to the calendar's measured anchor.
+          void expectRetainedSections(Map<String, Rect> measured) {
+            final shift = measured[calendar]!.top - original[calendar]!.top;
+            expectSameGeometry(measured, {
+              for (final entry in original.entries)
+                entry.key: entry.value.translate(
+                  0,
+                  shift +
+                      (entry.key.startsWith('usage-trend-')
+                          ? geometry[modelError]!.height
+                          : 0),
+                ),
+            });
+          }
+
+          expectRetainedSections(geometry);
           year.complete(dailyData());
           await tester.pumpAndSettle();
           expect(find.byType(StudioLoading), findsNothing);
-          expectSameGeometry(await sectionGeometry(tester), withModelError);
+          expectRetainedSections(await sectionGeometry(tester));
           expect(find.text('USD 5.44'), findsOneWidget);
           await reveal(
             tester,

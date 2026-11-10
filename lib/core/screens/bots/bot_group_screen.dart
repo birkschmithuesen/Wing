@@ -497,41 +497,49 @@ class _BotGroupScreenState extends State<BotGroupScreen>
     final severity = discard
         ? StudioErrorSeverity.noResult
         : StudioErrorSeverity.error;
+    final stack = MediaQuery.textScalerOf(context).scale(16) > 24;
+    final error = StudioError(
+      discard ? '$member’s outcome is unknown.' : '$member could not finish.',
+      detail: discard ? 'Review before discarding.' : 'Retry this attempt.',
+      framed: false,
+      severity: severity,
+      stacked: stack,
+    );
+    final recovery = StudioButtonPress(
+      child: IconButton(
+        tooltip: discard
+            ? 'Discard unknown group attempt'
+            : 'Retry group attempt',
+        onPressed: !_session.canResolve(action)
+            ? null
+            : discard
+            ? () => _confirmDiscard(action)
+            : () => _session.resolve(action),
+        icon: Icon(discard ? Icons.delete_outline : Icons.refresh),
+      ),
+    );
     return Padding(
       padding: const EdgeInsets.only(bottom: WingSpacing.lg),
       child: StudioErrorFrame(
         severity: severity,
         child: Padding(
           padding: const EdgeInsets.all(WingSpacing.md),
-          child: Row(
-            children: [
-              Expanded(
-                child: StudioError(
-                  discard
-                      ? '$member’s outcome is unknown.'
-                      : '$member could not finish.',
-                  detail: discard
-                      ? 'Review before discarding.'
-                      : 'Retry this attempt.',
-                  framed: false,
-                  severity: severity,
+          child: stack
+              ? Stack(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: error,
+                    ),
+                    PositionedDirectional(top: 0, end: 0, child: recovery),
+                  ],
+                )
+              : Row(
+                  children: [
+                    Expanded(child: error),
+                    recovery,
+                  ],
                 ),
-              ),
-              StudioButtonPress(
-                child: IconButton(
-                  tooltip: discard
-                      ? 'Discard unknown group attempt'
-                      : 'Retry group attempt',
-                  onPressed: !_session.canResolve(action)
-                      ? null
-                      : discard
-                      ? () => _confirmDiscard(action)
-                      : () => _session.resolve(action),
-                  icon: Icon(discard ? Icons.delete_outline : Icons.refresh),
-                ),
-              ),
-            ],
-          ),
         ),
       ),
     );
@@ -571,7 +579,9 @@ class _BotGroupScreenState extends State<BotGroupScreen>
           : 'Group work is interrupted · $memberActivity';
       active = false;
       icon = Icons.pause_circle_outline;
-    } else if (runtime?.working == true) {
+    } else if (runtime?.working == true &&
+        _session.error == null &&
+        _session.pendingText == null) {
       label = memberActivity.isEmpty ? 'Bots are working…' : memberActivity;
       active = true;
       icon = null;

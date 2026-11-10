@@ -854,10 +854,7 @@ void main() {
         .length;
     // This is still the editable draft. Send transfers it to a distinct outbox
     // entry; per-file queued editing is not the behavior under test here.
-    final removeAttachment = find.descendant(
-      of: find.widgetWithText(InputChip, fileName),
-      matching: find.byTooltip('Remove $fileName'),
-    );
+    final removeAttachment = find.byTooltip('Remove $fileName');
     await tester.ensureVisible(removeAttachment);
     await tapJourneyControl(tester, removeAttachment);
     await _pumpUntil(
