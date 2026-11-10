@@ -58,6 +58,7 @@ final class ProfileSupervisionObservation {
     required Iterable<GatewayProcessActivity> processes,
     required this.processesLoading,
     required this.processesError,
+    required this.inlineProcessesError,
     required this.actionBusy,
     required this.actionError,
     required Iterable<String> stopping,
@@ -79,7 +80,7 @@ final class ProfileSupervisionObservation {
   final String? sessionControlError, sessionControlNotice;
   final List<GatewayProcessActivity> processes;
   final bool processesLoading;
-  final String? processesError;
+  final String? processesError, inlineProcessesError;
   final bool actionBusy;
   final String? actionError;
   final Set<String> stopping;
@@ -168,6 +169,7 @@ final class SubagentSupervisionObservation {
     required this.tail,
     required this.lastAvailableTail,
     required this.tailError,
+    required this.inlineTailError,
     required this.tailFailures,
     required this.loadingTail,
     required this.steering,
@@ -178,7 +180,7 @@ final class SubagentSupervisionObservation {
   final GatewaySubagentActivity activity;
   final bool unconfirmed, canControl, acceptsSteer;
   final GatewaySubagentTail? tail, lastAvailableTail;
-  final String? tailError, controlMessage;
+  final String? tailError, inlineTailError, controlMessage;
   final int tailFailures;
   final bool loadingTail, steering, interrupting, controlFailed;
 }

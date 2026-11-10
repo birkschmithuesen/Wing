@@ -1,6 +1,7 @@
 import 'package:wing/core/services/health_alert_incident_store.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/health_alert.dart';
@@ -140,7 +141,7 @@ void main() {
   );
 
   test(
-    'connection alerts follow global settings and foreground lifetime',
+    'connection alerts are independent of Health monitoring and pause in background',
     () async {
       SharedPreferences.setMockInitialValues({});
       final fixture = HealthAlertsFixture(
@@ -152,20 +153,13 @@ void main() {
       );
       connection.accessAvailable();
       connection.liveChanged('chat', false);
-      expect(fixture.coordinator.alerts, hasLength(1));
+      final initial = fixture.coordinator.alerts.single;
       await fixture.settings.update(
         (current) => current.copyWith(enabled: false),
       );
-      expect(fixture.coordinator.alerts, isEmpty);
+      expect(fixture.coordinator.alerts.single.occurrence, initial.occurrence);
       connection.liveChanged('chat', false);
-      expect(fixture.coordinator.alerts, isEmpty);
-      fixture.coordinator.setForeground(false);
-      await fixture.settings.update(
-        (current) => current.copyWith(enabled: true),
-      );
-      expect(fixture.coordinator.alerts, isEmpty);
-      fixture.coordinator.setForeground(true);
-      expect(fixture.coordinator.alerts, hasLength(1));
+      expect(fixture.coordinator.alerts.single.occurrence, initial.occurrence);
       fixture.coordinator.setForeground(false);
       connection.liveChanged('chat', true);
       expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
@@ -174,6 +168,163 @@ void main() {
       fixture.dispose();
       // Retired listeners cannot recreate the removed incident.
       connection.liveChanged('chat', false);
+    },
+  );
+
+  test(
+    'operational observations share the existing incident lifecycle',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final fixture = HealthAlertsFixture(
+        await SharedPreferences.getInstance(),
+      );
+      await fixture.owner.hostResources().refresh();
+      await fixture.critical();
+      expect(fixture.coordinator.alerts.single.scope, HealthAlertScope.host);
+      void observe(String scope, bool failed) =>
+          fixture.coordinator.observeOperationalError(
+            fixture.owner,
+            scope: scope,
+            title: 'Group updates could not refresh',
+            detail: 'Your messages are kept.',
+            failed: failed,
+          );
+
+      observe('group:one', true);
+      final initial = fixture.coordinator.alerts.singleWhere(
+        (alert) => alert.scope == HealthAlertScope.operational,
+      );
+      await fixture.coordinator.acknowledge(initial);
+      await fixture.settings.update(
+        (current) => current.copyWith(enabled: false),
+      );
+      observe('group:one', true);
+      observe('group:two', false);
+      final retained = fixture.coordinator.alerts.single;
+      expect(retained.id, initial.id);
+      expect(retained.occurrence, initial.occurrence);
+      expect(retained.acknowledged, isTrue);
+      expect(fixture.coordinator.attentionAlerts, isEmpty);
+
+      observe('group:one', false);
+      expect(fixture.coordinator.alerts, isEmpty);
+      observe('group:one', true);
+      expect(
+        fixture.coordinator.attentionAlerts.single.occurrence,
+        isNot(initial.occurrence),
+      );
+
+      observe('group:one', false);
+      final connection = fixture.owner.connectionStatus;
+      connection.accessAvailable();
+      connection.liveChanged('chat', false);
+      observe('group:one', true);
+      expect(fixture.coordinator.alerts, hasLength(2));
+      observe('group:one', false);
+      connection.accessFailed(const SocketException('offline'));
+      observe('group:one', true);
+      observe('host-resources', true);
+      expect(
+        fixture.coordinator.alerts.single.scope,
+        HealthAlertScope.connection,
+      );
+      fixture.dispose();
+    },
+  );
+
+  test(
+    'settled host reads report and clear each operational incident',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final fixture = HealthAlertsFixture(
+        await SharedPreferences.getInstance(),
+      );
+      final host = fixture.owner.hostResources();
+      await host.refresh();
+      await fixture.settings.update(
+        (current) => current.copyWith(enabled: false),
+      );
+      fixture.host.statsError = StateError('stats unavailable');
+      fixture.host.pressureError = StateError('pressure unavailable');
+      final held = fixture.host.pressureGate = Completer();
+      final refresh = host.refresh();
+      await Future<void>.delayed(Duration.zero);
+      expect(fixture.coordinator.alerts, isEmpty);
+      held.complete();
+      await refresh;
+      expect(fixture.coordinator.alerts, hasLength(2));
+      expect(
+        fixture.coordinator.alerts.map((alert) => alert.scope),
+        everyElement(HealthAlertScope.operational),
+      );
+      final pressure = fixture.coordinator.alerts.firstWhere(
+        (alert) => alert.title == 'Host pressure could not refresh',
+      );
+
+      fixture.host.statsError = null;
+      await host.refresh();
+      expect(fixture.coordinator.alerts.single.id, pressure.id);
+      expect(fixture.coordinator.alerts.single.occurrence, pressure.occurrence);
+      fixture.host.pressureError = null;
+      await host.refresh();
+      expect(fixture.coordinator.alerts, isEmpty);
+      fixture.dispose();
+    },
+  );
+
+  test(
+    'saved owners report operational issues before Chats initializes',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final fixture = HealthAlertsFixture(prefs, initialized: false);
+      expect(fixture.host.requests, isEmpty);
+
+      fixture.coordinator.observeOperationalError(
+        fixture.owner,
+        scope: 'bots-roster',
+        title: 'Bot list could not refresh',
+        detail: 'Open Bots to refresh the list.',
+        failed: true,
+      );
+      final issue = fixture.coordinator.alerts.single;
+      await fixture.settings.update(
+        (current) => current.copyWith(showNotice: false),
+      );
+      expect(fixture.coordinator.alerts.single.id, issue.id);
+      expect(fixture.host.requests, isEmpty);
+      expect(
+        HealthAlertIncidentStore(
+          prefs,
+        ).read(fixture.owner.connectionIdentity).single.id,
+        issue.id,
+      );
+      void reportRead(bool failed) =>
+          fixture.coordinator.observeOperationalError(
+            fixture.owner,
+            scope: 'bot-display',
+            title: 'Bot display interrupted',
+            detail: 'Open the bot to try again.',
+            failed: failed,
+          );
+
+      final connection = fixture.owner.connectionStatus;
+      connection.accessFailed(const SocketException('offline'));
+      reportRead(true);
+      expect(
+        fixture.coordinator.alerts.map((a) => a.scope),
+        unorderedEquals([
+          HealthAlertScope.operational,
+          HealthAlertScope.connection,
+        ]),
+      );
+      connection.accessAvailable();
+      reportRead(false);
+      expect(fixture.coordinator.alerts, hasLength(2));
+      connection.liveChanged('chat', true);
+      reportRead(false);
+      expect(fixture.coordinator.alerts.single.id, issue.id);
+      fixture.dispose();
     },
   );
 
@@ -1275,12 +1426,16 @@ void main() {
       expect(session.alerts.single.severity, HealthAlertSeverity.critical);
       fixture.statsError = StateError('stats unavailable');
       await host.refresh();
-      expect(session.alerts.single.severity, HealthAlertSeverity.critical);
+      final monitored = session.alerts.singleWhere((a) => a.scope.monitored);
+      expect(monitored.severity, HealthAlertSeverity.critical);
       session.setActive(false);
       await tester.pump(const Duration(minutes: 1));
-      expect(session.alerts.single.lastKnown, isTrue);
+      expect(
+        session.alerts.singleWhere((a) => a.id == monitored.id).lastKnown,
+        isTrue,
+      );
       await settings.update((current) => current.copyWith(enabled: false));
-      expect(session.alerts, isEmpty);
+      expect(session.alerts.single.scope, HealthAlertScope.operational);
       session.dispose();
       host.dispose();
       health.dispose();

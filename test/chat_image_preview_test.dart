@@ -1,4 +1,5 @@
 import 'package:wing/core/models/transcript_message.dart';
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -74,7 +75,10 @@ void main() {
         home: ChatImagePreview(
           bytes: Uint8List.fromList([0, 1, 2, 3]),
           title: 'Result',
-          onOpenExternal: () => opened = true,
+          onOpenExternal: () async {
+            opened = true;
+            return null;
+          },
         ),
       ),
     );
@@ -96,5 +100,49 @@ void main() {
     expect(recovery.hitTestable(), findsOneWidget);
     await tester.tap(recovery);
     expect(opened, isTrue);
+  });
+  testWidgets('share failure stays anchored and retires when retried', (
+    tester,
+  ) async {
+    var delivery = Completer<String?>();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ChatImagePreview(
+          bytes: Uint8List.fromList(
+            img.encodePng(img.Image(width: 16, height: 16)),
+          ),
+          title: 'Result',
+          actionLabel: 'Save or share',
+          actionIcon: Icons.share_outlined,
+          onOpenExternal: () => delivery.future,
+        ),
+      ),
+    );
+    final image = find.byType(Image);
+    await tester.runAsync(
+      () => precacheImage(
+        tester.widget<Image>(image).image,
+        tester.element(image),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final share = find.byTooltip('Save or share');
+    final error = find.text('Could not share this image.');
+    final anchor = tester.getRect(share);
+    await tester.tap(share);
+    await tester.pump();
+    expect(find.byTooltip('Preparing image'), findsOneWidget);
+    delivery.complete('Could not share this image.');
+    await tester.pumpAndSettle();
+    expect(error, findsOneWidget);
+    expect(tester.getRect(error).top, greaterThan(anchor.bottom));
+    expect(tester.getRect(share), anchor);
+    delivery = Completer<String?>();
+    await tester.tap(share);
+    await tester.pumpAndSettle();
+    expect(error, findsNothing);
+    delivery.complete(null);
+    await tester.pumpAndSettle();
+    expect(share.hitTestable(), findsOneWidget);
   });
 }

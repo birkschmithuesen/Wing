@@ -19,6 +19,7 @@ class AlertWorkspaceFixture extends ProfileWorkspaceController {
     SharedPreferences prefs,
     AppPreferences preferences, {
     super.connectionIdentity = 'endpoint',
+    this.initialized = true,
   }) : super(
          access: ConnectionAccess(
            connection: SavedConnection(
@@ -35,7 +36,7 @@ class AlertWorkspaceFixture extends ProfileWorkspaceController {
        );
   bool mountedRoute = true, working = false;
   @override
-  bool get initialized => true;
+  final bool initialized;
   @override
   bool get hasMountedRoutes => mountedRoute;
   @override
@@ -59,12 +60,14 @@ class HealthAlertsFixture {
     this.preferences, {
     AdministrationRepository? repository,
     HealthAlertIncidentStore? incidentStore,
+    bool initialized = true,
   }) {
     appPreferences = AppPreferences(preferences);
     owner = AlertWorkspaceFixture(
       preferences,
       appPreferences,
       connectionIdentity: repository?.connectionIdentity ?? host.identity,
+      initialized: initialized,
     );
     owner.hostResources(repository: repository ?? host.server);
     registry = AlertRegistryFixture(owner);

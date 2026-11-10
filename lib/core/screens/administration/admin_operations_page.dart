@@ -34,7 +34,7 @@ class AdminActionPage extends StatefulWidget {
 
 class _AdminActionPageState extends State<AdminActionPage> {
   DoctorFindingDraftSession? _draft;
-  String? _shownNotice;
+  final _draftError = GlobalKey();
   @override
   void initState() {
     super.initState();
@@ -57,34 +57,28 @@ class _AdminActionPageState extends State<AdminActionPage> {
       _draft?.dispose();
       _draft = widget.createDraftSession?.call();
       _draft?.addListener(_draftChanged);
-      _shownNotice = null;
     }
   }
 
-  void _draftChanged() {
-    if (!mounted) return;
-    final notice = _draft?.notice;
-    if (_shownNotice != notice) {
-      _shownNotice = notice;
-      ScaffoldMessenger.of(context).hideCurrentSnackBar();
-      if (notice != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(notice)));
-      }
-    }
-    setState(() {});
-  }
+  void _draftChanged() => _changed();
 
   Future<void> _askHermes(int index) async {
     final navigate = widget.onOpenSession;
-    if (navigate == null) return;
-    await _draft?.openFinding(
+    final draft = _draft;
+    if (navigate == null || draft == null) return;
+    bool isRouteCurrent() =>
+        mounted && ModalRoute.of(context)?.isCurrent != false;
+    await draft.openFinding(
       index,
       navigate: navigate,
-      isRouteCurrent: () =>
-          mounted && ModalRoute.of(context)?.isCurrent != false,
+      isRouteCurrent: isRouteCurrent,
     );
+    if (!mounted || !identical(_draft, draft) || draft.failedFinding == null) {
+      return;
+    }
+    if (ModalRoute.of(context)?.isCurrent != false) {
+      revealAdminNotice(context, _draftError);
+    }
   }
 
   @override
@@ -105,6 +99,8 @@ class _AdminActionPageState extends State<AdminActionPage> {
     final diagnosis = observation.diagnosis;
     final loading = state.loading;
     final openingFinding = _draft?.openingFinding != null;
+    final draftNotice = _draft?.notice;
+    final failedFinding = _draft?.failedFinding;
     final error = observation.readError;
     final checkedAt = observation.checkedAt;
     final hasSummary = diagnosis != null || audit != null;
@@ -142,6 +138,12 @@ class _AdminActionPageState extends State<AdminActionPage> {
             padding: const EdgeInsets.all(16),
             children: [
               if (error != null) AdminNotice.error(error),
+              if (draftNotice != null &&
+                  (failedFinding == null || diagnosis == null))
+                if (failedFinding != null)
+                  AdminNotice.error(draftNotice, key: _draftError)
+                else
+                  AdminNotice(draftNotice),
               if (observation.classification ==
                   AdministrationOperationOutcome.failed)
                 const StudioError('Failed')
@@ -172,6 +174,15 @@ class _AdminActionPageState extends State<AdminActionPage> {
                   diagnosis: diagnosis,
                   checkedAt: checkedAt,
                   openingFinding: _draft?.openingFinding,
+                  findingError: draftNotice == null || failedFinding == null
+                      ? null
+                      : (
+                          index: failedFinding,
+                          notice: AdminNotice.error(
+                            draftNotice,
+                            key: _draftError,
+                          ),
+                        ),
                   onAskHermes:
                       _draft?.canAsk == true && widget.onOpenSession != null
                       ? _askHermes

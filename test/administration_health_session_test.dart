@@ -1,6 +1,7 @@
 import 'package:wing/core/models/administration_operation.dart';
 import 'support/administration_operation_fixture.dart';
 import 'support/health_alerts_fixture.dart';
+import 'support/host_resources_fixture.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
@@ -107,6 +108,8 @@ void main() {
         final name = query['profile'];
         requests.add((method, path, name));
         return switch (path) {
+          'system/stats' => hostStatsPayload(),
+          'status' => hostPressurePayload(now: now),
           'model/info' => {
             'model': 'model-$name',
             'provider': 'provider',

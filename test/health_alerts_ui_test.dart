@@ -20,6 +20,7 @@ import 'package:wing/core/services/health_alert_settings_store.dart';
 import 'package:wing/core/services/health_alerts_coordinator.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/wing_app_bar.dart';
+import 'package:wing/core/widgets/app_drawer.dart';
 import 'package:wing/core/widgets/server_connection_label.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/core/widgets/health_alerts/health_alerts_scope.dart';
@@ -123,6 +124,77 @@ void main() {
     }
   }
 
+  testWidgets('main menu opens current Alerts including silenced issues', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final fixture = HealthAlertsFixture(await SharedPreferences.getInstance());
+    await fixture.settings.update(
+      (current) => current.copyWith(enabled: false),
+    );
+    final scaffold = GlobalKey<ScaffoldState>();
+    await tester.pumpWidget(
+      HealthAlertsScope(
+        alerts: fixture.coordinator,
+        openAlert: (_) async {},
+        child: MaterialApp(
+          home: Scaffold(
+            key: scaffold,
+            drawer: AppDrawer(
+              selected: AppDestination.chats,
+              onSelected: (_) => fail('Alerts should keep the current route'),
+            ),
+            body: const Text('Current workspace'),
+          ),
+        ),
+      ),
+    );
+
+    Future<void> openAlerts() async {
+      scaffold.currentState!.openDrawer();
+      await tester.pumpAndSettle();
+      final entry = find.byKey(const ValueKey('nav-alerts'));
+      await tester.ensureVisible(entry);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(scaffold.currentState!.isDrawerOpen, isFalse);
+      expect(find.byType(Dialog), findsOneWidget);
+    }
+
+    await openAlerts();
+    expect(find.text('No current alerts.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Close alerts'));
+    await tester.pumpAndSettle();
+
+    void report(String scope, String title) =>
+        fixture.coordinator.observeOperationalError(
+          fixture.owner,
+          scope: scope,
+          title: title,
+          detail: 'Try refreshing again.',
+          failed: true,
+        );
+    report('group:one', 'Group updates failed');
+    report('host-resources', 'Host resources could not refresh');
+    final alerts = fixture.coordinator.alerts;
+    await fixture.coordinator.acknowledge(alerts.first);
+    await fixture.coordinator.snooze(alerts.last);
+    expect(fixture.coordinator.attentionAlerts, isEmpty);
+    await openAlerts();
+    expect(find.text('Group updates failed'), findsOneWidget);
+    expect(find.text('Acknowledged.'), findsOneWidget);
+    await tester.tap(find.byTooltip('Next issue'));
+    await tester.pumpAndSettle();
+    expect(find.text('Host resources could not refresh'), findsOneWidget);
+    expect(find.textContaining('Snoozed until'), findsOneWidget);
+    expect(find.byTooltip('Open Hermes health'), findsNothing);
+    await tester.tap(find.byTooltip('Close alerts'));
+    await tester.pumpAndSettle();
+    expect(find.text('Current workspace'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    fixture.dispose();
+  });
+
   testWidgets(
     'overlapping thresholds explain how to correct the unsaved rule',
     (tester) async {
@@ -189,6 +261,10 @@ void main() {
       );
       await tester.tap(find.byTooltip('Open alert settings'));
       await tester.pumpAndSettle();
+      expect(
+        find.text('Monitor host thresholds and profile health on this device.'),
+        findsOneWidget,
+      );
       await tester.tap(
         find.widgetWithText(CompactSwitchListTile, 'Health alerts'),
       );

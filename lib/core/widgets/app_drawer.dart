@@ -1,5 +1,7 @@
 import '../services/connection_access.dart';
 import 'drawer_versions.dart';
+import 'health_alerts/health_alert_dialog.dart';
+import 'health_alerts/health_alerts_scope.dart';
 import '../services/versions_controller.dart';
 import '../services/server_connection_status.dart';
 import 'package:flutter/material.dart';
@@ -45,6 +47,7 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
+    final alerts = HealthAlertsScope.maybeOf(context);
     return Drawer(
       backgroundColor: colors.surfaceContainerLow,
       child: SafeArea(
@@ -86,36 +89,37 @@ class AppDrawer extends StatelessWidget {
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Divider(),
                           ),
-                        StudioButtonPress(
-                          child: ListTile(
-                            key: ValueKey('nav-${destination.name}'),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: WingRadius.control,
-                            ),
-                            selected: selected == destination,
-                            selectedTileColor: colors.primaryContainer,
-                            leading: largeText ? null : Icon(destination.icon),
-                            title: largeText
-                                ? Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Icon(destination.icon),
-                                      const SizedBox(height: 4),
-                                      Text(destination.label),
-                                    ],
-                                  )
-                                : Text(destination.label),
-                            enabled:
-                                hasConnection ||
-                                destination == AppDestination.connections ||
-                                destination == AppDestination.settings,
+                        _DrawerTile(
+                          tileKey: ValueKey('nav-${destination.name}'),
+                          label: destination.label,
+                          icon: destination.icon,
+                          largeText: largeText,
+                          selected: selected == destination,
+                          enabled:
+                              hasConnection ||
+                              destination == AppDestination.connections ||
+                              destination == AppDestination.settings,
+                          onTap: () {
+                            Navigator.of(context).pop();
+                            onSelected(destination);
+                          },
+                        ),
+                        if (destination == AppDestination.health &&
+                            alerts != null)
+                          _DrawerTile(
+                            tileKey: const ValueKey('nav-alerts'),
+                            label: 'Alerts',
+                            icon: Icons.warning_amber_rounded,
+                            largeText: largeText,
                             onTap: () {
                               Navigator.of(context).pop();
-                              onSelected(destination);
+                              showHealthAlerts(
+                                context,
+                                alerts,
+                                includeSilenced: true,
+                              );
                             },
                           ),
-                        ),
                       ],
                     ],
                   ),
@@ -132,4 +136,41 @@ class AppDrawer extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DrawerTile extends StatelessWidget {
+  const _DrawerTile({
+    required this.tileKey,
+    required this.label,
+    required this.icon,
+    required this.largeText,
+    required this.onTap,
+    this.selected = false,
+    this.enabled = true,
+  });
+
+  final Key tileKey;
+  final String label;
+  final IconData icon;
+  final bool largeText, selected, enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => StudioButtonPress(
+    child: ListTile(
+      key: tileKey,
+      shape: RoundedRectangleBorder(borderRadius: WingRadius.control),
+      selected: selected,
+      selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
+      leading: largeText ? null : Icon(icon),
+      title: largeText
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Icon(icon), const SizedBox(height: 4), Text(label)],
+            )
+          : Text(label),
+      enabled: enabled,
+      onTap: onTap,
+    ),
+  );
 }

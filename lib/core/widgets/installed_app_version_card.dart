@@ -25,11 +25,17 @@ class InstalledAppVersionCard extends StatefulWidget {
 class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
   late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
 
-  Future<void> _open(String href) async {
-    final opened = await (widget.openLink ?? openWebPreview)(Uri.parse(href));
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: StudioError('Could not open this link.')),
+  Future<void> _open(BuildContext anchor, String href) async {
+    final key = ('open-version-link', href);
+    dismissTransientError(anchor, errorKey: key);
+    final uri = Uri.parse(href);
+    final opened = await (widget.openLink ?? openWebPreview)(uri);
+    if (!opened && anchor.mounted) {
+      showTransientError(
+        anchor,
+        'Could not open this link.',
+        errorKey: key,
+        icon: Icons.open_in_new,
       );
     }
   }
@@ -69,18 +75,18 @@ class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
                   alignment: WrapAlignment.end,
                   spacing: 4,
                   children: [
-                    StudioButtonPress(
-                      child: TextButton(
-                        onPressed: () => _open(_changelogUrl),
-                        child: const Text("What's new"),
+                    for (final (label, href) in [
+                      ("What's new", _changelogUrl),
+                      ('Releases', _releasesUrl),
+                    ])
+                      Builder(
+                        builder: (anchor) => StudioButtonPress(
+                          child: TextButton(
+                            onPressed: () => _open(anchor, href),
+                            child: Text(label),
+                          ),
+                        ),
                       ),
-                    ),
-                    StudioButtonPress(
-                      child: TextButton(
-                        onPressed: () => _open(_releasesUrl),
-                        child: const Text('Releases'),
-                      ),
-                    ),
                   ],
                 ),
               ),

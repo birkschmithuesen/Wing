@@ -85,10 +85,7 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
     await _session.toggle(row, value);
     if (!mounted) return;
     final state = _session.state;
-    if (state.failureScope == ConnectorFailureScope.command &&
-        state.error != null) {
-      adminMessage(context, state.error!, isError: true);
-    } else if (state.error == null && state.notice != null) {
+    if (state.error == null && state.notice != null) {
       adminMessage(context, state.notice!);
     }
   }
@@ -111,118 +108,137 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
             label: state.phase == ConnectorPhase.reconnecting
                 ? 'Reconnecting MCP tools'
                 : 'Loading connectors',
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (state.failureScope == ConnectorFailureScope.read &&
-                    state.error != null)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: AdminNotice.error(
-                      state.error!,
-                      retry: state.busy ? null : _session.refresh,
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (state.error case final error?)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight:
+                            constraints.maxHeight * (state.checked ? .45 : 1),
+                      ),
+                      child: SingleChildScrollView(
+                        primary: false,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AdminNotice.error(
+                          error,
+                          retry:
+                              state.busy ||
+                                  state.failureScope !=
+                                      ConnectorFailureScope.read
+                              ? null
+                              : _session.refresh,
+                        ),
+                      ),
                     ),
-                  ),
-                if (state.checked)
-                  Expanded(
-                    child: ListView(
-                      padding: const EdgeInsets.all(16),
-                      children: [
-                        const AdminNotice(
-                          'Manage the external tools available to this profile.',
-                        ),
-                        if (state.runtimeError case final error?)
-                          AdminNotice(error),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            StudioButtonPress(
-                              child: IconButton.filled(
-                                tooltip: 'Add connector',
-                                onPressed: state.canMutate ? _add : null,
-                                icon: const Icon(Icons.add),
-                              ),
-                            ),
-                            StudioButtonPress(
-                              child: IconButton(
-                                tooltip: 'Refresh connectors',
-                                onPressed: state.busy ? null : _session.refresh,
-                                icon: const Icon(Icons.refresh),
-                              ),
-                            ),
-                          ],
-                        ),
-                        if (state.connectors.isEmpty)
+                  if (state.checked)
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
                           const AdminNotice(
-                            'No MCP connectors configured for this profile.',
+                            'Manage the external tools available to this profile.',
                           ),
-                        AdminGroup(
-                          children: [
-                            for (final row in state.connectors)
+                          if (state.runtimeError case final error?)
+                            AdminNotice.error(error),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
                               StudioButtonPress(
-                                child: ListTile(
-                                  minTileHeight: 56,
-                                  minVerticalPadding: 4,
-                                  horizontalTitleGap: 12,
-                                  title: Text(row.name),
-                                  subtitle: Text(
-                                    widget.failedConnectorNames.contains(
-                                          row.name,
-                                        )
-                                        ? 'Failed health check · ${row.transport}'
-                                        : [
-                                            row.transport,
-                                            if (state.runtime?.forConnector(row)
-                                                case final runtime?)
-                                              'Cached: ${runtime.label}',
-                                          ].join(' · '),
-                                  ),
-                                  leading:
-                                      widget.failedConnectorNames.contains(
-                                        row.name,
-                                      )
-                                      ? Icon(
-                                          Icons.warning_amber_rounded,
-                                          color: WingTokens.of(context).warning,
-                                        )
-                                      : null,
-                                  trailing: CompactSwitch(
-                                    semanticLabel: 'Enable ${row.name}',
-                                    value: row.enabled,
-                                    onChanged:
-                                        state.canMutate && row.canConfigure
-                                        ? (value) => _toggle(row, value)
-                                        : null,
-                                  ),
-                                  onTap: state.canMutate
-                                      ? () => _open(
-                                          row.name,
-                                          profileName: _session.profileName,
-                                          signInOnOpen: false,
-                                        )
-                                      : null,
+                                child: IconButton.filled(
+                                  tooltip: 'Add connector',
+                                  onPressed: state.canMutate ? _add : null,
+                                  icon: const Icon(Icons.add),
                                 ),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 24),
-                        const Divider(height: 1),
-                        const SizedBox(height: 16),
-                        Text(
-                          'Apply connector changes or retry connections for all profiles on this server.',
-                          style: Theme.of(context).textTheme.bodyMedium
-                              ?.copyWith(
-                                color: Theme.of(
-                                  context,
-                                ).colorScheme.onSurfaceVariant,
+                              StudioButtonPress(
+                                child: IconButton(
+                                  tooltip: 'Refresh connectors',
+                                  onPressed: state.busy
+                                      ? null
+                                      : _session.refresh,
+                                  icon: const Icon(Icons.refresh),
+                                ),
                               ),
-                        ),
-                        const SizedBox(height: 12),
-                        AdminReloadConnectorsButton(session: _session),
-                      ],
+                            ],
+                          ),
+                          if (state.connectors.isEmpty)
+                            const AdminNotice(
+                              'No MCP connectors configured for this profile.',
+                            ),
+                          AdminGroup(
+                            children: [
+                              for (final row in state.connectors)
+                                StudioButtonPress(
+                                  child: ListTile(
+                                    minTileHeight: 56,
+                                    minVerticalPadding: 4,
+                                    horizontalTitleGap: 12,
+                                    title: Text(row.name),
+                                    subtitle: Text(
+                                      widget.failedConnectorNames.contains(
+                                            row.name,
+                                          )
+                                          ? 'Failed health check · ${row.transport}'
+                                          : [
+                                              row.transport,
+                                              if (state.runtime?.forConnector(
+                                                    row,
+                                                  )
+                                                  case final runtime?)
+                                                'Cached: ${runtime.label}',
+                                            ].join(' · '),
+                                    ),
+                                    leading:
+                                        widget.failedConnectorNames.contains(
+                                          row.name,
+                                        )
+                                        ? Icon(
+                                            Icons.warning_amber_rounded,
+                                            color: WingTokens.of(
+                                              context,
+                                            ).warning,
+                                          )
+                                        : null,
+                                    trailing: CompactSwitch(
+                                      semanticLabel: 'Enable ${row.name}',
+                                      value: row.enabled,
+                                      onChanged:
+                                          state.canMutate && row.canConfigure
+                                          ? (value) => _toggle(row, value)
+                                          : null,
+                                    ),
+                                    onTap: state.canMutate
+                                        ? () => _open(
+                                            row.name,
+                                            profileName: _session.profileName,
+                                            signInOnOpen: false,
+                                          )
+                                        : null,
+                                  ),
+                                ),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          const Divider(height: 1),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Apply connector changes or retry connections for all profiles on this server.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          AdminReloadConnectorsButton(session: _session),
+                        ],
+                      ),
                     ),
-                  ),
-              ],
+                ],
+              ),
             ),
           );
         },
@@ -381,7 +397,7 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
                   'Cached runtime: ${runtime.label}${runtime.tools > 0 ? ' · ${runtime.tools} tools' : ''}. This is separate from Test connection.',
                 ),
               if (_session.state.runtimeError case final error?)
-                AdminNotice(error),
+                AdminNotice.error(error),
             ],
             Semantics(
               liveRegion: true,
@@ -712,10 +728,9 @@ class AdminReloadConnectorsButton extends StatelessWidget {
             : () async {
                 await session.reconnect(() => _confirmReconnect(context));
                 if (!context.mounted) return;
-                if (session.state.error case final error?) {
-                  adminMessage(context, error, isError: true);
-                } else if (session.state.notice case final notice?) {
-                  adminMessage(context, notice);
+                final state = session.state;
+                if (state.error == null && state.notice != null) {
+                  adminMessage(context, state.notice!);
                 }
               },
         icon: const Icon(Icons.refresh),

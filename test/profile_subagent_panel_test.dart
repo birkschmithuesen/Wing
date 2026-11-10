@@ -965,6 +965,11 @@ void main() {
         ),
         findsOneWidget,
       );
+      fixture.tailFailures = fixture.tailCalls + 1;
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('Could not refresh live output.'), findsNothing);
+      expect(find.text('Showing the last received output.'), findsOneWidget);
       Navigator.of(tester.element(find.text('Live output'))).pop();
       await tester.pumpAndSettle();
     },

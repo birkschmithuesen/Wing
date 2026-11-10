@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'core/models/operational_error.dart';
 import 'core/services/live_voice_session.dart';
 import 'core/services/live_voice_transport.dart';
 import 'core/widgets/live_voice_scope.dart';
@@ -191,6 +192,24 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
   bool _startupPermissionsComplete = false;
   late final HealthAlertSettingsSession _healthAlertSettings;
   late final HealthAlertsCoordinator _healthAlerts;
+
+  void _observeOperationalError(OperationalErrorObservation observation) {
+    final owner = _profileControllers.controllers
+        .where(
+          (owner) => owner.connectionIdentity == observation.connectionIdentity,
+        )
+        .firstOrNull;
+    if (owner == null) return;
+    _healthAlerts.observeOperationalError(
+      owner,
+      scope: observation.operation,
+      title: observation.title,
+      detail: observation.error ?? '',
+      failed: observation.error != null,
+      profileName: observation.profileName,
+    );
+  }
+
   String? _deferredShareId;
   bool _disposed = false;
   final _networkAvailability = NetworkAvailability();
@@ -228,8 +247,11 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     controller: controller,
     connectionManager: widget.connManager,
     shareIntents: widget.shareIntents,
-    createBotsSession: () =>
-        savedBotsSession(widget.connManager, _profileControllers),
+    createBotsSession: () => savedBotsSession(
+      widget.connManager,
+      _profileControllers,
+      onOperationalError: _observeOperationalError,
+    ),
     onOpenBotChat: (key, canUse) async =>
         _homeKey.currentState?.selectBotChat(key, canUse),
     destination: destination,
@@ -251,6 +273,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
 
   Future<void> _showNotificationChat(NotificationChatRoute request) async {
     if (!mounted || !request.current) return;
+    _retireNotificationOpenError();
     final controller = request.controller;
     final previous = request.previousController;
     if (previous != null && previous != controller) {
@@ -292,6 +315,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
 
   Future<void> _showNotificationGroup(NotificationGroupRoute request) async {
     if (!mounted || !request.current) return;
+    _retireNotificationOpenError();
     final controller = request.controller;
     final navigator = _navigatorKey.currentState;
     if (navigator == null) {
@@ -335,6 +359,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
   ) async {
     final context = _navigatorKey.currentContext;
     if (context == null || !context.mounted || !review.pending) return;
+    _retireNotificationOpenError();
     await showDialog<void>(
       context: context,
       barrierDismissible: false,
@@ -349,15 +374,29 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     );
   }
 
+  DialogRoute<void>? _notificationOpenError;
+
+  void _retireNotificationOpenError() {
+    final route = _notificationOpenError;
+    _notificationOpenError = null;
+    if (route != null && route.isActive) route.navigator?.removeRoute(route);
+  }
+
   void _showNotificationOpenError() {
     final context = _navigatorKey.currentContext;
     if (context != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: StudioError(
-            'This chat is unavailable on its original host or profile.',
-          ),
-        ),
+      _retireNotificationOpenError();
+      final route = showStudioError(
+        context,
+        'This chat is unavailable on its original host or profile.',
+      );
+      _notificationOpenError = route;
+      unawaited(
+        route.popped.then((_) {
+          if (identical(_notificationOpenError, route)) {
+            _notificationOpenError = null;
+          }
+        }),
       );
     }
   }
@@ -409,6 +448,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
                 ? null
                 : (scope) => widget.gatewayFactory!(connection, scope),
             onAttention: _chatNotices.receiveNotice,
+            onOperationalError: _observeOperationalError,
             onNotificationInputs: _chatNotices.receiveInputs,
             notificationResultFor: _chatNotices.focusFor,
             notificationInputsFor: _chatNotices.pendingInputsFor,
@@ -541,12 +581,9 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     } catch (_) {
       final context = _navigatorKey.currentContext;
       if (context != null && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text(
-              'Could not open this issue’s settings. Retry from the bell.',
-            ),
-          ),
+        showStudioError(
+          context,
+          'Could not open this issue’s settings. Retry from Alerts.',
         );
       }
     }
@@ -662,8 +699,11 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
       },
       home: HomeScreen(
         key: _homeKey,
-        createBotsSession: () =>
-            savedBotsSession(widget.connManager, _profileControllers),
+        createBotsSession: () => savedBotsSession(
+          widget.connManager,
+          _profileControllers,
+          onOperationalError: _observeOperationalError,
+        ),
         createEntrySession: () => WorkspaceEntrySession(
           connectionManager: widget.connManager,
           appPreferences: _appPreferences,
@@ -674,8 +714,11 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
           connectionManager: widget.connManager,
           entrySession: entry,
           shareIntents: widget.shareIntents,
-          createBotsSession: () =>
-              savedBotsSession(widget.connManager, _profileControllers),
+          createBotsSession: () => savedBotsSession(
+            widget.connManager,
+            _profileControllers,
+            onOperationalError: _observeOperationalError,
+          ),
         ),
         enableProfileNotifications: enableProfileNotifications,
         connManager: widget.connManager,
@@ -881,11 +924,13 @@ class HomeScreenState extends State<HomeScreen> {
     final state = _backupSession.presentation.value;
     final message = state.error ?? state.notice;
     if (message == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: state.error == null ? Text(message) : StudioError(message),
-      ),
-    );
+    if (state.error != null) {
+      showStudioError(context, message);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   @override
@@ -927,9 +972,7 @@ class HomeScreenState extends State<HomeScreen> {
     final error = _entrySession.state.error;
     if (error == null || error == _shownEntryError) return;
     _shownEntryError = error;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: StudioError(error)));
+    showStudioError(context, error);
   }
 
   SavedConnection? _connectionForExternalAction() =>
@@ -949,13 +992,13 @@ class HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     final notice = _sharedDraft.takeNotice();
     if (notice == null) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: notice.error
-            ? StudioError(notice.message)
-            : Text(notice.message),
-      ),
-    );
+    if (notice.error) {
+      showStudioError(context, notice.message);
+    } else {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(notice.message)));
+    }
   }
 
   void _onSharedText() => _openSharedText(explicit: false);
@@ -1291,12 +1334,9 @@ class HomeScreenState extends State<HomeScreen> {
                     if (mounted) _refresh();
                   } on CredentialStorageException {
                     if (!mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: StudioError(
-                          'The saved instance could not be removed safely.',
-                        ),
-                      ),
+                    showStudioError(
+                      context,
+                      'The saved instance could not be removed safely.',
                     );
                   }
                 } else if (v == 'edit') {

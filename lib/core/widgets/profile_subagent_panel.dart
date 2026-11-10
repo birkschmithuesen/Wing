@@ -508,7 +508,7 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
             contextFacts: messages,
             actions: _tailActions(),
           ),
-        if (widget.session.state.tailError case final error?)
+        if (widget.session.state.inlineTailError case final error?)
           ActivityDetailStatus(
             label: error,
             error: true,

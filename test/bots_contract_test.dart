@@ -1695,7 +1695,6 @@ void main() {
               read: fixture.read,
               command: fixture.command,
               ownership: fixture.ownership,
-
             ),
         ];
         final session = BotsSession((_) async => sources);
@@ -2097,7 +2096,6 @@ void main() {
       read: other.read,
       command: other.command,
       ownership: other.ownership,
-
     );
     final owner = BotsSession((_) async => [active.repository, repository]);
     addTearDown(owner.dispose);
@@ -2529,7 +2527,6 @@ void main() {
         read: second.read,
         command: second.command,
         ownership: second.ownership,
-
       );
       final started = Completer<void>(), release = Completer<void>();
       first.readHook = (_, method, _) async {
@@ -3773,7 +3770,7 @@ void main() {
           }
           return null;
         };
-        final poll = session.refresh();
+        final poll = session.refresh(explicit: false);
         await started.future;
         final manual = session.refresh();
         expect(identical(poll, manual), isTrue);

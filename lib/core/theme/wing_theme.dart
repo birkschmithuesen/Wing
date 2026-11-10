@@ -158,6 +158,15 @@ class WingTokens extends ThemeExtension<WingTokens> {
   final Color blocked;
   final WingTypography typography;
 
+  /// Studio error-family fills, derived from the approved OKLCH palette.
+  Color get warningSurface => brightness == Brightness.dark
+      ? const Color(0xFF2F281B)
+      : const Color(0xFFFDF4E3);
+
+  Color get dangerSurface => brightness == Brightness.dark
+      ? const Color(0xFF352422)
+      : const Color(0xFFFFF1EF);
+
   /// Shared unread treatment for Recents identity cards and cached viewports.
   Color recentUnreadTint(Color primaryContainer) =>
       (brightness == Brightness.dark ? accent : primaryContainer).withValues(
@@ -477,6 +486,12 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
         fontFamily: WingTypography.sans,
         color: tokens.muted,
       ),
+      errorStyle: tokens.typography.label.copyWith(
+        color: tokens.onSurface,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+      ),
+      errorMaxLines: 4,
       hintStyle: TextStyle(
         fontFamily: WingTypography.sans,
         color: tokens.muted,

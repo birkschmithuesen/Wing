@@ -82,7 +82,7 @@ class _PdfPreviewScreenState extends State<PdfPreviewScreen> {
                       observation.pageImage!,
                       fit: BoxFit.contain,
                       semanticLabel: 'PDF page ${observation.page + 1}',
-                      errorBuilder: (_, _, _) => const Text(
+                      errorBuilder: (_, _, _) => const StudioError(
                         'This page could not be displayed. Go back for file options.',
                       ),
                     ),

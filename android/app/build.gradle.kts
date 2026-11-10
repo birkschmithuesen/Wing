@@ -81,7 +81,7 @@ android {
                "$minimumInstalledVersionCode to upgrade the accepted Wing APK"
        }
        applicationId = "com.tarkilhk.wing"
-       minSdk = 24
+       minSdk = 29
        targetSdk = 36
        versionCode = flutter.versionCode
        versionName = flutter.versionName

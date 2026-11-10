@@ -318,10 +318,10 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        await tester.ensureVisible(find.text('Retry'));
+        await tester.ensureVisible(find.byTooltip('Retry'));
         await tester.pumpAndSettle();
-        expect(find.text('Retry').hitTestable(), findsOneWidget);
-        await tester.tap(find.text('Retry'));
+        expect(find.byTooltip('Retry').hitTestable(), findsOneWidget);
+        await tester.tap(find.byTooltip('Retry'));
         expect(retries, 1);
         await capture(tester, 'admin-error-${brightness.name}-200-keyboard');
       },

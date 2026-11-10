@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../models/operational_error.dart';
 import 'package:flutter/foundation.dart';
 import '../models/bots.dart';
 import '../models/bot_display.dart';
@@ -8,11 +9,22 @@ import 'bot_display_client.dart';
 /// Owns the visible stream, connection-bound viewer and confirmed control lease.
 /// Background/disconnection keeps the human lease; an explicit exit releases it.
 class BotScreenSession extends ChangeNotifier {
-  BotScreenSession(this.repository, this.bot) {
+  BotScreenSession(this.repository, this.bot, {this.onOperationalError}) {
     repository.retain();
   }
   final BotsRepository repository;
   final BotRecord bot;
+  final OperationalErrorReporter? onOperationalError;
+
+  void _reportStream(String? error) => onOperationalError?.call(
+    OperationalErrorObservation(
+      connectionIdentity: bot.scope.connectionIdentity,
+      profileName: bot.scope.profileName,
+      operation: 'bot-screen:${bot.id}',
+      title: 'Bot screen unavailable',
+      error: error,
+    ),
+  );
   BotDisplayStatus? _status;
   BotDisplayStatus? get status => _status;
   BotDisplayLease? _lease;
@@ -99,7 +111,10 @@ class BotScreenSession extends ChangeNotifier {
     _client = null;
   }
 
-  Future<void> _run(Future<void> Function() work) async {
+  Future<void> _run(
+    Future<void> Function() work, {
+    int? streamGeneration,
+  }) async {
     if (busy || _closed) return;
     final done = Completer<void>();
     _operation = done.future;
@@ -107,10 +122,14 @@ class BotScreenSession extends ChangeNotifier {
     try {
       await work();
     } catch (_) {
-      if (!_closed && !_closing) {
+      if (!_closed &&
+          !_closing &&
+          (streamGeneration == null ||
+              _visible && streamGeneration == _generation)) {
         _error =
             'Screen connection could not be confirmed. Refresh to retry. '
             'If you took control, it stays held until you hand it back.';
+        if (streamGeneration != null) _reportStream(_error);
         _dropStream();
       }
     } finally {
@@ -126,60 +145,68 @@ class BotScreenSession extends ChangeNotifier {
     if (!_closed && !_closing) await refresh();
   }
 
-  Future<void> refresh() => _run(() async {
-    if (!_visible) return;
+  Future<void> refresh() {
     final generation = _generation;
-    bool active() =>
-        !_closed && !_closing && _visible && generation == _generation;
-    final status = await repository.displayStatus(bot);
-    if (!active()) return;
-    _status = status;
-    _lease = status.lease;
-    _error = null;
-    if (!status.running) {
-      _dropStream();
+    return _run(() async {
+      if (!_visible) return;
+      bool active() =>
+          !_closed && !_closing && _visible && generation == _generation;
+      final status = await repository.displayStatus(bot);
+      if (!active()) return;
+      final stopped = _status?.running != false || _error != null;
+      _status = status;
       _lease = status.lease;
-      return;
-    }
-    if (_client != null) return;
-    final observation = await repository.observeDisplay(bot, _viewer);
-    if (!active()) return;
-    _viewer = observation.viewer;
-    _status = observation.status;
-    _lease = observation.status.lease;
-    final client = await repository.connectDisplay(observation.ticket);
-    if (!active()) {
-      client.close();
-      return;
-    }
-    _client = client;
-    _subscription = client.frames.listen(
-      (frame) {
-        if (!active() || !identical(client, _client)) return;
-        _frame = frame;
-        _connected = true;
-        _changed();
-      },
-      onError: (Object error) {
-        if (identical(client, _client)) {
-          _generation++;
-          _dropStream();
-          _error =
-              'Screen disconnected. Control stays held until you hand it back.';
+      _error = null;
+      if (!status.running) {
+        if (stopped) _reportStream(null);
+        _dropStream();
+        _lease = status.lease;
+        return;
+      }
+      if (_client != null) return;
+      final observation = await repository.observeDisplay(bot, _viewer);
+      if (!active()) return;
+      _viewer = observation.viewer;
+      _status = observation.status;
+      _lease = observation.status.lease;
+      final client = await repository.connectDisplay(observation.ticket);
+      if (!active()) {
+        client.close();
+        return;
+      }
+      _client = client;
+      _subscription = client.frames.listen(
+        (frame) {
+          if (!active() || !identical(client, _client)) return;
+          _frame = frame;
+          final firstFrame = !_connected;
+          _connected = true;
+          if (firstFrame) _reportStream(null);
           _changed();
-        }
-      },
-      onDone: () {
-        if (identical(client, _client)) {
-          _generation++;
-          _dropStream();
-          _error = 'Screen disconnected. Refresh to reconnect.';
-          _changed();
-        }
-      },
-    );
-    client.start();
-  });
+        },
+        onError: (Object error) {
+          if (identical(client, _client)) {
+            _generation++;
+            _dropStream();
+            _error =
+                'Screen disconnected. Control stays held until you hand it back.';
+            _reportStream(_error);
+            _changed();
+          }
+        },
+        onDone: () {
+          if (identical(client, _client)) {
+            _generation++;
+            _dropStream();
+            _error = 'Screen disconnected. Refresh to reconnect.';
+            _reportStream(_error);
+            _changed();
+          }
+        },
+      );
+      client.start();
+    }, streamGeneration: generation);
+  }
 
   Future<void> power(bool start) =>
       _run(() async {

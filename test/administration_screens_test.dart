@@ -577,7 +577,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.textContaining('Could not load'), findsOneWidget);
     expect(find.text('No retained memories in this profile.'), findsNothing);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byTooltip('Retry'), findsOneWidget);
   });
 
   testWidgets(

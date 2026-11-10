@@ -34,9 +34,7 @@ class _AdminPluginsPageState extends State<AdminPluginsPage> {
       return;
     }
     final state = _session.state;
-    if (state.error != null) {
-      adminMessage(context, state.error!, isError: true);
-    } else if (state.acknowledgement?.restartRequired == true) {
+    if (state.error == null && state.acknowledgement?.restartRequired == true) {
       adminMessage(
         context,
         'Plugin change saved. Restart Hermes to apply it to running handlers.',

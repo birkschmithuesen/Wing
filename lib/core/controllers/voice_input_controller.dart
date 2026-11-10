@@ -10,6 +10,10 @@ import '../models/voice_processing_settings.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
 
+enum VoiceInputEmptyResult { noSpeech, noRecording }
+
+typedef VoiceInputNotice = ({String attempt, VoiceInputEmptyResult result});
+
 /// A single capture, tied to a draft snapshot and an immutable remote owner.
 /// Only a completed transcript edits the draft; cancellation preserves it exactly.
 class VoiceInputController extends ChangeNotifier {
@@ -18,6 +22,7 @@ class VoiceInputController extends ChangeNotifier {
   VoiceInputPhase _phase = VoiceInputPhase.idle;
   String _partial = '';
   String? _error;
+  VoiceInputNotice? _notice;
   int _seconds = 0;
   String? _id;
   bool _disposed = false;
@@ -35,6 +40,7 @@ class VoiceInputController extends ChangeNotifier {
   VoiceInputPhase get phase => _phase;
   String get partial => _partial;
   String? get error => _error;
+  VoiceInputNotice? get notice => _notice;
   int get seconds => _seconds;
   bool get active => _phase != VoiceInputPhase.idle;
 
@@ -131,6 +137,7 @@ class VoiceInputController extends ChangeNotifier {
     _draft = draft;
     _onResult = onResult;
     _error = null;
+    _notice = null;
     _partial = '';
     _seconds = 0;
     _phase = VoiceInputPhase.starting;
@@ -166,6 +173,10 @@ class VoiceInputController extends ChangeNotifier {
   void _event(Map<String, dynamic> event) {
     if (_id == null || event['id'] != _id || _disposed) return;
     if (event['error'] case final String message) {
+      if (event['code'] == 'no_speech') {
+        _emptyResult(VoiceInputEmptyResult.noSpeech);
+        return;
+      }
       _fail(StateError(message));
       return;
     }
@@ -195,8 +206,9 @@ class VoiceInputController extends ChangeNotifier {
       if (_id != id || _disposed) return;
       final remote = _remote;
       if (remote != null) {
-        if (bytes == null) {
-          throw StateError('No recording was returned. Please retry.');
+        if (bytes == null || bytes.isEmpty) {
+          _emptyResult(VoiceInputEmptyResult.noRecording);
+          return;
         }
         final text = await remote.transcribe(bytes);
         if (_id == id && !_disposed) _finish(text);
@@ -209,7 +221,7 @@ class VoiceInputController extends ChangeNotifier {
 
   void _finish(String transcript) {
     if (transcript.trim().isEmpty) {
-      _fail(StateError('No speech detected. Try again.'));
+      _emptyResult(VoiceInputEmptyResult.noSpeech);
       return;
     }
     final draft = _draft!;
@@ -223,11 +235,23 @@ class VoiceInputController extends ChangeNotifier {
 
   void _fail(Object failure) {
     final id = _id;
+    _notice = null;
     _error = voiceFailureMessage(failure);
     _target = null;
     _clear();
     _notify();
     if (id != null) unawaited(device.cancel(id).catchError((Object _) {}));
+  }
+
+  void _emptyResult(VoiceInputEmptyResult result) {
+    final id = _id;
+    if (id == null) return;
+    _notice = (attempt: id, result: result);
+    _error = null;
+    _target = null;
+    _clear();
+    _notify();
+    unawaited(device.cancel(id).catchError((Object _) {}));
   }
 
   void _clear() {
@@ -247,6 +271,7 @@ class VoiceInputController extends ChangeNotifier {
     _target = null;
     final id = _id;
     _error = null;
+    _notice = null;
     _clear();
     _notify();
     if (id != null) await device.cancel(id);

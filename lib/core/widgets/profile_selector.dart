@@ -1,3 +1,4 @@
+import 'studio_error.dart';
 import 'package:flutter/material.dart';
 
 import '../models/hermes_profile.dart';
@@ -47,9 +48,11 @@ class _ProfileSelectorState extends State<ProfileSelector> {
     'Rose',
   ];
 
-  Future<void> _chooseColor(HermesProfile profile) async {
+  Future<void> _chooseColor(BuildContext anchor, HermesProfile profile) async {
     final picker = _colors.beginChoice(profile.name);
     if (picker == null) return;
+    final errorKey = ('profile-color', profile.name);
+    dismissTransientError(anchor, errorKey: errorKey);
     try {
       final choice = await showModalBottomSheet<ProfileColorChoice>(
         context: context,
@@ -72,7 +75,7 @@ class _ProfileSelectorState extends State<ProfileSelector> {
                     style: Theme.of(sheetContext).textTheme.titleLarge,
                   ),
                   if (fact.error ?? fact.notice case final feedback?)
-                    Text(feedback),
+                    StudioError(feedback, icon: Icons.palette_outlined),
                   if (fact.reloadVisible)
                     StudioButtonPress(
                       child: TextButton(
@@ -193,10 +196,13 @@ class _ProfileSelectorState extends State<ProfileSelector> {
       );
       if (choice == null) return;
       final error = await picker.choose(choice);
-      if (mounted && error != null) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(error)));
+      if (anchor.mounted && error != null) {
+        showTransientError(
+          anchor,
+          error,
+          errorKey: errorKey,
+          icon: Icons.palette_outlined,
+        );
       }
     } finally {
       picker.dispose();
@@ -262,60 +268,62 @@ class _ProfileSelectorState extends State<ProfileSelector> {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: Center(
-                  child: GestureDetector(
-                    onLongPress: () => _chooseColor(profile),
-                    child: StudioButtonPress(
-                      child: TextButton(
-                        key: ValueKey('profile-${profile.name}'),
-                        style:
-                            TextButton.styleFrom(
-                              minimumSize: const Size(48, 36),
-                              tapTargetSize: MaterialTapTargetSize.padded,
-                              visualDensity: VisualDensity.standard,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              foregroundColor: _profileColor(profile.name),
-                              backgroundColor: _profileColor(profile.name)
-                                  .withValues(
-                                    alpha:
-                                        widget.selectedProfile == profile.name
-                                        ? 0.22
-                                        : 0.09,
-                                  ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: WingRadius.control,
-                              ),
-                            ).copyWith(
-                              side: WidgetStateProperty.resolveWith((states) {
-                                if (states.contains(WidgetState.focused)) {
+                  child: Builder(
+                    builder: (anchor) => GestureDetector(
+                      onLongPress: () => _chooseColor(anchor, profile),
+                      child: StudioButtonPress(
+                        child: TextButton(
+                          key: ValueKey('profile-${profile.name}'),
+                          style:
+                              TextButton.styleFrom(
+                                minimumSize: const Size(48, 36),
+                                tapTargetSize: MaterialTapTargetSize.padded,
+                                visualDensity: VisualDensity.standard,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                foregroundColor: _profileColor(profile.name),
+                                backgroundColor: _profileColor(profile.name)
+                                    .withValues(
+                                      alpha:
+                                          widget.selectedProfile == profile.name
+                                          ? 0.22
+                                          : 0.09,
+                                    ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: WingRadius.control,
+                                ),
+                              ).copyWith(
+                                side: WidgetStateProperty.resolveWith((states) {
+                                  if (states.contains(WidgetState.focused)) {
+                                    return BorderSide(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      width: 3,
+                                    );
+                                  }
                                   return BorderSide(
-                                    color: Theme.of(
-                                      context,
-                                    ).colorScheme.primary,
-                                    width: 3,
+                                    color: _profileColor(
+                                      profile.name,
+                                    ).withValues(alpha: 0.28),
                                   );
-                                }
-                                return BorderSide(
-                                  color: _profileColor(
-                                    profile.name,
-                                  ).withValues(alpha: 0.28),
-                                );
-                              }),
-                            ),
-                        onPressed: widget.onSelected == null
-                            ? null
-                            : () => widget.onSelected!(profile.name),
-                        child: Semantics(
-                          key: widget.selectedProfile == profile.name
-                              ? _selected
-                              : null,
-                          selected: widget.selectedProfile == profile.name,
-                          child: Text(
-                            profile.label,
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
+                                }),
+                              ),
+                          onPressed: widget.onSelected == null
+                              ? null
+                              : () => widget.onSelected!(profile.name),
+                          child: Semantics(
+                            key: widget.selectedProfile == profile.name
+                                ? _selected
+                                : null,
+                            selected: widget.selectedProfile == profile.name,
+                            child: Text(
+                              profile.label,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 14,
+                              ),
                             ),
                           ),
                         ),

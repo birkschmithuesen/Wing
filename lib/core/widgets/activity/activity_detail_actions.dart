@@ -97,18 +97,18 @@ class _ToolDetailCopyButtonState extends State<ToolDetailCopyButton> {
       onPressed: _copying
           ? null
           : () async {
+              dismissTransientError(context, errorKey: 'copy-tool-detail');
               final text = widget.text;
               setState(() => _copying = true);
               try {
                 await Clipboard.setData(ClipboardData(text: text));
               } catch (_) {
                 if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: StudioError(
-                        'Could not copy this text. Try again.',
-                      ),
-                    ),
+                  showTransientError(
+                    context,
+                    'Could not copy this text. Try again.',
+                    errorKey: 'copy-tool-detail',
+                    icon: Icons.copy_outlined,
                   );
                 }
                 return;

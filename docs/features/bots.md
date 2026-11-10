@@ -31,6 +31,11 @@ or roster entry.
 
 Choose Bots in the drawer. Use the Bots and Groups tabs. Tap a name or preview for chat, an avatar for appearance, or the row menu for Bot settings and View screen. Long-press a profile icon in Chats for Bot Chat.
 
+Open **Alerts** in the main menu to review failed automatic bot, group and
+desktop updates. Previously received roster rows and group messages remain
+readable during a failed refresh. Use the original view's Refresh action to
+retry and see feedback there.
+
 ## Driving it with Wing harnesses
 
 Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-preconditions). Use the [verification workflow](../../.agents/skills/verify-wing/SKILL.md) for launch, readiness, evidence and cleanup.
@@ -42,6 +47,12 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```
 
   Current group-control coverage: `flutter test --no-pub test/bot_group_controls_test.dart test/bot_group_draft_session_test.dart test/bots_refresh_scheduling_test.dart test/chat_browser_data_test.dart test/studio_selection_test.dart`. It exercises eligible-member selection and revalidation, compressed Bot Chat identity, persisted reply-thread selection with cancellation and held/failed/retried sends, refused/unknown send identity, exact Discard, capability absence, Stop fences during Send and after failed attempts, shared-setting validation/retry, reported member progress and bounded Continue. `bots_contract_test.dart` also sends Shared settings, Continue and Discard through the production repository/gateway adapter, checks the captured profile and verifies unknown methods and retired operations cannot dispatch. The production screen tests open Shared settings, retain a failed draft, and drive Discard and Continue with requests held in both themes at normal and 200% text. They also open Member activity through Group options, keep long names/tools and missing timing readable, expand exact raw details, and close after scrolling in both themes at normal and 200% text. `bots_view_test.dart` also drives Refresh through the hosted group menu, verifies the exact Retry control stays reachable after dismissal, and retains the captured member-settings/private-chat checks. `bot_group_view_test.dart` holds Refresh across menu retirement and verifies immediate progress, cancellation recovery and departure.
+
+  For operational observations, run
+  `flutter test --no-pub test/bots_refresh_scheduling_test.dart test/bot_group_controls_test.dart test/bot_screen_session_test.dart`.
+  These tests cover roster failure deduplication, retained group messages,
+  explicit group Refresh failure, desktop lease errors, recovery after a
+  fresh read or frame, and rejection of late errors after leaving the desktop.
 
   For the remote-screen connection dot, run
   `flutter test --no-pub test/profile_combined_activity_test.dart test/bots_view_test.dart --name 'shared chat menu and screen|bot screen menu opens the captured display lease'`.

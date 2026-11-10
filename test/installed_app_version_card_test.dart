@@ -156,7 +156,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Releases'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Could not open this link.'), findsOneWidget);
   });

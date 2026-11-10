@@ -15,6 +15,8 @@ class DoctorFindingDraftSession extends ChangeNotifier {
   String? _preparedPrompt;
   int? _opening;
   String? _notice;
+  int? _failedFinding;
+  int? get failedFinding => _failedFinding;
   bool _disposed = false;
   int _notificationDepth = 0;
   int? get openingFinding => _opening;
@@ -50,11 +52,13 @@ class DoctorFindingDraftSession extends ChangeNotifier {
     }
     _opening = index;
     _notice = null;
+    _failedFinding = null;
     _changed();
     try {
       if (!_active || !isRouteCurrent()) return;
       if (owner.connectionId != _operation.connectionId ||
           owner.connectionIdentity != _operation.connectionIdentity) {
+        _failedFinding = index;
         _notice = 'Connection changed. Open Doctor on the selected connection.';
         return;
       }
@@ -82,6 +86,7 @@ class DoctorFindingDraftSession extends ChangeNotifier {
       _preparedPrompt = null;
     } catch (_) {
       if (!_disposed) {
+        _failedFinding = index;
         _notice = 'Could not open the chat. Check the connection and retry.';
       }
     } finally {

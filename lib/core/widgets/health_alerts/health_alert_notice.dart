@@ -5,6 +5,7 @@ import '../../models/health_alert.dart';
 import '../../presentation/health_alert_presentation.dart';
 import '../../theme/wing_theme.dart';
 import 'health_alerts_scope.dart';
+import '../studio_error.dart';
 
 /// One transient notice per application, independent of how many headers are
 /// mounted. Never opens a modal automatically or requests native notification.
@@ -107,82 +108,46 @@ class _HealthAlertNoticeState extends State<HealthAlertNotice> {
     final tokens = WingTokens.of(context), notice = _notice;
     if (notice == null) return const SizedBox.shrink();
     final media = MediaQuery.of(context);
-    final severityColor = notice.severity == HealthAlertSeverity.critical
-        ? tokens.danger
-        : tokens.warning;
-    final largeText = media.textScaler.scale(16) >= 24;
-    final statusIcon = Container(
-      width: 32,
-      height: 32,
-      decoration: BoxDecoration(
-        color: severityColor.withValues(alpha: 0.12),
-        borderRadius: WingRadius.control,
-      ),
-      child: Icon(
-        notice.severity == HealthAlertSeverity.critical
-            ? Icons.error_outline
-            : Icons.warning_amber_rounded,
-        color: severityColor,
-        size: 20,
-      ),
-    );
-    final labels = Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Text(
-          notice.title,
-          style: tokens.typography.section.copyWith(color: tokens.onSurface),
-        ),
-        if (healthAlertTriggerSummary(notice) case final summary?) ...[
+    final severity = healthAlertErrorSeverity(notice);
+    final content = Padding(
+      padding: const EdgeInsets.all(WingSpacing.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          StudioError(
+            notice.title,
+            severity: severity,
+            framed: false,
+            announce: false,
+          ),
+          if (healthAlertTriggerSummary(notice) case final summary?) ...[
+            const SizedBox(height: WingSpacing.xs),
+            Text(summary, style: tokens.typography.label),
+          ],
           const SizedBox(height: WingSpacing.xs),
           Text(
-            summary,
-            style: tokens.typography.label.copyWith(
-              fontSize: 13,
-              color: tokens.onSurface,
-            ),
+            notice.connectionLabel,
+            style: tokens.typography.label.copyWith(color: tokens.muted),
           ),
         ],
-        const SizedBox(height: WingSpacing.xs),
-        Text(
-          notice.connectionLabel,
-          style: tokens.typography.label.copyWith(color: tokens.muted),
-        ),
-      ],
-    );
-    final openArea = Tooltip(
-      message: healthAlertActionLabel(notice),
-      child: StudioButtonPress(
-        child: InkWell(
-          onTap: () {
-            _expiry?.cancel();
-            _hide();
-            _scope?.openAlert(notice);
-          },
-          child: Padding(
-            padding: const EdgeInsets.all(WingSpacing.md),
-            child: largeText
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      statusIcon,
-                      const SizedBox(height: WingSpacing.sm),
-                      labels,
-                    ],
-                  )
-                : Row(
-                    children: [
-                      statusIcon,
-                      const SizedBox(width: WingSpacing.md),
-                      Expanded(child: labels),
-                    ],
-                  ),
-          ),
-        ),
       ),
     );
+    final openArea = notice.canOpen
+        ? Tooltip(
+            message: healthAlertActionLabel(notice),
+            child: StudioButtonPress(
+              child: InkWell(
+                onTap: () {
+                  _expiry?.cancel();
+                  _hide();
+                  _scope?.openAlert(notice);
+                },
+                child: content,
+              ),
+            ),
+          )
+        : content;
     final dismiss = StudioButtonPress(
       child: IconButton(
         tooltip: 'Dismiss health notice',
@@ -219,36 +184,20 @@ class _HealthAlertNoticeState extends State<HealthAlertNotice> {
                 child: child,
               ),
             ),
-            child: Material(
+            child: StudioErrorFrame(
               key: const ValueKey('health-alert-notice-card'),
-              color: tokens.raised,
-              elevation: 6,
-              shadowColor: Colors.black.withValues(alpha: 0.24),
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                borderRadius: WingRadius.card,
-                side: BorderSide(color: tokens.border),
-              ),
+              severity: severity,
+              floating: true,
               child: Semantics(
                 liveRegion: true,
-                child: largeText
-                    ? Stack(
-                        children: [
-                          SizedBox(width: double.infinity, child: openArea),
-                          PositionedDirectional(
-                            top: 0,
-                            end: WingSpacing.xs,
-                            child: dismiss,
-                          ),
-                        ],
-                      )
-                    : Row(
-                        children: [
-                          Expanded(child: openArea),
-                          dismiss,
-                          const SizedBox(width: WingSpacing.xs),
-                        ],
-                      ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: openArea),
+                    dismiss,
+                    const SizedBox(width: WingSpacing.xs),
+                  ],
+                ),
               ),
             ),
           ),

@@ -19,6 +19,10 @@ Feature ID: `chat-activity`.
 
 Open Activity from a conversation. Inspect tools, requests and saved results. During active work open the Subagents, Tasks or Background tab, inspect a child, and return while the parent continues.
 
+Use the main menu's [Alerts](health-alerts.md) to review failed automatic
+process reads and subagent output updates. Readable content remains available
+with its last-received context. Refresh in the affected view to retry.
+
 Swipe up on a Subagents/Tasks/Background bar zone above the composer to open that
 category at its compact height. Swipe upward again on the open bar or anywhere
 in the drawer to maximize, or downward in the drawer to close. Diagonal swipes
@@ -53,6 +57,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```sh
   flutter test --no-pub test/profile_background_work_test.dart test/profile_background_work_panel_test.dart test/profile_live_work_route_test.dart
   ```
+
+  `profile_background_work_test.dart` checks that a failed automatic read
+  retains the process rows and reports the incident for the exact chat.
+  `subagent_timeline_session_test.dart` checks that a successful live replay
+  cannot clear an unresolved saved-history failure.
 
 - **Drawer gestures:** the shared dock and production conversation route exercise
   upward expansion and downward dismissal for both categories, fixed composer

@@ -1,3 +1,4 @@
+import 'studio_error.dart';
 import 'dart:async';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -294,7 +295,10 @@ class _BotDisplaySurfaceState extends State<BotDisplaySurface> {
                       ),
                       if (_decodeFailed)
                         const Center(
-                          child: Text('Screen frame could not be displayed.'),
+                          child: StudioError(
+                            'Screen frame could not be displayed.',
+                            icon: Icons.monitor_outlined,
+                          ),
                         ),
                       if (_image != null)
                         Transform.translate(

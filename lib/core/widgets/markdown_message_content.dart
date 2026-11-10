@@ -18,6 +18,7 @@ import '../services/markdown_qa_variant.dart';
 import '../services/completion_diagnostics.dart';
 import '../services/web_preview.dart';
 import '../theme/profile_markdown_style.dart';
+import '../theme/wing_theme.dart';
 import 'chat_inline_image.dart';
 import 'studio_loading.dart';
 import 'bot_mention_scope.dart';
@@ -61,6 +62,7 @@ class MarkdownMessageContent extends StatefulWidget {
 
 class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   bool _openingEmail = false;
+  String? _linkError;
   // Retain only this mounted message's rendering. Unrelated stream/activity
   // updates must not split code fences, recreate styles and reparse its prose.
   Widget? _content;
@@ -112,17 +114,17 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
         alignment: 0,
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: StudioError('This heading is not in the available preview.'),
-        ),
-      );
+      _showLinkFailure('This heading is not in the available preview.');
     }
   }
 
   @override
   void didUpdateWidget(covariant MarkdownMessageContent oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.data != oldWidget.data ||
+        widget.documentPath != oldWidget.documentPath) {
+      _linkError = null;
+    }
     if (widget.data != oldWidget.data ||
         widget.loadImages != oldWidget.loadImages ||
         widget.streaming != oldWidget.streaming ||
@@ -189,67 +191,57 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
     _refreshSegments = true;
   }
 
-  Future<void> _open(BuildContext context, String href) async {
+  void _showLinkFailure(String message) {
+    if (mounted && ModalRoute.of(context)?.isCurrent != false) {
+      setState(() => _linkError = message);
+    }
+  }
+
+  Future<void> _open(String href) async {
+    if (_openingEmail) return;
+    if (_linkError != null) setState(() => _linkError = null);
     if (EmailComposer.accepts(href)) {
-      if (_openingEmail) return;
       setState(() => _openingEmail = true);
       final opened = await EmailComposer.open(href);
       if (!mounted) return;
       setState(() => _openingEmail = false);
-      if (!opened && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: StudioError(
-              'Could not open an email app. Install or enable one and try again.',
-            ),
-          ),
+      if (!opened) {
+        _showLinkFailure(
+          'Could not open an email app. Install or enable one and try again.',
         );
       }
       return;
     }
     final uri = externalWebLink(href);
-    var opened = false;
     if (uri != null) {
-      opened = await openWebPreview(uri);
-    } else {
-      final output = widget.documentPath == null
-          ? explicitRemoteFileOutput(href)
-          : resolveDocumentFileLink(href, widget.documentPath!);
-      if (output != null &&
-          output.path == widget.documentPath &&
-          output.fragment != null) {
-        await _scrollToFragment(output.fragment!);
-        return;
-      }
-      if (output != null && widget.onOpenRemoteFile != null) {
-        try {
-          await widget.onOpenRemoteFile!(output);
-          return;
-        } catch (error) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: StudioError(fileOpenErrorMessage(error))),
-            );
-          }
-          return;
-        }
-      }
+      final opened = await openWebPreview(uri);
+      if (!opened) _showLinkFailure('Could not open this link.');
+      return;
     }
-    if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: StudioError(
-            uri == null
-                ? 'Only web links, email links and linked Hermes files can be opened here.'
-                : 'Could not open this link.',
-          ),
-        ),
-      );
+    final output = widget.documentPath == null
+        ? explicitRemoteFileOutput(href)
+        : resolveDocumentFileLink(href, widget.documentPath!);
+    if (output != null &&
+        output.path == widget.documentPath &&
+        output.fragment != null) {
+      await _scrollToFragment(output.fragment!);
+      return;
     }
+    if (output != null && widget.onOpenRemoteFile != null) {
+      try {
+        await widget.onOpenRemoteFile!(output);
+      } catch (error) {
+        _showLinkFailure(fileOpenErrorMessage(error));
+      }
+      return;
+    }
+    _showLinkFailure(
+      'Only web links, email links and linked Hermes files can be opened here.',
+    );
   }
 
   void _tapLink(String text, String? href, String title) {
-    if (href != null) _open(context, href);
+    if (href != null) _open(href);
   }
 
   Widget _buildImage(MarkdownImageConfig config) {
@@ -294,7 +286,18 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
     return StudioPageLoading(
       active: _openingEmail,
       label: 'Opening email apps',
-      child: _buildCachedContent(context),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildCachedContent(context),
+          if (_linkError case final error?)
+            Padding(
+              padding: const EdgeInsets.only(top: WingSpacing.sm),
+              child: StudioError(error, icon: Icons.link),
+            ),
+        ],
+      ),
     );
   }
 

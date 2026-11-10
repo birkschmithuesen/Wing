@@ -1,5 +1,11 @@
 import '../models/host_thresholds.dart';
 import '../models/health_alert.dart';
+import '../widgets/studio_error.dart';
+
+StudioErrorSeverity healthAlertErrorSeverity(HealthAlert alert) =>
+    alert.severity == HealthAlertSeverity.critical || !alert.scope.monitored
+    ? StudioErrorSeverity.error
+    : StudioErrorSeverity.noResult;
 
 String healthAlertActionLabel(HealthAlert alert) => switch (alert.destination) {
   'Connection details' => 'Open connection details',

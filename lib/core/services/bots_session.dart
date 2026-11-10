@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import '../models/operational_error.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
@@ -32,6 +33,7 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     this.beforeGroupSend,
     this.afterGroupSend,
     this.onIdentityChanged,
+    this.onOperationalError,
     DateTime Function()? now,
   }) : _now = now ?? DateTime.now,
        _loadPreferences = loadPreferences ?? BotsPreferences.load;
@@ -42,6 +44,7 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
   final Future<void> Function(BotGroup, String)? beforeGroupSend;
   final Future<void> Function(BotGroup, BotGroupSendOutcome)? afterGroupSend;
   final void Function(WorkspaceScope, BotRecord?)? onIdentityChanged;
+  final OperationalErrorReporter? onOperationalError;
   final Future<BotsPreferences> Function() _loadPreferences;
   BotsPreferences? _preferences;
   Set<String> _groupPins = const {};
@@ -56,7 +59,7 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
   bool _emptySourcesObserved = false;
   int _readGeneration = 0;
   Timer? _poll;
-  int _refreshes = 0;
+  int _refreshes = 0, _explicitRefreshes = 0;
   final _recentsReaders = <Object>{};
   RecentGroupMessages? _groupMessages;
   RecentGroupMessages? get groupMessages => _groupMessages;
@@ -340,20 +343,46 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     _wakeAvatars();
   }
 
-  _BotsReadJob _job<K>(Map<K, _BotsReadJob> jobs, K key, String error) =>
-      jobs.putIfAbsent(key, () {
-        final job = _BotsReadJob();
-        job.onOutcome = (validated) {
-          if (_closed || !identical(jobs[key], job)) return;
-          if (validated) {
-            _readErrors.remove(job);
-          } else if (_refreshes > 0 || _visible || _recentsReaders.isNotEmpty) {
-            _readErrors[job] = error;
-          }
-          notifyListeners();
-        };
-        return job;
-      });
+  _BotsReadJob _job<K>(
+    Map<K, _BotsReadJob> jobs,
+    K key,
+    String error, {
+    String? incident,
+    bool Function()? canReport,
+    bool Function()? hasReadableData,
+  }) => jobs.putIfAbsent(key, () {
+    final job = _BotsReadJob();
+    job.onOutcome = (validated) {
+      if (_closed || !identical(jobs[key], job)) return;
+      final observing =
+          _refreshes > 0 || _visible || _recentsReaders.isNotEmpty;
+      final passiveWithReadableData =
+          incident != null &&
+          _explicitRefreshes == 0 &&
+          hasReadableData?.call() == true;
+      if (validated || passiveWithReadableData) {
+        _readErrors.remove(job);
+      } else if (observing) {
+        _readErrors[job] = error;
+      }
+      if (incident != null &&
+          key is WorkspaceScope &&
+          canReport?.call() == true &&
+          (validated || observing)) {
+        onOperationalError?.call(
+          OperationalErrorObservation(
+            connectionIdentity: key.connectionIdentity,
+            profileName: key.profileName,
+            operation: '$incident:${key.profileName}',
+            title: 'Bot updates unavailable',
+            error: validated ? null : error,
+          ),
+        );
+      }
+      notifyListeners();
+    };
+    return job;
+  });
 
   void _publishAvatarChange() {
     for (final borrower in _avatars.borrowers.toList()) {
@@ -399,6 +428,9 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       _rosterJobs,
       source.scope,
       '${source.instance}: bots could not refresh.',
+      incident: 'bot-roster',
+      hasReadableData: () => _bots.containsKey(source.scope.connectionIdentity),
+      canReport: () => _sourceCurrent(source, generation),
     );
     await job.run(_now, maxAge, () async {
       final roster = await source.bots();
@@ -663,6 +695,7 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       onRead: onGroupRead,
       beforeSend: beforeGroupSend,
       afterSend: afterGroupSend,
+      onOperationalError: onOperationalError,
     );
     session.addListener(() {
       if (_closed) return;
@@ -697,7 +730,11 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       if (!current()) return null;
       final bot = roster.where((bot) => bot.scope == scope).firstOrNull;
       if (bot == null) throw StateError('Screen profile is unavailable');
-      return BotScreenSession(source, bot);
+      return BotScreenSession(
+        source,
+        bot,
+        onOperationalError: onOperationalError,
+      );
     } finally {
       source.release();
     }
@@ -709,10 +746,10 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     _poll?.cancel();
     _poll = null;
     if (visible) {
-      unawaited(refresh());
+      unawaited(refresh(explicit: false));
       _poll = Timer.periodic(
         const Duration(seconds: 10),
-        (_) => unawaited(refresh()),
+        (_) => unawaited(refresh(explicit: false)),
       );
     }
   }
@@ -831,11 +868,12 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     ]);
   }
 
-  Future<void> refresh() async {
+  Future<void> refresh({bool explicit = true}) async {
     if (_closed || _busy) return;
     final generation = _readGeneration;
     bool current() => !_closed && generation == _readGeneration;
     _refreshes++;
+    if (explicit) _explicitRefreshes++;
     _loading = true;
     notifyListeners();
     try {
@@ -897,6 +935,7 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       }
     } finally {
       _refreshes--;
+      if (explicit) _explicitRefreshes--;
       if (!_closed) {
         _loading = _refreshes > 0;
         notifyListeners();
@@ -909,6 +948,11 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       _statusJobs,
       source.scope,
       '${source.instance}: bot activity is unavailable.',
+      incident: 'bot-presence',
+      hasReadableData: () => _bots.containsKey(source.scope.connectionIdentity),
+      canReport: () =>
+          _sourceCurrent(source, generation) &&
+          _rosterJobs[source.scope]?.failed == null,
     );
     return job.run(_now, _statusAge, () async {
       await _appearanceRoster(source, maxAge: _statusAge);
@@ -950,6 +994,10 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       _readinessJobs,
       source.scope,
       '${source.instance}: group driver is unavailable.',
+      incident: 'group-driver',
+      hasReadableData: () =>
+          _groups.containsKey(source.scope.connectionIdentity),
+      canReport: () => _sourceCurrent(source, generation),
     );
     return job.run(_now, _statusAge, () async {
       try {
@@ -985,6 +1033,10 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
       _catalogJobs,
       source.scope,
       '${source.instance}: groups could not refresh.',
+      incident: 'group-roster',
+      hasReadableData: () =>
+          _groups.containsKey(source.scope.connectionIdentity),
+      canReport: () => _sourceCurrent(source, generation),
     );
     await catalog.run(_now, _metadataAge, () async {
       final startingStates = Map<String, BotGroupState>.of(_roomStates);

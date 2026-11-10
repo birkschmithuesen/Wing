@@ -1,6 +1,6 @@
 # Get started with Wing
 
-Wing brings your Hermes Agent to Android. You need Android 7.0 or newer and a Hermes setup with a gateway-served Webapp and working model provider. Wing connects to your agent; it does not run a model on your phone.
+Wing brings your Hermes Agent to Android. You need Android 10 or newer and a Hermes setup with a gateway-served Webapp and working model provider. Wing connects to your agent; it does not run a model on your phone.
 
 ## 1. Install Wing
 

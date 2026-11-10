@@ -1,3 +1,4 @@
+import 'studio_error.dart' show dismissTransientError, showTransientError;
 import 'selection_viewport.dart';
 import 'dart:async';
 import 'bot_mention_scope.dart';
@@ -919,6 +920,7 @@ class _MessageCopyButtonState extends State<_MessageCopyButton> {
   Timer? _reset;
   Future<void> _copy() async {
     if (_busy) return;
+    dismissTransientError(context, errorKey: 'copy-message');
     _reset?.cancel();
     setState(() {
       _busy = true;
@@ -937,8 +939,11 @@ class _MessageCopyButtonState extends State<_MessageCopyButton> {
     } catch (_) {
       if (!mounted) return;
       setState(() => _busy = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Could not copy message. Try again.')),
+      showTransientError(
+        context,
+        'Could not copy message. Try again.',
+        errorKey: 'copy-message',
+        icon: Icons.copy_outlined,
       );
     }
   }

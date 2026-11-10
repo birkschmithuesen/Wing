@@ -47,9 +47,8 @@ suggested apps first.
 
 For a pending MCP approval, the power icon enables the named server and the
 download icon installs it. Enable shows progress immediately and reports
-Enabled once Hermes confirms the change. Review the server-scrubbed command
-or remote address, working directory and environment-variable names before
-approving. If Hermes
+Enabled once Hermes confirms the change. Review the server-scrubbed command or remote address,
+working directory and environment-variable names before approving. If Hermes
 requests install credentials, enter them in the card and confirm. Wing sends the
 entered values to Hermes and keeps the draft on the current screen. More
 connection actions offers Skip for each eligible target. Retry appears on a

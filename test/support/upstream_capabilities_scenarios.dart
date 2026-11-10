@@ -177,7 +177,7 @@ void registerUpstreamCapabilitiesScenarios({
           fixture.mutationGate = null;
           final retry = find.descendant(
             of: find.byType(BottomSheet),
-            matching: find.text('Retry'),
+            matching: find.byTooltip('Retry'),
           );
           await tester.ensureVisible(retry);
           await tester.tap(retry);

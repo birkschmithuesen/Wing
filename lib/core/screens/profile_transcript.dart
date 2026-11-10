@@ -9,7 +9,7 @@ import '../models/chat_output.dart';
 import '../services/server_connection_status.dart';
 import '../models/notification_focus.dart';
 import '../models/transcript_timeline.dart' as timeline_facts;
-import '../widgets/studio_error.dart';
+import '../widgets/studio_error.dart' show StudioError;
 import 'dart:async';
 import 'package:flutter/foundation.dart' show listEquals;
 import '../models/chat_runtime.dart';

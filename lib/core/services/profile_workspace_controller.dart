@@ -7,6 +7,7 @@ import '../models/hosted_connector_accounts.dart';
 import 'chat_transcript_events.dart';
 import 'hermes_question_history.dart';
 import 'subagent_timeline_session.dart';
+import '../models/operational_error.dart';
 import 'group_observations.dart';
 import '../models/server_reference.dart';
 import '../models/composer_reference.dart';
@@ -166,6 +167,7 @@ class ProfileChat {
   final _processReads = <String, int>{};
   (String, Future<bool>)? _automaticProcessRead;
   String? _processesError;
+  bool _passiveProcessFailure = false, _explicitAutomaticProcessRead = false;
   final Set<String> _dismissedProcessIds = {};
   final Set<String> _stoppingProcessIds = {};
   int _processesReadGeneration = 0;
@@ -250,6 +252,7 @@ class ProfileChat {
       _processes,
       _processesLoading,
       _processesError,
+      _passiveProcessFailure,
     );
     if (_workInputs != inputs) {
       _workInputs = inputs;
@@ -293,6 +296,8 @@ class ProfileChat {
   );
   bool get processesLoading => _processesLoading;
   String? get processesError => _processesError;
+  String? get inlineProcessesError =>
+      _passiveProcessFailure ? null : _processesError;
   SessionControlSnapshot? get sessionControl =>
       copySupervisedControl(_sessionControl);
   bool get sessionControlLoading => _sessionControlLoading;
@@ -598,6 +603,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Map<(String, String), _DeletedDraftCleanupPublicationInput>
   _publishedDeletedDraftInputs = const {};
   final ProfileAttention? onAttention;
+  final OperationalErrorReporter? _onOperationalError;
   final Future<void> Function(ProfileInputNotification)? onNotificationInputs;
   final Future<void> Function(ProfileSessionKey, String)? onNotificationRead;
   final NotificationFocus? Function(ProfileSessionKey)? notificationResultFor;
@@ -985,6 +991,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     AttachmentDraftService? attachmentService,
     ComposerDraftStore? draftStore,
     this.onAttention,
+    OperationalErrorReporter? onOperationalError,
     this.onNotificationInputs,
     this.onNotificationRead,
     this.notificationResultFor,
@@ -992,9 +999,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
     Future<void> Function(GroupInputNotification)? onGroupInputs,
     Future<void> Function(GroupNotificationTarget, int)? onGroupAnswerRead,
     List<NotificationInput> Function(ProfileSessionKey)? notificationInputsFor,
-    // Keep the injected journal reader private behind the workspace boundary.
+    // Keep injected callbacks private behind the workspace boundary.
     // ignore: prefer_initializing_formals
   }) : _notificationInputsFor = notificationInputsFor,
+       // ignore: prefer_initializing_formals
+       _onOperationalError = onOperationalError,
        _gatewayConnection = ProfileGatewayConnection(access),
        _runtimeFactory = runtimeFactory ?? _createRuntime,
        attachments = attachmentService ?? AttachmentDraftService() {
@@ -1843,6 +1852,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
   bool owns(ProfileSessionKey key) =>
       key.workspace.connectionId == connection.id &&
       key.workspace.connectionIdentity == connectionIdentity;
+
+  /// Forward observations from readers owned by this live connection.
+  void reportOperationalError(OperationalErrorObservation observation) {
+    if (_closed || observation.connectionIdentity != connectionIdentity) return;
+    _onOperationalError?.call(observation);
+  }
 
   Future<ComposerSavedWork?> savedDraft(ProfileSessionKey key) async {
     if (!owns(key)) {
@@ -3588,6 +3603,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     final runtime = chat.runtime.runtimeId;
     bool current() => _subagentTargetIsCurrent(resource, chat, runtime, id);
     return SubagentTimelineSession(
+      onOperationalError: reportOperationalError,
       scope: chat.key.workspace,
       sessionId: child,
       isCurrent: current,
@@ -3797,9 +3813,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   Future<void> refreshProcesses(ProfileChat chat) async {
     final automatic = chat._automaticProcessRead;
-    await (automatic?.$1 == chat.runtime.runtimeId
-        ? automatic!.$2
-        : _refreshProcesses(chat));
+    if (automatic != null && automatic.$1 == chat.runtime.runtimeId) {
+      chat._explicitAutomaticProcessRead = true;
+      await automatic.$2;
+    } else {
+      await _refreshProcesses(chat);
+    }
   }
 
   // A destructive command needs its own accepted read. Ordinary refreshes may
@@ -3815,6 +3834,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
     final turn = chat._runtime.turnRevision;
     final generation = ++chat._processesReadGeneration;
     final previousError = chat._processesError;
+    final previousInline = chat.inlineProcessesError;
+    if (quiet) chat._explicitAutomaticProcessRead = false;
     chat._processReads.update(runtime, (count) => count + 1, ifAbsent: () => 1);
     if (!quiet) {
       chat._processesLoading = true;
@@ -3866,11 +3887,37 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat._processes = admitted;
       }
       chat._processesError = null;
+      reportOperationalError(
+        OperationalErrorObservation(
+          connectionIdentity: connectionIdentity,
+          profileName: chat.key.workspace.profileName,
+          operation:
+              'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
+          title: 'Process updates unavailable',
+          error: null,
+        ),
+      );
       return true;
     } catch (_) {
       if (_processReadIsCurrent(resource, chat, runtime, before, generation)) {
         chat._processesError =
             'Background processes could not be refreshed. Retry.';
+        chat._passiveProcessFailure =
+            quiet &&
+            !chat._explicitAutomaticProcessRead &&
+            chat.currentProcesses.isNotEmpty;
+        if (quiet) {
+          reportOperationalError(
+            OperationalErrorObservation(
+              connectionIdentity: connectionIdentity,
+              profileName: chat.key.workspace.profileName,
+              operation:
+                  'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
+              title: 'Process updates unavailable',
+              error: chat._processesError,
+            ),
+          );
+        }
         return false;
       }
       return !requireCurrentRead;
@@ -3886,7 +3933,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
         chat._processesLoading = false;
         if (!quiet ||
             !identical(before, chat._processes) ||
-            previousError != chat._processesError) {
+            previousError != chat._processesError ||
+            previousInline != chat.inlineProcessesError) {
           _changed(browserChat: chat.key, saveReading: false);
         }
       }
@@ -3908,6 +3956,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       return false;
     }
     chat._processesError = null;
+    chat._passiveProcessFailure = false;
     _changed();
     try {
       _commandOwner(chat);

@@ -105,8 +105,9 @@ class _ChatFindSheetState extends State<ChatFindSheet> {
                               label: 'Searching messages',
                             )
                           : !state.hasLoadedMessages && state.error != null
-                          ? Padding(
-                              padding: const EdgeInsets.all(16),
+                          ? SingleChildScrollView(
+                              primary: false,
+                              padding: const EdgeInsets.all(WingSpacing.lg),
                               child: StudioError(state.error!),
                             )
                           : query.isEmpty

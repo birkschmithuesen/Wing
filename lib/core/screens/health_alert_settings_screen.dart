@@ -37,7 +37,7 @@ class HealthAlertSettingsScreen extends StatelessWidget {
               children: [
                 _toggle(
                   'Health alerts',
-                  'All active connections on this device.',
+                  'Monitor host thresholds and profile health on this device.',
                   settings.enabled,
                   (value) => session.update(
                     (current) => current.copyWith(enabled: value),

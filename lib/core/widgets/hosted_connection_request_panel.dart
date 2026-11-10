@@ -136,7 +136,7 @@ class _HostedConnectionRequestPanelState
   List<Widget> _feedbackFor(String? target) => [
     if (_actionTarget == target) ...[
       if (_pending case final pending?) _progress(pending),
-      if (_error case final error?) StudioError(error),
+      if (_error case final error?) StudioError(error, framed: false),
       if (_feedback case final feedback?)
         Semantics(liveRegion: true, child: Text(feedback)),
     ],
@@ -250,7 +250,7 @@ class _HostedConnectionRequestPanelState
         if (target.detail?.isNotEmpty == true)
           Text(target.detail!, style: theme.textTheme.bodySmall),
         if (target.discoveryError?.isNotEmpty == true)
-          Text(target.discoveryError!, style: theme.textTheme.bodySmall),
+          StudioError(target.discoveryError!, icon: Icons.cloud_off_outlined),
         if (!editing) ..._feedbackFor(target.name),
         if (target.launch case final launch? when active && target.canSkip) ...[
           const SizedBox(height: WingSpacing.xs),
@@ -410,7 +410,8 @@ class _HostedConnectionRequestPanelState
                       : () => _perform(
                           'Closing request…',
                           widget.onContinue,
-                          failure: 'Could not close the request. Check connection status.',
+                          failure:
+                              'Could not close the request. Check connection status.',
                         ),
                 ),
               ],

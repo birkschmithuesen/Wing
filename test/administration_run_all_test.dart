@@ -13,6 +13,7 @@ import 'package:wing/core/screens/administration/admin_health_page.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
 import 'package:wing/core/services/administration_health.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 import 'support/administration_fixture.dart';
 
@@ -251,10 +252,7 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(fixture.requests.where((r) => r.$1 == 'POST'), hasLength(2));
     expect(
-      find.descendant(
-        of: find.byType(SnackBar),
-        matching: find.textContaining('Doctor:'),
-      ),
+      find.widgetWithText(StudioError, 'Start not confirmed'),
       findsOneWidget,
     );
     expect(

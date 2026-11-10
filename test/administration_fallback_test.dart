@@ -298,7 +298,7 @@ void main() {
     await _manage(tester, 1, 'Remove');
     expect(find.textContaining('changed elsewhere'), findsOneWidget);
     expect(fixture.requests.where((r) => r.$1 == 'PUT'), isEmpty);
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pumpAndSettle();
     expect(find.text('changed-model'), findsOneWidget);
     await _manage(tester, 1, 'Remove');
@@ -328,7 +328,7 @@ void main() {
     await _open(tester, fixture);
     expect(find.textContaining('Could not load'), findsOneWidget);
     fixture.failReads = false;
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pumpAndSettle();
     expect(find.text('backup-model'), findsOneWidget);
     expect(find.textContaining('Could not load'), findsNothing);

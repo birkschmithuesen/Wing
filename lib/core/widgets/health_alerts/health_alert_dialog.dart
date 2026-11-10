@@ -5,6 +5,7 @@ import '../../theme/wing_theme.dart';
 import 'health_alerts_scope.dart';
 import 'health_alert_notice.dart';
 import '../studio_loading.dart';
+import '../studio_error.dart';
 
 Future<void> showHealthAlerts(
   BuildContext context,
@@ -73,7 +74,7 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
       var index = alerts.indexWhere((a) => a.id == _selected);
       if (index < 0) index = 0;
       final alert = alerts.isEmpty ? null : alerts[index];
-      final tokens = WingTokens.of(context);
+      final canOpen = alert?.canOpen ?? false;
       final saving = widget.scope.alerts.saving;
       final error = alert == null ? null : widget.scope.alerts.error(alert);
       return Dialog(
@@ -88,13 +89,11 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (saving)
-                const StudioPageLoading.waiting(
-                  label: 'Saving health alert choice',
-                ),
+                const StudioPageLoading.waiting(label: 'Saving alert choice'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 12),
                 child: WingModalHeader(
-                  title: const Text('Health alerts'),
+                  title: const Text('Alerts'),
                   closeLabel: 'Close alerts',
                   onClose: () => Navigator.pop(context),
                 ),
@@ -102,16 +101,16 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
               const Divider(height: 1),
               Flexible(
                 child: Semantics(
-                  button: alert != null,
-                  label: alert == null ? null : healthAlertActionLabel(alert),
+                  button: canOpen,
+                  label: canOpen ? healthAlertActionLabel(alert!) : null,
                   child: StudioButtonPress(
                     child: InkWell(
                       key: const ValueKey('health-alert-open-issue'),
-                      onTap: alert == null ? null : () => _open(alert),
+                      onTap: canOpen ? () => _open(alert!) : null,
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.all(12),
                         child: alert == null
-                            ? const Text('No current health alerts.')
+                            ? const Text('No current alerts.')
                             : Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
@@ -156,22 +155,20 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
                                         ),
                                       ],
                                     ),
-                                  Text(
+                                  StudioError(
                                     alert.title,
-                                    style: Theme.of(context)
-                                        .textTheme
-                                        .titleMedium
-                                        ?.copyWith(
-                                          color:
-                                              alert.severity ==
-                                                  HealthAlertSeverity.critical
-                                              ? tokens.danger
-                                              : tokens.warning,
-                                        ),
+                                    detail: alert.detail,
+                                    severity: healthAlertErrorSeverity(alert),
                                   ),
                                   const SizedBox(height: 4),
                                   Text(
-                                    '${alert.scope.name} · ${alert.connectionLabel}${alert.profileName == null ? '' : ' · ${alert.profileName}'}',
+                                    [
+                                      if (alert.scope !=
+                                          HealthAlertScope.operational)
+                                        alert.scope.name,
+                                      alert.connectionLabel,
+                                      ?alert.profileName,
+                                    ].join(' · '),
                                     style: Theme.of(
                                       context,
                                     ).textTheme.bodySmall,
@@ -182,8 +179,6 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
                                     Text('At alert: $summary'),
                                     const SizedBox(height: 12),
                                   ],
-                                  Text(alert.detail),
-                                  const SizedBox(height: 12),
                                   Text(
                                     '${alert.lastKnown ? 'Last known' : 'Observed'} ${TimeOfDay.fromDateTime(alert.observedAt.toLocal()).format(context)}',
                                     style: Theme.of(
@@ -224,15 +219,7 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
                 if (error != null)
                   Padding(
                     padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        error,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Theme.of(context).colorScheme.error,
-                        ),
-                      ),
-                    ),
+                    child: StudioError(error),
                   ),
                 Padding(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
@@ -257,18 +244,20 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
                           icon: const Icon(Icons.snooze_outlined),
                         ),
                       ),
-                      StudioButtonPress(
-                        child: IconButton(
-                          tooltip: healthAlertActionLabel(alert),
-                          onPressed: () => _open(alert),
-                          icon: Icon(switch (alert.scope) {
-                            HealthAlertScope.host =>
-                              Icons.health_and_safety_outlined,
-                            HealthAlertScope.profile => Icons.tune,
-                            HealthAlertScope.connection => Icons.dns_outlined,
-                          }),
+                      if (canOpen)
+                        StudioButtonPress(
+                          child: IconButton(
+                            tooltip: healthAlertActionLabel(alert),
+                            onPressed: () => _open(alert),
+                            icon: Icon(switch (alert.scope) {
+                              HealthAlertScope.host =>
+                                Icons.health_and_safety_outlined,
+                              HealthAlertScope.profile => Icons.tune,
+                              HealthAlertScope.connection => Icons.dns_outlined,
+                              HealthAlertScope.operational => Icons.open_in_new,
+                            }),
+                          ),
                         ),
-                      ),
                     ],
                   ),
                 ),

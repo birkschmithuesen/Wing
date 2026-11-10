@@ -90,8 +90,11 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
                     override fun onEvent(eventType: Int, params: Bundle?) {}
                     override fun onError(error: Int) {
                         if (!operations.owns(attempt)) return
+                        if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            fail(attempt, "No speech detected", "no_speech")
+                            return
+                        }
                         fail(attempt, when (error) {
-                            SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "No speech detected. Try again."
                             SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED, SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE -> "This recognition language is not installed or supported on this phone. Install its offline language data in Android settings or select another language."
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone access was denied. Allow it in Android app permissions."
                             else -> "On-device recognition failed ($error). Please retry."
@@ -180,10 +183,10 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
         if (final) clear()
         emit(mapOf("id" to attempt.id, "text" to text, "final" to final))
     }
-    private fun fail(attempt: VoiceOperation, message: String) {
+    private fun fail(attempt: VoiceOperation, message: String, code: String = "capture_failed") {
         if (!operations.owns(attempt)) return
         clear(IllegalStateException(message))
-        emit(mapOf("id" to attempt.id, "error" to message))
+        emit(mapOf("id" to attempt.id, "error" to message, "code" to code))
     }
     fun cancel(owner: String) { if (operations.current?.id == owner) clear() }
     fun pause() { operations.current?.let { fail(it, "Recording stopped because Wing left the foreground.") } }

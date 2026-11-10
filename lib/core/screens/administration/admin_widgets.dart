@@ -220,24 +220,12 @@ class AdminAttention extends StatelessWidget {
   const AdminAttention(this.label, {super.key});
   final String label;
   @override
-  Widget build(BuildContext context) {
-    final color = WingTokens.of(context).warning;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.error_outline, size: 16, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: color),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => StudioError(
+    label,
+    severity: StudioErrorSeverity.noResult,
+    announce: false,
+    framed: false,
+  );
 }
 
 class AdminNotice extends StatelessWidget {
@@ -258,7 +246,11 @@ class AdminNotice extends StatelessWidget {
           Text(text, style: Theme.of(context).textTheme.bodyMedium),
         if (retry != null)
           StudioButtonPress(
-            child: TextButton(onPressed: retry, child: const Text('Retry')),
+            child: IconButton(
+              onPressed: retry,
+              tooltip: 'Retry',
+              icon: const Icon(Icons.refresh),
+            ),
           ),
       ],
     ),
@@ -311,9 +303,15 @@ void adminMessage(
   BuildContext context,
   String message, {
   bool isError = false,
-}) => ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(content: isError ? StudioError(message) : Text(message)),
-);
+}) {
+  if (isError) {
+    showStudioError(context, message);
+  } else {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
 
 /// Shared diagnostic chat action for Doctor findings and failed schedules.
 class AdminAskHermesButton extends StatelessWidget {

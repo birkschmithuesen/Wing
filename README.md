@@ -10,7 +10,7 @@ Wing is an open-source Android companion for [Hermes Agent](https://github.com/N
 
 [**Download Wing**](https://github.com/tarkilhk/Wing/releases/latest) · [**Explore Wing**](https://tarkilhk.github.io/Wing/)
 
-Requires Android 7.0 or newer and a Hermes server you can reach from your phone.
+Requires Android 10 or newer and a Hermes server you can reach from your phone.
 
 ## Switch between profiles and projects
 

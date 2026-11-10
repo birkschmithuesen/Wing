@@ -63,14 +63,11 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
       }
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: StudioError(
-              error is StateError
-                  ? error.message.toString()
-                  : 'Could not send the test notification.',
-            ),
-          ),
+        showStudioError(
+          context,
+          error is StateError
+              ? error.message.toString()
+              : 'Could not send the test notification.',
         );
       }
     } finally {
@@ -309,23 +306,34 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                                                   .batteryRestricted &&
                                           widget.openMonitoringBatterySettings !=
                                               null)
-                                        StudioButtonPress(
-                                          child: TextButton(
-                                            onPressed: () async {
-                                              try {
-                                                await widget
-                                                    .openMonitoringBatterySettings!();
-                                              } catch (_) {
-                                                if (context.mounted) {
-                                                  showStudioError(
-                                                    context,
-                                                    'Could not open battery settings.',
-                                                  );
+                                        Builder(
+                                          builder: (anchor) => StudioButtonPress(
+                                            child: TextButton(
+                                              onPressed: () async {
+                                                const key =
+                                                    'open-battery-settings';
+                                                dismissTransientError(
+                                                  anchor,
+                                                  errorKey: key,
+                                                );
+                                                try {
+                                                  await widget
+                                                      .openMonitoringBatterySettings!();
+                                                } catch (_) {
+                                                  if (anchor.mounted) {
+                                                    showTransientError(
+                                                      anchor,
+                                                      'Could not open battery settings.',
+                                                      errorKey: key,
+                                                      icon: Icons
+                                                          .battery_alert_outlined,
+                                                    );
+                                                  }
                                                 }
-                                              }
-                                            },
-                                            child: const Text(
-                                              'Allow background activity',
+                                              },
+                                              child: const Text(
+                                                'Allow background activity',
+                                              ),
                                             ),
                                           ),
                                         ),

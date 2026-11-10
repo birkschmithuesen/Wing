@@ -454,7 +454,10 @@ class SharedDraftSession extends ChangeNotifier {
       addLabel: offer._destination == _recoverDraft
           ? 'Recover draft and add content'
           : 'Add to draft',
-      error: offer._error,
+      pageError: offer._error == resource.sessionsPageError
+          ? resource.sessionsPageError
+          : null,
+      error: offer._error == resource.sessionsPageError ? null : offer._error,
     );
   }
 

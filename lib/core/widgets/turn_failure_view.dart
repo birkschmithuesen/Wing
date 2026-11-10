@@ -88,20 +88,12 @@ class _TurnFailureViewState extends State<TurnFailureView> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (failure.blocking)
-          StudioError(failure.title)
-        else
-          Semantics(
-            liveRegion: true,
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.info_outline, size: 20, color: colors.muted),
-                const SizedBox(width: 12),
-                Expanded(child: Text(failure.title)),
-              ],
-            ),
-          ),
+        StudioError(
+          failure.title,
+          severity: failure.blocking
+              ? StudioErrorSeverity.error
+              : StudioErrorSeverity.noResult,
+        ),
         if (limit != null) Text(limit.message),
         if (failure.description case final description? when limit == null)
           Text(description),

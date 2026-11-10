@@ -13,12 +13,14 @@ class AdminDoctorDiagnosis extends StatelessWidget {
     required this.checkedAt,
     this.onAskHermes,
     this.openingFinding,
+    this.findingError,
   });
 
   final DoctorDiagnostic diagnosis;
   final DateTime? checkedAt;
   final ValueChanged<int>? onAskHermes;
   final int? openingFinding;
+  final ({int index, Widget notice})? findingError;
 
   @override
   Widget build(BuildContext context) {
@@ -93,6 +95,11 @@ class AdminDoctorDiagnosis extends StatelessWidget {
                             ),
                           ),
                         ],
+                        if (findingError case (
+                          index: final failed,
+                          :final notice,
+                        ) when failed == index)
+                          notice,
                         const SizedBox(height: WingSpacing.xs),
                         Align(
                           alignment: Alignment.centerRight,

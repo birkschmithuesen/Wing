@@ -9,11 +9,37 @@ class VoiceInputButton extends StatelessWidget {
     super.key,
     required this.enabled,
     required this.onPressed,
+    this.controller,
   });
   final bool enabled;
   final VoidCallback onPressed;
+  final VoiceInputController? controller;
   @override
-  Widget build(BuildContext context) => StudioButtonPress(
+  Widget build(BuildContext context) {
+    final owner = controller;
+    if (owner == null) return _button();
+    return ListenableBuilder(
+      listenable: owner,
+      builder: (context, _) {
+        final notice = owner.notice;
+        return StudioTransientErrorAnchor(
+          errorKey: notice == null ? null : (owner, notice.attempt),
+          message: notice == null
+              ? null
+              : switch (notice.result) {
+                  VoiceInputEmptyResult.noSpeech => 'No speech detected',
+                  VoiceInputEmptyResult.noRecording => 'No recording captured',
+                },
+          detail: 'Tap the mic to try again.',
+          icon: Icons.mic_none,
+          severity: StudioErrorSeverity.noResult,
+          child: _button(),
+        );
+      },
+    );
+  }
+
+  Widget _button() => StudioButtonPress(
     child: IconButton(
       tooltip: 'Dictate message',
       icon: const Icon(Icons.mic_none),

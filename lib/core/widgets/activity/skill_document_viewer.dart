@@ -1,3 +1,4 @@
+import '../studio_error.dart';
 import '../selection_viewport.dart';
 import 'activity_detail_actions.dart';
 import 'dart:async';
@@ -121,8 +122,10 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
   String get _payload => _raw || !widget.markdown
       ? widget.document.rawContent
       : widget.document.formattedText;
-  Future<void> _share() async {
+  Future<void> _share(BuildContext anchor) async {
     if (_sharing) return;
+    const key = 'share-skill-content';
+    dismissTransientError(anchor, errorKey: key);
     final payload = _payload;
     final box = context.findRenderObject() as RenderBox?;
     setState(() => _sharing = true);
@@ -137,16 +140,29 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
         ),
       );
     } on PlatformShareBusy catch (error) {
-      if (mounted) _notice(error.message);
+      if (anchor.mounted) {
+        showTransientError(
+          anchor,
+          error.message,
+          errorKey: key,
+          icon: Icons.share_outlined,
+        );
+      }
     } catch (_) {
-      if (mounted) _notice('Could not share this text. Try again.');
+      if (anchor.mounted) {
+        showTransientError(
+          anchor,
+          'Could not share this text. Try again.',
+          errorKey: key,
+          icon: Icons.share_outlined,
+        );
+      }
     } finally {
       if (mounted) setState(() => _sharing = false);
     }
   }
 
-  void _notice(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _notice(String text) => showStudioError(context, text);
   Future<void> _reference(SkillReference file) async {
     if (_openingReference != null) return;
     final reader = _reader;
@@ -329,11 +345,15 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
                                 : Icons.code_rounded,
                             onPressed: () => setState(() => _raw = !_raw),
                           ),
-                        ActivityDetailAction(
-                          label: 'Share content',
-                          icon: Icons.share_outlined,
-                          busy: _sharing,
-                          onPressed: _payload.isEmpty ? null : _share,
+                        Builder(
+                          builder: (anchor) => ActivityDetailAction(
+                            label: 'Share content',
+                            icon: Icons.share_outlined,
+                            busy: _sharing,
+                            onPressed: _payload.isEmpty
+                                ? null
+                                : () => _share(anchor),
+                          ),
                         ),
                         ToolDetailCopyButton(
                           label: 'Copy content',

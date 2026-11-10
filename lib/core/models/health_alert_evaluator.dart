@@ -31,8 +31,8 @@ class HealthAlertEvaluator {
     }
   }
 
-  void clear() {
-    _alerts.clear();
+  void clearMonitored() {
+    _alerts.removeWhere((_, alert) => alert.scope.monitored);
     resetPeriods();
   }
 

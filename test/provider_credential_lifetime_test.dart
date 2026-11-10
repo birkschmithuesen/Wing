@@ -108,7 +108,7 @@ void main() {
         expect(find.text('Cannot load credentials.'), findsOneWidget);
         expect(find.byType(StudioLoading), findsNothing);
         await _capture(tester, '$prefix-error');
-        await tester.tap(find.text('Retry'));
+        await tester.tap(find.byTooltip('Retry'));
         await _frames(tester);
         _expectLoading();
         retry.complete(_metadata(true));

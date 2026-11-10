@@ -67,11 +67,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
             if (uri == null) return;
             final opened = await openWebPreview(uri);
             if (!opened && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: StudioError('Could not open the link.'),
-                ),
-              );
+              showStudioError(context, 'Could not open the link.');
             }
           },
         );

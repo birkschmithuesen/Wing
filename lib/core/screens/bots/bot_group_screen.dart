@@ -1118,6 +1118,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             readOnly: locked,
             hintText: 'Message the group',
             microphone: VoiceInputButton(
+              controller: _voiceInput,
               enabled: _voiceInput.canDictate(_session.canDictate),
               onPressed: () => unawaited(
                 _dictate().catchError((Object failure) {

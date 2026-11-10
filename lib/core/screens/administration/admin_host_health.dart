@@ -1,3 +1,4 @@
+import '../../widgets/studio_error.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/host_resources.dart';
@@ -18,7 +19,7 @@ class AdminHostHealth extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _HostHeading(resources: resources, state: state),
-        ..._notices(context, state),
+        ..._notices(state),
         AdminGroup(
           children: [
             Column(
@@ -158,7 +159,7 @@ class AdminHostDetailsPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           children: [
             _HostHeading(resources: resources, state: state),
-            ..._notices(context, state),
+            ..._notices(state),
             AdminGroup(
               children: [
                 Padding(
@@ -367,7 +368,7 @@ class _HostHeadingState extends State<_HostHeading> {
   }
 }
 
-List<Widget> _notices(BuildContext context, HostResourcesState state) {
+List<Widget> _notices(HostResourcesState state) {
   final now = DateTime.now();
   final pressure = state.pressure.isCurrent(now, const Duration(seconds: 30))
       ? state.pressure.value
@@ -376,7 +377,7 @@ List<Widget> _notices(BuildContext context, HostResourcesState state) {
   final notices = <Widget>[];
   if (state.stats.error case final error?) {
     notices.add(
-      AdminNotice(
+      AdminNotice.error(
         state.stats.value == null
             ? error
             : '$error Showing the last resource reading.',
@@ -394,30 +395,22 @@ List<Widget> _notices(BuildContext context, HostResourcesState state) {
     }
   }
   if (state.pressure.error != null) {
-    notices.add(const AdminNotice('Resource pressure could not be refreshed.'));
+    notices.add(
+      const AdminNotice.error('Resource pressure could not be refreshed.'),
+    );
   }
   for (final (label, level) in [('Memory', memory), ('Disk space', disk)]) {
     if (level == HostPressure.critical || level == HostPressure.elevated) {
-      final color = level == HostPressure.critical
-          ? WingTokens.of(context).danger
-          : WingTokens.of(context).warning;
       notices.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 8),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(Icons.error_outline, size: 18, color: color),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '$label is low. Review workloads and free resources on the server.',
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: color),
-                ),
-              ),
-            ],
+          child: StudioError(
+            '$label is low.',
+            detail: 'Review workloads and free resources on the server.',
+            icon: Icons.warning_amber_rounded,
+            severity: level == HostPressure.critical
+                ? StudioErrorSeverity.error
+                : StudioErrorSeverity.noResult,
           ),
         ),
       );

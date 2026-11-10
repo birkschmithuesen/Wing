@@ -68,6 +68,7 @@ class SharedDraftReviewState {
     required this.canLoadMore,
     required this.loadingMore,
     required this.loadMoreLabel,
+    required this.pageError,
     required this.addLabel,
     required this.error,
   }) : files = List.unmodifiable(files),
@@ -79,7 +80,7 @@ class SharedDraftReviewState {
   final List<SharedDraftProfile> profiles;
   final List<SharedDraftDestination> destinations;
   final SharedDraftRecovery? recovery;
-  final String? destinationNotice, error;
+  final String? destinationNotice, error, pageError;
   final bool working, canLoadMore, loadingMore;
   final String loadMoreLabel, addLabel;
 }

@@ -14,6 +14,11 @@ Feature ID: `app-shell`.
 
 Open the navigation drawer and choose Chats; enter a chat and choose Chats again. Also use the Android launcher Quick Chat, Recents and Search chats shortcuts.
 
+Choose **Alerts** in the navigation drawer to review unresolved issues, including
+acknowledged and snoozed ones. Close the viewer to return to the current
+workspace. The [Alerts recipe](health-alerts.md) covers this entry and its empty
+state.
+
 ## Driving it with Wing harnesses
 
 Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-preconditions). Use the [verification workflow](../../.agents/skills/verify-wing/SKILL.md) for launch, readiness, evidence and cleanup.

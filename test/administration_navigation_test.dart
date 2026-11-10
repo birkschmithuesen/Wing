@@ -201,6 +201,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<Finder> showProfileRefresh(WidgetTester tester) async {
+    final refresh = find.byTooltip('Refresh profile status');
+    await tester.scrollUntilVisible(
+      refresh,
+      200,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(refresh.hitTestable(), findsOneWidget);
+    return refresh;
+  }
+
   Future<void> screenshot(WidgetTester tester, String name) async {
     if (!capture) return;
     // Asset decoding runs outside the widget test's fake clock.
@@ -289,7 +307,7 @@ void main() {
     'Health entry performs diagnostics without switching server profile',
     (tester) async {
       await show(tester, Brightness.dark, healthOnly: true);
-      expect(find.byTooltip('Refresh profile status'), findsOneWidget);
+      await showProfileRefresh(tester);
       expect(admin.requests.where((r) => r.$2 == 'profiles/active'), isEmpty);
       expect(
         admin.requests.where((r) => r.$1 != 'GET').map((r) => (r.$1, r.$2)),
@@ -603,11 +621,11 @@ void main() {
         expect(tester.takeException(), isNull);
         await screenshot(tester, '${brightness.name}-profile-large-text');
         await show(tester, brightness, healthOnly: true);
-        expect(find.byTooltip('Refresh profile status'), findsOneWidget);
+        await showProfileRefresh(tester);
         await screenshot(tester, '${brightness.name}-health-profile');
         await tester.scrollUntilVisible(
           find.text('Server'),
-          250,
+          -250,
           scrollable: find
               .byWidgetPredicate(
                 (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
@@ -782,8 +800,8 @@ void main() {
     'unknown credential results offer retry without administrative navigation',
     (tester) async {
       await show(tester, Brightness.dark, healthOnly: true);
-      await tester.ensureVisible(find.byTooltip('Refresh profile status'));
-      await tester.tap(find.byTooltip('Refresh profile status'));
+      final refresh = await showProfileRefresh(tester);
+      await tester.tap(refresh);
       await tester.pumpAndSettle();
       expect(find.text('Check incomplete'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);

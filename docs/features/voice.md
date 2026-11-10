@@ -9,7 +9,7 @@ Feature ID: `voice`.
 - `voice.live` — Choose subscription or API GPT-Live, start in the current chat and keep an elevated compact call card above navigation. Mute, change audio routing, end voice and continue under lock. Entering another chat or group reveals captions and Return to voice chat in its lower row; returning hides them and resets captions off. Captions scroll within two lines without enlarging the normal control row.
 - `voice.transcript` — Read both spoken sides in the original chat during and after a call. Local voice rows are labelled “Not saved to Hermes”, support Copy, and last until Wing restarts. They do not submit work. Hermes replies to voice-submitted tasks are collapsed under “Hermes task details”, with native actions inside.
 - `voice.live-work` — Delegate once into the original chat; send recent spoken context with new work through Hermes’s native voice surface; match replies to their work admission and provider delegation. Interrupt speech independently of work.
-- `voice.dictate` — Finish or cancel into the correct draft.
+- `voice.dictate` — Finish or cancel into the correct draft. Empty recordings or no recognized speech show a transient amber capsule beside the microphone without changing the draft. Permission and capture failures retain local recovery.
 - `voice.speak` — Start stop or interrupt reply playback.
 - `voice.recover` — Handle permission, capability and provider failure; distinguish a missing plugin from server authentication and provider access failures. Rejected provider updates remain visible without ending a connected call; closure messages describe the received reason without assuming account limits.
 
@@ -50,6 +50,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   departure/reopening and collapsed/expanded Hermes task details in both themes at normal and enlarged text. CI-mode checks also keep the composer reachable above the keyboard and scroll long voice errors while Dismiss stays reachable; real-font captures verify the same layouts. It also drives chat switching, the compact caption row, held return navigation and failed-return recovery while the call stays connected.
 
   ```sh
+  flutter test --no-pub test/voice_processing_test.dart test/voice_workspace_test.dart
   flutter test --no-pub test/live_voice_session_test.dart test/live_voice_protocol_test.dart test/voice_preferences_test.dart test/voice_preferences_session_test.dart test/composer_draft_store_test.dart
   flutter test --no-pub test/live_voice_workspace_test.dart
   flutter test --no-pub --dart-define=LIVE_VOICE_REVIEW=true test/live_voice_workspace_test.dart

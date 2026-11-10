@@ -177,26 +177,31 @@ class ConnectionGuideScreen extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 24),
-                        StudioButtonPress(
-                          child: IconButton.outlined(
-                            onPressed: () async {
-                              final opened = await openWebPreview(
-                                Uri.parse(
-                                  'https://github.com/tarkilhk/Wing/blob/main/docs/GETTING_STARTED.md',
-                                ),
-                              );
-                              if (!opened && context.mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(
-                                    content: StudioError(
-                                      'Could not open the guide',
-                                    ),
+                        Builder(
+                          builder: (anchor) => StudioButtonPress(
+                            child: IconButton.outlined(
+                              onPressed: () async {
+                                dismissTransientError(
+                                  anchor,
+                                  errorKey: 'connection-guide',
+                                );
+                                final opened = await openWebPreview(
+                                  Uri.parse(
+                                    'https://github.com/tarkilhk/Wing/blob/main/docs/GETTING_STARTED.md',
                                   ),
                                 );
-                              }
-                            },
-                            icon: const Icon(Icons.open_in_new, size: 18),
-                            tooltip: 'Full setup instructions',
+                                if (!opened && anchor.mounted) {
+                                  showTransientError(
+                                    anchor,
+                                    'Could not open the guide.',
+                                    errorKey: 'connection-guide',
+                                    icon: Icons.open_in_new,
+                                  );
+                                }
+                              },
+                              icon: const Icon(Icons.open_in_new, size: 18),
+                              tooltip: 'Full setup instructions',
+                            ),
                           ),
                         ),
                       ],

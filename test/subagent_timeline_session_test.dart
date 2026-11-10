@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/gateway_insight.dart';
 import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/models/operational_error.dart';
 import 'package:wing/core/models/profile_supervision.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/subagent_timeline_session.dart';
@@ -15,6 +16,7 @@ void main() {
   );
   late SubagentTimelineSession session;
   late List<(String, Map<String, dynamic>)> calls;
+  late List<OperationalErrorObservation> observations;
   late List<Map<String, dynamic>> events, rows;
   late List<int> offsets;
   late String epoch, mountedId, storedId;
@@ -51,6 +53,7 @@ void main() {
 
   setUp(() {
     calls = [];
+    observations = [];
     events = [];
     rows = [];
     offsets = [];
@@ -67,6 +70,7 @@ void main() {
     held = null;
     session = SubagentTimelineSession(
       scope: scope,
+      onOperationalError: observations.add,
       sessionId: 'child-session',
       isCurrent: () => current,
       read: (method, params) async {
@@ -108,6 +112,34 @@ void main() {
     );
   });
   tearDown(() => session.dispose());
+
+  test('live replay cannot clear a failed saved-history read', () async {
+    await session.refresh();
+    failHistory = true;
+    observations.clear();
+    await session.refresh();
+    final issue = observations.where((item) => item.error != null).single;
+    expect(issue.operation, 'subagent-history:atlas:child-session');
+    observations.clear();
+    session.setActive(true);
+    await Future<void>.delayed(Duration.zero);
+    session.setActive(false);
+    expect(
+      observations.single.operation,
+      'subagent-timeline:atlas:child-session',
+    );
+    expect(observations.single.error, isNull);
+
+    failHistory = false;
+    observations.clear();
+    await session.refresh();
+    expect(
+      observations
+          .singleWhere((item) => item.operation == issue.operation)
+          .error,
+      isNull,
+    );
+  });
 
   test(
     'completed tasks retire through child completion and later turns',

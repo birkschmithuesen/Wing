@@ -69,6 +69,13 @@ class HealthAlertsCoordinator extends ChangeNotifier {
     }
     for (final owner in owners) {
       if (!owner.initialized && !_sessions.containsKey(owner)) continue;
+      _sessionFor(owner);
+      _ownerChanged(owner);
+    }
+    _changed();
+  }
+
+  HealthAlertsSession _sessionFor(ProfileWorkspaceController owner) =>
       _sessions.putIfAbsent(owner, () {
         final session = HealthAlertsSession(
           host: owner.hostResources(),
@@ -84,18 +91,15 @@ class HealthAlertsCoordinator extends ChangeNotifier {
         session.addListener(_changed);
         return session;
       });
-      _ownerChanged(owner);
-    }
-    _changed();
-  }
 
   void _ownerChanged(ProfileWorkspaceController owner) {
     final background =
         monitoring.value == BackgroundMonitoringState.active ||
         monitoring.value == BackgroundMonitoringState.batteryRestricted;
     final active =
-        _foreground && owner.hasMountedRoutes ||
-        background && owner.hasActiveChats;
+        owner.initialized &&
+        (_foreground && owner.hasMountedRoutes ||
+            background && owner.hasActiveChats);
     _sessions[owner]?.setActive(active);
     final resumed = active ? _activeOwners.add(owner) : false;
     if (!active) _activeOwners.remove(owner);
@@ -153,6 +157,34 @@ class HealthAlertsCoordinator extends ChangeNotifier {
   ProfileWorkspaceController? ownerFor(HealthAlert alert) => _sessions.keys
       .where((owner) => owner.connectionIdentity == alert.connectionIdentity)
       .firstOrNull;
+
+  /// Forward a completed background observation from its exact connection
+  /// owner. Late completions from a retired owner are ignored.
+  void observeOperationalError(
+    ProfileWorkspaceController owner, {
+    required String scope,
+    required String title,
+    required String detail,
+    required bool failed,
+    String? destination,
+    String? profileName,
+  }) {
+    if (_closed || !registry.controllers.contains(owner)) return;
+    final restored = !_sessions.containsKey(owner);
+    // Bots and other readers can observe the saved connection before its Chats
+    // workspace has initialized. They may report incidents without starting
+    // the monitoring demand that is gated on workspace initialization.
+    _sessionFor(owner).observeOperationalError(
+      scope: scope,
+      title: title,
+      detail: detail,
+      failed: failed,
+      destination: destination,
+      profileName: profileName,
+    );
+    if (restored) _changed();
+  }
+
   bool get saving => _sessions.values.any((session) => session.saving);
   String? error(HealthAlert alert) => _sessions[ownerFor(alert)]?.error;
   Future<void> acknowledge(HealthAlert alert) async =>

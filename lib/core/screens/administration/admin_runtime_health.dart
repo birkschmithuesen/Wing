@@ -1,3 +1,4 @@
+import '../../widgets/studio_error.dart';
 import '../../services/administration_logs_session.dart';
 import '../../models/profile_session_key.dart';
 import 'package:flutter/material.dart';
@@ -57,12 +58,7 @@ class _AdminRuntimeHealthState extends State<AdminRuntimeHealth> {
   }
 
   Future<void> _runAll() async {
-    final controller = health;
-    final notices = await controller.runAllDiagnostics();
-    if (!mounted || !identical(controller, health)) return;
-    for (final notice in notices) {
-      adminMessage(context, notice, isError: true);
-    }
+    await health.runAllDiagnostics();
   }
 
   Future<void> _run(
@@ -85,10 +81,6 @@ class _AdminRuntimeHealthState extends State<AdminRuntimeHealth> {
     if (!mounted) return;
     final started = await controller.startDiagnostic(kind);
     if (!mounted || !identical(controller, health)) return;
-    final error = controller.diagnosticStartError(kind.path);
-    if (error != null) {
-      adminMessage(context, '${kind.title}: $error', isError: true);
-    }
     if (started && openResult) await _result(kind, scope);
   }
 
@@ -118,6 +110,7 @@ class _AdminRuntimeHealthState extends State<AdminRuntimeHealth> {
     final title = kind.title;
     final path = kind.path;
     final observation = _observations[path];
+    final error = health.diagnosticStartError(path) ?? observation?.readError;
     final audit = observation?.audit;
     final diagnosis = observation?.diagnosis;
     final label = health.starting.contains(path)
@@ -151,10 +144,14 @@ class _AdminRuntimeHealthState extends State<AdminRuntimeHealth> {
           size: 22,
         ),
         title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(color: color),
-        ),
+        subtitle: error == null
+            ? Text(
+                label,
+                style: Theme.of(
+                  context,
+                ).textTheme.bodySmall?.copyWith(color: color),
+              )
+            : StudioError(label, detail: error, framed: false),
         trailing: observation == null
             ? StudioButtonPress(
                 child: TextButton(

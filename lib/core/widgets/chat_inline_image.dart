@@ -66,7 +66,16 @@ class _ChatInlineImageState extends State<ChatInlineImage> {
           bytes: provider is MemoryImage ? provider.bytes : null,
           uri: provider is NetworkImage ? Uri.parse(provider.url) : null,
           onOpenExternal: provider is NetworkImage
-              ? () => openWebPreview(Uri.parse(provider.url))
+              ? () async {
+                  try {
+                    if (await openWebPreview(Uri.parse(provider.url))) {
+                      return null;
+                    }
+                  } catch (_) {
+                    // The preview remains usable if the external launch fails.
+                  }
+                  return 'Could not open this image in the browser.';
+                }
               : null,
         ),
       ),

@@ -41,12 +41,17 @@ class _HtmlPreviewScreenState extends State<HtmlPreviewScreen> {
     unawaited(_reader.load());
   }
 
-  Future<void> _share() async {
+  Future<void> _share(BuildContext anchor) async {
+    const key = 'share-html-output';
+    dismissTransientError(anchor, errorKey: key);
     final error = await _reader.share();
-    if (mounted && error != null) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: StudioError(error)));
+    if (anchor.mounted && error != null) {
+      showTransientError(
+        anchor,
+        error,
+        errorKey: key,
+        icon: Icons.share_outlined,
+      );
     }
   }
 
@@ -68,7 +73,7 @@ class _HtmlPreviewScreenState extends State<HtmlPreviewScreen> {
           title: widget.title,
           resourceTarget: widget.resourceTarget,
           actionLabel: 'Save or share',
-          onAction: observation.sharing ? null : _share,
+          onAction: _share,
         );
       }
       return Scaffold(
@@ -96,10 +101,18 @@ class _HtmlPreviewScreenState extends State<HtmlPreviewScreen> {
                             ),
                           )
                         else
-                          ResourceViewerAction(
-                            onPressed: observation.sharing ? null : _share,
-                            icon: Icons.share_outlined,
-                            label: 'Save or share',
+                          Builder(
+                            builder: (anchor) => ResourceViewerAction(
+                              onPressed: observation.sharing
+                                  ? null
+                                  : () => _share(anchor),
+                              icon: observation.sharing
+                                  ? Icons.hourglass_top
+                                  : Icons.share_outlined,
+                              label: observation.sharing
+                                  ? 'Preparing share'
+                                  : 'Save or share',
+                            ),
                           ),
                       ],
                     ),

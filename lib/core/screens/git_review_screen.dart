@@ -24,7 +24,6 @@ class GitReviewScreen extends StatefulWidget {
 class _GitReviewScreenState extends State<GitReviewScreen> {
   GitReviewSession get _session => widget.session;
   GitReviewLine? _copying;
-  String? _copyError;
   int _copyGeneration = 0;
   @override
   void initState() {
@@ -38,15 +37,16 @@ class _GitReviewScreenState extends State<GitReviewScreen> {
     super.dispose();
   }
 
-  Future<void> _copy(GitReviewLine line) async {
+  Future<void> _copy(BuildContext anchor, GitReviewLine line) async {
     if (_copying != null) return;
+    const key = 'copy-git-reference';
+    dismissTransientError(anchor, errorKey: key);
     final file = _session.selected;
     if (file == null) return;
     final comparison = _session.comparison;
     final generation = ++_copyGeneration;
     setState(() {
       _copying = line;
-      _copyError = null;
     });
     try {
       await Clipboard.setData(
@@ -61,11 +61,14 @@ class _GitReviewScreenState extends State<GitReviewScreen> {
         ).showSnackBar(const SnackBar(content: Text('Reference copied')));
       }
     } catch (_) {
-      if (mounted &&
+      if (anchor.mounted &&
           generation == _copyGeneration &&
           identical(_session.selected, file)) {
-        setState(
-          () => _copyError = 'The reference could not be copied. Try again.',
+        showTransientError(
+          anchor,
+          'The reference could not be copied. Try again.',
+          errorKey: key,
+          icon: Icons.copy_outlined,
         );
       }
     } finally {
@@ -78,7 +81,6 @@ class _GitReviewScreenState extends State<GitReviewScreen> {
   void _retireCopy() {
     _copyGeneration++;
     _copying = null;
-    _copyError = null;
   }
 
   void _showFiles() {
@@ -225,11 +227,6 @@ class _GitReviewScreenState extends State<GitReviewScreen> {
                                 padding: const EdgeInsets.only(top: 12),
                                 child: StudioError(error),
                               ),
-                            if (_copyError case final error?)
-                              Padding(
-                                padding: const EdgeInsets.only(top: 12),
-                                child: StudioError(error),
-                              ),
                           ],
                         ),
                       ),
@@ -336,13 +333,17 @@ class _GitReviewScreenState extends State<GitReviewScreen> {
                   ),
                 ),
                 if (line.canReference)
-                  StudioButtonPress(
-                    child: IconButton(
-                      tooltip: line.hunk
-                          ? 'Copy hunk reference'
-                          : 'Copy changed line reference',
-                      onPressed: _copying == null ? () => _copy(line) : null,
-                      icon: const Icon(Icons.copy_outlined, size: 18),
+                  Builder(
+                    builder: (anchor) => StudioButtonPress(
+                      child: IconButton(
+                        tooltip: line.hunk
+                            ? 'Copy hunk reference'
+                            : 'Copy changed line reference',
+                        onPressed: _copying == null
+                            ? () => _copy(anchor, line)
+                            : null,
+                        icon: const Icon(Icons.copy_outlined, size: 18),
+                      ),
                     ),
                   ),
                 if (!line.canReference) const SizedBox(width: 12),

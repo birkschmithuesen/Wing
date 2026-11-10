@@ -142,7 +142,9 @@ class ActivityDetailStatus extends StatelessWidget {
                       children: [
                         Text(
                           label,
-                          style: colors.typography.label.copyWith(color: color),
+                          style: colors.typography.label.copyWith(
+                            color: error || warning ? colors.onSurface : color,
+                          ),
                         ),
                         for (final fact in contextFacts)
                           Text(
@@ -566,8 +568,14 @@ class _ToolResourceRowState extends State<_ToolResourceRow> {
   bool _opening = false;
   bool _sharing = false;
 
-  Future<void> _run({required bool share}) async {
+  Future<void> _run(BuildContext anchor, {required bool share}) async {
     if (_opening || _sharing) return;
+    final errorKey = (
+      'tool-resource-action',
+      widget.output?.path ?? widget.target,
+      share,
+    );
+    dismissTransientError(anchor, errorKey: errorKey);
     setState(() {
       if (share) {
         _sharing = true;
@@ -578,9 +586,12 @@ class _ToolResourceRowState extends State<_ToolResourceRow> {
     try {
       await (share ? widget.onShare! : widget.onOpen!)(widget.output!);
     } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: StudioError(fileOpenErrorMessage(error))),
+      if (anchor.mounted) {
+        showTransientError(
+          anchor,
+          fileOpenErrorMessage(error),
+          errorKey: errorKey,
+          icon: share ? Icons.share_outlined : Icons.visibility_outlined,
         );
       }
     } finally {
@@ -607,29 +618,41 @@ class _ToolResourceRowState extends State<_ToolResourceRow> {
         ...widget.leadingActions,
         if (widget.onViewReceipt != null ||
             (output != null && widget.onOpen != null))
-          StudioButtonPress(
-            child: IconButton(
-              style: activityActionStyle,
-              tooltip:
-                  widget.viewLabel ??
-                  (image
-                      ? 'Preview image'
-                      : output?.kind == ChatOutputKind.link
-                      ? 'Open link'
-                      : 'Preview file'),
-              onPressed: busy
-                  ? null
-                  : widget.onViewReceipt ?? () => _run(share: false),
-              icon: const Icon(Icons.visibility_outlined, size: 16),
+          Builder(
+            builder: (anchor) => StudioButtonPress(
+              child: IconButton(
+                style: activityActionStyle,
+                tooltip:
+                    widget.viewLabel ??
+                    (image
+                        ? 'Preview image'
+                        : output?.kind == ChatOutputKind.link
+                        ? 'Open link'
+                        : 'Preview file'),
+                onPressed: busy
+                    ? null
+                    : widget.onViewReceipt ?? () => _run(anchor, share: false),
+                icon: Icon(
+                  _opening ? Icons.hourglass_top : Icons.visibility_outlined,
+                  semanticLabel: _opening ? 'Opening resource' : null,
+                  size: 16,
+                ),
+              ),
             ),
           ),
         if (output?.path != null && widget.onShare != null)
-          StudioButtonPress(
-            child: IconButton(
-              style: activityActionStyle,
-              tooltip: image ? 'Share image' : 'Share file',
-              onPressed: busy ? null : () => _run(share: true),
-              icon: const Icon(Icons.share_outlined, size: 16),
+          Builder(
+            builder: (anchor) => StudioButtonPress(
+              child: IconButton(
+                style: activityActionStyle,
+                tooltip: image ? 'Share image' : 'Share file',
+                onPressed: busy ? null : () => _run(anchor, share: true),
+                icon: Icon(
+                  _sharing ? Icons.hourglass_top : Icons.share_outlined,
+                  semanticLabel: _sharing ? 'Preparing share' : null,
+                  size: 16,
+                ),
+              ),
             ),
           ),
         if (widget.copyText case final text? when text.isNotEmpty)
@@ -1040,19 +1063,24 @@ class _ActivityDetailSectionState extends State<ActivityDetailSection> {
             onPressed: () => setState(() => _wrap = !_wrap),
           ),
         if (block.link case final link?)
-          ActivityDetailAction(
-            label: 'Open source',
-            icon: Icons.visibility_outlined,
-            onPressed: () async {
-              final opened = await openWebPreview(link);
-              if (!opened && context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: StudioError('Could not open this source.'),
-                  ),
-                );
-              }
-            },
+          Builder(
+            builder: (anchor) => ActivityDetailAction(
+              label: 'Open source',
+              icon: Icons.visibility_outlined,
+              onPressed: () async {
+                final key = ('open-tool-source', link);
+                dismissTransientError(anchor, errorKey: key);
+                final opened = await openWebPreview(link);
+                if (!opened && anchor.mounted) {
+                  showTransientError(
+                    anchor,
+                    'Could not open this source.',
+                    errorKey: key,
+                    icon: Icons.open_in_new,
+                  );
+                }
+              },
+            ),
           ),
         if (widget.viewable &&
             !widget.full &&

@@ -2,7 +2,14 @@ import 'host_thresholds.dart';
 
 enum HealthAlertSeverity { warning, critical }
 
-enum HealthAlertScope { host, profile, connection }
+enum HealthAlertScope {
+  host,
+  profile,
+  connection,
+  operational;
+
+  bool get monitored => this == host || this == profile;
+}
 
 /// The host reading and policy that admitted an occurrence, retained as later
 /// readings update its detail or qualify it as last known.
@@ -53,6 +60,8 @@ class HealthAlert {
   final bool lastKnown;
   final bool acknowledged;
   final DateTime? snoozedUntil;
+  bool get canOpen =>
+      scope != HealthAlertScope.operational || destination != null;
   bool remindsAt(DateTime now) =>
       !acknowledged && (snoozedUntil == null || !now.isBefore(snoozedUntil!));
   HealthAlert copyWith({

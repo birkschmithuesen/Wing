@@ -614,9 +614,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.byTooltip('Retry'), findsOneWidget);
 
-    await tester.tap(find.text('Retry'));
+    await tester.tap(find.byTooltip('Retry'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
     expect(find.byType(MarkdownMessageContent), findsOneWidget);

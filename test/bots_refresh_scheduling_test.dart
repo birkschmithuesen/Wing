@@ -10,6 +10,7 @@ import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/bots_repository.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/models/bots.dart';
+import 'package:wing/core/models/operational_error.dart';
 
 import 'support/bots_fixture.dart';
 import 'support/administration_fixture.dart';
@@ -47,6 +48,49 @@ class _ObservedPicture extends MapBase<String, dynamic> {
 
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
+
+  test(
+    'retained roster reports one automatic issue and recovers from its own read',
+    () async {
+      var now = DateTime.utc(2026, 10, 13);
+      final fixture = BotsFixture(now: () => now);
+      final observations = <OperationalErrorObservation>[];
+      final owner = BotsSession(
+        (_) async => [fixture.repository],
+        now: () => now,
+        onOperationalError: observations.add,
+      );
+      addTearDown(owner.dispose);
+      await owner.refresh();
+      expect(owner.state.bots, isNotEmpty);
+      observations.clear();
+      fixture.readHook = (_, method, _) async {
+        if (method == 'profiles.list') throw StateError('Roster unavailable');
+        return null;
+      };
+      now = now.add(const Duration(seconds: 30));
+      await owner.refresh(explicit: false);
+      expect(owner.state.bots, isNotEmpty);
+      expect(owner.state.errors, isEmpty);
+      final issue = observations.where((value) => value.error != null).single;
+      expect(issue.operation, startsWith('bot-roster:'));
+      expect(
+        issue.connectionIdentity,
+        fixture.repository.scope.connectionIdentity,
+      );
+
+      fixture.readHook = null;
+      observations.clear();
+      now = now.add(const Duration(seconds: 30));
+      await owner.refresh();
+      expect(
+        observations
+            .singleWhere((item) => item.operation == issue.operation)
+            .error,
+        isNull,
+      );
+    },
+  );
 
   for (final fails in [false, true]) {
     test(

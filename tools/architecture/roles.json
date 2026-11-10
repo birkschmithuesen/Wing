@@ -336,6 +336,11 @@
       "feature": "notifications",
       "library": "lib/core/models/notification_input.dart"
     },
+    "lib/core/models/operational_error.dart": {
+      "role": "domain",
+      "feature": "health-alerts",
+      "library": "lib/core/models/operational_error.dart"
+    },
     "lib/core/models/profile_capabilities.dart": {
       "role": "domain",
       "feature": "capabilities",
@@ -1025,6 +1030,11 @@
       "role": "view",
       "feature": "app-shell",
       "library": "lib/core/screens/workspace_overview_content.dart"
+    },
+    "lib/core/services/accessibility_timeout.dart": {
+      "role": "platform",
+      "feature": "ui-foundations",
+      "library": "lib/core/services/accessibility_timeout.dart"
     },
     "lib/core/services/administration_health.dart": {
       "role": "application",
@@ -2575,6 +2585,11 @@
       "role": "view",
       "feature": "ui-foundations",
       "library": "lib/core/widgets/studio_task_marker.dart"
+    },
+    "lib/core/widgets/studio_transient_error.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_error.dart"
     },
     "lib/core/widgets/subagent_timeline.dart": {
       "role": "view",

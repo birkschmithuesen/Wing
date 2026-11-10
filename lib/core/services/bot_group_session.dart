@@ -1,4 +1,5 @@
 import 'dart:async';
+import '../models/operational_error.dart';
 import '../models/attachment_draft.dart';
 import '../models/composer_work.dart';
 import 'attachment_draft_service.dart';
@@ -52,6 +53,7 @@ class BotGroupSession extends ChangeNotifier {
     this.onRead,
     this.beforeSend,
     this.afterSend,
+    this.onOperationalError,
     AttachmentDraftService? attachmentService,
   }) : _group = group,
        _attachmentService = attachmentService ?? AttachmentDraftService() {
@@ -102,6 +104,7 @@ class BotGroupSession extends ChangeNotifier {
     }
   }
   final BotGroupAppearanceSource appearances;
+  final OperationalErrorReporter? onOperationalError;
   final BotsPreferences preferences;
   late BotGroupAppearance _appearance;
   void _appearanceChanged() {
@@ -743,7 +746,7 @@ class BotGroupSession extends ChangeNotifier {
     } finally {
       repository.release();
       if (!_closed) {
-        await refresh();
+        await refresh(explicit: false);
         _acting = false;
         notifyListeners();
       }
@@ -762,7 +765,11 @@ class BotGroupSession extends ChangeNotifier {
       (_runtime == null || !reading.historyAvailable);
   bool get sending => _sending;
   String? _readError, _actionError;
-  String? get error => _actionError ?? _draftError ?? _readError;
+  bool _showReadFailure = false;
+  String? get error =>
+      _actionError ??
+      _draftError ??
+      (_showReadFailure || !_historyAvailable ? _readError : null);
   (String, String)? _pending;
   String? _pendingWireText;
   List<BotGroupAttachment> _pendingAttachments = const [];
@@ -778,10 +785,10 @@ class BotGroupSession extends ChangeNotifier {
     _visible = visible;
     _poll?.cancel();
     if (visible) {
-      unawaited(refresh());
+      unawaited(refresh(explicit: false));
       _poll = Timer.periodic(
         const Duration(seconds: 3),
-        (_) => unawaited(refresh()),
+        (_) => unawaited(refresh(explicit: false)),
       );
     }
   }
@@ -842,9 +849,13 @@ class BotGroupSession extends ChangeNotifier {
   }
 
   /// Concurrent callers await the same runtime/log read through settlement.
-  Future<void> refresh() {
+  Future<void> refresh({bool explicit = true}) {
     if (_closed || _capturing) return Future.value();
-    if (_readCompletion case final active?) return active.future;
+    if (_readCompletion case final active?) {
+      _showReadFailure |= explicit;
+      return active.future;
+    }
+    _showReadFailure = explicit;
     final completion = Completer<void>();
     _readCompletion = completion;
     unawaited(_refresh(completion));
@@ -885,6 +896,7 @@ class BotGroupSession extends ChangeNotifier {
         }
       }
       final observation = repository.groupObservations.beginRead(group);
+      var complete = false;
       try {
         do {
           final page = await repository.groupLog(group, since: _cursor);
@@ -900,7 +912,10 @@ class BotGroupSession extends ChangeNotifier {
             }
           }
           _cursor = page.cursor;
-          if (!page.hasMore) break;
+          if (!page.hasMore) {
+            complete = true;
+            break;
+          }
         } while (!_closed && _visible);
       } finally {
         if (!_closed && !_capturing && revision == _recoveryRevision) {
@@ -926,21 +941,34 @@ class BotGroupSession extends ChangeNotifier {
           await _acknowledgeDraft(pending, ids);
         }
       }
+      if (_closed || _capturing || revision != _recoveryRevision) return;
       _historyAvailable = true;
       _readError = null;
+      if (complete) _reportReadOutcome(null);
     } catch (_) {
-      if (!_closed && revision == _recoveryRevision) {
+      if (!_closed && !_capturing && revision == _recoveryRevision) {
         _readError = 'Group updates could not refresh. Your messages are kept.';
+        _reportReadOutcome(_readError);
       }
     } finally {
       _readCompletion = null;
       if (!_closed) notifyListeners();
       completion.complete();
       if (!_closed && !_capturing && revision != _recoveryRevision) {
-        unawaited(refresh());
+        unawaited(refresh(explicit: false));
       }
     }
   }
+
+  void _reportReadOutcome(String? error) => onOperationalError?.call(
+    OperationalErrorObservation(
+      connectionIdentity: group.scope.connectionIdentity,
+      operation: 'group-updates:${group.id}',
+      title: 'Group updates unavailable',
+      error: error,
+      profileName: group.scope.profileName,
+    ),
+  );
 
   Future<void> _acknowledgeDraft(
     (String, String) attempt,
@@ -1053,7 +1081,7 @@ class BotGroupSession extends ChangeNotifier {
         if (!_closed) notifyListeners();
       }
       await _acknowledgeDraft(attempt, sentIds);
-      if (!_closed) unawaited(refresh());
+      if (!_closed) unawaited(refresh(explicit: false));
       return !_closed;
     } catch (error) {
       if (!_closed) {
@@ -1136,7 +1164,7 @@ class BotGroupSession extends ChangeNotifier {
       if (!_closed) {
         _acting = false;
         notifyListeners();
-        unawaited(refresh());
+        unawaited(refresh(explicit: false));
       }
     }
   }
@@ -1167,7 +1195,7 @@ class BotGroupSession extends ChangeNotifier {
       if (!_closed) {
         _acting = false;
         notifyListeners();
-        unawaited(refresh());
+        unawaited(refresh(explicit: false));
       }
     }
   }
@@ -1199,7 +1227,7 @@ class BotGroupSession extends ChangeNotifier {
         _stopCancelIds.add(cancelId);
       });
       _forgetStoppedActions();
-      await refresh();
+      await refresh(explicit: false);
     } catch (failure) {
       // Stock checks these refusals before entering stop_room. Other errors can
       // follow the durable fence, including errors while cancelling member work.
@@ -1218,7 +1246,7 @@ class BotGroupSession extends ChangeNotifier {
       if (!_closed) {
         _acting = false;
         notifyListeners();
-        unawaited(refresh());
+        unawaited(refresh(explicit: false));
       }
     }
   }

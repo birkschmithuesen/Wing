@@ -1,3 +1,4 @@
+import 'studio_error.dart';
 import '../models/health_finding.dart';
 import 'package:flutter/material.dart';
 
@@ -92,30 +93,34 @@ class ProfileModelAccessRow extends StatelessWidget {
                 children: [
                   Text('Model access', style: theme.textTheme.titleMedium),
                   const SizedBox(height: 4),
-                  Semantics(
-                    liveRegion: true,
-                    child: Text(
-                      checking
-                          ? 'Checking access…'
-                          : result.status ==
-                                    AdministrationHealthStatus.warning ||
-                                result.status ==
-                                    AdministrationHealthStatus.failure
-                          ? 'Access needs attention'
-                          : result.title,
-                      style: theme.textTheme.bodyMedium,
+                  if (!checking &&
+                      (result.status == AdministrationHealthStatus.failure ||
+                          result.status == AdministrationHealthStatus.warning))
+                    StudioError(
+                      'Access needs attention',
+                      detail: result.title,
+                      icon: Icons.key_outlined,
+                      framed: false,
+                      severity:
+                          result.status == AdministrationHealthStatus.failure
+                          ? StudioErrorSeverity.error
+                          : StudioErrorSeverity.noResult,
+                    )
+                  else
+                    Semantics(
+                      liveRegion: true,
+                      child: Text(
+                        checking ? 'Checking access…' : result.title,
+                        style: theme.textTheme.bodyMedium,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 4),
                   Text(modelLabel, style: theme.textTheme.bodySmall),
-                  if (!checking &&
-                      (result.status == AdministrationHealthStatus.warning ||
-                          result.status == AdministrationHealthStatus.failure))
-                    Text(result.title, style: theme.textTheme.bodySmall),
                   if (unavailable && hasModel)
-                    Text(
+                    const StudioError(
                       'Last known model; refresh failed.',
-                      style: theme.textTheme.bodySmall,
+                      icon: Icons.refresh,
+                      framed: false,
                     ),
                   if (!checking &&
                       result != ProfileAccessResult.notChecked &&

@@ -52,6 +52,7 @@ class MainActivity : FlutterActivity() {
     private var botScreenChannel: BotScreenChannel? = null
     private var emailComposerChannel: EmailComposerChannel? = null
     private var scrollCaptureChannel: ScrollCaptureChannel? = null
+    private var accessibilityTimeoutChannel: AccessibilityTimeoutChannel? = null
     private var intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
     @Volatile private var shareAuthority = Any()
     @Volatile private var shareAuthorityActive = true
@@ -80,6 +81,8 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         engineAttached = true
+        accessibilityTimeoutChannel?.close()
+        accessibilityTimeoutChannel = AccessibilityTimeoutChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         scrollCaptureChannel?.close()
         scrollCaptureChannel = ScrollCaptureChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         botScreenChannel?.close()
@@ -289,6 +292,8 @@ class MainActivity : FlutterActivity() {
         engineAttached = false
         scrollCaptureChannel?.close()
         scrollCaptureChannel = null
+        accessibilityTimeoutChannel?.close()
+        accessibilityTimeoutChannel = null
         botScreenChannel?.close()
         botScreenChannel = null
         emailComposerChannel?.close()

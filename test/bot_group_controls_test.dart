@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/bots.dart';
+import 'package:wing/core/models/operational_error.dart';
 import 'package:wing/core/screens/bots/bot_group_screen.dart';
 import 'package:wing/core/services/bot_group_read_state.dart';
 import 'package:wing/core/services/bot_group_session.dart';
@@ -31,14 +32,16 @@ void main() {
     fixture = BotsFixture();
     group = (await fixture.repository.groupCatalog()).single;
   });
-  BotGroupSession owner() => BotGroupSession(
-    fixture.repository,
-    group,
-    reads: BotGroupReadState(),
-    preferences: preferences,
-    groupMessages: null,
-    appearances: FixedGroupAppearances(const []),
-  );
+  BotGroupSession owner({OperationalErrorReporter? onOperationalError}) =>
+      BotGroupSession(
+        fixture.repository,
+        group,
+        reads: BotGroupReadState(),
+        preferences: preferences,
+        groupMessages: null,
+        appearances: FixedGroupAppearances(const []),
+        onOperationalError: onOperationalError,
+      );
   Map<String, dynamic> event(
     int seq,
     String id,
@@ -77,6 +80,33 @@ void main() {
       }),
     );
   }
+
+  test(
+    'automatic group read failure keeps history and reports only to Alerts',
+    () async {
+      final observations = <OperationalErrorObservation>[];
+      final session = owner(onOperationalError: observations.add);
+      addTearDown(session.dispose);
+      await session.refresh();
+      expect(observations.single.error, isNull);
+      fixture.readHook = (_, method, _) async {
+        if (method == 'groups.state') throw StateError('Offline');
+        return null;
+      };
+      await session.refresh(explicit: false);
+      expect(session.error, isNull);
+      final issue = observations.last;
+      expect(issue.operation, 'group-updates:${group.id}');
+      expect(issue.error, isNotNull);
+      await session.refresh();
+      expect(session.error, isNotNull);
+      fixture.readHook = null;
+      await session.refresh();
+      expect(session.error, isNull);
+      expect(observations.last.operation, issue.operation);
+      expect(observations.last.error, isNull);
+    },
+  );
 
   test(
     'reply keeps the selected thread and mention through refusal and reopen',

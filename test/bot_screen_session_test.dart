@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/bot_screen_session.dart';
+import 'package:wing/core/models/operational_error.dart';
 import 'support/bot_display_fixture.dart';
 
 // Observe when the fixture actually reaches a held I/O stage. A sleep cannot
@@ -52,9 +53,16 @@ Future<void> connected(BotScreenSession session) async {
   }
 }
 
-Future<BotScreenSession> open(DisplayFixture fixture) async {
+Future<BotScreenSession> open(
+  DisplayFixture fixture, {
+  OperationalErrorReporter? onOperationalError,
+}) async {
   final bot = (await fixture.roster.repository.bots()).first;
-  final session = BotScreenSession(fixture.repository, bot)..setVisible(true);
+  final session = BotScreenSession(
+    fixture.repository,
+    bot,
+    onOperationalError: onOperationalError,
+  )..setVisible(true);
   addTearDown(session.dispose);
   await connected(session);
   expect(session.connected, true);
@@ -62,6 +70,46 @@ Future<BotScreenSession> open(DisplayFixture fixture) async {
 }
 
 void main() {
+  test(
+    'desktop reports live failure and recovery but keeps lease command errors local',
+    () async {
+      final fixture = DisplayFixture();
+      final observations = <OperationalErrorObservation>[];
+      final screen = await open(fixture, onOperationalError: observations.add);
+      expect(observations.single.error, isNull);
+      await screen.takeOver();
+      fixture.failRelease = true;
+      await screen.handBack();
+      expect(screen.error, isNotNull);
+      expect(observations, hasLength(1));
+
+      final held = fixture.statusWait = _EnteredGate();
+      final read = screen.refresh();
+      await held.entered.future;
+      held.completeError(StateError('Offline'));
+      await read;
+      final issue = observations.last;
+      expect(issue.error, isNotNull);
+      fixture.statusWait = null;
+      await screen.refresh();
+      await connected(screen);
+      expect(observations.last.operation, issue.operation);
+      expect(observations.last.error, isNull);
+
+      final departed = fixture.statusWait = _EnteredGate();
+      final late = screen.refresh();
+      await departed.entered.future;
+      screen.setVisible(false);
+      final count = observations.length;
+      departed.completeError(StateError('Retired'));
+      await late;
+      expect(observations, hasLength(count));
+      fixture.statusWait = null;
+      fixture.failRelease = false;
+      await screen.close();
+    },
+  );
+
   test(
     'watch is passive; only confirmed own lease admits keyboard and pointer',
     () async {

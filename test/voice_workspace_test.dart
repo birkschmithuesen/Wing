@@ -14,6 +14,7 @@ import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'support/profile_browser_fixture.dart';
 import 'support/voice_fixture.dart';
 
@@ -35,7 +36,13 @@ class _Fixture extends ProfileBrowserFixture {
   ];
 }
 
+class _CaptureBinding extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get disableShadows => false;
+}
+
 void main() {
+  if (const bool.fromEnvironment('VOICE_REVIEW')) _CaptureBinding();
   late _Fixture fixture;
   late ProfileWorkspaceController controller;
   late AppPreferences appPreferences;
@@ -101,15 +108,15 @@ void main() {
     tester.view.physicalSize = const Size(320, 900);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: wingTheme(brightness),
-        home: MediaQuery(
-          data: MediaQueryData(
-            size: const Size(320, 900),
-            textScaler: TextScaler.linear(scale),
-          ),
-          child: RepaintBoundary(
-            key: frame,
+      RepaintBoundary(
+        key: frame,
+        child: MaterialApp(
+          theme: wingTheme(brightness),
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(320, 900),
+              textScaler: TextScaler.linear(scale),
+            ),
             child: ProfileWorkspaceScreen(
               controller: controller,
               voiceDevice: device,
@@ -232,6 +239,44 @@ void main() {
     expect(controller.current!.chat!.composer.observation.text, isEmpty);
   });
   for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'no-speech capsule preserves draft and expires in $brightness at $scale',
+        (tester) async {
+          final chat = controller.current!.chat!;
+          await controller.updateDraft(chat, 'Keep this draft');
+          await show(tester, brightness: brightness, scale: scale);
+          final composer = find.byKey(const Key('profile-message-composer'));
+          final originalBounds = tester.getRect(composer);
+          await tester.tap(find.byTooltip('Dictate message'));
+          await tester.pump();
+          device.stream.add({
+            'id': device.recording,
+            'error': 'Native localized message',
+            'code': 'no_speech',
+          });
+          await tester.pumpAndSettle();
+          expect(find.text('No speech detected'), findsOneWidget);
+          final capsule = find.ancestor(
+            of: find.text('No speech detected'),
+            matching: find.byType(StudioErrorFrame),
+          );
+          expect(
+            tester.getRect(capsule).overlaps(tester.getRect(composer)),
+            isFalse,
+          );
+          expect(tester.getRect(composer), originalBounds);
+          expect(chat.composer.observation.text, 'Keep this draft');
+          await screenshot(tester, 'no-speech-${brightness.name}-$scale');
+          await tester.pump(const Duration(seconds: 4));
+          await tester.pumpAndSettle();
+          expect(find.text('No speech detected'), findsNothing);
+          expect(chat.composer.observation.text, 'Keep this draft');
+          expect(fixture.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
     testWidgets('recording composer fits 320dp at 200% text in $brightness', (
       tester,
     ) async {

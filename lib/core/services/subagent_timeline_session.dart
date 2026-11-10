@@ -1,4 +1,5 @@
 import '../models/hermes_question.dart';
+import '../models/operational_error.dart';
 import '../models/canonical_session.dart';
 import 'dart:async';
 import '../models/transcript_position.dart';
@@ -26,11 +27,13 @@ final class SubagentTimelineSession extends ChangeNotifier
     required this._read,
     required this._history,
     required this._isCurrent,
+    this.onOperationalError,
   }) : _reading = TranscriptReading.passive(scope: scope),
        _runtime = ChatRuntime(runtimeId: sessionId);
 
   final WorkspaceScope scope;
   final String sessionId;
+  final OperationalErrorReporter? onOperationalError;
   final ScopedRpc _read;
   final Future<ProfileHistoryPage> Function(String, int) _history;
   final bool Function() _isCurrent;
@@ -47,9 +50,9 @@ final class SubagentTimelineSession extends ChangeNotifier
   bool _reconcile = false;
   int _completionFloor = 0;
   int _failures = 0;
-  bool _historyFailed = false;
+  bool _historyFailed = false, _showReadFailure = false;
   @override
-  String? get liveError => _historyFailed ? null : _error;
+  String? get liveError => _historyFailed || !_showReadFailure ? null : _error;
   Timer? _timer;
   Future<void>? _pending;
 
@@ -89,6 +92,7 @@ final class SubagentTimelineSession extends ChangeNotifier
     if (!_current || older && _older == null) return;
     if (_pending case final pending?) {
       if (explicit) {
+        _showReadFailure = true;
         _loading = true;
         notifyListeners();
       }
@@ -97,20 +101,29 @@ final class SubagentTimelineSession extends ChangeNotifier
     }
     final done = Completer<void>();
     _pending = done.future;
+    _showReadFailure = explicit || !_available;
     _loading = explicit || !_available;
     _paging = older;
     if (_loading) notifyListeners();
     var failed = false, historyFailed = false;
+    bool? historyOutcome, liveOutcome;
     Future<void> observe(
       Future<void> Function() operation, {
       bool history = false,
     }) async {
       if (!_current) return;
+      var succeeded = false;
       try {
         await operation();
+        succeeded = true;
       } catch (_) {
         failed = true;
         historyFailed |= history;
+      }
+      if (history) {
+        if (!older) historyOutcome = succeeded;
+      } else {
+        liveOutcome = (liveOutcome ?? true) && succeeded;
       }
     }
 
@@ -129,6 +142,12 @@ final class SubagentTimelineSession extends ChangeNotifier
           ? 'Subagent activity could not refresh. Retry to continue.'
           : null;
       _failures = failed ? _failures + 1 : 0;
+      if (historyOutcome != false ||
+          _available ||
+          !(runtime.executionActive || runtime.needsInput)) {
+        _reportReadOutcome('subagent-history', historyOutcome);
+      }
+      _reportReadOutcome('subagent-timeline', liveOutcome);
     } finally {
       _pending = null;
       _loading = false;
@@ -144,6 +163,19 @@ final class SubagentTimelineSession extends ChangeNotifier
         }
       }
     }
+  }
+
+  void _reportReadOutcome(String source, bool? succeeded) {
+    if (succeeded == null) return;
+    onOperationalError?.call(
+      OperationalErrorObservation(
+        connectionIdentity: scope.connectionIdentity,
+        profileName: scope.profileName,
+        operation: '$source:${scope.profileName}:$sessionId',
+        title: 'Subagent activity unavailable',
+        error: succeeded ? null : 'Open the subagent and refresh its activity.',
+      ),
+    );
   }
 
   Future<void> _mount({String? expectedEpoch, bool skipMissing = false}) async {
@@ -371,6 +403,7 @@ final class SubagentTimelineSession extends ChangeNotifier
     processes: const [],
     processesLoading: false,
     processesError: null,
+    inlineProcessesError: null,
     actionBusy: false,
     actionError: null,
     stopping: const {},
@@ -386,6 +419,7 @@ final class SubagentTimelineSession extends ChangeNotifier
     createTimeline: (child) => child.childSessionId == null
         ? null
         : SubagentTimelineSession(
+            onOperationalError: onOperationalError,
             scope: scope,
             sessionId: child.childSessionId!,
             read: _read,
@@ -412,7 +446,8 @@ final class SubagentTimelineSession extends ChangeNotifier
   @override
   bool get historyPaging => _paging;
   @override
-  String? get historyError => _historyFailed ? _error : null;
+  String? get historyError =>
+      _historyFailed && _showReadFailure ? _error : null;
   @override
   bool get historyUnavailable => false;
   @override
@@ -463,6 +498,7 @@ final class ReadOnlySubagentDetail extends ChangeNotifier
     tail: null,
     lastAvailableTail: null,
     tailError: null,
+    inlineTailError: null,
     tailFailures: 0,
     loadingTail: false,
     steering: false,

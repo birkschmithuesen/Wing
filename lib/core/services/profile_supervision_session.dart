@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../models/gateway_insight.dart';
 import '../models/profile_supervision.dart';
+import '../models/operational_error.dart';
 import '../models/session_control.dart';
 import 'profile_workspace_controller.dart';
 import 'subagent_timeline_session.dart';
@@ -54,6 +55,7 @@ final class ProfileSupervisionSession extends ChangeNotifier
     processes: _chat.currentProcesses,
     processesLoading: _chat.processesLoading,
     processesError: _chat.processesError,
+    inlineProcessesError: _chat.inlineProcessesError,
     actionBusy: _actionBusy,
     actionError: _actionError,
     stopping: _stopping,
@@ -339,7 +341,7 @@ final class SubagentSupervisionDetail extends ChangeNotifier
   bool _notifierDisposed = false;
   GatewaySubagentTail? _tail, _lastTail;
   String? _error, _controlMessage;
-  bool _controlFailed = false;
+  bool _controlFailed = false, _passiveTailFailure = false;
   bool get _current => !_closed && _owner.active;
   GatewaySubagentActivity? get _activity => _owner._chat.subagents
       .where((item) => item.id == _initial.id)
@@ -362,6 +364,7 @@ final class SubagentSupervisionDetail extends ChangeNotifier
       tail: _tail,
       lastAvailableTail: _lastTail,
       tailError: _error,
+      inlineTailError: _passiveTailFailure ? null : _error,
       tailFailures: _failures,
       loadingTail: _loading,
       steering: _steering,
@@ -398,16 +401,16 @@ final class SubagentSupervisionDetail extends ChangeNotifier
       return;
     }
     if (_timer != null) return;
-    unawaited(refreshTail());
+    unawaited(refreshTail(explicit: false));
     if (!_current || !_active) return;
     _timer = Timer.periodic(
       const Duration(seconds: 2),
-      (_) => unawaited(refreshTail()),
+      (_) => unawaited(refreshTail(explicit: false)),
     );
   }
 
   @override
-  Future<void> refreshTail() async {
+  Future<void> refreshTail({bool explicit = true}) async {
     if (!_current || _loading) return;
     _loading = true;
     _changed();
@@ -423,6 +426,9 @@ final class SubagentSupervisionDetail extends ChangeNotifier
       if (tail.available && tail.text.isNotEmpty) _lastTail = tail;
       _error = null;
       _failures = 0;
+      if (tail.available || _activity?.isTerminal == true) {
+        _reportTailOutcome(null);
+      }
       if (!tail.available && _activity?.isTerminal == true) {
         _timer?.cancel();
         _timer = null;
@@ -431,6 +437,8 @@ final class SubagentSupervisionDetail extends ChangeNotifier
       if (_current) {
         _failures++;
         _error = 'Could not refresh live output.';
+        _passiveTailFailure = !explicit && _lastTail != null;
+        _reportTailOutcome(_error);
         if (_failures >= 3) {
           _timer?.cancel();
           _timer = null;
@@ -442,6 +450,19 @@ final class SubagentSupervisionDetail extends ChangeNotifier
     }
   }
 
+  void _reportTailOutcome(String? error) =>
+      _owner._controller.reportOperationalError(
+        OperationalErrorObservation(
+          connectionIdentity: _owner._chat.key.workspace.connectionIdentity,
+          profileName: _owner._chat.key.workspace.profileName,
+          operation:
+              'subagent-tail:${_owner._chat.key.workspace.profileName}:'
+              '${_owner._chat.key.sessionId}:${_initial.id}',
+          title: 'Live output unavailable',
+          error: error,
+        ),
+      );
+
   @override
   Future<void> retryTail() async {
     if (!_current) return;
@@ -449,7 +470,11 @@ final class SubagentSupervisionDetail extends ChangeNotifier
     _error = null;
     _timer?.cancel();
     _timer = null;
-    setActive(_active);
+    if (_active) {
+      final read = refreshTail();
+      setActive(true);
+      await read;
+    }
   }
 
   @override

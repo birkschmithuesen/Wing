@@ -215,9 +215,7 @@ void main() {
       await message(tester, content);
       await tester.tap(
         find.text(
-          content.startsWith('<')
-              ? 'alex@example.com'
-              : 'Email hotel',
+          content.startsWith('<') ? 'alex@example.com' : 'Email hotel',
           findRichText: true,
         ),
       );
@@ -310,9 +308,9 @@ void main() {
       ),
       findsOneWidget,
     );
-    await tester.pump(const Duration(seconds: 5));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Email', findRichText: true));
+    final emailLink = find.text('Email', findRichText: true);
+    expect(emailLink.hitTestable(), findsOneWidget);
+    await tester.tap(emailLink);
     await tester.pumpAndSettle();
     expect(calls, 2);
     expect(find.byType(SnackBar), findsNothing);

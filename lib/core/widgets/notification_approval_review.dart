@@ -1,3 +1,4 @@
+import 'studio_error.dart';
 import 'gateway_approval_panel.dart';
 import 'studio_form_actions.dart';
 import 'package:flutter/material.dart';
@@ -86,12 +87,7 @@ class _ReviewState extends State<NotificationApprovalReview> {
                 if (status != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
+                    child: StudioError(status, icon: Icons.rule_outlined),
                   ),
                 const SizedBox(height: 12),
                 Flexible(

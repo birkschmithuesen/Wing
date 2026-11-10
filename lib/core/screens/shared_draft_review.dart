@@ -191,15 +191,27 @@ class _SharedDraftReviewState extends State<_SharedDraftReview> {
                       ),
                       if (state.canLoadMore) ...[
                         const SizedBox(height: 4),
-                        StudioButtonPress(
-                          child: TextButton.icon(
-                            key: const Key('share-load-more'),
-                            onPressed: state.working || state.loadingMore
-                                ? null
-                                : () => widget.session.loadMore(widget.offer),
-                            icon: const Icon(Icons.expand_more),
-                            label: Text(state.loadMoreLabel),
-                          ),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            StudioButtonPress(
+                              child: TextButton.icon(
+                                key: const Key('share-load-more'),
+                                onPressed: state.working || state.loadingMore
+                                    ? null
+                                    : () =>
+                                          widget.session.loadMore(widget.offer),
+                                icon: const Icon(Icons.expand_more),
+                                label: Text(state.loadMoreLabel),
+                              ),
+                            ),
+                            if (state.pageError case final error?)
+                              StudioError(
+                                error,
+                                key: const Key('share-review-error'),
+                                icon: Icons.expand_more,
+                              ),
+                          ],
                         ),
                       ],
                     ],

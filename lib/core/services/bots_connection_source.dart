@@ -1,4 +1,5 @@
 import 'bots_repository.dart';
+import '../models/operational_error.dart';
 import 'bots_session.dart';
 import 'connection_manager.dart';
 import 'profile_workspace_registry.dart';
@@ -7,8 +8,10 @@ import 'profile_workspace_registry.dart';
 /// sharing its OAuth owner and administration clients instead of creating logins.
 BotsSession savedBotsSession(
   ConnectionManager manager,
-  ProfileWorkspaceRegistry registry,
-) => BotsSession(
+  ProfileWorkspaceRegistry registry, {
+  OperationalErrorReporter? onOperationalError,
+}) => BotsSession(
+  onOperationalError: onOperationalError,
   onIdentityChanged: registry.observeMonitoringBotIdentity,
   (canUse) async {
     final connections = await manager.loadConnectionsWithSecrets();

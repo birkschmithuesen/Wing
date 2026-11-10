@@ -1,3 +1,4 @@
+import '../../widgets/studio_error.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -90,16 +91,23 @@ class _HostedAccountsState extends State<AdminHostedConnectorAccountsPage>
     await _session.remove(account);
   }
 
-  Future<void> _openAuthorization(Uri url) async {
+  Future<void> _openAuthorization(BuildContext anchor, Uri url) async {
     if (_openingAuthorization) return;
+    final key = ('open-hosted-authorization', url);
+    dismissTransientError(anchor, errorKey: key);
     setState(() => _openingAuthorization = true);
     try {
       if (!await launchUrl(url, mode: LaunchMode.externalApplication)) {
         throw StateError('Could not open authorization');
       }
     } catch (_) {
-      if (mounted) {
-        adminMessage(context, 'Could not open the sign-in page. Try again.');
+      if (anchor.mounted) {
+        showTransientError(
+          anchor,
+          'Could not open the sign-in page. Try again.',
+          errorKey: key,
+          icon: Icons.open_in_new,
+        );
       }
     } finally {
       if (mounted) setState(() => _openingAuthorization = false);
@@ -183,12 +191,17 @@ class _HostedAccountsState extends State<AdminHostedConnectorAccountsPage>
                     target.detail ?? target.state.replaceAll('_', ' '),
                   ),
                   trailing: target.needsAuthorization && !operation.settled
-                      ? _action(
-                          'Authorize ${target.name}',
-                          Icons.open_in_new,
-                          _openingAuthorization
-                              ? null
-                              : () => _openAuthorization(target.connectUrl!),
+                      ? Builder(
+                          builder: (anchor) => _action(
+                            'Authorize ${target.name}',
+                            Icons.open_in_new,
+                            _openingAuthorization
+                                ? null
+                                : () => _openAuthorization(
+                                    anchor,
+                                    target.connectUrl!,
+                                  ),
+                          ),
                         )
                       : null,
                 ),

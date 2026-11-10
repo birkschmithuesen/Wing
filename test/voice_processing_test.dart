@@ -175,6 +175,55 @@ void main() {
     },
   );
   test(
+    'empty recognition is a per-attempt notice while permission failure persists',
+    () async {
+      final device = VoiceDeviceFixture();
+      final controller = VoiceInputController(device: device);
+      addTearDown(controller.dispose);
+      addTearDown(device.stream.close);
+      Future<void> start() => controller.start(
+        const LocalVoiceInputSettings(language: ''),
+        const VoiceDraft(
+          text: 'Keep my draft',
+          selectionStart: 13,
+          selectionEnd: 13,
+        ),
+        (_) => fail('An empty recording must not edit the draft'),
+        createRemote: () => throw StateError('Unexpected upload'),
+      );
+      await start();
+      final first = device.recording;
+      device.stream.add({'id': first, 'text': ' ', 'final': true});
+      expect(controller.error, isNull);
+      expect(controller.notice, (
+        attempt: first,
+        result: VoiceInputEmptyResult.noSpeech,
+      ));
+      expect(controller.active, isFalse);
+      await start();
+      expect(controller.notice, isNull);
+      final second = device.recording;
+      device.stream.add({
+        'id': second,
+        'error': 'Native localized message',
+        'code': 'no_speech',
+      });
+      expect(controller.notice?.attempt, second);
+      expect(controller.notice?.attempt, isNot(first));
+      expect(controller.error, isNull);
+      await start();
+      device.stream.add({
+        'id': device.recording,
+        'error': 'Microphone access was denied.',
+        'code': 'capture_failed',
+      });
+      expect(controller.notice, isNull);
+      expect(controller.error, 'Microphone access was denied.');
+      await controller.cancel();
+      expect(controller.notice, isNull);
+    },
+  );
+  test(
     'provider failure is visible and releases the recording request',
     () async {
       final device = VoiceDeviceFixture();

@@ -110,6 +110,8 @@ class HealthAlertsSession extends ChangeNotifier {
   HealthAlertSettings? _lastSettings;
   (HostReading<HostSystemStats>, HostReading<HostPressureStatus>)?
   _evaluatedHost;
+  (HostReading<HostSystemStats>, HostReading<HostPressureStatus>)?
+  _observedHostReads;
   List<HealthAlert> get alerts => _evaluator.alerts;
   List<Object> _published = const [];
   bool get _wantsHost =>
@@ -165,8 +167,11 @@ class HealthAlertsSession extends ChangeNotifier {
 
   void _changed() {
     final policy = settings.settings;
+    final data = host.state;
+    if (_active) _observeConnection();
+    _observeHostReads(data);
     if (!policy.enabled) {
-      _evaluator.clear();
+      _evaluator.clearMonitored();
       _publish();
       return;
     }
@@ -183,20 +188,7 @@ class HealthAlertsSession extends ChangeNotifier {
       _publish();
       return;
     }
-    final now = _now(), data = host.state;
-    _evaluator.finding(
-      key: '${host.connectionIdentity}:connection',
-      title: 'Connection interrupted',
-      detail: 'Updates may be delayed. Open connection details to retry.',
-      scope: HealthAlertScope.connection,
-      destination: 'Connection details',
-      at: now,
-      failed: switch (connectionStatus.transportAvailability) {
-        ConnectionAvailability.unavailable => true,
-        ConnectionAvailability.available => false,
-        ConnectionAvailability.unchecked => null,
-      },
-    );
+    final now = _now();
     final observation = (data.stats, data.pressure);
     if (!data.refreshing && _evaluatedHost != observation) {
       // Repeated owner notifications are not new host samples. In particular,
@@ -324,6 +316,102 @@ class HealthAlertsSession extends ChangeNotifier {
       }
     }
     _publish();
+  }
+
+  void _observeConnection() {
+    _evaluator.finding(
+      key: '${host.connectionIdentity}:connection',
+      title: 'Connection interrupted',
+      detail: 'Updates may be delayed. Open connection details to retry.',
+      scope: HealthAlertScope.connection,
+      destination: 'Connection details',
+      at: _now(),
+      failed: switch (connectionStatus.transportAvailability) {
+        ConnectionAvailability.unavailable => true,
+        ConnectionAvailability.available => false,
+        ConnectionAvailability.unchecked => null,
+      },
+    );
+  }
+
+  void _observeHostReads(HostResourcesState data) {
+    final reads = (data.stats, data.pressure);
+    if (data.refreshing ||
+        data.attemptedAt == null ||
+        _observedHostReads == reads) {
+      return;
+    }
+    _observedHostReads = reads;
+    for (final (scope, title, reading) in [
+      ('host-stats', 'Host resources could not refresh', data.stats),
+      ('host-pressure', 'Host pressure could not refresh', data.pressure),
+    ]) {
+      final failed = reading.error != null;
+      if (!failed && reading.readAt == null) continue;
+      _recordOperationalError(
+        scope: scope,
+        title: title,
+        detail: 'Open Hermes health to try again.',
+        failed: failed,
+        destination: 'Host resources',
+      );
+    }
+  }
+
+  /// Observe settlement from the existing operation owner. A successful
+  /// observation clears only its captured scope on this connection.
+  void observeOperationalError({
+    required String scope,
+    required String title,
+    required String detail,
+    required bool failed,
+    String? destination,
+    String? profileName,
+  }) {
+    if (_closed) return;
+    _recordOperationalError(
+      scope: scope,
+      title: title,
+      detail: detail,
+      failed: failed,
+      destination: destination,
+      profileName: profileName,
+    );
+    _publish();
+  }
+
+  void _recordOperationalError({
+    required String scope,
+    required String title,
+    required String detail,
+    required bool failed,
+    String? destination,
+    String? profileName,
+  }) {
+    if (!_active &&
+        !failed &&
+        connectionStatus.transportAvailability ==
+            ConnectionAvailability.available) {
+      // A reader can confirm recovery before its workspace starts monitoring.
+      _observeConnection();
+    }
+    if (failed &&
+        connectionStatus.access == ConnectionAvailability.unavailable) {
+      // The confirmed outage already represents the failed background read.
+      // A separate incident is admitted only by a failure outside that outage.
+      _observeConnection();
+    } else {
+      _evaluator.finding(
+        key: '${host.connectionIdentity}:operational:$scope',
+        title: title,
+        detail: detail,
+        scope: HealthAlertScope.operational,
+        destination: destination,
+        profileName: profileName,
+        at: _now(),
+        failed: failed,
+      );
+    }
   }
 
   Future<void> acknowledge(HealthAlert alert) =>

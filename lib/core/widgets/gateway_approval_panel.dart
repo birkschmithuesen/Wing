@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../models/gateway_approval.dart';
 import '../theme/wing_theme.dart';
 import 'selection_viewport.dart';
+import 'studio_error.dart';
 
 /// Exact command review shared by chat, bot, group and notification approvals.
 /// Completed request receipts belong to Activity; live review stays visible.
@@ -36,6 +37,7 @@ class GatewayApprovalPanel extends StatelessWidget {
     this.position = 1,
     this.total = 1,
     this.enabled = true,
+    this.error,
   });
 
   final GatewayApprovalRequest request;
@@ -43,6 +45,7 @@ class GatewayApprovalPanel extends StatelessWidget {
   final int position;
   final int total;
   final bool enabled;
+  final String? error;
 
   @override
   Widget build(BuildContext context) => LayoutBuilder(
@@ -80,6 +83,12 @@ class GatewayApprovalPanel extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (error case final message?)
+                    StudioError(
+                      message,
+                      icon: Icons.rule_outlined,
+                      framed: false,
+                    ),
                   ApprovalCommandDetails(request: request),
                 ],
               ),

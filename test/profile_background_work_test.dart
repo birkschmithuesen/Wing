@@ -7,6 +7,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/gateway_process.dart';
 import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/models/operational_error.dart';
 import 'package:wing/core/models/session_control.dart';
 import 'package:wing/core/models/side_question_delivery.dart';
 import 'package:wing/core/services/profile_gateway.dart';
@@ -101,10 +102,12 @@ void main() {
   late ProfileWorkspaceController controller;
   late AppPreferences appPreferences;
   late ProfileChat chat;
+  late List<OperationalErrorObservation> operationalErrors;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     host = _BackgroundHost();
+    operationalErrors = [];
     final preferences = await SharedPreferences.getInstance();
     appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
@@ -116,6 +119,7 @@ void main() {
       preferences: preferences,
       appPreferences: appPreferences,
       gatewayFactory: host.gateway,
+      onOperationalError: operationalErrors.add,
     );
     await controller.initialize();
     chat = await controller.createChat(canDispatch: () => true);
@@ -313,12 +317,22 @@ void main() {
       await tester.pump(const Duration(seconds: 5));
       expect(chat.processes.single.id, 'bg-1');
       expect(chat.processesError, isNotNull);
+      expect(chat.inlineProcessesError, isNull);
+      final issue = operationalErrors
+          .where((item) => item.error != null)
+          .single;
+      expect(
+        issue.operation,
+        'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
+      );
       final failedReads = reads();
       await tester.pump(const Duration(seconds: 30));
       expect(reads(), failedReads);
       host.listFails = false;
       await controller.refreshProcesses(chat);
       expect(chat.processesError, isNull);
+      expect(operationalErrors.last.operation, issue.operation);
+      expect(operationalErrors.last.error, isNull);
       await tester.pump(const Duration(seconds: 5));
       expect(reads(), failedReads + 2);
       controller.setRouteMounted(route, false);

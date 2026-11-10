@@ -139,9 +139,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser>
     unawaited(_data.chooseView(intent));
   }
 
-  void _notice(String message) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
+  void _notice(String message) => showStudioError(context, message);
   Future<void> _run(Future<void> Function() action) async {
     await _data.run(action);
     if (mounted) {

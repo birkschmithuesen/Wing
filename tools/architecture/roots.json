@@ -6960,6 +6960,17 @@
       "source": "docs/features/chat-activity.md; integration_test/background_processes_prod_test.dart",
       "status": "supported",
       "selector": "main"
+    },
+    {
+      "id": "channel-accessibility-timeout",
+      "kind": "platform-channel",
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/AccessibilityTimeoutChannel.kt",
+      "purpose": "Android 10+ recommended reading timeout for Studio transient errors; MainActivity registers and closes the channel",
+      "source": "lib/core/services/accessibility_timeout.dart",
+      "status": "supported",
+      "selector": [
+        "recommendedTextTimeout"
+      ]
     }
   ],
   "files": [
@@ -16312,6 +16323,31 @@
       "path": "integration_test/background_processes_prod_test.dart",
       "area": "integration_test",
       "provenance": "task-authored"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/AccessibilityTimeoutChannel.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/models/operational_error.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/accessibility_timeout.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/widgets/studio_transient_error.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/studio_error_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {
@@ -16427,6 +16463,7 @@
         "lib/core/screens/shared_draft_review.dart",
         "lib/core/screens/versions_updates_screen.dart",
         "lib/core/screens/workspace_overview_content.dart",
+        "lib/core/services/accessibility_timeout.dart",
         "lib/core/services/administration_health.dart",
         "lib/core/services/administration_health_session.dart",
         "lib/core/services/administration_logs_session.dart",

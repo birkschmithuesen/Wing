@@ -186,9 +186,7 @@ class _HermesAdministrationContentState
         await session.refresh();
         if (mounted && identical(session, _overviewSession)) {
           if (session.refreshError case final error?) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: Text(error)));
+            showStudioError(context, error);
           }
         }
       } else {
@@ -208,9 +206,7 @@ class _HermesAdministrationContentState
       ]);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(administrationError(error))));
+        showStudioError(context, administrationError(error));
       }
     } finally {
       if (mounted) setState(() => _refreshingHealth = false);

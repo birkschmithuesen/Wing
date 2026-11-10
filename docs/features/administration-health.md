@@ -8,7 +8,7 @@ Feature ID: `administration-health`.
 
 - `administration-health.inspect` — Read the right diagnostic and timestamp.
 - `administration-health.refresh` — Retry while retaining earlier findings.
-- `administration-health.ask` — Open a draft for the captured finding.
+- `administration-health.ask` — Open a draft for the captured finding. A failed preparation stays beside that finding and its Ask Hermes control, with the diagnostic output retained.
 
 ## How to get to it (user POV)
 
@@ -21,7 +21,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/profile_diagnostics_panel_test.dart test/administration_health_entry_test.dart test/administration_health_session_test.dart test/administration_health_test.dart test/administration_retry_test.dart test/connector_runtime_test.dart
+  flutter test --no-pub test/profile_diagnostics_panel_test.dart test/administration_health_entry_test.dart test/administration_health_session_test.dart test/administration_health_test.dart test/administration_retry_test.dart test/connector_runtime_test.dart test/doctor_diagnostic_page_test.dart
   ```
 
 - **Android `health-entry`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.

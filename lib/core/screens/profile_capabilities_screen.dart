@@ -106,12 +106,9 @@ class _ProfileCapabilitiesScreenState extends State<ProfileCapabilitiesScreen> {
       );
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: StudioError(
-            'Could not read this skill. Check the connection and try again.',
-          ),
-        ),
+      showStudioError(
+        context,
+        'Could not read this skill. Check the connection and try again.',
       );
     }
   }

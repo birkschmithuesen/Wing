@@ -164,7 +164,7 @@ class ProfileProcessPanel extends StatelessWidget {
       return Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (state.processesError case final error?) StudioError(error),
+          if (state.inlineProcessesError case final error?) StudioError(error),
           for (final process in state.processes)
             _ProcessTile(
               key: ValueKey(process.id),

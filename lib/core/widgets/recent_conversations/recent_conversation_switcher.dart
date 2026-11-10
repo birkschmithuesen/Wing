@@ -933,9 +933,7 @@ class RecentConversationSwitcherState extends State<RecentConversationSwitcher>
           _settleStack(_motion.position.roundToDouble());
         } else {
           if (widget.session.error case final error?) {
-            ScaffoldMessenger.of(
-              context,
-            ).showSnackBar(SnackBar(content: StudioError(error)));
+            showStudioError(context, error);
           }
           _returnToChat();
         }

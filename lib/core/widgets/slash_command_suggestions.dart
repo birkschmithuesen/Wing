@@ -266,27 +266,24 @@ class _SlashCommandSuggestionsState extends State<SlashCommandSuggestions> {
       await widget.saveDraft(edit.text);
     } catch (_) {
       if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: Text('Could not save the draft. Your text is kept.'),
-        ),
-      );
+      showStudioError(context, 'Could not save the draft. Your text is kept.');
     }
   }
 
-  Future<void> _inspect(SlashCommand item) async {
+  Future<void> _inspect(BuildContext anchor, SlashCommand item) async {
     if (_inspecting != null) return;
+    final errorKey = ('inspect-slash-skill', item.text);
+    dismissTransientError(anchor, errorKey: errorKey);
     setState(() => _inspecting = item);
     try {
       await widget.inspectSkill(item);
     } catch (_) {
-      if (!mounted) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-        const SnackBar(
-          content: StudioError(
-            'Could not read this skill. Check the connection and try again.',
-          ),
-        ),
+      if (!anchor.mounted) return;
+      showTransientError(
+        anchor,
+        'Could not read this skill. Check the connection and try again.',
+        errorKey: errorKey,
+        icon: Icons.visibility_outlined,
       );
     } finally {
       if (mounted) setState(() => _inspecting = null);
@@ -377,20 +374,29 @@ class _SlashCommandSuggestionsState extends State<SlashCommandSuggestions> {
                                 overflow: TextOverflow.ellipsis,
                               ),
                               trailing: item.isSkill
-                                  ? StudioButtonPress(
-                                      child: IconButton(
-                                        tooltip: 'Inspect ${item.text}',
-                                        constraints:
-                                            const BoxConstraints.tightFor(
-                                              width: 48,
-                                              height: 48,
-                                            ),
-                                        onPressed: _inspecting == null
-                                            ? () => _inspect(item)
-                                            : null,
-                                        icon: const Icon(
-                                          Icons.visibility_outlined,
-                                          size: 20,
+                                  ? Builder(
+                                      builder: (anchor) => StudioButtonPress(
+                                        child: IconButton(
+                                          tooltip: 'Inspect ${item.text}',
+                                          constraints:
+                                              const BoxConstraints.tightFor(
+                                                width: 48,
+                                                height: 48,
+                                              ),
+                                          onPressed: _inspecting == null
+                                              ? () => _inspect(anchor, item)
+                                              : null,
+                                          icon: identical(_inspecting, item)
+                                              ? Icon(
+                                                  Icons.hourglass_top,
+                                                  semanticLabel:
+                                                      'Reading ${item.text}',
+                                                  size: 20,
+                                                )
+                                              : const Icon(
+                                                  Icons.visibility_outlined,
+                                                  size: 20,
+                                                ),
                                         ),
                                       ),
                                     )

@@ -1,4 +1,3 @@
-import 'package:wing/core/models/health_alert.dart';
 import 'package:wing/core/services/notification_delivery_ledger.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -9,6 +8,7 @@ import 'package:wing/core/screens/health_alert_settings_screen.dart';
 import 'package:wing/core/widgets/health_alerts/health_alerts_scope.dart';
 import 'support/host_resources_fixture.dart';
 import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/models/health_alert.dart';
 import 'package:wing/core/models/group_notification.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/screens/bots/bot_group_screen.dart';
@@ -924,7 +924,7 @@ void main() {
         final context = tester.element(find.byType(ProfileWorkspaceScreen));
         final alerts = HealthAlertsScope.maybeOf(context)!.alerts;
         await alerts.settings.update(
-          (policy) => policy.copyWith(profile: false),
+          (policy) => policy.copyWith(enabled: false),
         );
         unawaited(
           Navigator.of(context).push<void>(
@@ -975,21 +975,21 @@ void main() {
           scenario.held,
         );
         expect(alerts.alerts, hasLength(scenario.opening ? 1 : 0));
+        final existing = alerts.alerts.firstOrNull;
+        if (existing != null) {
+          expect(existing.scope, HealthAlertScope.connection);
+          expect(existing.lastKnown, isTrue);
+        }
         final attempts = harness.host.connectCalls;
         harness.host.connectDelay = gate;
         if (serverRecovers) harness.host.connectError = null;
         if (scenario.held) harness.host.connectFailures = 1;
-        final occurrences = <(String, int)>{};
-        void observe() {
-          expectSync(alerts.alerts.length, lessThanOrEqualTo(1));
-          for (final alert in alerts.alerts) {
-            expectSync(alert.scope, HealthAlertScope.connection);
-            expectSync(alert.connectionIdentity, harness.identity);
-            occurrences.add((alert.id, alert.occurrence));
-          }
-        }
-
-        observe();
+        final seen = <(String, int)>{
+          if (existing != null) (existing.id, existing.occurrence),
+        };
+        void observe() => seen.addAll(
+          alerts.alerts.map((alert) => (alert.id, alert.occurrence)),
+        );
         alerts.addListener(observe);
         addTearDown(() => alerts.removeListener(observe));
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -1000,9 +1000,11 @@ void main() {
           AppLifecycleState.resumed,
         );
         await tester.pump();
-        expect(alerts.alerts, hasLength(1));
-        final interrupted = alerts.alerts.single;
-        expect(occurrences, {(interrupted.id, interrupted.occurrence)});
+        final outage = alerts.alerts.single;
+        expect(outage.scope, HealthAlertScope.connection);
+        expect(outage.title, 'Connection interrupted');
+        expect(outage.connectionIdentity, harness.identity);
+        expect(seen, {(outage.id, outage.occurrence)});
         expect(harness.host.connectCalls, attempts + (scenario.held ? 0 : 1));
         expect(
           harness.controller.connectionStatus.phase,
@@ -1029,7 +1031,7 @@ void main() {
         if (serverRecovers) {
           if (joinedRecovery != null) await joinedRecovery;
           if (scenario.held) expect(harness.host.connectCalls, attempts + 1);
-          expect(occurrences, {(interrupted.id, interrupted.occurrence)});
+          expect(seen, {(outage.id, outage.occurrence)});
           expect(harness.controller.notificationChat, isNull);
           expect(harness.controller.recovering, isFalse);
           expect(
@@ -1049,9 +1051,9 @@ void main() {
             harness.controller.connectionStatus.recoveryAttemptInProgress,
             isFalse,
           );
-          expect(occurrences, {(interrupted.id, interrupted.occurrence)});
-          expect(alerts.alerts, hasLength(1));
-          expect(alerts.alerts.single.occurrence, interrupted.occurrence);
+          expect(seen, {(outage.id, outage.occurrence)});
+          expect(alerts.alerts.single.id, outage.id);
+          expect(alerts.alerts.single.occurrence, outage.occurrence);
         }
         expect(chat.composer.observation.text, 'Keep the unsent follow-up');
         expect(

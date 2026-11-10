@@ -893,22 +893,23 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
           height: MediaQuery.textScalerOf(context).scale(48),
           child: SingleChildScrollView(
             primary: false,
-            child: Semantics(
-              liveRegion: true,
-              child: Text(
-                _probe.error ??
-                    (_probe.verified
-                        ? 'Connection verified. Select Next to continue.'
-                        : _probe.checking
-                        ? 'Checking access to your Hermes. No message will be sent.'
-                        : 'Check access before continuing. No message will be sent.'),
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: _probe.error == null
-                      ? null
-                      : Theme.of(context).colorScheme.error,
-                ),
-              ),
-            ),
+            child: _probe.error != null
+                ? StudioError(
+                    _probe.error!,
+                    framed: false,
+                    icon: Icons.cloud_off_outlined,
+                  )
+                : Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _probe.verified
+                          ? 'Connection verified. Select Next to continue.'
+                          : _probe.checking
+                          ? 'Checking access to your Hermes. No message will be sent.'
+                          : 'Check access before continuing. No message will be sent.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
           ),
         ),
       ],

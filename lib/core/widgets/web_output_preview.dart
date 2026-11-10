@@ -20,7 +20,7 @@ class WebOutputPreview extends StatefulWidget {
   final String? title;
   final String? resourceTarget;
   final String? actionLabel;
-  final VoidCallback? onAction;
+  final Future<void> Function(BuildContext)? onAction;
 
   const WebOutputPreview({
     super.key,
@@ -38,6 +38,18 @@ class WebOutputPreview extends StatefulWidget {
 
 class _WebOutputPreviewState extends State<WebOutputPreview> {
   bool _showSource = false;
+  bool _actionBusy = false;
+
+  Future<void> _runAction(BuildContext anchor) async {
+    final action = widget.onAction;
+    if (_actionBusy || action == null) return;
+    setState(() => _actionBusy = true);
+    try {
+      await action(anchor);
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -79,10 +91,14 @@ class _WebOutputPreviewState extends State<WebOutputPreview> {
               onPressed: () => setState(() => _showSource = !_showSource),
             ),
           if (widget.onAction != null)
-            ResourceViewerAction(
-              label: widget.actionLabel ?? 'Share resource',
-              icon: Icons.ios_share,
-              onPressed: widget.onAction,
+            Builder(
+              builder: (anchor) => ResourceViewerAction(
+                label: _actionBusy
+                    ? 'Preparing share'
+                    : widget.actionLabel ?? 'Share resource',
+                icon: _actionBusy ? Icons.hourglass_top : Icons.ios_share,
+                onPressed: _actionBusy ? null : () => _runAction(anchor),
+              ),
             ),
         ],
       ),

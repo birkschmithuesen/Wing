@@ -464,10 +464,10 @@ void main() {
           await _snapshot(tester, '${brightness.name}-$scale-lock-failure');
           f.failWrite = false;
           f.readHold = Completer<void>();
-          await tester.ensureVisible(find.text('Retry'));
+          await tester.ensureVisible(find.byTooltip('Retry'));
           await tester.pumpAndSettle();
-          expect(find.text('Retry').hitTestable(), findsOneWidget);
-          await tester.tap(find.text('Retry'));
+          expect(find.byTooltip('Retry').hitTestable(), findsOneWidget);
+          await tester.tap(find.byTooltip('Retry'));
           await tester.pump();
           await tester.pump();
           expect(find.byType(StudioLoading), findsOneWidget);

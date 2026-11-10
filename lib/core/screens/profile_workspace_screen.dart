@@ -395,6 +395,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   final _profileNavigation = WorkspaceProfileNavigation();
   final _composerFocus = FocusNode();
   final _chatSearchFocus = FocusNode();
+  (ProfileSessionKey, ComposerQueueId?, String)? _steerError;
   final _queuedEditErrors = <ProfileSessionKey, String>{};
   final _fileReads = <OwnedRemoteFiles>{};
   final _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -1026,7 +1027,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     controller.setRouteVisibility(this, _hasChatFocus);
   }
 
-  Future<void> _run(Future<void> Function() action) async {
+  Future<void> _run(
+    Future<void> Function() action, {
+    void Function(String)? onFailure,
+  }) async {
     try {
       await action();
     } catch (e) {
@@ -1041,9 +1045,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           FormatException error => error.message,
           _ => workspaceFailureMessage(e),
         };
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: StudioError(message)));
+        if (onFailure == null) {
+          showStudioError(context, message);
+        } else {
+          onFailure(message);
+        }
       }
     }
   }
@@ -1163,9 +1169,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             mounted &&
             anchor.mounted &&
             controller.error != null) {
-          ScaffoldMessenger.of(
-            anchor,
-          ).showSnackBar(SnackBar(content: StudioError(controller.error!)));
+          showStudioError(anchor, controller.error!);
         }
       });
       return;
@@ -2014,9 +2018,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (_fileReads.remove(files)) files.dispose();
   }
 
+  ((ProfileSessionKey, String, String), String)? _approvalError;
+  ((ProfileSessionKey, String, String), String)? _composerAnswerError;
+
   Widget _questionPanel(ProfileChat chat) {
     final payload = chat.runtime.questions!;
     final question = payload.pending!;
+    final key = (chat.key, chat.runtime.runtimeId, question.requestId);
+    final error = _composerAnswerError;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -2030,28 +2039,59 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           onRespond: (answers) =>
               controller.clarifySet(chat, answers, expectedRequest: payload),
         ),
-        Align(
-          alignment: Alignment.centerRight,
-          child: ListenableBuilder(
-            listenable: Listenable.merge([
-              controller.composerChanges,
-              controller,
-            ]),
-            builder: (context, _) => StudioButtonPress(
-              child: IconButton(
-                tooltip: 'Answer with composer text',
-                onPressed: controller.canAnswerWithComposer(chat)
-                    ? () => _run(() => controller.answerWithComposer(chat))
-                    : null,
-                icon: chat.answeringQuestion
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.keyboard_return),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (error != null && error.$1 == key)
+              Expanded(
+                child: StudioError(
+                  error.$2,
+                  icon: Icons.keyboard_return,
+                  framed: false,
+                ),
+              )
+            else
+              const Spacer(),
+            ListenableBuilder(
+              listenable: Listenable.merge([
+                controller.composerChanges,
+                controller,
+              ]),
+              builder: (context, _) => StudioButtonPress(
+                child: IconButton(
+                  tooltip: 'Answer with composer text',
+                  onPressed: controller.canAnswerWithComposer(chat)
+                      ? () {
+                          if (_composerAnswerError != null) {
+                            setState(() => _composerAnswerError = null);
+                          }
+                          _run(
+                            () => controller.answerWithComposer(chat),
+                            onFailure: (message) {
+                              if (!_hasChatFocus ||
+                                  controller.current?.chat != chat ||
+                                  chat.runtime.runtimeId != key.$2 ||
+                                  chat.runtime.pendingQuestion?.requestId !=
+                                      key.$3) {
+                                return;
+                              }
+                              setState(
+                                () => _composerAnswerError = (key, message),
+                              );
+                            },
+                          );
+                        }
+                      : null,
+                  icon: chat.answeringQuestion
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.keyboard_return),
+                ),
               ),
             ),
-          ),
+          ],
         ),
       ],
     );
@@ -2664,6 +2704,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               Builder(
                 builder: (context) {
                   final request = chat.runtime.approval!;
+                  final key = (
+                    chat.key,
+                    chat.runtime.runtimeId,
+                    request.requestId,
+                  );
+                  final error = _approvalError;
                   return _notificationAnchor(
                     chat,
                     'approval',
@@ -2676,13 +2722,28 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                       enabled:
                           !chat.runtime.approvalResponding &&
                           !chat.runtime.reconnecting,
-                      onRespond: (choice) => _run(
-                        () => controller.approve(
-                          chat,
-                          choice.wireValue,
-                          requestId: request.requestId,
-                        ),
-                      ),
+                      error: error != null && error.$1 == key ? error.$2 : null,
+                      onRespond: (choice) {
+                        if (_approvalError != null) {
+                          setState(() => _approvalError = null);
+                        }
+                        _run(
+                          () => controller.approve(
+                            chat,
+                            choice.wireValue,
+                            requestId: request.requestId,
+                          ),
+                          onFailure: (message) {
+                            if (!_hasChatFocus ||
+                                controller.current?.chat != chat ||
+                                chat.runtime.runtimeId != key.$2 ||
+                                chat.runtime.approval?.requestId != key.$3) {
+                              return;
+                            }
+                            setState(() => _approvalError = (key, message));
+                          },
+                        );
+                      },
                     ),
                   );
                 },
@@ -2900,8 +2961,19 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       fastMode: chat.fastMode,
       onReasoningChanged: (effort) =>
           _run(() => _changeModelControls(chat, reasoning: effort)),
-      onFastChanged: (mode) =>
-          _run(() => _changeModelControls(chat, fast: mode)),
+      onFastChanged: (anchor, mode) {
+        final errorKey = ('change-chat-fast-mode', chat.key);
+        dismissTransientError(anchor, errorKey: errorKey);
+        _run(
+          () => _changeModelControls(chat, fast: mode),
+          onFailure: (message) => showTransientError(
+            anchor,
+            message,
+            errorKey: errorKey,
+            icon: Icons.bolt_outlined,
+          ),
+        );
+      },
       reasoningEffort: chat.reasoningEffort ?? 'default',
       onPressed: enabled
           ? () => _run(() => _chooseIntelligence(chat, context))
@@ -2990,19 +3062,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           controller.updateQueuedPromptEdit(chat, value);
           return;
         }
-        unawaited(
-          controller.updateDraft(chat, value).catchError((_) {
-            if (context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: StudioError(
-                    'This draft could not be saved on the device.',
-                  ),
-                ),
-              );
-            }
-          }),
-        );
+        unawaited(_saveComposerDraft(chat, value));
       },
       microphone: chat.composer.observation.editingEntry == null
           ? _dictationButton(chat)
@@ -3041,6 +3101,24 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     );
   }
 
+  int _composerSaveRevision = 0;
+  ProfileSessionKey? _composerSaveFailedFor;
+
+  Future<void> _saveComposerDraft(ProfileChat chat, String text) async {
+    final revision = ++_composerSaveRevision;
+    var failed = false;
+    try {
+      await controller.updateDraft(chat, text);
+    } catch (_) {
+      failed = true;
+    }
+    if (!mounted || revision != _composerSaveRevision) return;
+    final failure = failed ? chat.key : null;
+    if (_composerSaveFailedFor != failure) {
+      setState(() => _composerSaveFailedFor = failure);
+    }
+  }
+
   Widget _composerPanel(
     ProfileChat chat,
     BoxConstraints constraints,
@@ -3070,7 +3148,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   loadCompletion: (query) =>
                       controller.completeCommand(chat, query),
                   refreshCommands: () => controller.refreshCommandCatalog(chat),
-                  saveDraft: (text) => controller.updateDraft(chat, text),
+                  saveDraft: (text) => _saveComposerDraft(chat, text),
                   inspectSkill: (skill) => _inspectSkill(chat, skill),
                   composer: _composer,
                 ),
@@ -3122,6 +3200,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               ProfileQueuedMessages(
                 key: ValueKey(('queued-messages', chat.key)),
                 work: chat.composer.observation,
+                steerErrorFor: (id) {
+                  final failure = _steerError;
+                  return failure != null &&
+                          failure.$1 == chat.key &&
+                          failure.$2 == id
+                      ? failure.$3
+                      : null;
+                },
                 onOpenActions: (prompt) => _showQueuedActions(chat, prompt),
                 onEdit: !chat.composer.actions().canEditQueue
                     ? null
@@ -3208,6 +3294,19 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                       ],
                     ),
                   _voiceActivity(),
+                  if (_steerError case (
+                    final key,
+                    null,
+                    final error,
+                  ) when key == chat.key)
+                    StudioError(error, icon: WingIcons.steer),
+                  if (_composerSaveFailedFor == chat.key)
+                    const StudioError(
+                      'This draft could not be saved on the device.',
+                      detail:
+                          'Your text is still here. Edit it to try saving again.',
+                      icon: Icons.save_outlined,
+                    ),
                 ],
                 field: _composerTextField(context, chat),
                 focusNode: _composerFocus,
@@ -3438,6 +3537,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   Widget _dictationButton(ProfileChat chat) => VoiceInputButton(
+    controller: _voiceInput,
     enabled:
         LiveVoiceScope.maybeOf(context)?.session.active != true &&
         _voiceInput.canDictate(controller.canDictate(chat)),
@@ -3507,14 +3607,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       case ComposerAction.queue:
         await _run(() => controller.queuePrompt(chat, text));
       case ComposerAction.steer:
-        final accepted = await _runValue(() => controller.steer(chat, text));
-        if (accepted == false && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: StudioError('Hermes rejected the steering message.'),
-            ),
-          );
-        }
+        await _steer(chat, () => controller.steer(chat, text));
     }
   }
 
@@ -3786,20 +3879,36 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       case 'edit':
         await _beginQueuedEdit(chat, prompt);
       case 'steer':
-        final accepted = await _runValue(
+        await _steer(
+          chat,
           () => controller.steerQueuedPrompt(chat, prompt.id),
+          queued: prompt.id,
         );
-        if (accepted == false && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: StudioError('Hermes rejected the steering message.'),
-            ),
-          );
-        }
       case 'delete':
         await _deleteQueuedPrompt(chat, prompt);
       case 'resume':
         await _run(() => controller.resumeQueue(chat));
+    }
+  }
+
+  Future<void> _steer(
+    ProfileChat chat,
+    Future<bool> Function() submit, {
+    ComposerQueueId? queued,
+  }) async {
+    if (_steerError != null) setState(() => _steerError = null);
+    String? error;
+    try {
+      if (!await submit()) error = 'Hermes rejected the steering message.';
+    } catch (failure) {
+      error = switch (failure) {
+        StateError error => error.message.toString(),
+        _ => workspaceFailureMessage(failure),
+      };
+    }
+    if (error != null && mounted && controller.current?.chat == chat) {
+      final message = error;
+      setState(() => _steerError = (chat.key, queued, message));
     }
   }
 
@@ -3808,9 +3917,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       return await action();
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: StudioError(e.toString())));
+        showStudioError(context, e.toString());
       }
       return null;
     }

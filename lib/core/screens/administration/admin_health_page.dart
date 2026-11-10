@@ -1,3 +1,4 @@
+import '../../widgets/studio_error.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import '../../widgets/health_alerts/health_alert_settings_entry.dart';
 import '../../models/profile_session_key.dart';
@@ -200,27 +201,36 @@ class AdminHealthContent extends StatelessWidget {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              switch (finding.status) {
-                AdministrationHealthStatus.healthy => Icons.info_outline,
-                AdministrationHealthStatus.unknown => Icons.help_outline,
-                _ => Icons.error_outline,
-              },
-              color: administrationHealthColor(context, finding.status),
-              size: 22,
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                finding.detail,
-                style: Theme.of(context).textTheme.bodyMedium,
+        if (finding.status == AdministrationHealthStatus.failure ||
+            finding.status == AdministrationHealthStatus.warning)
+          StudioError(
+            finding.detail,
+            severity: finding.status == AdministrationHealthStatus.failure
+                ? StudioErrorSeverity.error
+                : StudioErrorSeverity.noResult,
+          )
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                switch (finding.status) {
+                  AdministrationHealthStatus.healthy => Icons.info_outline,
+                  AdministrationHealthStatus.unknown => Icons.help_outline,
+                  _ => Icons.error_outline,
+                },
+                color: administrationHealthColor(context, finding.status),
+                size: 22,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  finding.detail,
+                  style: Theme.of(context).textTheme.bodyMedium,
+                ),
+              ),
+            ],
+          ),
         if (finding.checkedAt case final at?) ...[
           const SizedBox(height: 8),
           Text(

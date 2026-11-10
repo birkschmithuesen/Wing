@@ -152,16 +152,17 @@ class _WingPluginPageState extends State<WingPluginPage> {
       const SizedBox(height: 24),
       if (review != null) _review(context),
       if (review == null) ...[
-        Text(
-          overview.title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            color: overview.needsAttention
-                ? Theme.of(context).colorScheme.error
-                : null,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(overview.detail),
+        if (overview.needsAttention)
+          StudioError(
+            overview.title,
+            detail: overview.detail,
+            icon: Icons.extension_outlined,
+          )
+        else ...[
+          Text(overview.title, style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          Text(overview.detail),
+        ],
       ],
       if (overview.installedVersions case final versions?)
         _version(context, 'Installed version', versions),

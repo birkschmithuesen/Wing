@@ -284,7 +284,12 @@ class BackgroundMarkdownContentState extends State<BackgroundMarkdownContent>
             mainAxisSize: MainAxisSize.min,
             children: [
               child,
-              const StudioError('Could not display this message.'),
+              const Flexible(
+                child: SingleChildScrollView(
+                  primary: false,
+                  child: StudioError('Could not display this message.'),
+                ),
+              ),
             ],
           )
         : child;

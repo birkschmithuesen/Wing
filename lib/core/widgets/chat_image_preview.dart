@@ -4,12 +4,12 @@ import 'dart:typed_data';
 import 'resource_filename.dart';
 
 /// Opened only after tapping an image in a conversation.
-class ChatImagePreview extends StatelessWidget {
+class ChatImagePreview extends StatefulWidget {
   final Uri? uri;
   final Uint8List? bytes;
   final String title;
   final String? resourceTarget;
-  final VoidCallback? onOpenExternal;
+  final Future<String?> Function()? onOpenExternal;
   final String actionLabel;
   final IconData actionIcon;
 
@@ -25,28 +25,55 @@ class ChatImagePreview extends StatelessWidget {
   }) : assert((uri == null) != (bytes == null));
 
   @override
+  State<ChatImagePreview> createState() => _ChatImagePreviewState();
+}
+
+class _ChatImagePreviewState extends State<ChatImagePreview> {
+  final _errorKey = Object();
+  bool _opening = false;
+
+  Future<void> _openExternal(BuildContext anchor) async {
+    final open = widget.onOpenExternal;
+    if (_opening || open == null) return;
+    dismissTransientError(anchor, errorKey: _errorKey);
+    setState(() => _opening = true);
+    try {
+      final error = await open();
+      if (error != null && anchor.mounted) {
+        showTransientError(
+          anchor,
+          error,
+          errorKey: _errorKey,
+          icon: widget.actionIcon,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _opening = false);
+    }
+  }
+
+  Widget _action() => Builder(
+    builder: (anchor) => ResourceViewerAction(
+      label: _opening ? 'Preparing image' : widget.actionLabel,
+      icon: _opening ? Icons.hourglass_top : widget.actionIcon,
+      onPressed: _opening ? null : () => _openExternal(anchor),
+    ),
+  );
+
+  @override
   Widget build(BuildContext context) => Scaffold(
     appBar: ResourceViewerAppBar(
       context: context,
-      title: title,
-      target: resourceTarget,
-      actions: [
-        if (onOpenExternal != null)
-          ResourceViewerAction(
-            label: actionLabel,
-            icon: actionIcon,
-            onPressed: onOpenExternal,
-          ),
-      ],
+      title: widget.title,
+      target: widget.resourceTarget,
+      actions: [if (widget.onOpenExternal != null) _action()],
     ),
     body: ChatImageViewport(
-      uri: uri,
-      bytes: bytes,
-      title: title,
+      uri: widget.uri,
+      bytes: widget.bytes,
+      title: widget.title,
       imageDecoration: const BoxDecoration(),
-      onOpenExternal: onOpenExternal,
-      actionLabel: actionLabel,
-      actionIcon: actionIcon,
+      failureAction: widget.onOpenExternal == null ? null : _action(),
     ),
   );
 }
@@ -59,9 +86,7 @@ class ChatImageViewport extends StatefulWidget {
     this.bytes,
     required this.title,
     required this.imageDecoration,
-    this.onOpenExternal,
-    this.actionLabel = 'Open in browser',
-    this.actionIcon = Icons.open_in_new,
+    this.failureAction,
     this.onNavigationEnabled,
   }) : assert((uri == null) != (bytes == null));
 
@@ -69,9 +94,7 @@ class ChatImageViewport extends StatefulWidget {
   final Uint8List? bytes;
   final String title;
   final BoxDecoration imageDecoration;
-  final VoidCallback? onOpenExternal;
-  final String actionLabel;
-  final IconData actionIcon;
+  final Widget? failureAction;
   final ValueChanged<bool>? onNavigationEnabled;
 
   @override
@@ -169,13 +192,9 @@ class _ChatImageViewportState extends State<ChatImageViewport> {
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       const StudioError('This image could not be previewed.'),
-                      if (widget.onOpenExternal != null) ...[
+                      if (widget.failureAction case final action?) ...[
                         const SizedBox(height: 12),
-                        ResourceViewerAction(
-                          onPressed: widget.onOpenExternal,
-                          icon: widget.actionIcon,
-                          label: widget.actionLabel,
-                        ),
+                        action,
                       ],
                     ],
                   ),

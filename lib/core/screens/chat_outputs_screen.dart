@@ -1,3 +1,4 @@
+import '../widgets/studio_form_actions.dart';
 import '../widgets/selection_viewport.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import '../widgets/wing_app_bar.dart';
@@ -83,12 +84,30 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
 
   void _error(BuildContext context, Object error, {VoidCallback? onRetry}) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: StudioError(fileOpenErrorMessage(error)),
-        action: onRetry == null
-            ? null
-            : SnackBarAction(label: 'Retry', onPressed: onRetry),
+    final message = fileOpenErrorMessage(error);
+    if (onRetry == null) {
+      showStudioError(context, message);
+      return;
+    }
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StudioDialog(
+          content: StudioError(message),
+          actions: [
+            const StudioButtonPress(child: CloseButton()),
+            StudioButtonPress(
+              child: IconButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  onRetry();
+                },
+                tooltip: 'Retry',
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -147,17 +166,26 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
         final source = prepared.svgSource!;
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (previewContext) => WebOutputPreview(
+            builder: (_) => WebOutputPreview(
               source: source,
               format: WebOutputFormat.svg,
               title: output.label,
               resourceTarget: path,
               actionLabel: 'Save or share',
-              onAction: () async {
+              onAction: (anchor) async {
+                const key = 'share-svg-output';
+                dismissTransientError(anchor, errorKey: key);
                 try {
                   await _share(imageFile!);
                 } catch (error) {
-                  if (previewContext.mounted) _error(previewContext, error);
+                  if (anchor.mounted) {
+                    showTransientError(
+                      anchor,
+                      fileOpenErrorMessage(error),
+                      errorKey: key,
+                      icon: Icons.share_outlined,
+                    );
+                  }
                 }
               },
             ),
@@ -167,7 +195,7 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
       }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (previewContext) => ChatImagePreview(
+          builder: (_) => ChatImagePreview(
             uri: uri,
             bytes: imageFile?.bytes,
             title: output.label,
@@ -185,8 +213,9 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                 } else {
                   await _openLink(output.url!);
                 }
+                return null;
               } catch (error) {
-                if (previewContext.mounted) _error(previewContext, error);
+                return fileOpenErrorMessage(error);
               }
             },
           ),
@@ -203,6 +232,7 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
     final isPdf = prepared.isPdf;
     final isMarkdown = prepared.isMarkdown;
     var delivering = false;
+    String? deliveryError;
     var showMarkdownSource = false;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -210,7 +240,10 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
           builder: (previewContext, setPreviewState) {
             Future<void> deliverFile(_FileAction action) async {
               if (!mounted || delivering) return;
-              setPreviewState(() => delivering = true);
+              setPreviewState(() {
+                delivering = true;
+                deliveryError = null;
+              });
               try {
                 final file = await _session.download(path!);
                 if (!mounted || !previewContext.mounted) return;
@@ -230,12 +263,9 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                       mimeType: preview.mimeType,
                     );
                     if (!opened && previewContext.mounted) {
-                      ScaffoldMessenger.of(previewContext).showSnackBar(
-                        const SnackBar(
-                          content: StudioError(
+                      setPreviewState(
+                        () => deliveryError =
                             'No compatible app was found. Use Save or share instead.',
-                          ),
-                        ),
                       );
                     }
                   case _FileAction.play:
@@ -254,28 +284,19 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                       },
                     );
                     if (!opened && previewContext.mounted) {
-                      ScaffoldMessenger.of(previewContext).showSnackBar(
-                        const SnackBar(
-                          content: StudioError(
+                      setPreviewState(
+                        () => deliveryError =
                             'Media playback is unavailable on this device. Try Open in app or Save or share.',
-                          ),
-                        ),
                       );
                     }
                 }
               } catch (error) {
                 if (previewContext.mounted) {
-                  if (action == _FileAction.play) {
-                    ScaffoldMessenger.of(previewContext).showSnackBar(
-                      const SnackBar(
-                        content: StudioError(
-                          'This media could not be played on this device.',
-                        ),
-                      ),
-                    );
-                  } else {
-                    _error(previewContext, error);
-                  }
+                  setPreviewState(
+                    () => deliveryError = action == _FileAction.play
+                        ? 'This media could not be played on this device.'
+                        : fileOpenErrorMessage(error),
+                  );
                 }
               } finally {
                 if (previewContext.mounted) {
@@ -313,11 +334,28 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                       ? null
                       : () => deliverFile(_FileAction.share),
                 ),
-                ResourceViewerAction(
-                  label: 'Copy content',
-                  icon: Icons.copy_outlined,
-                  onPressed: () =>
-                      Clipboard.setData(ClipboardData(text: preview.text)),
+                Builder(
+                  builder: (anchor) => ResourceViewerAction(
+                    label: 'Copy content',
+                    icon: Icons.copy_outlined,
+                    onPressed: () async {
+                      dismissTransientError(anchor, errorKey: 'copy-output');
+                      try {
+                        await Clipboard.setData(
+                          ClipboardData(text: preview.text),
+                        );
+                      } catch (_) {
+                        if (anchor.mounted) {
+                          showTransientError(
+                            anchor,
+                            'Could not copy this text. Try again.',
+                            errorKey: 'copy-output',
+                            icon: Icons.copy_outlined,
+                          );
+                        }
+                      }
+                    },
+                  ),
                 ),
               ],
             ];
@@ -332,6 +370,8 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
               body: ListView(
                 padding: const EdgeInsets.all(WingSpacing.sm),
                 children: [
+                  if (deliveryError case final error?)
+                    StudioError(error, icon: Icons.insert_drive_file_outlined),
                   if (preview.binary)
                     Text(
                       canOpen
@@ -405,7 +445,10 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                                 ? null
                                 : () async {
                                     if (delivering) return;
-                                    setPreviewState(() => delivering = true);
+                                    setPreviewState(() {
+                                      delivering = true;
+                                      deliveryError = null;
+                                    });
                                     try {
                                       await Navigator.of(previewContext).push(
                                         MaterialPageRoute<void>(

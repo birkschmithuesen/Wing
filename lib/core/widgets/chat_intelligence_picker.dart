@@ -27,7 +27,7 @@ class ChatIntelligenceButton extends StatelessWidget {
   final ModelChoice? observation;
   final VoidCallback? onPressed;
   final ValueChanged<String>? onReasoningChanged;
-  final ValueChanged<ChatFastMode>? onFastChanged;
+  final void Function(BuildContext, ChatFastMode)? onFastChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -82,24 +82,27 @@ class ChatIntelligenceButton extends StatelessWidget {
           child: Semantics(
             toggled: fastMode!.enabled,
             label: 'Fast mode',
-            child: StudioButtonPress(
-              child: TextButton(
-                key: const Key('composer-fast-control'),
-                onPressed: onPressed == null || onFastChanged == null
-                    ? null
-                    : () => onFastChanged!(
-                        fastMode!.enabled
-                            ? ChatFastMode.normal
-                            : ChatFastMode.fast,
-                      ),
-                style: buttonStyle.copyWith(
-                  foregroundColor: WidgetStatePropertyAll(
-                    fastMode!.enabled ? tokens.accent : tokens.muted,
+            child: Builder(
+              builder: (anchor) => StudioButtonPress(
+                child: TextButton(
+                  key: const Key('composer-fast-control'),
+                  onPressed: onPressed == null || onFastChanged == null
+                      ? null
+                      : () => onFastChanged!(
+                          anchor,
+                          fastMode!.enabled
+                              ? ChatFastMode.normal
+                              : ChatFastMode.fast,
+                        ),
+                  style: buttonStyle.copyWith(
+                    foregroundColor: WidgetStatePropertyAll(
+                      fastMode!.enabled ? tokens.accent : tokens.muted,
+                    ),
                   ),
-                ),
-                child: Icon(
-                  fastMode!.enabled ? Icons.bolt : Icons.bolt_outlined,
-                  size: 14,
+                  child: Icon(
+                    fastMode!.enabled ? Icons.bolt : Icons.bolt_outlined,
+                    size: 14,
+                  ),
                 ),
               ),
             ),
