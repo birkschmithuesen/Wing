@@ -52,7 +52,6 @@ class MainActivity : FlutterActivity() {
     private var botScreenChannel: BotScreenChannel? = null
     private var emailComposerChannel: EmailComposerChannel? = null
     private var scrollCaptureChannel: ScrollCaptureChannel? = null
-    private var keyboardInsets: KeyboardInsetsSync? = null
     private var intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
     @Volatile private var shareAuthority = Any()
     @Volatile private var shareAuthorityActive = true
@@ -70,7 +69,6 @@ class MainActivity : FlutterActivity() {
         initialShareIntent = intent.takeIf(::isShareIntent)
         initialLaunchAction = launchActionFor(intent)
         super.onCreate(savedInstanceState)
-        keyboardInsets = KeyboardInsetsSync(this)
         if (retainedEngine) {
             // Dart startup has already run. Deliver taps/shares to its existing listeners.
             initialShareIntent = null
@@ -289,8 +287,6 @@ class MainActivity : FlutterActivity() {
         // Clean up at engine detachment, before a replacement host installs its
         // handlers. The old host's later onDestroy must not clear those handlers.
         engineAttached = false
-        keyboardInsets?.close()
-        keyboardInsets = null
         scrollCaptureChannel?.close()
         scrollCaptureChannel = null
         botScreenChannel?.close()
@@ -362,7 +358,6 @@ class MainActivity : FlutterActivity() {
 
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
-        keyboardInsets?.onWindowFocusChanged(hasFocus)
         if (hasFocus) botScreenChannel?.apply()
     }
 

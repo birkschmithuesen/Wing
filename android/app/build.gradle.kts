@@ -191,3 +191,6 @@ dependencies {
    // JVM tests exercise the actual native JSON boundary, outside Android's stub jar.
    testImplementation("org.json:json:20260814")
 }
+
+// Correct the upstream animation-cache lifetime in every embedding build mode.
+apply(from = rootProject.file("ime-cache-fix.gradle.kts"))

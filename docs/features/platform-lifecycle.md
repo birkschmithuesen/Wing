@@ -6,7 +6,7 @@ Feature ID: `platform-lifecycle`.
 
 ## Sub-features
 
-- `platform-lifecycle.resume` — Reenter the intended captured workspace. Window focus recovery applies Android's current keyboard geometry, including when an interrupted animation never delivered its end callback. See the [keyboard regression](chat-inputs.md#driving-it-with-wing-harnesses).
+- `platform-lifecycle.resume` — Reenter the intended captured workspace. Returning during a keyboard transition must not restore a previous animation's keyboard height when Android supplies no new inset snapshot. See the [keyboard regression](chat-inputs.md#driving-it-with-wing-harnesses).
 - `platform-lifecycle.monitor` — Share and retire background work correctly.
   Pausing stops Recents display polling and catalog projections immediately,
   even when Android renders no final frame. Background replies and notifications

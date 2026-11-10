@@ -34,12 +34,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   `flutter test --no-pub test/recent_conversation_switcher_test.dart --name 'group passive card'`
   checks the same geometry in passive group previews without enabling actions.
 
-  The native keyboard regression exercises Flutter's actual inset callback with
-  an obsolete deferred snapshot, overlapping animations, window focus recovery
-  and activity retirement:
+  The native keyboard regression replays Android's resume sequence against
+  Flutter's actual inset callback: an animation without a new inset delivery
+  must not restore the previous animation's keyboard height. It also checks
+  normal intermediate frames and preservation of a still-visible keyboard:
 
   ```sh
-  (cd android && ./gradlew :app:testDebugUnitTest --tests io.flutter.plugin.editing.KeyboardInsetsSyncTest)
+  (cd android && ./gradlew :app:testDebugUnitTest --tests io.flutter.plugin.editing.ImeAnimationCacheTest)
   ```
 
   These JVM checks establish native inset delivery. `phone_reading_test.dart`
