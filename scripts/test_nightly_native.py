@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.request
 
@@ -28,6 +29,7 @@ from scripts.native_impact import FAMILIES, plan as impact_plan  # noqa: E402
 
 DEV = 'com.tarkilhk.wing.dev'
 QA = 'com.tarkilhk.wing.notificationqa'
+ADB_INPUT_TIMEOUT_EXIT = 75
 CLIPBOARD_DEFINES = ('--dart-define=HERMES_CLIPBOARD_DEVICE_TEST=true',)
 SLASH_DEFINES = ('--dart-define=SLASH_NATIVE_INPUT=true',)
 DIRECT_SUITES = {
@@ -82,6 +84,7 @@ class Runner:
         self.device = None
         self.prepared = None
         self.steps = []
+        self.input_timeout_at = None
         self.environment = dict(os.environ)
         self.environment.update({
             'ORG_GRADLE_PROJECT_notificationQa': 'false',
@@ -129,7 +132,7 @@ class Runner:
         return self.adb('shell', *parts)
 
     def capture_failure(self):
-        android.capture_failure(self.device, self.output)
+        return android.capture_failure(self.device, self.output)
 
     def build(self, target, *, qa=False, defines=()):
         self.environment['ORG_GRADLE_PROJECT_notificationQa'] = str(qa).lower()
@@ -171,14 +174,29 @@ class Runner:
         # Let legacy driver finally blocks retire their own Flutter process groups
         # when the outer deadline/cancellation sends SIGTERM.
         trampoline = (
-            'import runpy,signal,sys\n'
+            'import os,runpy,signal,subprocess,sys,traceback\n'
             'def stop(signum, frame): raise KeyboardInterrupt("Nightly cancelled")\n'
             'signal.signal(signal.SIGTERM, stop)\n'
-            'sys.argv=sys.argv[1:]\n'
-            'runpy.run_path(sys.argv[0], run_name="__main__")\n'
+            'serial = sys.argv[1]\n'
+            'sys.argv = sys.argv[2:]\n'
+            'try:\n'
+            '    runpy.run_path(sys.argv[0], run_name="__main__")\n'
+            'except subprocess.TimeoutExpired as error:\n'
+            '    cmd = error.cmd\n'
+            '    if (isinstance(cmd, (tuple, list)) and len(cmd) > 5\n'
+            '            and os.path.basename(cmd[0]) == "adb"\n'
+            '            and list(cmd[1:5]) == ["-s", serial, "shell", "input"]):\n'
+            '        traceback.print_exc()\n'
+            f'        sys.exit({ADB_INPUT_TIMEOUT_EXIT})\n'
+            '    raise\n'
         )
-        self.run(Path(script).stem, [sys.executable, '-c', trampoline,
-                                   script, *map(str, args)], timeout=3000)
+        try:
+            self.run(Path(script).stem, [sys.executable, '-c', trampoline,
+                                       str(self.device), script, *map(str, args)], timeout=3000)
+        except RuntimeError:
+            if self.steps[-1].get('exit_code') == ADB_INPUT_TIMEOUT_EXIT:
+                self.input_timeout_at = time.time()
+            raise
 
     def wait_fixture(self, port):
         deadline = time.monotonic() + 30
@@ -497,6 +515,28 @@ def main():
         parser.error('Choose a native family or --matrix')
     os.chdir(ROOT)
     output = args.output.resolve() / args.family
+    receipt = run_family_attempt(args, output,
+                                 detect_graphics_stall=os.environ.get('GITHUB_ACTIONS') == 'true')
+    if receipt.get('graphics_input_stall') and not receipt.get('source_changed'):
+        recovery = Path(tempfile.mkdtemp(prefix='graphics-retry-', dir=output))
+        first_receipt = recovery / 'first-attempt.json'
+        (output / 'receipt.json').replace(first_receipt)
+        print('Android gfxstream input ANR; repeating the complete family on a fresh emulator.',
+              flush=True)
+        retry = run_family_attempt(args, recovery)
+        if retry['source_before'] != receipt['source_before']:
+            retry.update(passed=False, source_changed=True)
+        retry['graphics_recovery'] = {
+            'first_receipt': str(first_receipt.relative_to(output)),
+            'retry_receipt': str((recovery / 'receipt.json').relative_to(output)),
+        }
+        receipt = retry
+        (output / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
+    print(json.dumps(receipt, indent=2), flush=True)
+    return 0 if receipt['passed'] else 1
+
+
+def run_family_attempt(args, output, *, detect_graphics_stall=False):
     output.mkdir(parents=True, exist_ok=True)
     previous_output = android.OUTPUT
     android.OUTPUT = output
@@ -518,15 +558,24 @@ def main():
                 # source stale if upstream advances during Android startup.
                 runner.family(args.family, args.hermes_source)
             else:
+                stalled = None
                 with android.owned_emulator() as device:
                     runner.device = device
                     android.require_emulator(device)
                     receipt['device'] = device
                     try:
                         runner.family(args.family, args.hermes_source)
-                    except (Exception, KeyboardInterrupt):
-                        runner.capture_failure()
-                        raise
+                    except (Exception, KeyboardInterrupt) as error:
+                        report = runner.capture_failure()
+                        if (not detect_graphics_stall or runner.input_timeout_at is None or
+                                isinstance(error, KeyboardInterrupt) or
+                                not android.has_graphics_input_anr(report, runner.input_timeout_at)):
+                            raise
+                        stalled = error
+                # Recovery is safe only after the first AVD has retired.
+                if stalled is not None:
+                    receipt['graphics_input_stall'] = True
+                    raise stalled
         receipt['passed'] = bool(runner.steps) and all(step['passed'] for step in runner.steps)
     except (Exception, KeyboardInterrupt) as error:
         receipt['error'] = str(error) or type(error).__name__
@@ -536,8 +585,7 @@ def main():
         if receipt['source_before'] != receipt['source_after']:
             receipt.update(passed=False, source_changed=True)
         (output / 'receipt.json').write_text(json.dumps(receipt, indent=2) + '\n')
-    print(json.dumps(receipt, indent=2), flush=True)
-    return 0 if receipt['passed'] else 1
+    return receipt
 
 
 if __name__ == '__main__':

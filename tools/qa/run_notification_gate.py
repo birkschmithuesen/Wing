@@ -7,14 +7,18 @@ With no serial, own an ephemeral AVD (SDK image must already be installed).
 import argparse
 import json
 from contextlib import contextmanager
+from datetime import datetime
 import os
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
 import time
 import tempfile
 import xml.etree.ElementTree as ET
+from zipfile import BadZipFile, ZipFile
+from zlib import error as ZipDataError
 
 IMAGE = 'system-images;android-36;google_apis;x86_64'
 OUTPUT = Path('build/notification-gate')
@@ -48,6 +52,7 @@ def capture_failure(serial, output):
         return
     errors = []
     anr = False
+    report = None
     for name, args in {
         'failure-logcat.txt': ('logcat', '-d', '-t', '3000'),
         'failure-window.txt': ('shell', 'dumpsys', 'window'),
@@ -78,10 +83,13 @@ def capture_failure(serial, output):
         # Logcat identifies the ANR but omits the saved Java/native thread traces.
         # The Android bugreport retains those after the failed app has stopped.
         try:
+            destination = output / 'failure-bugreport.zip'
+            destination.unlink(missing_ok=True)
             with (output / 'failure-bugreport-command.log').open('w') as log:
                 subprocess.run([adb_path(), '-s', serial, 'bugreport',
-                                str(output / 'failure-bugreport.zip')],
+                                str(destination)],
                                stdout=log, stderr=subprocess.STDOUT, check=True, timeout=120)
+            report = destination
         except (OSError, subprocess.SubprocessError) as error:
             errors.append('failure-bugreport.zip: ' + str(error))
     if errors:
@@ -89,6 +97,47 @@ def capture_failure(serial, output):
             (output / 'capture-errors.json').write_text(json.dumps(errors, indent=2) + '\n')
         except OSError as error:
             print('Could not record capture errors: ' + str(error), file=sys.stderr)
+    return report
+
+
+def has_graphics_input_anr(report, input_timeout_at):
+    """Match a recent input ANR whose blocked process is waiting on gfxstream."""
+    if report is None:
+        return False
+    try:
+        with ZipFile(report) as archive:
+            for entry in archive.infolist():
+                if (entry.filename.startswith('FS/data/anr/anr_') and
+                        entry.file_size <= 2 * 1024 * 1024 and
+                        _graphics_input_trace(archive.read(entry).decode(errors='replace'),
+                                              input_timeout_at)):
+                    return True
+    except (OSError, BadZipFile, EOFError, RuntimeError, ZipDataError):
+        return False
+    return False
+
+
+def _graphics_input_trace(trace, input_timeout_at):
+    # Only the ANR victim's first process dump is authoritative. Bugreports
+    # can also contain graphics stacks for unrelated processes.
+    header, _, dump = trace.partition('\n----- pid ')
+    process, end, _ = dump.partition('\n----- end ')
+    subject = re.search(r'^Subject: Input dispatching timed out \((.*)$', header, re.M)
+    package = re.search(r'^Cmd line: (\S+)$', process, re.M)
+    timestamp = re.match(r'\d+ at (.+) -----\n', process)
+    if not (end and subject and package and timestamp and f' {package[1]}/' in subject[1]):
+        return False
+    try:
+        dumped_at = datetime.fromisoformat(timestamp[1])
+    except ValueError:
+        return False
+    if dumped_at.tzinfo is None or not -5 <= input_timeout_at - dumped_at.timestamp() <= 60:
+        return False
+    blocks = re.split(r'(?m)^"([^"\n]+)"[^\n]*\n', process)
+    threads = dict(zip(blocks[1::2], blocks[2::2]))
+    return ('DrawFrameTask::drawFrame' in threads.get('main', '') and
+            'vulkan.ranchu.so (gfxstream::vk::VkEncoder::vkQueueWaitIdle+' in
+            threads.get('RenderThread', ''))
 
 
 def check_on_emulator(serial):

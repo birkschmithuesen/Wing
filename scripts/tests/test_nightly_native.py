@@ -1,4 +1,5 @@
 import contextlib
+from datetime import datetime, timedelta, timezone
 import io
 import json
 import os
@@ -10,6 +11,7 @@ import tempfile
 import time
 import unittest
 from unittest.mock import patch
+from zipfile import ZipFile
 
 from scripts import test_nightly_native as nightly
 from scripts import test_native_notification_counts as counts
@@ -428,6 +430,87 @@ class Catalog(unittest.TestCase):
                 self.assertEqual(retired, [True])
                 self.assertEqual(nightly.android.OUTPUT, original_output)
                 capture.assert_called_once()
+
+    def test_ci_replays_only_a_current_graphics_input_stall_on_a_fresh_emulator(self):
+        for scenario, expected_attempts, expected_code in (
+            ('graphics', 2, 0),
+            ('repeated stall', 2, 1),
+            ('stale trace', 1, 1),
+            ('unrelated thread', 1, 1),
+            ('unrelated timeout', 1, 1),
+            ('product assertion', 1, 1),
+            ('retirement failed', 1, 1),
+            ('local execution', 1, 1),
+        ):
+            with self.subTest(scenario=scenario), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                driver = root / 'driver.py'
+                action = 'screencap' if scenario == 'unrelated timeout' else 'input'
+                failure = (
+                    'raise AssertionError("wrong notification count")'
+                    if scenario == 'product assertion' else
+                    "raise subprocess.TimeoutExpired("
+                    f"['adb', '-s', 'emulator-5562', 'shell', {action!r}, 'keyevent', '4'], 20)"
+                )
+                driver.write_text('import subprocess\n' + failure + '\n')
+                events = []
+
+                @contextlib.contextmanager
+                def emulator():
+                    events.append('boot')
+                    try:
+                        yield 'emulator-5562'
+                    finally:
+                        events.append('retire')
+                        if scenario == 'retirement failed':
+                            raise RuntimeError('The ADB slot remained occupied')
+
+                def family(runner, *_):
+                    if events.count('boot') == 1 or scenario == 'repeated stall':
+                        runner.driver(str(driver))
+                    else:
+                        runner.steps.append({'name': 'native journey', 'passed': True})
+
+                def capture(runner):
+                    now = datetime.now(timezone.utc)
+                    if scenario == 'stale trace':
+                        now -= timedelta(minutes=5)
+                    package = 'com.google.android.apps.nexuslauncher'
+                    thread = 'OtherThread' if scenario == 'unrelated thread' else 'RenderThread'
+                    report = runner.output / 'failure-bugreport.zip'
+                    with ZipFile(report, 'w') as archive:
+                        archive.writestr('FS/data/anr/anr_fixture', (
+                            f'Subject: Input dispatching timed out (window {package}/.Activity)\n'
+                            f'----- pid 1 at {now.isoformat(sep=" ")} -----\n'
+                            f'Cmd line: {package}\n'
+                            '"main" prio=5 tid=1 Native\n'
+                            '  native: libhwui.so (DrawFrameTask::drawFrame+1)\n'
+                            f'"{thread}" daemon prio=7 tid=2 Native\n'
+                            '  native: vulkan.ranchu.so (gfxstream::vk::VkEncoder::vkQueueWaitIdle+1)\n'
+                            '----- end 1 -----\n'
+                        ))
+                    return report
+
+                hosted = 'false' if scenario == 'local execution' else 'true'
+                with patch.dict(os.environ, {'GITHUB_ACTIONS': hosted}), \
+                     patch.object(sys, 'argv', ['nightly', 'notification-counts', '--output', directory]), \
+                     patch.object(nightly.android, 'owned_emulator', side_effect=emulator), \
+                     patch.object(nightly.android, 'require_emulator'), \
+                     patch.object(nightly, 'fingerprint', return_value='stable'), \
+                     patch.object(nightly.Runner, 'family', family), \
+                     patch.object(nightly.Runner, 'capture_failure', capture), \
+                     contextlib.redirect_stdout(io.StringIO()), \
+                     contextlib.redirect_stderr(io.StringIO()):
+                    self.assertEqual(nightly.main(), expected_code)
+
+                self.assertEqual(events, ['boot', 'retire'] * expected_attempts)
+                output = root / 'notification-counts'
+                receipt = json.loads((output / 'receipt.json').read_text())
+                self.assertEqual(receipt['passed'], expected_code == 0)
+                if expected_attempts == 2:
+                    first = output / receipt['graphics_recovery']['first_receipt']
+                    self.assertFalse(json.loads(first.read_text())['passed'])
+                    self.assertTrue((output / 'failure-bugreport.zip').is_file())
 
     def test_source_change_invalidates_successful_steps(self):
         def successful(runner, *args):
