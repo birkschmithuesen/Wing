@@ -132,6 +132,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
   final bool initialSearchChats;
   final Future<void> Function()? enableNotifications;
   final ValueListenable<BackgroundMonitoringState>? backgroundMonitoringState;
+  final Future<void> Function()? retryBackgroundMonitoring;
   final Future<void> Function()? openMonitoringBatterySettings;
   final VoidCallback? onConnections;
   final Widget Function(BuildContext, VoidCallback onRestored)?
@@ -158,6 +159,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
     this.initialSearchChats = false,
     this.enableNotifications,
     this.backgroundMonitoringState,
+    this.retryBackgroundMonitoring,
     this.openMonitoringBatterySettings,
     this.onConnections,
     this.configurationActions,
@@ -640,6 +642,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           initialBot: bot,
           enableNotifications: widget.enableNotifications,
           backgroundMonitoringState: widget.backgroundMonitoringState,
+          retryBackgroundMonitoring: widget.retryBackgroundMonitoring,
           openMonitoringBatterySettings: widget.openMonitoringBatterySettings,
           onConnections: widget.onConnections,
           configurationActions: widget.configurationActions,
@@ -3302,9 +3305,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                     StudioError(error, icon: WingIcons.steer),
                   if (_composerSaveFailedFor == chat.key)
                     const StudioError(
-                      'This draft could not be saved on the device.',
-                      detail:
-                          'Your text is still here. Edit it to try saving again.',
+                      'Could not save draft',
+                      detail: 'Edit your draft to try again.',
                       icon: Icons.save_outlined,
                     ),
                 ],
@@ -4137,6 +4139,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   ),
                   enableNotifications: widget.enableNotifications,
                   backgroundMonitoringState: widget.backgroundMonitoringState,
+                  retryBackgroundMonitoring: widget.retryBackgroundMonitoring,
                   openMonitoringBatterySettings:
                       widget.openMonitoringBatterySettings,
                   onChanged: () {

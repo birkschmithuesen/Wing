@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'support/host_resources_fixture.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
@@ -132,7 +133,8 @@ class _Fixture {
         return {'ok': status != 'problems'};
       }
       if (method != 'GET') throw StateError('Unexpected write: $path');
-      if (status == 'unknown' && path == 'tools/toolsets') {
+      if (status == 'unknown' &&
+          {'tools/toolsets', 'cron/jobs'}.contains(path)) {
         throw StateError('Unavailable');
       }
       return switch (path) {
@@ -648,7 +650,18 @@ void main({
       ),
     );
     await tester.pump();
-    expect(find.text('Checking access…'), findsOneWidget);
+    final checking = find.text('Checking access…');
+    await tester.scrollUntilVisible(
+      checking,
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(checking, findsOneWidget);
+    final viewport = tester.getRect(
+      find.byKey(const PageStorageKey('administration-health-findings')),
+    );
+    expect(viewport.contains(tester.getCenter(checking)), isTrue);
     expect(
       tester
           .widget<IconButton>(
@@ -736,10 +749,7 @@ void main({
       'missing',
       'problems',
     ]) {
-      for (final large in [
-        false,
-        if (['green', 'amber', 'missing', 'problems'].contains(status)) true,
-      ]) {
+      for (final large in [false, if (status != 'red') true]) {
         testWidgets(
           'health entry $status ${brightness.name} ${large ? 'large' : 'phone'}',
           (tester) async {
@@ -899,6 +909,8 @@ void main({
                   'problems',
                   'unknown',
                 ].contains(status),
+                'Scheduled tasks' =>
+                  status == 'problems' || status == 'unknown',
                 _ => status == 'problems',
               };
               if (!needsDetails) {
@@ -915,12 +927,28 @@ void main({
               }
               expect(tile.onTap, isNotNull);
               expect((tile.trailing! as Icon).icon, Icons.chevron_right);
-              expect(
-                (tile.leading! as Icon).color,
-                isNot(WingTokens.of(tester.element(row)).success),
+              final summary = find.descendant(
+                of: row,
+                matching: find.byType(StudioError),
               );
+              expect(summary, findsOneWidget);
+              expect(
+                tester.widget<StudioError>(summary).severity,
+                status == 'unknown'
+                    ? StudioErrorSeverity.error
+                    : StudioErrorSeverity.noResult,
+              );
+              await tester.ensureVisible(summary);
+              await tester.pumpAndSettle();
+              await snapshot(tester, '$name-summary-$title');
               await tester.tap(find.text(title));
               await tester.pumpAndSettle();
+              if (status == 'unknown') {
+                expect(
+                  tester.widget<StudioError>(find.byType(StudioError)).severity,
+                  StudioErrorSeverity.error,
+                );
+              }
               final recovery = find.text(switch (title) {
                 'Tool setup' => 'Skills and tools',
                 'Connectors' => 'Manage connectors',

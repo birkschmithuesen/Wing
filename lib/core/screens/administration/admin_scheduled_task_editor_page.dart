@@ -70,8 +70,25 @@ class _AdminScheduledTaskEditorPageState
   String get model => state.selection.choice?.model ?? '';
   String get provider => state.selection.choice?.provider ?? '';
   Future<void> loadTargets() => session.load(TaskEditCatalog.delivery);
-  Future<void> loadModels() => session.load(TaskEditCatalog.models);
-  Future<void> loadTemplates() => session.load(TaskEditCatalog.blueprints);
+  Widget _catalogRetry(TaskEditCatalog catalog, String name) {
+    final loading = session.loadingCatalog(catalog);
+    return StudioButtonPress(
+      child: IconButton(
+        tooltip: 'Refresh $name',
+        onPressed: loading ? null : () => session.load(catalog),
+        icon: loading
+            ? SizedBox.square(
+                dimension: 24,
+                child: CircularProgressIndicator(
+                  semanticsLabel: 'Refreshing $name',
+                  strokeWidth: 2,
+                ),
+              )
+            : const Icon(Icons.refresh),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     session.dispose();
@@ -191,11 +208,10 @@ class _AdminScheduledTaskEditorPageState
               if (templateError != null)
                 TaskMessage(
                   'Templates could not be loaded. You can still create your own task.',
-                  action: StudioButtonPress(
-                    child: TextButton(
-                      onPressed: loadTemplates,
-                      child: const Text('Refresh templates'),
-                    ),
+                  error: true,
+                  action: _catalogRetry(
+                    TaskEditCatalog.blueprints,
+                    'templates',
                   ),
                 ),
               const SizedBox(height: 24),
@@ -565,16 +581,14 @@ class _AdminScheduledTaskEditorPageState
                       const TaskMessage(
                         'This task uses a custom endpoint. Manage its model routing on the server.',
                       ),
-                    if (modelError != null)
+                    if (modelError != null) ...[
+                      const SizedBox(height: 8),
                       TaskMessage(
                         'Model choices could not be loaded. Your current choice is kept.',
-                        action: StudioButtonPress(
-                          child: TextButton(
-                            onPressed: loadModels,
-                            child: const Text('Refresh models'),
-                          ),
-                        ),
+                        error: true,
+                        action: _catalogRetry(TaskEditCatalog.models, 'models'),
                       ),
+                    ],
                   ],
                 ),
               ),

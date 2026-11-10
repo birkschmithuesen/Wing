@@ -1,10 +1,14 @@
 import 'package:wing/core/services/bots_session.dart';
 import 'dart:async';
+import 'dart:io';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/services/profile_supervision_session.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
@@ -16,6 +20,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'support/profile_actions_fixture.dart';
+import 'support/form_family_capture.dart';
+
+class _BackgroundController extends ProfileWorkspaceController {
+  _BackgroundController({
+    required super.access,
+    required super.connectionIdentity,
+    required super.preferences,
+    required super.appPreferences,
+    required super.gatewayFactory,
+  });
+
+  Completer<bool>? unconfirmedStop;
+
+  @override
+  Future<bool> stopProcess(
+    ProfileChat chat,
+    String id, {
+    required bool Function() canDispatch,
+  }) =>
+      unconfirmedStop?.future ??
+      super.stopProcess(chat, id, canDispatch: canDispatch);
+}
 
 class _BackgroundFixture extends ProfileActionsFixture {
   Completer<void>? heldMetadata;
@@ -132,8 +158,17 @@ class _BackgroundFixture extends ProfileActionsFixture {
 }
 
 void main() {
+  setUpAll(() async {
+    await loadFormFamilyFonts();
+    if (const bool.fromEnvironment('CAPTURE_FORM_FAMILY')) {
+      final mono = File('build/studio-mono.ttf');
+      await (FontLoader(
+        'monospace',
+      )..addFont(mono.readAsBytes().then(ByteData.sublistView))).load();
+    }
+  });
   late _BackgroundFixture fixture;
-  late ProfileWorkspaceController controller;
+  late _BackgroundController controller;
   late AppPreferences appPreferences;
   late ProfileChat chat;
   late ProfileSupervisionSession supervision;
@@ -143,7 +178,7 @@ void main() {
     fixture = _BackgroundFixture();
     final preferences = await SharedPreferences.getInstance();
     appPreferences = AppPreferences(preferences);
-    controller = ProfileWorkspaceController(
+    controller = _BackgroundController(
       access: ConnectionAccess(
         connection: identityTestConnection(),
         dashboardOAuth: null,
@@ -168,6 +203,7 @@ void main() {
     WidgetTester tester, {
     Size size = const Size(800, 900),
     double textScale = 1,
+    Brightness brightness = Brightness.light,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -176,12 +212,14 @@ void main() {
     await supervision.refreshProcesses();
     await tester.pumpWidget(
       MaterialApp(
+        theme: wingTheme(brightness),
+        debugShowCheckedModeBanner: false,
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(context).copyWith(
             textScaler: TextScaler.linear(textScale),
             disableAnimations: true,
           ),
-          child: child!,
+          child: RepaintBoundary(key: formFamilyCapture, child: child!),
         ),
         home: Scaffold(
           body: ListView(
@@ -282,6 +320,69 @@ void main() {
       hasLength(1),
     );
   });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('process-specific stop failure ${brightness.name} $scale', (
+        tester,
+      ) async {
+        // Exercise the session fallback for an unconfirmed stop without a
+        // panel-wide error. The server-rejection test above covers that path.
+        final stop = Completer<bool>();
+        controller.unconfirmedStop = stop;
+        await showPanel(
+          tester,
+          size: Size(scale == 2 ? 320 : 390, 844),
+          textScale: scale,
+          brightness: brightness,
+        );
+        final process = find.text('dart run worker.dart');
+        await tester.scrollUntilVisible(
+          process,
+          160,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(process);
+        await tester.pumpAndSettle();
+        final action = find.byTooltip('Stop process');
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        await tester.tap(action);
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: action,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        stop.complete(false);
+        await tester.pumpAndSettle();
+        final error = find.text(
+          'The server did not confirm that this process stopped.',
+        );
+        expect(
+          find.descendant(of: find.byType(StudioError), matching: error),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        expect(action.hitTestable(), findsOneWidget);
+        expect(error.hitTestable(), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'process-stop-error-${brightness.name}-$scale',
+        );
+
+        controller.unconfirmedStop = null;
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(error, findsNothing);
+        expect(process, findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   testWidgets('dismissing an exited process does not stop running work', (
     tester,

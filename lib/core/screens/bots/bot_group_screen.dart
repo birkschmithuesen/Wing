@@ -486,6 +486,57 @@ class _BotGroupScreenState extends State<BotGroupScreen>
     );
   }
 
+  Widget _attemptRecovery(BotGroupAction action) {
+    final discard = action.kind == 'discard';
+    final member =
+        _session.group.members
+            .where((member) => member.id == action.member)
+            .firstOrNull
+            ?.name ??
+        'Bot';
+    final severity = discard
+        ? StudioErrorSeverity.noResult
+        : StudioErrorSeverity.error;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: WingSpacing.lg),
+      child: StudioErrorFrame(
+        severity: severity,
+        child: Padding(
+          padding: const EdgeInsets.all(WingSpacing.md),
+          child: Row(
+            children: [
+              Expanded(
+                child: StudioError(
+                  discard
+                      ? '$member’s outcome is unknown.'
+                      : '$member could not finish.',
+                  detail: discard
+                      ? 'Review before discarding.'
+                      : 'Retry this attempt.',
+                  framed: false,
+                  severity: severity,
+                ),
+              ),
+              StudioButtonPress(
+                child: IconButton(
+                  tooltip: discard
+                      ? 'Discard unknown group attempt'
+                      : 'Retry group attempt',
+                  onPressed: !_session.canResolve(action)
+                      ? null
+                      : discard
+                      ? () => _confirmDiscard(action)
+                      : () => _session.resolve(action),
+                  icon: Icon(discard ? Icons.delete_outline : Icons.refresh),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _activityStatus(BuildContext context) {
     final runtime = _session.runtime;
     final needsApproval = _session.pendingApprovals.isNotEmpty;
@@ -508,15 +559,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
         _session.acting ||
         _launchingCamera ||
         (_session.awaitingStopFence && _session.error == null);
-    if (_session.pendingText != null && !pendingAction) {
-      label = 'Message not confirmed · Retry the same message';
-      active = false;
-      icon = Icons.error_outline;
-    } else if (_session.error != null && !pendingAction) {
-      label = 'Group needs attention';
-      active = false;
-      icon = Icons.error_outline;
-    } else if (needsApproval) {
+    if (needsApproval) {
       label = memberActivity.isEmpty
           ? 'Waiting for your approval'
           : 'Waiting for your approval · $memberActivity';
@@ -913,7 +956,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
             ),
           ),
           tail: [
-            if (_session.error != null)
+            if (_session.pendingText == null && _session.error != null)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: StudioError(_session.error!),
@@ -935,37 +978,7 @@ class _BotGroupScreenState extends State<BotGroupScreen>
                     (action.kind == 'retry' || action.kind == 'discard') &&
                     runtime.supports(action.kind),
               ))
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        action.kind == 'discard'
-                            ? '${_session.group.members.where((member) => member.id == action.member).firstOrNull?.name ?? 'Bot'} has an unknown outcome. Review before discarding this attempt.'
-                            : '${_session.group.members.where((member) => member.id == action.member).firstOrNull?.name ?? 'Bot'} could not finish. Retry this attempt.',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      StudioButtonPress(
-                        child: IconButton(
-                          tooltip: action.kind == 'discard'
-                              ? 'Discard unknown group attempt'
-                              : 'Retry group attempt',
-                          onPressed: !_session.canResolve(action)
-                              ? null
-                              : () => action.kind == 'discard'
-                                    ? _confirmDiscard(action)
-                                    : _session.resolve(action),
-                          icon: Icon(
-                            action.kind == 'discard'
-                                ? Icons.delete_outline
-                                : Icons.refresh,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                _attemptRecovery(action),
               for (final continuation in _session.boundedDiscussions)
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1023,7 +1036,17 @@ class _BotGroupScreenState extends State<BotGroupScreen>
               },
             )
           : null,
-      beforeComposer: [_activityStatus(context)],
+      beforeComposer: [
+        _activityStatus(context),
+        if (_session.pendingText != null && !_session.sending)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            child: StudioError(
+              _session.error ??
+                  'Message not confirmed. Retry sends the same message once.',
+            ),
+          ),
+      ],
       composer: ValueListenableBuilder<TextEditingValue>(
         valueListenable: _composer,
         builder: (context, _, _) => ConversationComposer(

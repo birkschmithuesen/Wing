@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -832,7 +833,10 @@ void main() {
         held.complete();
         await tester.pumpAndSettle();
         expect(
-          find.text('Message not confirmed · Retry the same message'),
+          find.widgetWithText(
+            StudioError,
+            'Message not confirmed. Retry sends the same message once.',
+          ),
           findsOneWidget,
         );
         expect(find.text('Replying to Atlas'), findsOneWidget);
@@ -939,6 +943,35 @@ void main() {
             find.byTooltip('Discard unknown group attempt'),
           );
           await tester.pump();
+          final recovery = find.widgetWithText(
+            StudioError,
+            'Atlas’s outcome is unknown.',
+          );
+          expect(recovery, findsOneWidget);
+          final recoveryFrame = find.ancestor(
+            of: recovery,
+            matching: find.byType(StudioErrorFrame),
+          );
+          await Scrollable.ensureVisible(
+            tester.element(recoveryFrame),
+            alignment: .5,
+          );
+          await tester.pumpAndSettle();
+          final viewport = tester.getRect(
+            find.byKey(const ValueKey('profile-transcript')),
+          );
+          final noticeBounds = tester.getRect(recoveryFrame);
+          expect(noticeBounds.top, greaterThanOrEqualTo(viewport.top));
+          expect(noticeBounds.bottom, lessThanOrEqualTo(viewport.bottom));
+          expect(
+            find.byTooltip('Discard unknown group attempt').hitTestable(),
+            findsOneWidget,
+          );
+          await render(
+            tester,
+            frame,
+            'discard-recovery-${brightness.name}-$scale',
+          );
           await tester.tap(find.byTooltip('Discard unknown group attempt'));
           await tester.pumpAndSettle();
           expect(find.text('Discard unknown attempt?'), findsOneWidget);

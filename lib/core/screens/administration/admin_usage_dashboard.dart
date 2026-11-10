@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import '../../widgets/studio_error.dart';
 import '../../widgets/studio_loading.dart';
 import '../../models/usage_analytics.dart';
 import '../../models/usage_cost.dart';
 import '../../services/usage_analytics_session.dart';
 import '../../theme/wing_theme.dart';
-import 'admin_widgets.dart';
 import '../../widgets/read_recovery.dart';
 import 'usage_charts.dart';
 
@@ -108,11 +108,15 @@ class _UsageDashboardState extends State<UsageDashboard> {
     final data = observation.data;
     final models = data?.models;
     final daily = data?.daily;
+    final modelsError = data?.modelsError;
+    final dailyError = data?.dailyError;
     final summary = models?.costs;
     final updatedAt = observation.updatedAt?.toLocal();
     final selected = observation.year?.days
         .where((d) => d.id == _selected)
         .firstOrNull;
+    final showBreakdown = models != null || selected != null;
+    final showTrend = daily != null || _trendModels || _trendCost;
     final costTitle = summary?.isMixed == true
         ? 'Estimated usage value'
         : summary?.hasSubscription == true
@@ -223,6 +227,12 @@ class _UsageDashboardState extends State<UsageDashboard> {
             onSelected: (day) =>
                 setState(() => _selected = _selected == day.id ? null : day.id),
           ),
+          if (observation.year != null && observation.yearError != null)
+            Padding(
+              key: const ValueKey('usage-retained-year-error'),
+              padding: const EdgeInsets.only(top: 8),
+              child: StudioError(observation.yearError!),
+            ),
           const SizedBox(height: 20),
           _ChartHeader(
             section: 'Breakdown',
@@ -257,8 +267,19 @@ class _UsageDashboardState extends State<UsageDashboard> {
             identity: 'breakdown',
             height: _breakdownHeight(context),
             pending: models == null && observation.periodLoading,
-            child: _breakdown(models, selected),
+            child: modelsError != null && !showBreakdown
+                ? _periodReadError(modelsError)
+                : _breakdown(models, selected),
           ),
+          if (modelsError != null && showBreakdown)
+            Padding(
+              key: const ValueKey('usage-retained-models-error'),
+              padding: const EdgeInsets.only(top: 8),
+              child: _periodReadError(
+                modelsError,
+                retainedAt: models == null ? null : data?.loadedAt,
+              ),
+            ),
           const SizedBox(height: 24),
           _ChartHeader(
             section: 'Trend',
@@ -272,16 +293,20 @@ class _UsageDashboardState extends State<UsageDashboard> {
             identity: 'trend',
             height: _trendHeight(context),
             pending: daily == null && observation.periodLoading,
-            child: _trend(daily),
+            child: dailyError != null && !showTrend
+                ? _periodReadError(dailyError)
+                : _trend(daily),
           ),
+          if (dailyError != null && showTrend)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: _periodReadError(
+                dailyError,
+                retainedAt: daily == null ? null : data?.loadedAt,
+              ),
+            ),
           const SizedBox(height: 20),
           _about(models),
-          if (data?.modelsError != null || data?.dailyError != null)
-            AdminNotice.error(
-              '${[data?.modelsError, data?.dailyError].whereType<String>().join(' ')}${models != null || daily != null ? ' Showing retained data where available; last successful load ${MaterialLocalizations.of(context).formatTimeOfDay(TimeOfDay.fromDateTime(data!.loadedAt.toLocal()))}.' : ''} Use Refresh to retry.',
-            ),
-          if (observation.yearError != null)
-            AdminNotice.error(observation.yearError!),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -305,6 +330,16 @@ class _UsageDashboardState extends State<UsageDashboard> {
       ),
     );
   }
+
+  Widget _periodReadError(
+    String message, {
+    DateTime? retainedAt,
+  }) => StudioError(
+    message,
+    detail: retainedAt == null
+        ? 'Use Refresh to retry.'
+        : 'Showing retained data where available. Last successful load ${TimeOfDay.fromDateTime(retainedAt.toLocal()).format(context)}. Use Refresh to retry.',
+  );
 
   Widget _breakdown(UsageModels? models, UsageDay? selected) {
     if (selected != null && (_breakdownModels || _breakdownCost)) {
@@ -469,7 +504,7 @@ class _UsageDashboardState extends State<UsageDashboard> {
       );
     }
     if (daily == null) {
-      return const Text('Daily usage unavailable. Use Refresh to retry.');
+      return const Text('Daily usage unavailable.');
     }
     if (daily.days.any((d) => !d.tokens.complete)) {
       return const Text(
@@ -877,6 +912,8 @@ class _UsageCalendarSlot extends StatelessWidget {
               selected: selected,
               onSelected: onSelected,
             )
+          else if (!pending && error != null && daily == null)
+            StudioError(error!)
           else ...[
             SizedBox(
               height: textHeight,
@@ -929,8 +966,7 @@ class _UsageCalendarSlot extends StatelessWidget {
                       primary: false,
                       child: Text(
                         daily == null
-                            ? error ??
-                                  'Activity year unavailable. Period totals may still be available.'
+                            ? 'Activity year unavailable. Period totals may still be available.'
                             : 'No recorded daily usage in the past year.',
                       ),
                     ),

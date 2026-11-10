@@ -51,8 +51,14 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
-A file picker, external share and clipboard grant are separate OS entry points. A missing staged file must stop dispatch without discarding the newer draft. Its failed-file chip remains actionable at the restored reading point; use Latest to inspect the transcript warning. Real camera/OEM behaviour needs its own device evidence.
+A file picker, external share and clipboard grant are separate OS entry points. A missing staged file must stop dispatch without discarding the newer draft. Its failed-file card remains actionable at the restored reading point; use Latest to inspect the transcript warning. Real camera/OEM behaviour needs its own device evidence.
 
 An image can exceed processing limits even when its compressed file is small.
 Dimensions, animation frames and transformed output also affect admission. A
 refused image must leave the draft usable and must not become sendable content.
+
+An upload failure or missing staged file shows a readable error beside that
+attachment, with Remove still available. Failed transcript image previews keep
+Retry available in the tile and gallery; the original attachment remains intact.
+`test/composer_attachment_preparation_test.dart` and
+`test/user_message_attachment_test.dart` cover these recovery surfaces.

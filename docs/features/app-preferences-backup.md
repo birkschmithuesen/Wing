@@ -90,3 +90,10 @@ undispatched changes; a command already sent can finish on Hermes. Refresh after
 returning to check it. New tools apply to new chats;
 any required backend restart is shown in the profile result. Opening settings
 never installs plugins or enables automatic updates.
+
+Plugin check failures and unavailable app-version information use the shared
+error treatment in Settings. The plugin manager and release links remain
+available. The isolated package-read failure matrix is
+`flutter test --no-pub test/installed_app_version_card_failure_test.dart`; it
+keeps failed platform reads separate from successful reads cached by the package
+metadata library.

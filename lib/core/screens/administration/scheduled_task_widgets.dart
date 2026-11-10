@@ -419,10 +419,12 @@ class _AdminTaskRouteState extends State<AdminTaskRoute> {
                 padding: const EdgeInsets.all(16),
                 children: [
                   TaskUncertainty(controller: controller, id: widget.taskId!),
-                  AdminNotice(
-                    controller.error ??
-                        'This task is not available in this profile.',
-                  ),
+                  if (controller.error case final error?)
+                    AdminNotice.error(error)
+                  else
+                    const AdminNotice(
+                      'This task is not available in this profile.',
+                    ),
                   StudioButtonPress(
                     child: TextButton(
                       onPressed: controller.refresh,

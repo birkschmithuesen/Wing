@@ -20,6 +20,7 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/composer_attachment_tile.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 import 'profile_workspace_controller_test.dart'
     show Host, PhotoPickerFixture, PhotoFileFixture;
@@ -115,6 +116,145 @@ void main() {
       await loader.load();
     }
   });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'missing staged attachment shows persistent repair ${brightness.name} ${scale}x',
+        (tester) async {
+          tester.view.devicePixelRatio = 1;
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+          addTearDown(tester.view.reset);
+          SharedPreferences.setMockInitialValues({});
+          final preferences = await SharedPreferences.getInstance();
+          final appPreferences = AppPreferences(preferences);
+          addTearDown(appPreferences.dispose);
+          final sandbox = Directory.systemTemp.createTempSync(
+            'wing-missing-attachment-',
+          );
+          addTearDown(() => sandbox.deleteSync(recursive: true));
+          final controller = ProfileWorkspaceController(
+            connectionIdentity: 'missing-attachment',
+            access: ConnectionAccess(
+              connection: SavedConnection(
+                id: 'host',
+                label: 'Host',
+                host: 'localhost',
+                port: 1,
+                apiKey: '',
+              ),
+              dashboardOAuth: null,
+            ),
+            preferences: preferences,
+            appPreferences: appPreferences,
+            gatewayFactory: Host().gateway,
+            attachmentService: AttachmentDraftService(
+              cacheDirectoryProvider: () async => sandbox,
+            ),
+          );
+          addTearDown(controller.dispose);
+          await controller.initialize();
+          final chat = await controller.createChat(canDispatch: () => true);
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: _frame,
+              child: MaterialApp(
+                debugShowCheckedModeBanner: false,
+                theme: wingTheme(brightness),
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: ProfileWorkspaceScreen(
+                  createBotsSession: () => BotsSession((_) async => const []),
+                  controller: controller,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          for (final (name, kind, mediaType) in [
+            ('notes.txt', AttachmentDraftKind.genericFile, 'text/plain'),
+            ('photo.png', AttachmentDraftKind.image, 'image/png'),
+          ]) {
+            await tester.runAsync(
+              () => restoreComposerFixture(
+                chat: chat,
+                preferences: preferences,
+                text: 'Keep my draft',
+                attachments: [
+                  AttachmentDraft(
+                    id: name,
+                    name: name,
+                    cachedPath: '${sandbox.path}/$name',
+                    byteLength: 24,
+                    mediaType: mediaType,
+                    kind: kind,
+                    sanitized: kind == AttachmentDraftKind.image,
+                  ),
+                ],
+              ),
+            );
+            await tester.pumpAndSettle();
+            final tile = find.byType(ComposerAttachmentTile);
+            final recovery = find.descendant(
+              of: tile,
+              matching: find.byType(StudioError),
+            );
+            expect(recovery, findsOneWidget);
+            expect(
+              find
+                  .descendant(
+                    of: tile,
+                    matching: find.byType(SingleChildScrollView),
+                  )
+                  .hitTestable(),
+              findsOneWidget,
+            );
+            expect(
+              tester.widget<StudioError>(recovery).message,
+              'File missing. Remove and reattach.',
+            );
+            expect(find.text(name), findsOneWidget);
+            final remove = find.byTooltip('Remove $name');
+            expect(remove.hitTestable(), findsOneWidget);
+            expect(
+              tester.getSize(remove).shortestSide,
+              greaterThanOrEqualTo(48),
+            );
+            expect(find.byKey(_composer).hitTestable(), findsOneWidget);
+            await _captureFrame(
+              tester,
+              'missing-$name-${brightness.name}-${scale}x',
+            );
+            await tester.tap(remove);
+            for (
+              var attempt = 0;
+              attempt < 100 && chat.composer.observation.saving;
+              attempt++
+            ) {
+              await tester.runAsync(
+                () => Future<void>.delayed(const Duration(milliseconds: 10)),
+              );
+              await tester.pump();
+            }
+            await tester.pumpAndSettle();
+            expect(recovery, findsNothing);
+            expect(chat.composer.observation.attachments, isEmpty);
+            expect(
+              tester.widget<TextField>(find.byKey(_composer)).controller!.text,
+              'Keep my draft',
+            );
+          }
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
 
   for (final configuration in [
     (

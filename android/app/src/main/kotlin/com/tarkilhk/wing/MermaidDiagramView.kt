@@ -40,7 +40,7 @@ private class MermaidDiagramView(
     private fun themeColor(role: String): Int = (palette[role] as Number).toInt()
     private fun cssColor(role: String): String = "#%06X".format(themeColor(role) and 0xFFFFFF)
     private val themeJson: String get() = JSONObject().apply {
-        for (role in listOf("canvas", "panel", "text", "muted", "border", "error", "accent")) {
+        for (role in listOf("canvas", "panel", "text", "muted", "border", "error", "error-surface", "accent")) {
             put(role, cssColor(role))
         }
     }.toString()
@@ -262,15 +262,9 @@ private class MermaidDiagramView(
         .replace("\u2028", "\\u2028")
         .replace("\u2029", "\\u2029")
 
-    private fun viewerUnavailableScript(): String {
-        val foreground = cssColor("error")
-        val background = cssColor("canvas")
-        return "document.documentElement.style.background='$background';" +
-            "document.body.style.color='$foreground';" +
-            "document.body.style.background='$background';" +
-            "document.body.style.font='16px Roboto, sans-serif';" +
-            "document.body.textContent='⚠ The diagram viewer could not load.';"
-    }
+    private fun viewerUnavailableScript(): String =
+        "document.getElementById('diagram').hidden=true;" +
+            "document.getElementById('status').hidden=false;"
 
     private fun renderFunction(): String =
         when (format) {

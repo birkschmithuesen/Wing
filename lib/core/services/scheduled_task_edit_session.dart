@@ -282,6 +282,8 @@ class ScheduledTaskEditSession extends ChangeNotifier {
   bool get loadingRooms => _pendingLoads.contains(TaskEditCatalog.rooms);
   bool get loadingDestinations =>
       _pendingLoads.contains(TaskEditCatalog.delivery);
+  bool loadingCatalog(TaskEditCatalog catalog) =>
+      _pendingLoads.contains(catalog);
 
   void _emit() {
     if (!_disposed) notifyListeners();

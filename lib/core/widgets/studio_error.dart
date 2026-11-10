@@ -41,6 +41,7 @@ class StudioError extends StatelessWidget {
     this.severity = StudioErrorSeverity.error,
     this.framed = true,
     this.announce = true,
+    this.stacked = false,
   }) : _centerIcon = false;
 
   const StudioError._capsule(
@@ -49,6 +50,7 @@ class StudioError extends StatelessWidget {
     required this.icon,
     required this.severity,
   }) : framed = false,
+       stacked = false,
        announce = false,
        _centerIcon = true;
 
@@ -60,59 +62,72 @@ class StudioError extends StatelessWidget {
   final bool framed;
   final bool announce;
 
+  /// Put the status icon above the copy in compact attachment cards.
+  final bool stacked;
+
   @override
   Widget build(BuildContext context) {
     final tokens = WingTokens.of(context);
     final tint = severity.color(tokens);
-    final content = Semantics(
-      liveRegion: announce,
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: _centerIcon
-            ? CrossAxisAlignment.center
-            : CrossAxisAlignment.start,
-        children: [
-          ExcludeSemantics(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tint.withValues(alpha: .14),
-              ),
-              child: SizedBox.square(
-                dimension: 38,
-                child: Icon(icon ?? severity.glyph, size: 20, color: tint),
-              ),
-            ),
+    final statusIcon = ExcludeSemantics(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: tint.withValues(alpha: .14),
+        ),
+        child: SizedBox.square(
+          dimension: 38,
+          child: Icon(icon ?? severity.glyph, size: 20, color: tint),
+        ),
+      ),
+    );
+    final copy = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          message,
+          style: tokens.typography.section.copyWith(
+            fontSize: 14,
+            color: tokens.onSurface,
           ),
-          const SizedBox(width: WingSpacing.md),
-          Flexible(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  message,
-                  style: tokens.typography.section.copyWith(
-                    fontSize: 14,
-                    color: tokens.onSurface,
-                  ),
-                ),
-                if (detail case final detail?) ...[
-                  const SizedBox(height: WingSpacing.xs),
-                  Text(
-                    detail,
-                    style: tokens.typography.label.copyWith(
-                      color: tokens.muted,
-                      fontWeight: FontWeight.w400,
-                      letterSpacing: 0,
-                    ),
-                  ),
-                ],
-              ],
+        ),
+        if (detail case final detail?) ...[
+          const SizedBox(height: WingSpacing.xs),
+          Text(
+            detail,
+            style: tokens.typography.label.copyWith(
+              color: tokens.muted,
+              fontWeight: FontWeight.w400,
+              letterSpacing: 0,
             ),
           ),
         ],
-      ),
+      ],
+    );
+    final content = Semantics(
+      liveRegion: announce,
+      child: stacked
+          ? Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                statusIcon,
+                const SizedBox(height: WingSpacing.sm),
+                copy,
+              ],
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: _centerIcon
+                  ? CrossAxisAlignment.center
+                  : CrossAxisAlignment.start,
+              children: [
+                statusIcon,
+                const SizedBox(width: WingSpacing.md),
+                Flexible(child: copy),
+              ],
+            ),
     );
     return framed
         ? StudioErrorFrame(

@@ -118,7 +118,67 @@ void main() {
     }
   });
 
+  testWidgets('persistent error fits the shared acknowledgement dialog', (
+    tester,
+  ) async {
+    await _show(
+      tester,
+      child: Builder(
+        builder: (context) => IconButton(
+          tooltip: 'Show error',
+          onPressed: () =>
+              showStudioError(context, 'The request could not be completed.'),
+          icon: const Icon(Icons.warning_amber_rounded),
+        ),
+      ),
+    );
+    await tester.tap(find.byTooltip('Show error'));
+    await tester.pumpAndSettle();
+    expect(find.text('The request could not be completed.'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.tap(find.byTooltip('Close'));
+    await tester.pumpAndSettle();
+    expect(find.text('The request could not be completed.'), findsNothing);
+  });
+
   for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'narrow persistent error remains readable ${brightness.name} $scale',
+        (tester) async {
+          var retries = 0;
+          await _show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            child: Center(
+              child: SizedBox(
+                width: 118,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const StudioError('Could not load image', stacked: true),
+                    IconButton(
+                      tooltip: 'Retry preview',
+                      onPressed: () => retries++,
+                      icon: const Icon(Icons.refresh),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+          final copy = tester.getRect(find.text('Could not load image'));
+          final status = tester.getRect(find.byIcon(Icons.error_outline));
+          expect(copy.top, greaterThan(status.bottom));
+          expect(copy.width, greaterThanOrEqualTo(86));
+          expect(tester.takeException(), isNull);
+          await tester.tap(find.byTooltip('Retry preview'));
+          expect(retries, 1);
+          await _capture(tester, 'narrow-persistent-${brightness.name}-$scale');
+        },
+      );
+    }
     for (final scale in [1.0, 2.0]) {
       testWidgets('Studio error family at ${brightness.name}, $scale text', (
         tester,

@@ -1,3 +1,5 @@
+import 'package:wing/core/widgets/studio_error.dart';
+import 'support/form_family_capture.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'dart:async';
 import 'package:wing/core/services/profile_connectors_session.dart';
@@ -146,6 +148,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  setUpAll(loadFormFamilyFonts);
   const capture = bool.fromEnvironment('CAPTURE_MCP');
   setUpAll(() async {
     if (!capture) return;
@@ -209,7 +212,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       await testConnection(tester);
-      expect(find.text('Connection failed'), findsOneWidget);
+      expect(
+        find.widgetWithText(StudioError, 'Connection failed'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining('OAuth authentication required'),
         findsNothing,
@@ -320,7 +326,10 @@ void main() {
       'tools': [],
     });
     await testConnection(tester);
-    expect(find.text('Connection failed'), findsOneWidget);
+    expect(
+      find.widgetWithText(StudioError, 'Connection failed'),
+      findsOneWidget,
+    );
     expect(find.text('Available tools (1)'), findsNothing);
     expect(find.textContaining('Connection timed out.'), findsNothing);
     await tester.tap(find.text('Failure details'));
@@ -332,6 +341,61 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final enlarged in [false, true]) {
+      testWidgets(
+        'connector detail inventory failure ${brightness.name} enlarged=$enlarged',
+        (tester) async {
+          final fixture = fixtureWith({});
+          addTearDown(fixture.server.close);
+          final read = fixture.override!;
+          var fail = true;
+          fixture.override = (method, path, query, body) {
+            if (fail && path == 'mcp/servers') {
+              throw StateError('Connector inventory unavailable');
+            }
+            return read(method, path, query, body);
+          };
+          tester.view.physicalSize = Size(enlarged ? 320 : 390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(enlarged ? 2 : 1)),
+                child: RepaintBoundary(key: formFamilyCapture, child: child!),
+              ),
+              home: profileConnectorIssuePage(
+                fixture.server.profile('personal'),
+                ['aspire'],
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final inventoryFailure = find.byType(StudioError);
+          expect(inventoryFailure, findsOneWidget);
+          final failure = find.widgetWithText(
+            StudioError,
+            tester.widget<StudioError>(inventoryFailure).message,
+          );
+          expect(
+            find.text('This connector is not available in this profile.'),
+            findsNothing,
+          );
+          await captureFormFamily(
+            tester,
+            'error-screen-connector-inventory-${brightness.name}-$enlarged',
+          );
+          fail = false;
+          await tester.tap(find.text('Refresh'));
+          await tester.pumpAndSettle();
+          expect(failure, findsNothing);
+          expect(find.text('Test connection'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
       for (final operation in [
         'test',
         'signin',
@@ -465,6 +529,16 @@ void main() {
             await tester.pumpAndSettle();
           } else {
             await testConnection(tester);
+            if (!success) {
+              expect(
+                find.widgetWithText(StudioError, 'Connection failed'),
+                findsOneWidget,
+              );
+              expect(
+                find.textContaining('OAuth discovery failed'),
+                findsNothing,
+              );
+            }
           }
           if (success) {
             expect(find.text('Connected'), findsOneWidget);

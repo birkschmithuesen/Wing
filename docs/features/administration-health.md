@@ -57,3 +57,7 @@ Scheduled-task health retains an action-needs-review warning for an unconfirmed
 Stop, including after a successful refresh or reopening Wing. Current execution
 status and cancellation acknowledgement are separate facts; explicit request
 review clears the uncertainty without sending another Stop.
+
+A failed read is distinct from a check that has not run. Health uses the shared
+error treatment for failed reads in both its overview and detail, including
+when no previous observation exists.

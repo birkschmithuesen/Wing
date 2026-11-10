@@ -132,6 +132,7 @@ void main() {
               'error': Theme.of(
                 tester.element(find.byType(AndroidView)),
               ).colorScheme.error.toARGB32(),
+              'error-surface': const Color(0xFF352422).toARGB32(),
               'accent': Theme.of(
                 tester.element(find.byType(AndroidView)),
               ).colorScheme.primary.toARGB32(),
@@ -216,6 +217,7 @@ void main() {
           'error': Theme.of(
             tester.element(find.byType(AndroidView)),
           ).colorScheme.error.toARGB32(),
+          'error-surface': const Color(0xFFFFF1EF).toARGB32(),
           'accent': Theme.of(
             tester.element(find.byType(AndroidView)),
           ).colorScheme.primary.toARGB32(),

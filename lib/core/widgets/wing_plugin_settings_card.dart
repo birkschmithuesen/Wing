@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/wing_plugin_session.dart';
 import '../theme/wing_theme.dart';
+import 'studio_error.dart';
 import 'studio_loading.dart';
 import 'wing_plugin_page.dart';
 
@@ -91,27 +92,30 @@ class _WingPluginSettingsCardState extends State<WingPluginSettingsCard> {
                   const SizedBox(height: 10),
                   const Text('Extra features for Wing.'),
                   const Divider(height: 28),
-                  Row(
-                    children: [
-                      Icon(
-                        overview?.needsAttention == true
-                            ? Icons.error_outline
-                            : Icons.extension_outlined,
-                        size: 18,
-                        color: overview?.needsAttention == true
-                            ? colors.error
-                            : colors.primary,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          overview?.summary ??
-                              'Connect to Hermes to manage the plugin.',
-                          style: Theme.of(context).textTheme.bodySmall,
+                  if (overview != null && overview.needsAttention)
+                    StudioError(
+                      overview.summary,
+                      detail: overview.detail,
+                      icon: Icons.extension_outlined,
+                    )
+                  else
+                    Row(
+                      children: [
+                        Icon(
+                          Icons.extension_outlined,
+                          size: 18,
+                          color: colors.primary,
                         ),
-                      ),
-                    ],
-                  ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            overview?.summary ??
+                                'Connect to Hermes to manage the plugin.',
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             ),

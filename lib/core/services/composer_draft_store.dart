@@ -384,6 +384,7 @@ class ComposerDraftStore {
     List<dynamic> values, {
     bool forNewSession = false,
   }) async {
+    const missingFile = 'File missing. Remove and reattach.';
     final attachments = <AttachmentDraft>[];
     for (final value in values) {
       try {
@@ -404,8 +405,7 @@ class ComposerDraftStore {
           if (!cachedFileExists) {
             draft
               ..status = AttachmentDraftStatus.failed
-              ..error =
-                  'This staged file is no longer available. Remove it and attach it again.';
+              ..error = missingFile;
           } else if (draft.status == AttachmentDraftStatus.attached ||
               draft.status == AttachmentDraftStatus.uploading) {
             draft
@@ -415,8 +415,7 @@ class ComposerDraftStore {
         } else if (!cachedFileExists) {
           draft
             ..status = AttachmentDraftStatus.failed
-            ..error =
-                'This staged file is no longer available. Remove it and attach it again.';
+            ..error = missingFile;
         } else if (draft.status == AttachmentDraftStatus.uploading) {
           draft.status = AttachmentDraftStatus.ready;
         }

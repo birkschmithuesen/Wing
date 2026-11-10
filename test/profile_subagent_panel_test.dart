@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/profile_tool_activity.dart';
 import 'package:wing/core/widgets/markdown_message_content.dart';
 import 'package:wing/core/services/bots_session.dart';
@@ -36,10 +37,12 @@ class _SubagentFixture extends ProfileActionsFixture {
   int listCalls = 0;
   int tailCalls = 0;
   int tailFailures = 0;
+  Completer<void>? tailGate;
   Completer<void>? steerGate;
   bool acceptSteer = false;
   bool failSteer = false;
   bool findInterrupt = false;
+  bool failInterrupt = false;
   bool emptyList = false;
   bool tailAvailable = true;
   double? startedAt;
@@ -132,6 +135,7 @@ class _SubagentFixture extends ProfileActionsFixture {
             };
           case 'subagent.tail':
             tailCalls += 1;
+            await tailGate?.future;
             if (tailCalls <= tailFailures) {
               throw StateError('tail unavailable');
             }
@@ -150,6 +154,7 @@ class _SubagentFixture extends ProfileActionsFixture {
               'subagent_id': 'child-1',
             };
           case 'subagent.interrupt':
+            if (failInterrupt) throw StateError('Interrupt transport failed');
             return {'found': findInterrupt, 'subagent_id': 'child-1'};
           default:
             return base.call(method, params);
@@ -167,6 +172,7 @@ void main() {
     for (final entry in {
       'Roboto': 'build/studio-roboto.ttf',
       'MaterialIcons': 'build/studio-icons.otf',
+      'monospace': 'build/studio-mono.ttf',
       'WingIcons': 'assets/fonts/wing-icons.ttf',
     }.entries) {
       await (FontLoader(entry.key)..addFont(
@@ -282,8 +288,13 @@ void main() {
     if (!motion) await tester.pumpAndSettle();
   }
 
-  Future<void> openDetails(WidgetTester tester) async {
-    await showPanel(tester);
+  Future<void> openDetails(
+    WidgetTester tester, {
+    Brightness brightness = Brightness.light,
+    double scale = 1.8,
+    Size size = const Size(320, 640),
+  }) async {
+    await showPanel(tester, brightness: brightness, scale: scale, size: size);
     await tester.ensureVisible(find.text('Inspect the release'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Inspect the release'));
@@ -627,14 +638,14 @@ void main() {
           gate.complete();
           await until(
             tester,
-            () => find
-                .text('The subagent did not accept that steering.')
-                .evaluate()
-                .isNotEmpty,
+            () => find.text('Steer rejected').evaluate().isNotEmpty,
             'the rejected steering result',
           );
           expect(
-            find.text('The subagent did not accept that steering.'),
+            find.descendant(
+              of: find.byType(StudioError),
+              matching: find.text('Steer rejected'),
+            ),
             findsOneWidget,
           );
           expect(
@@ -642,19 +653,36 @@ void main() {
             'Check the retained child rows',
           );
           expect(steer.hitTestable(), findsOneWidget);
+          final rejected = find.text('Steer rejected');
+          final feedbackViewport = find
+              .ancestor(
+                of: rejected,
+                matching: find.byType(SingleChildScrollView),
+              )
+              .last;
+          final viewportRect = tester.getRect(feedbackViewport);
+          final messageRect = tester.getRect(rejected);
+          if (messageRect.bottom > viewportRect.bottom) {
+            // Larger fallback glyphs may wrap beyond the bounded viewport.
+            await tester.drag(feedbackViewport, const Offset(0, -120));
+            await tester.pumpAndSettle();
+            expect(
+              tester.getRect(rejected).bottom,
+              lessThanOrEqualTo(viewportRect.bottom),
+            );
+          } else {
+            expect(viewportRect.intersect(messageRect), messageRect);
+          }
           await capture(tester, 'steering-rejected-${brightness.name}-$scale');
           fixture.steerGate = null;
           fixture.failSteer = true;
           await tester.tap(steer);
           await until(
             tester,
-            () => find
-                .text('Steering could not be queued.')
-                .evaluate()
-                .isNotEmpty,
+            () => find.text('Steering failed').evaluate().isNotEmpty,
             'the failed steering result',
           );
-          expect(find.text('Steering could not be queued.'), findsOneWidget);
+          expect(find.text('Steering failed'), findsOneWidget);
           expect(
             tester.widget<TextField>(field).controller!.text,
             'Check the retained child rows',
@@ -693,11 +721,24 @@ void main() {
             'Newer guidance',
           );
 
-          expect(tester.takeException(), isNull);
           tester.view.viewInsets = const FakeViewPadding();
           tester.testTextInput.hide();
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
+          fixture.failInterrupt = true;
+          await tester.tap(find.byTooltip('Interrupt'));
+          final interruptError = find.descendant(
+            of: find.byType(StudioError),
+            matching: find.text('Interrupt failed'),
+          );
+          await until(
+            tester,
+            () => interruptError.evaluate().isNotEmpty,
+            'the failed interrupt result',
+          );
+          expect(find.byTooltip('Interrupt').hitTestable(), findsOneWidget);
+          await capture(tester, 'interrupt-error-${brightness.name}-$scale');
+          expect(tester.takeException(), isNull);
           await tester.tap(find.byTooltip('Close subagent activity'));
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
@@ -970,6 +1011,32 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Could not refresh live output.'), findsNothing);
       expect(find.text('Showing the last received output.'), findsOneWidget);
+
+      final refresh = find.byTooltip('Refresh live output');
+      await tester.ensureVisible(refresh);
+      await tester.pumpAndSettle();
+      final gate = Completer<void>();
+      fixture.tailGate = gate;
+      fixture.tailFailures = fixture.tailCalls + 1;
+      await tester.tap(refresh);
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: refresh,
+          matching: find.byType(CircularProgressIndicator),
+        ),
+        findsOneWidget,
+      );
+      gate.complete();
+      await tester.pumpAndSettle();
+      expect(
+        find.descendant(
+          of: find.byType(StudioError),
+          matching: find.text('Could not refresh live output.'),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Showing the last received output.'), findsOneWidget);
       Navigator.of(tester.element(find.text('Live output'))).pop();
       await tester.pumpAndSettle();
     },
@@ -1025,10 +1092,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
 
-    expect(
-      find.text('The subagent did not accept that steering.'),
-      findsOneWidget,
-    );
+    expect(find.text('Steer rejected'), findsOneWidget);
     await tester.scrollUntilVisible(
       find.byType(TextField),
       -160,
@@ -1082,59 +1146,80 @@ void main() {
     },
   );
 
-  testWidgets('tail polling stops after three failures and Retry restarts it', (
-    tester,
-  ) async {
-    fixture.tailFailures = 3;
-    await openDetails(tester);
-    await tester.pump(const Duration(seconds: 2));
-    await tester.pump(const Duration(seconds: 2));
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'tail polling stops after three failures and Retry restarts it ${brightness.name} $scale',
+        (tester) async {
+          fixture.tailFailures = 3;
+          await openDetails(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            size: scale == 1 ? const Size(390, 844) : const Size(320, 640),
+          );
+          await tester.pump(const Duration(seconds: 2));
+          await tester.pump(const Duration(seconds: 2));
 
-    expect(fixture.tailCalls, 3);
-    await tester.scrollUntilVisible(
-      find.text('Could not refresh live output.'),
-      160,
-      scrollable: find
-          .descendant(
-            of: find.byType(ListView).last,
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    expect(find.text('Could not refresh live output.'), findsOneWidget);
-    expect(find.byTooltip('Retry'), findsOneWidget);
-    await tester.pump(const Duration(seconds: 4));
-    expect(fixture.tailCalls, 3);
+          expect(fixture.tailCalls, 3);
+          await tester.scrollUntilVisible(
+            find.text('Could not refresh live output.'),
+            160,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView).last,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          expect(
+            find.descendant(
+              of: find.byType(StudioError),
+              matching: find.text('Could not refresh live output.'),
+            ),
+            findsOneWidget,
+          );
+          await tester.ensureVisible(find.byType(StudioError));
+          await tester.pump();
+          await capture(tester, 'tail-error-${brightness.name}-$scale');
+          expect(find.byTooltip('Retry'), findsOneWidget);
+          await tester.pump(const Duration(seconds: 4));
+          expect(fixture.tailCalls, 3);
 
-    await tester.ensureVisible(find.byTooltip('Retry'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Retry'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 100));
-    await tester.scrollUntilVisible(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is SourceCodeText && widget.text == 'latest child output',
-      ),
-      160,
-      scrollable: find
-          .descendant(
-            of: find.byType(ListView).last,
-            matching: find.byType(Scrollable),
-          )
-          .first,
-    );
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is SourceCodeText && widget.text == 'latest child output',
-      ),
-      findsOneWidget,
-    );
+          await tester.ensureVisible(find.byTooltip('Retry'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byTooltip('Retry'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          await tester.scrollUntilVisible(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is SourceCodeText &&
+                  widget.text == 'latest child output',
+            ),
+            160,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ListView).last,
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          expect(
+            find.byWidgetPredicate(
+              (widget) =>
+                  widget is SourceCodeText &&
+                  widget.text == 'latest child output',
+            ),
+            findsOneWidget,
+          );
 
-    Navigator.of(tester.element(find.text('Live output'))).pop();
-    await tester.pumpAndSettle();
-  });
+          Navigator.of(tester.element(find.text('Live output'))).pop();
+          await tester.pumpAndSettle();
+        },
+      );
+    }
+  }
 
   for (final status in ['running', 'completed']) {
     testWidgets(

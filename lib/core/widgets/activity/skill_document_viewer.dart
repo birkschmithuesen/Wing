@@ -94,6 +94,7 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
       _reader?.removeListener(_changed);
       _reader?.dispose();
       _headings = const [];
+      _openingReference = null;
       _attach();
     }
   }
@@ -162,15 +163,20 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
     }
   }
 
-  void _notice(String text) => showStudioError(context, text);
-  Future<void> _reference(SkillReference file) async {
+  Future<void> _reference(BuildContext anchor, SkillReference file) async {
     if (_openingReference != null) return;
     final reader = _reader;
     if (reader == null) return;
+    final errorKey = ('open-skill-reference', file.path);
+    dismissTransientError(anchor, errorKey: errorKey);
     setState(() => _openingReference = file.path);
     try {
       final received = await reader.openReference(file);
-      if (!mounted) return;
+      if (!mounted ||
+          !identical(_reader, reader) ||
+          ModalRoute.of(context)?.isCurrent == false) {
+        return;
+      }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => SkillDocumentViewer(
@@ -187,13 +193,18 @@ class _SkillDocumentViewerState extends State<SkillDocumentViewer> {
         ),
       );
     } catch (_) {
-      if (mounted) {
-        _notice(
-          'Could not read this reference. Check the connection and try again.',
+      if (anchor.mounted && identical(_reader, reader)) {
+        showTransientError(
+          anchor,
+          'Could not open this reference.',
+          errorKey: errorKey,
+          icon: Icons.visibility_outlined,
         );
       }
     } finally {
-      if (mounted) setState(() => _openingReference = null);
+      if (mounted && identical(_reader, reader)) {
+        setState(() => _openingReference = null);
+      }
     }
   }
 
@@ -486,7 +497,7 @@ class _SkillReferences extends StatefulWidget {
   });
   final List<SkillReference> files;
   final String? opening;
-  final Future<void> Function(SkillReference) onOpen;
+  final Future<void> Function(BuildContext, SkillReference) onOpen;
 
   @override
   State<_SkillReferences> createState() => _SkillReferencesState();
@@ -586,13 +597,15 @@ class _SkillReferencesState extends State<_SkillReferences> {
                               ],
                             ),
                           ),
-                          ActivityDetailAction(
-                            label: 'Read ${file.name}',
-                            icon: Icons.visibility_outlined,
-                            busy: opening == file.path,
-                            onPressed: opening == null
-                                ? () => widget.onOpen(file)
-                                : null,
+                          Builder(
+                            builder: (anchor) => ActivityDetailAction(
+                              label: 'Read ${file.name}',
+                              icon: Icons.visibility_outlined,
+                              busy: opening == file.path,
+                              onPressed: opening == null
+                                  ? () => widget.onOpen(anchor, file)
+                                  : null,
+                            ),
                           ),
                         ],
                       ),

@@ -87,6 +87,7 @@ class ChatImageViewport extends StatefulWidget {
     required this.title,
     required this.imageDecoration,
     this.failureAction,
+    this.failureContent,
     this.onNavigationEnabled,
   }) : assert((uri == null) != (bytes == null));
 
@@ -95,6 +96,7 @@ class ChatImageViewport extends StatefulWidget {
   final String title;
   final BoxDecoration imageDecoration;
   final Widget? failureAction;
+  final Widget? failureContent;
   final ValueChanged<bool>? onNavigationEnabled;
 
   @override
@@ -131,6 +133,26 @@ class _ChatImageViewportState extends State<ChatImageViewport> {
     super.dispose();
   }
 
+  Widget _imageFrame(BuildContext context, Widget child) => Padding(
+    padding: widget.imageDecoration.boxShadow?.isNotEmpty == true
+        ? const EdgeInsets.all(8)
+        : EdgeInsets.zero,
+    child: DecoratedBox(
+      decoration: _zoomed ? const BoxDecoration() : widget.imageDecoration,
+      child: ClipRRect(
+        borderRadius: _zoomed
+            ? BorderRadius.zero
+            : (widget.imageDecoration.borderRadius ?? BorderRadius.zero)
+                  .resolve(Directionality.of(context)),
+        child: child,
+      ),
+    ),
+  );
+
+  static const _loading = Center(
+    child: CircularProgressIndicator(semanticsLabel: 'Loading image'),
+  );
+
   @override
   Widget build(BuildContext context) => Listener(
     behavior: HitTestBehavior.translucent,
@@ -152,56 +174,33 @@ class _ChatImageViewportState extends State<ChatImageViewport> {
         panEnabled: _zoomed,
         minScale: 0.5,
         maxScale: 5,
-        child: Padding(
-          padding: widget.imageDecoration.boxShadow?.isNotEmpty == true
-              ? const EdgeInsets.all(8)
-              : EdgeInsets.zero,
-          child: DecoratedBox(
-            decoration: _zoomed
-                ? const BoxDecoration()
-                : widget.imageDecoration,
-            child: ClipRRect(
-              borderRadius: _zoomed
-                  ? BorderRadius.zero
-                  : (widget.imageDecoration.borderRadius ?? BorderRadius.zero)
-                        .resolve(Directionality.of(context)),
-              child: Image(
-                image: widget.bytes == null
-                    ? NetworkImage(widget.uri.toString())
-                    : MemoryImage(widget.bytes!),
-                semanticLabel: widget.title,
-                fit: BoxFit.contain,
-                frameBuilder: (context, child, frame, synchronouslyLoaded) =>
-                    frame != null || synchronouslyLoaded
-                    ? child
-                    : const Center(
-                        child: CircularProgressIndicator(
-                          semanticsLabel: 'Loading image',
-                        ),
-                      ),
-                loadingBuilder: (context, child, progress) => progress == null
-                    ? child
-                    : const Center(
-                        child: CircularProgressIndicator(
-                          semanticsLabel: 'Loading image',
-                        ),
-                      ),
-                errorBuilder: (context, error, stack) => SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const StudioError('This image could not be previewed.'),
-                      if (widget.failureAction case final action?) ...[
-                        const SizedBox(height: 12),
-                        action,
-                      ],
+        child: Image(
+          image: widget.bytes == null
+              ? NetworkImage(widget.uri.toString())
+              : MemoryImage(widget.bytes!),
+          semanticLabel: widget.title,
+          fit: BoxFit.contain,
+          frameBuilder: (context, child, frame, synchronouslyLoaded) =>
+              frame != null || synchronouslyLoaded
+              ? _imageFrame(context, child)
+              : _loading,
+          loadingBuilder: (_, child, progress) =>
+              progress == null ? child : _loading,
+          errorBuilder: (_, _, _) =>
+              widget.failureContent ??
+              SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const StudioError('This image could not be previewed.'),
+                    if (widget.failureAction case final action?) ...[
+                      const SizedBox(height: 12),
+                      action,
                     ],
-                  ),
+                  ],
                 ),
               ),
-            ),
-          ),
         ),
       ),
     ),

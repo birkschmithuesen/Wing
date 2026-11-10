@@ -12,6 +12,75 @@ import 'studio_error.dart';
 
 typedef UserAttachmentImageLoader = Future<Uint8List> Function(String path);
 
+class _AttachmentPreviewFailure extends StatelessWidget {
+  const _AttachmentPreviewFailure({
+    required this.name,
+    required this.onRetry,
+    this.width = 240,
+    this.minHeight = 0,
+    this.openAction,
+  });
+
+  final String name;
+  final VoidCallback onRetry;
+  final double width, minHeight;
+  final Widget? openAction;
+
+  @override
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(
+      minWidth: width,
+      maxWidth: width,
+      minHeight: minHeight,
+    ),
+    child: StudioErrorFrame(
+      child: Padding(
+        padding: const EdgeInsets.all(WingSpacing.sm),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            StudioError(
+              'Can’t load image',
+              framed: false,
+              stacked:
+                  minHeight > 0 &&
+                  width < 156 * MediaQuery.textScalerOf(context).scale(14) / 14,
+            ),
+            const SizedBox(height: WingSpacing.xs),
+            Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.labelSmall,
+            ),
+            Align(
+              alignment: AlignmentDirectional.centerEnd,
+              child: Wrap(
+                children: [
+                  ?openAction,
+                  StudioButtonPress(
+                    child: IconButton(
+                      tooltip: 'Retry image preview',
+                      style: IconButton.styleFrom(
+                        minimumSize: const Size.square(48),
+                        visualDensity: VisualDensity.standard,
+                      ),
+                      onPressed: onRetry,
+                      icon: const Icon(Icons.refresh, size: 20),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class UserMessageAttachmentTile extends StatefulWidget {
   final UserMessageAttachment attachment;
   final UserAttachmentImageLoader? loadImage;
@@ -52,6 +121,11 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
   ImageProvider? _currentProvider;
   late Future<ImageProvider>? _image = _load();
 
+  String get _remainingImagesLabel {
+    final count = widget.additionalImages;
+    return '$count more ${count == 1 ? 'image' : 'images'}';
+  }
+
   Future<ImageProvider>? _load() {
     _failed = false;
     _acquired = false;
@@ -86,20 +160,6 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
   void _retry() => setState(() {
     _image = _load();
   });
-
-  Widget _retryButton() => StudioButtonPress(
-    child: IconButton(
-      tooltip: 'Retry image preview',
-      style: IconButton.styleFrom(
-        minimumSize: const Size.square(48),
-        maximumSize: const Size.square(48),
-        visualDensity: VisualDensity.standard,
-        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-      ),
-      onPressed: _retry,
-      icon: const Icon(Icons.refresh, size: 20),
-    ),
-  );
 
   Future<ImageProvider> _imageProvider() async {
     final generation = _generation;
@@ -152,31 +212,18 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
     );
   }
 
-  Widget _fileCard({bool unavailable = false}) {
+  Widget _fileCard() {
     final theme = Theme.of(context);
     final attachment = widget.attachment;
     if (widget.previewSize case final size?) {
       return Semantics(
-        label:
-            '${unavailable ? 'Preview unavailable' : 'Image'}: ${attachment.name}',
+        label: 'Image: ${attachment.name}',
         child: SizedBox.fromSize(
           size: size,
           child: Material(
             color: theme.colorScheme.surfaceContainerHigh,
             borderRadius: WingRadius.card,
-            child: Stack(
-              children: [
-                Center(
-                  child: Icon(
-                    unavailable
-                        ? Icons.broken_image_outlined
-                        : Icons.image_outlined,
-                  ),
-                ),
-                if (unavailable)
-                  Positioned(right: 0, bottom: 0, child: _retryButton()),
-              ],
-            ),
+            child: const Center(child: Icon(Icons.image_outlined)),
           ),
         ),
       );
@@ -192,9 +239,7 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
       child: Row(
         children: [
           Icon(
-            unavailable
-                ? Icons.broken_image_outlined
-                : Icons.insert_drive_file_outlined,
+            Icons.insert_drive_file_outlined,
             color: theme.colorScheme.onSurfaceVariant,
           ),
           const SizedBox(width: 12),
@@ -211,7 +256,7 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  unavailable ? 'Preview unavailable' : attachment.extension,
+                  attachment.extension,
                   style: theme.textTheme.labelSmall?.copyWith(
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
@@ -219,7 +264,6 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
               ],
             ),
           ),
-          if (unavailable) _retryButton(),
         ],
       ),
     );
@@ -255,7 +299,7 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
 
   @override
   Widget build(BuildContext context) {
-    final preview = _content(context);
+    final preview = _preview();
     if (widget.onDownload == null) return preview;
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -285,107 +329,124 @@ class _UserMessageAttachmentTileState extends State<UserMessageAttachmentTile>
     );
   }
 
-  Widget _content(BuildContext context) {
-    final preview = _preview(context);
-    if (widget.additionalImages == 0) return preview;
-    return StudioButtonPress(
-      child: InkWell(
-        onTap: widget.onOpen == null
-            ? null
-            : () => widget.onOpen!(_currentProvider),
+  Widget _imageCard(Widget child, {VoidCallback? onTap}) => ConstrainedBox(
+    constraints: BoxConstraints(
+      maxWidth: widget.previewSize?.width ?? 240,
+      maxHeight: widget.previewSize?.height ?? 320,
+    ),
+    child: ClipRRect(
+      borderRadius: WingRadius.card,
+      child: Material(
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: WingRadius.card,
-        child: IgnorePointer(
-          child: Stack(
-            children: [
-              preview,
-              Positioned.fill(
-                child: IgnorePointer(
-                  child: ClipRRect(
-                    borderRadius: WingRadius.card,
-                    child: ColoredBox(
-                      color: Colors.black.withValues(alpha: .55),
-                      child: Center(
-                        child: Text(
-                          '+${widget.additionalImages}',
-                          semanticsLabel:
-                              '${widget.additionalImages} more images',
-                          style: Theme.of(context).textTheme.headlineMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                              ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
+        child: StudioButtonPress(
+          child: InkWell(onTap: onTap, child: _withGalleryCount(child)),
         ),
       ),
-    );
-  }
+    ),
+  );
 
-  Widget _preview(BuildContext context) {
-    if (!widget.loadImages || !widget.attachment.isImage) return _fileCard();
-    return FutureBuilder<ImageProvider>(
-      future: _image,
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          _failed = true;
-          return _fileCard(unavailable: true);
-        }
-        final provider = snapshot.data;
-        if (provider == null) {
-          return _loading();
-        }
-        _failed = false;
-        return ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: widget.previewSize?.width ?? 240,
-            maxHeight: widget.previewSize?.height ?? 320,
-          ),
-          child: ClipRRect(
-            borderRadius: WingRadius.card,
-            child: Material(
-              color: Theme.of(context).colorScheme.surfaceContainerHigh,
-              child: StudioButtonPress(
-                child: InkWell(
-                  onTap: () => _open(provider),
-                  child: Image(
-                    image: ResizeImage.resizeIfNeeded(720, null, provider),
-                    width: widget.previewSize?.width ?? 240,
-                    height: widget.previewSize?.height,
-                    // Fill the capped preview with the top of a long screenshot.
-                    // The original provider still opens in the full-image viewer.
-                    fit: BoxFit.cover,
-                    alignment: Alignment.topCenter,
-                    semanticLabel: 'Open image: ${widget.attachment.name}',
-                    frameBuilder: (_, child, frame, _) =>
-                        frame == null ? _loading() : child,
-                    errorBuilder: (_, _, _) {
-                      _failed = true;
-                      return _fileCard(unavailable: true);
-                    },
-                    loadingBuilder: (_, child, progress) =>
-                        progress == null ? child : _loading(),
+  Widget _withGalleryCount(Widget child) {
+    if (widget.additionalImages == 0) return child;
+    return Stack(
+      children: [
+        child,
+        Positioned.fill(
+          child: IgnorePointer(
+            child: ColoredBox(
+              color: Colors.black.withValues(alpha: .55),
+              child: Center(
+                child: Text(
+                  '+${widget.additionalImages}',
+                  semanticsLabel: _remainingImagesLabel,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
               ),
             ),
           ),
+        ),
+      ],
+    );
+  }
+
+  Widget _preview() {
+    if (!widget.loadImages || !widget.attachment.isImage) {
+      return _withGalleryCount(_fileCard());
+    }
+    return FutureBuilder<ImageProvider>(
+      future: _image,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState != ConnectionState.done) return _loading();
+        if (snapshot.hasError) return _failure();
+        final provider = snapshot.data;
+        if (provider == null) return _loading();
+        _failed = false;
+        return Image(
+          image: ResizeImage.resizeIfNeeded(720, null, provider),
+          width: widget.previewSize?.width ?? 240,
+          height: widget.previewSize?.height,
+          // Fill the capped preview with the top of a long screenshot.
+          // The original provider still opens in the full-image viewer.
+          fit: BoxFit.cover,
+          alignment: Alignment.topCenter,
+          semanticLabel: 'Open image: ${widget.attachment.name}',
+          frameBuilder: (_, child, frame, _) => frame == null
+              ? _loading()
+              : _imageCard(child, onTap: () => _open(provider)),
+          errorBuilder: (_, _, _) => _failure(provider),
+          loadingBuilder: (_, child, progress) =>
+              progress == null ? child : _loading(),
         );
       },
     );
   }
 
-  Widget _loading() => SizedBox(
-    width: widget.previewSize?.width ?? 240,
-    height: widget.previewSize?.height ?? 180,
-    child: const Center(
-      child: CircularProgressIndicator(semanticsLabel: 'Loading attachment'),
+  Widget _failure([ImageProvider? provider]) {
+    _failed = true;
+    final open = widget.onOpen;
+    final overflow = widget.additionalImages > 0 && open != null;
+    return _AttachmentPreviewFailure(
+      name: widget.attachment.name,
+      width: widget.previewSize?.width ?? 240,
+      minHeight: widget.previewSize?.height ?? 0,
+      onRetry: _retry,
+      openAction: provider != null || overflow
+          ? StudioButtonPress(
+              child: IconButton(
+                tooltip: overflow
+                    ? 'Open image gallery, $_remainingImagesLabel'
+                    : open == null
+                    ? 'Open original image'
+                    : 'Open image gallery',
+                onPressed: provider == null
+                    ? () => open!(_currentProvider)
+                    : () => _open(provider),
+                icon: Icon(
+                  open == null
+                      ? Icons.image_outlined
+                      : Icons.photo_library_outlined,
+                  size: 20,
+                ),
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _loading() => _imageCard(
+    SizedBox(
+      width: widget.previewSize?.width ?? 240,
+      height: widget.previewSize?.height ?? 180,
+      child: const Center(
+        child: CircularProgressIndicator(semanticsLabel: 'Loading attachment'),
+      ),
     ),
+    onTap: widget.additionalImages > 0 && widget.onOpen != null
+        ? () => widget.onOpen!(_currentProvider)
+        : null,
   );
 }
 
@@ -498,6 +559,7 @@ class _UserMessageAttachmentsState extends State<UserMessageAttachments> {
                   Size(widget.width, edge),
                 )
               : Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _tile(context, displayed[image], images, Size(edge, edge)),
                     const SizedBox(width: 4),
@@ -820,6 +882,15 @@ class _UserMessageImageGalleryState extends State<_UserMessageImageGallery>
     ),
   );
 
+  Widget _galleryFailure(int index) => SingleChildScrollView(
+    primary: false,
+    padding: const EdgeInsets.all(WingSpacing.lg),
+    child: _AttachmentPreviewFailure(
+      name: widget.images[index].name,
+      onRetry: () => _retry(index),
+    ),
+  );
+
   Widget _page(int index) => FutureBuilder<ImageProvider>(
     future: _provider(index),
     builder: (context, snapshot) {
@@ -845,6 +916,7 @@ class _UserMessageImageGalleryState extends State<_UserMessageImageGallery>
           ),
           bytes: provider is MemoryImage ? provider.bytes : null,
           uri: provider is NetworkImage ? Uri.parse(provider.url) : null,
+          failureContent: _galleryFailure(index),
           onNavigationEnabled: (enabled) =>
               _setNavigationEnabled(index, enabled),
         );
@@ -853,17 +925,7 @@ class _UserMessageImageGalleryState extends State<_UserMessageImageGallery>
         child:
             snapshot.connectionState == ConnectionState.done &&
                 snapshot.hasError
-            ? StudioButtonPress(
-                child: IconButton(
-                  tooltip: 'Retry image preview',
-                  style: IconButton.styleFrom(
-                    minimumSize: const Size.square(48),
-                    visualDensity: VisualDensity.standard,
-                  ),
-                  onPressed: () => _retry(index),
-                  icon: const Icon(Icons.refresh),
-                ),
-              )
+            ? _galleryFailure(index)
             : const CircularProgressIndicator(
                 semanticsLabel: 'Loading attachment',
               ),

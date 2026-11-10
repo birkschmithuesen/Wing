@@ -69,6 +69,7 @@ class _ProfileSubagentPanelState extends State<ProfileSubagentPanel> {
       await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
+        useSafeArea: true,
         showDragHandle: true,
         builder: (_) =>
             StudioLoadingFrame(child: _SubagentDetailSheet(session: detail)),
@@ -207,15 +208,16 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
     builder: (context, _) {
       final state = widget.session.state;
       final current = state.activity;
+      final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
       return SafeArea(
         child: AnimatedPadding(
           duration: const Duration(milliseconds: 150),
           curve: Curves.easeOut,
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.viewInsetsOf(context).bottom,
-          ),
+          padding: EdgeInsets.only(bottom: keyboardInset),
           child: FractionallySizedBox(
-            heightFactor: 0.85,
+            heightFactor: widget.session.timeline != null && keyboardInset > 0
+                ? 1
+                : 0.85,
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
               child: _withTimeline(
@@ -354,15 +356,29 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
               ),
             ),
           ),
-          _steeringControls(feedbackHeight: constraints.maxHeight * 0.2),
+          if (widget.session.state.acceptsSteer)
+            const SizedBox(height: WingSpacing.md),
+          _steeringControls(feedbackHeight: constraints.maxHeight / 3),
           _statusFooter(current),
         ],
       ),
     );
   }
 
-  Widget _steeringControls({double feedbackHeight = 96}) {
+  Widget _steeringControls({double? feedbackHeight}) {
     final state = widget.session.state;
+    final message = state.controlMessage;
+    final feedback = message == null
+        ? null
+        : state.controlFailed
+        ? Padding(
+            padding: const EdgeInsets.symmetric(
+              horizontal: WingSpacing.sm,
+              vertical: WingSpacing.xs,
+            ),
+            child: StudioError(message),
+          )
+        : ActivityDetailStatus(label: message, icon: Icons.info_outline);
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -393,19 +409,14 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
               ),
             ],
           ),
-        if (state.controlMessage case final message?)
-          ConstrainedBox(
-            constraints: BoxConstraints(maxHeight: feedbackHeight),
-            child: SingleChildScrollView(
-              child: ActivityDetailStatus(
-                label: message,
-                error: state.controlFailed,
-                icon: state.controlFailed
-                    ? Icons.error_outline
-                    : Icons.info_outline,
-              ),
-            ),
-          ),
+        if (feedback != null)
+          if (feedbackHeight != null)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: feedbackHeight),
+              child: SingleChildScrollView(child: feedback),
+            )
+          else
+            feedback,
       ],
     );
   }
@@ -509,10 +520,10 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
             actions: _tailActions(),
           ),
         if (widget.session.state.inlineTailError case final error?)
-          ActivityDetailStatus(
-            label: error,
-            error: true,
-            icon: Icons.error_outline,
+          Padding(
+            padding: const EdgeInsets.all(WingSpacing.sm),
+            // The existing Alert owns announcement of the same read failure.
+            child: StudioError(error, announce: false),
           ),
         _recentActivity(activity),
       ],

@@ -111,3 +111,10 @@ the production Activity and recovery controls.
 Streaming durations start at the preceding user message or Reasoning block; native reasoning boundaries use their first receipt time on the phone. Missing or reversed timestamps omit the interval. Historical results have no live controls. Completed children remain current only while their parent turn is active. Task batches with unfinished work remain current after a response; fully settled batches retire when their response ends, before history finishes loading. A request must belong to the displayed chat.
 
 Tasks are plan items, while Background contains terminal processes. An exited process remains in the dock only during the response in which its completion was observed. When that response ends, Background hides finished rows and disappears if no running work remains. Opening an idle chat does not restore old exited registry entries; saved receipts remain in Activity. Automatic refreshes stay quiet; selecting Background shows a pending cue through its read. Stop uses the exact session-owned process and requires a server acknowledgement.
+
+Failed Steer, Interrupt and Stop actions show local recovery beside their
+original controls. Steering keeps the unsent guidance and remains usable with
+the keyboard open. `test/profile_subagent_panel_test.dart` and
+`test/profile_background_work_panel_test.dart` exercise these failures and
+retries in both themes and enlarged text. Recorded completion status stays
+inside its Activity result.

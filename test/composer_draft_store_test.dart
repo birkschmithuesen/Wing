@@ -174,7 +174,10 @@ void main() {
     final restored = await store.read(profileName: 'work', sessionId: 'chat');
     expect(restored!.text, 'keep this text');
     expect(restored.attachments.single.status, AttachmentDraftStatus.failed);
-    expect(restored.attachments.single.error, contains('no longer available'));
+    expect(
+      restored.attachments.single.error,
+      'File missing. Remove and reattach.',
+    );
   });
 
   test('empty draft removes its durable record', () async {
@@ -395,7 +398,10 @@ void main() {
       expect(moved.attachments.first.atlasIntakeAccepted, isNull);
       expect(moved.attachments.last.status, AttachmentDraftStatus.failed);
       expect(moved.attachments.last.refText, isNull);
-      expect(moved.attachments.last.error, contains('no longer available'));
+      expect(
+        moved.attachments.last.error,
+        'File missing. Remove and reattach.',
+      );
       final queuedMoved = moved.queuedPrompts.single.attachments.single;
       expect(queuedMoved.status, AttachmentDraftStatus.ready);
       expect(queuedMoved.refText, isNull);

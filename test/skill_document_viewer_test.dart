@@ -21,6 +21,7 @@ SkillReaderSession reader(
   Map? captured, {
   Future<void>? activityReady,
   bool failActivity = false,
+  Future<void> Function()? beforeReference,
 }) {
   final counters =
       captured?['telemetry']?['byProfile'] as List? ??
@@ -122,6 +123,9 @@ SkillReaderSession reader(
       return {'entries': []};
     }
     if (endpoint == 'fs/read-text') {
+      if ((query['path'] as String).startsWith('$directory/references/')) {
+        await beforeReference?.call();
+      }
       return {
         'path': query['path'],
         'binary': false,
@@ -231,6 +235,88 @@ void main() {
   });
   for (final theme in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'failed reference stays anchored and can be reopened ${theme.name} ${scale}x',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final boundary = GlobalKey();
+          final held = Completer<void>();
+          var attempts = 0;
+          final document = SkillDocument.fromReceived(
+            name: 'review',
+            content: '# Review',
+            sourcePath: '/skills/review/SKILL.md',
+          );
+          const reference = 'evidence.md';
+          const referencePath = '/skills/review/references/$reference';
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: boundary,
+              child: MaterialApp(
+                debugShowCheckedModeBanner: false,
+                theme: wingTheme(theme),
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: SkillDocumentViewer(
+                  document: document,
+                  createReader: () => reader(
+                    document,
+                    {
+                      'references': [
+                        {'name': reference, 'path': referencePath},
+                      ],
+                    },
+                    beforeReference: () async {
+                      if (++attempts == 1) await held.future;
+                    },
+                  ),
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final eye = find.byTooltip('Read $reference');
+          await tester.ensureVisible(eye);
+          await tester.pumpAndSettle();
+          final anchor = tester.getRect(eye);
+          await tester.tap(eye);
+          await tester.pump();
+          expect(
+            find.byType(CircularProgressIndicator).hitTestable(),
+            findsOneWidget,
+          );
+          held.completeError(StateError('Reference read failed'));
+          await tester.pumpAndSettle();
+          final failure = find.text('Could not open this reference.');
+          expect(failure, findsOneWidget);
+          expect(find.byType(Dialog), findsNothing);
+          expect(tester.getRect(eye), anchor);
+          expect(tester.getRect(failure).overlaps(anchor), isFalse);
+          await capture(
+            tester,
+            boundary,
+            'reference-error-${theme.name}-${scale}x',
+          );
+          await tester.tap(eye);
+          await tester.pumpAndSettle();
+          expect(failure, findsNothing);
+          expect(
+            tester
+                .widget<SkillDocumentViewer>(find.byType(SkillDocumentViewer))
+                .document
+                .sourcePath,
+            referencePath,
+          );
+          expect(tester.takeException(), isNull);
+        },
+      );
+
       testWidgets(
         'activity keeps its space while loading ${theme.name} $scale',
         (tester) async {

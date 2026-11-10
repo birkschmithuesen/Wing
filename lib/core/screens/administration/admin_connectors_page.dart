@@ -9,6 +9,7 @@ import '../../services/mcp_oauth.dart';
 import '../../services/mcp_setup.dart';
 import '../../widgets/read_recovery.dart';
 import '../../widgets/studio_action_label.dart';
+import '../../widgets/studio_error.dart';
 import '../../widgets/compact_switch.dart';
 import '../../theme/wing_theme.dart';
 import 'admin_widgets.dart';
@@ -170,54 +171,7 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
                           AdminGroup(
                             children: [
                               for (final row in state.connectors)
-                                StudioButtonPress(
-                                  child: ListTile(
-                                    minTileHeight: 56,
-                                    minVerticalPadding: 4,
-                                    horizontalTitleGap: 12,
-                                    title: Text(row.name),
-                                    subtitle: Text(
-                                      widget.failedConnectorNames.contains(
-                                            row.name,
-                                          )
-                                          ? 'Failed health check · ${row.transport}'
-                                          : [
-                                              row.transport,
-                                              if (state.runtime?.forConnector(
-                                                    row,
-                                                  )
-                                                  case final runtime?)
-                                                'Cached: ${runtime.label}',
-                                            ].join(' · '),
-                                    ),
-                                    leading:
-                                        widget.failedConnectorNames.contains(
-                                          row.name,
-                                        )
-                                        ? Icon(
-                                            Icons.warning_amber_rounded,
-                                            color: WingTokens.of(
-                                              context,
-                                            ).warning,
-                                          )
-                                        : null,
-                                    trailing: CompactSwitch(
-                                      semanticLabel: 'Enable ${row.name}',
-                                      value: row.enabled,
-                                      onChanged:
-                                          state.canMutate && row.canConfigure
-                                          ? (value) => _toggle(row, value)
-                                          : null,
-                                    ),
-                                    onTap: state.canMutate
-                                        ? () => _open(
-                                            row.name,
-                                            profileName: _session.profileName,
-                                            signInOnOpen: false,
-                                          )
-                                        : null,
-                                  ),
-                                ),
+                                _connectorRow(row, state),
                             ],
                           ),
                           const SizedBox(height: 24),
@@ -245,6 +199,48 @@ class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
       ),
     ),
   );
+
+  Widget _connectorRow(ProfileConnector row, ProfileConnectorsState state) {
+    final failed = widget.failedConnectorNames.contains(row.name);
+    final tile = StudioButtonPress(
+      child: ListTile(
+        minTileHeight: 56,
+        minVerticalPadding: failed ? 12 : 4,
+        horizontalTitleGap: 12,
+        title: failed
+            ? StudioError(
+                row.name,
+                detail: 'Failed health check · ${row.transport}',
+                framed: false,
+              )
+            : Text(row.name),
+        subtitle: failed
+            ? null
+            : Text(
+                [
+                  row.transport,
+                  if (state.runtime?.forConnector(row) case final runtime?)
+                    'Cached: ${runtime.label}',
+                ].join(' · '),
+              ),
+        trailing: CompactSwitch(
+          semanticLabel: 'Enable ${row.name}',
+          value: row.enabled,
+          onChanged: state.canMutate && row.canConfigure
+              ? (value) => _toggle(row, value)
+              : null,
+        ),
+        onTap: state.canMutate
+            ? () => _open(
+                row.name,
+                profileName: _session.profileName,
+                signInOnOpen: false,
+              )
+            : null,
+      ),
+    );
+    return failed ? StudioErrorFrame(child: tile) : tile;
+  }
 }
 
 class AdminConnectorDetail extends StatefulWidget {
@@ -353,10 +349,12 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
               : ListView(
                   padding: const EdgeInsets.all(16),
                   children: [
-                    AdminNotice(
-                      _error ??
-                          'This connector is not available in this profile.',
-                    ),
+                    if (_error case final error?)
+                      AdminNotice.error(error)
+                    else
+                      const AdminNotice(
+                        'This connector is not available in this profile.',
+                      ),
                     StudioButtonPress(
                       child: TextButton(
                         onPressed: _load,
@@ -368,22 +366,9 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
         );
       }
 
-      final tokens =
-          Theme.of(context).extension<WingTokens>() ??
-          (Theme.of(context).brightness == Brightness.dark
-              ? WingTokens.dark()
-              : WingTokens.light());
+      final tokens = WingTokens.of(context);
       final tools = _probe?.tools ?? const <ConnectorTool>[];
-      final status = _testFailure != null
-          ? 'Connection failed'
-          : _probe != null
-          ? 'Connected'
-          : 'Not tested';
-      final color = _testFailure != null
-          ? tokens.danger
-          : _probe != null
-          ? tokens.success
-          : tokens.muted;
+      final connected = _probe?.connected == true;
       return AdminPage(
         title: _name,
         scope: _session.scopeLabel,
@@ -399,39 +384,71 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
               if (_session.state.runtimeError case final error?)
                 AdminNotice.error(error),
             ],
-            Semantics(
-              liveRegion: true,
-              child: Padding(
+            if (_testFailure case final failure?)
+              Padding(
                 padding: const EdgeInsets.only(bottom: 16),
-                child: Row(
-                  children: [
-                    if (_testing)
-                      const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          semanticsLabel: 'Testing connection',
+                child: StudioErrorFrame(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: WingSpacing.md,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: WingSpacing.md),
+                          child: StudioError(
+                            'Connection failed',
+                            framed: false,
+                          ),
                         ),
-                      )
-                    else
-                      Icon(
-                        _testFailure != null
-                            ? Icons.close
-                            : _probe != null
-                            ? Icons.check
-                            : Icons.horizontal_rule,
-                        size: 20,
-                        color: color,
-                      ),
-                    if (!_testing) ...[
-                      const SizedBox(width: 12),
-                      Expanded(child: Text(status)),
+                        ExpansionTile(
+                          key: ValueKey(failure),
+                          tilePadding: EdgeInsets.zero,
+                          title: const Text('Failure details'),
+                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                          childrenPadding: const EdgeInsets.only(
+                            bottom: WingSpacing.md,
+                          ),
+                          children: [Text(failure)],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              Semantics(
+                liveRegion: true,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    children: [
+                      if (_testing)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            semanticsLabel: 'Testing connection',
+                          ),
+                        )
+                      else
+                        Icon(
+                          connected ? Icons.check : Icons.horizontal_rule,
+                          size: 20,
+                          color: connected ? tokens.success : tokens.muted,
+                        ),
+                      if (!_testing) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(connected ? 'Connected' : 'Not tested'),
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
-            ),
             Wrap(
               spacing: 8,
               runSpacing: 8,
@@ -451,13 +468,6 @@ class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
                   ),
               ],
             ),
-            if (_testFailure != null)
-              ExpansionTile(
-                key: ValueKey(_testFailure),
-                tilePadding: EdgeInsets.zero,
-                title: const Text('Failure details'),
-                children: [AdminNotice.error(_testFailure!)],
-              ),
             if (_probe?.connected == true)
               ExpansionTile(
                 key: ObjectKey(_probe),

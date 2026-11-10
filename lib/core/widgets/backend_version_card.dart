@@ -243,10 +243,13 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                   ],
                 ),
                 const SizedBox(height: WingSpacing.sm),
-                if (controller.versionStale)
-                  const Text(
-                    'Last known version · server could not be reached',
+                if (controller.versionStale) ...[
+                  const StudioError(
+                    'Could not refresh server version.',
+                    detail: 'Showing the last known version.',
                   ),
+                  const SizedBox(height: WingSpacing.sm),
+                ],
                 if (controller.cloudManaged)
                   Text(
                     'Updates are managed by Hermes Cloud.',

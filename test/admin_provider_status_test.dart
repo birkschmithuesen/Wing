@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_providers_page.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'support/administration_fixture.dart';
+import 'support/form_family_capture.dart';
 
 Map<String, dynamic> provider(
   String id,
@@ -17,6 +19,7 @@ Map<String, dynamic> provider(
 };
 
 void main() {
+  setUpAll(loadFormFamilyFonts);
   final pageScroll = find
       .descendant(of: find.byType(ListView), matching: find.byType(Scrollable))
       .first;
@@ -110,71 +113,103 @@ void main() {
     },
   );
 
-  testWidgets(
-    'large text, external status and missing selections remain usable',
-    (tester) async {
-      final fixture = AdministrationFixture();
-      fixture.override = (method, path, query, body) async {
-        if (path == 'profiles') throw StateError('Unavailable');
-        if (path == 'env') return {};
-        return {
-          'providers': [
-            provider('External provider with a long display name', {
-              'logged_in': false,
-            }, flow: 'external'),
-          ],
-        };
-      };
-      tester.view.physicalSize = const Size(360, 800);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.reset);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: wingTheme(Brightness.light),
-          builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: const TextScaler.linear(1.5)),
-            child: child!,
-          ),
-          home: AdminProvidersPage(profile: fixture.server.profile('personal')),
-        ),
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'provider inventory survives a selection read failure ${brightness.name} $scale',
+        (tester) async {
+          final fixture = AdministrationFixture();
+          addTearDown(fixture.server.close);
+          var fail = true;
+          fixture.override = (method, path, query, body) async {
+            if (path == 'profiles') {
+              if (fail) throw StateError('Unavailable');
+              return {
+                'profiles': [
+                  {'name': 'personal', 'provider': 'openai-codex'},
+                ],
+              };
+            }
+            if (path == 'env') return {};
+            return {
+              'providers': [
+                provider('External provider with a long display name', {
+                  'logged_in': false,
+                }, flow: 'external'),
+              ],
+            };
+          };
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: RepaintBoundary(key: formFamilyCapture, child: child!),
+              ),
+              home: AdminProvidersPage(
+                profile: fixture.server.profile('personal'),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final error = find.widgetWithText(
+            StudioError,
+            'Profile selections could not be loaded. Refresh to retry.',
+          );
+          await tester.scrollUntilVisible(error, 200, scrollable: pageScroll);
+          await tester.ensureVisible(error);
+          await tester.pumpAndSettle();
+          expect(error, findsOneWidget);
+          await captureFormFamily(
+            tester,
+            'error-screen-provider-inventory-${brightness.name}-$scale',
+          );
+          fail = false;
+          final refresh = find.text('Check status');
+          await tester.ensureVisible(refresh);
+          await tester.pumpAndSettle();
+          await tester.tap(refresh);
+          await tester.pumpAndSettle();
+          expect(error, findsNothing);
+          await tester.scrollUntilVisible(
+            find.text('External provider with a long display name'),
+            200,
+            scrollable: pageScroll,
+          );
+          await tester.ensureVisible(
+            find.text('External provider with a long display name'),
+          );
+          await tester.pumpAndSettle();
+          await tester.tap(
+            find.text('External provider with a long display name'),
+          );
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text('Credential details'),
+            200,
+            scrollable: pageScroll,
+          );
+          await tester.ensureVisible(find.text('Credential details'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Credential details'));
+          await tester.pumpAndSettle();
+          await tester.scrollUntilVisible(
+            find.text('Check external sign-in'),
+            -200,
+            scrollable: pageScroll,
+          );
+          expect(find.text('Check external sign-in'), findsOneWidget);
+          expect(find.text('Disconnect'), findsNothing);
+          expect(find.text('Remove profile account'), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
       );
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.textContaining('Profile selections could not be loaded'),
-        200,
-        scrollable: pageScroll,
-      );
-      expect(
-        find.textContaining('Profile selections could not be loaded'),
-        findsOneWidget,
-      );
-      await tester.scrollUntilVisible(
-        find.text('External provider with a long display name'),
-        200,
-        scrollable: pageScroll,
-      );
-      await tester.tap(find.text('External provider with a long display name'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('Credential details'),
-        200,
-        scrollable: pageScroll,
-      );
-      await tester.ensureVisible(find.text('Credential details'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Credential details'));
-      await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.text('Check external sign-in'),
-        -200,
-        scrollable: pageScroll,
-      );
-      expect(find.text('Check external sign-in'), findsOneWidget);
-      expect(find.text('Disconnect'), findsNothing);
-      expect(find.text('Remove profile account'), findsNothing);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    }
+  }
 }

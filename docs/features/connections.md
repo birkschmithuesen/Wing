@@ -80,3 +80,8 @@ startup/chat/notification outages, capped delays, immediate manual/foreground
 recovery, permanent failures, disposal and avoiding duplicate submissions.
 
 A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.
+
+Transport outages use the existing Alerts presentation, so acknowledgement or
+snooze does not leave a duplicate outage banner in the workspace. The status
+indicator still opens connection details. A failure specific to opening a chat
+keeps local recovery beside the affected view.

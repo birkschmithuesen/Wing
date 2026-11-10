@@ -187,6 +187,72 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
+        'server version refresh fails with retained data ${brightness.name} $scale',
+        (tester) async {
+          final host = _UpdateHost();
+          tester.view.physicalSize = Size(scale == 2 ? 320 : 390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: RepaintBoundary(
+                  key: const ValueKey('channels-capture'),
+                  child: child!,
+                ),
+              ),
+              home: VersionsUpdatesScreen(
+                controllerFactory: (_) => VersionsController(
+                  gateway: host.gateway,
+                  cloudManaged: true,
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('1.2.3'), findsOneWidget);
+          final refresh = find.byTooltip('Refresh server version');
+          final pending = Completer<Map<String, dynamic>>();
+          host.pendingHealth = pending;
+          await tester.tap(refresh);
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(StudioLoading), findsOneWidget);
+          expect(find.text('1.2.3'), findsOneWidget);
+          pending.completeError(StateError('Version read failed'));
+          await tester.pumpAndSettle();
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(find.text('1.2.3'), findsOneWidget);
+          expect(
+            find.descendant(
+              of: find.byType(StudioError),
+              matching: find.text('Could not refresh server version.'),
+            ),
+            findsOneWidget,
+          );
+          await snapshot(
+            tester,
+            '${brightness.name}-$scale-stale-server-version',
+          );
+          host.pendingHealth = null;
+          host.checkResponse = {..._available, 'current_version': '1.2.4'};
+          await tester.ensureVisible(refresh);
+          await tester.pump();
+          await tester.tap(refresh);
+          await tester.pumpAndSettle();
+          expect(find.text('1.2.4'), findsOneWidget);
+          expect(find.byType(StudioError), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+
+      testWidgets(
         'channel editor survives failed checks ${brightness.name} $scale',
         (tester) async {
           final host = _UpdateHost();

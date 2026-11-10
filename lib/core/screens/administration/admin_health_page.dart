@@ -31,6 +31,16 @@ Color administrationHealthColor(
   };
 }
 
+StudioErrorSeverity? _findingSeverity(AdministrationHealthFinding finding) {
+  if (finding.readFailed ||
+      finding.status == AdministrationHealthStatus.failure) {
+    return StudioErrorSeverity.error;
+  }
+  return finding.status == AdministrationHealthStatus.warning
+      ? StudioErrorSeverity.noResult
+      : null;
+}
+
 class AdminHealthContent extends StatelessWidget {
   final AdministrationHealth health;
   final HostResourcesSession hostResources;
@@ -164,83 +174,91 @@ class AdminHealthContent extends StatelessWidget {
     AdministrationHealthFinding? finding,
     IconData icon,
     VoidCallback onTap,
-  ) => StudioButtonPress(
-    child: ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      minTileHeight: 64,
-      minVerticalPadding: 8,
-      leading: Icon(
-        finding?.status == AdministrationHealthStatus.failure ||
-                finding?.status == AdministrationHealthStatus.warning
-            ? Icons.error_outline
-            : icon,
-        color: finding == null
-            ? Theme.of(context).colorScheme.onSurfaceVariant
-            : administrationHealthColor(context, finding.status),
-        size: 22,
+  ) {
+    final severity = finding == null ? null : _findingSeverity(finding);
+    final healthy = finding?.status == AdministrationHealthStatus.healthy;
+    final tile = StudioButtonPress(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        minTileHeight: 64,
+        minVerticalPadding: severity == null ? 8 : 12,
+        leading: severity != null
+            ? null
+            : Icon(
+                icon,
+                color: finding == null
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : administrationHealthColor(context, finding.status),
+                size: 22,
+              ),
+        title: severity != null
+            ? StudioError(
+                title,
+                detail: finding!.detail,
+                framed: false,
+                severity: severity,
+              )
+            : Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: severity != null
+            ? null
+            : Text(
+                finding?.detail ?? 'Not checked',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+        trailing: healthy ? null : const Icon(Icons.chevron_right, size: 20),
+        onTap: healthy ? null : onTap,
       ),
-      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-      subtitle: Text(
-        finding?.detail ?? 'Not checked',
-        style: Theme.of(context).textTheme.bodySmall,
-      ),
-      trailing: finding?.status == AdministrationHealthStatus.healthy
-          ? null
-          : const Icon(Icons.chevron_right, size: 20),
-      onTap: finding?.status == AdministrationHealthStatus.healthy
-          ? null
-          : onTap,
-    ),
-  );
+    );
+    return severity == null
+        ? tile
+        : StudioErrorFrame(severity: severity, child: tile);
+  }
 
   Widget _observation(
     BuildContext context,
     AdministrationHealthFinding finding,
-  ) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (finding.status == AdministrationHealthStatus.failure ||
-            finding.status == AdministrationHealthStatus.warning)
-          StudioError(
-            finding.detail,
-            severity: finding.status == AdministrationHealthStatus.failure
-                ? StudioErrorSeverity.error
-                : StudioErrorSeverity.noResult,
-          )
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                switch (finding.status) {
-                  AdministrationHealthStatus.healthy => Icons.info_outline,
-                  AdministrationHealthStatus.unknown => Icons.help_outline,
-                  _ => Icons.error_outline,
-                },
-                color: administrationHealthColor(context, finding.status),
-                size: 22,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  finding.detail,
-                  style: Theme.of(context).textTheme.bodyMedium,
+  ) {
+    final severity = _findingSeverity(finding);
+    return Padding(
+      padding: severity == null ? const EdgeInsets.all(16) : EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (severity != null)
+            StudioError(finding.detail, severity: severity)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  switch (finding.status) {
+                    AdministrationHealthStatus.healthy => Icons.info_outline,
+                    AdministrationHealthStatus.unknown => Icons.help_outline,
+                    _ => Icons.error_outline,
+                  },
+                  color: administrationHealthColor(context, finding.status),
+                  size: 22,
                 ),
-              ),
-            ],
-          ),
-        if (finding.checkedAt case final at?) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Checked ${TimeOfDay.fromDateTime(at).format(context)}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    finding.detail,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
+            ),
+          if (finding.checkedAt case final at?) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Checked ${TimeOfDay.fromDateTime(at).format(context)}',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Future<void> _detail(BuildContext context, String title, String source) =>
       adminPushProfile(
@@ -260,8 +278,11 @@ class AdminHealthContent extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (finding != null)
-                    AdminGroup(children: [_observation(context, finding)])
+                  if (finding case final finding?)
+                    if (_findingSeverity(finding) == null)
+                      AdminGroup(children: [_observation(context, finding)])
+                    else
+                      _observation(context, finding)
                   else
                     const AdminNotice(
                       'Not checked. Return to Health and check this profile.',

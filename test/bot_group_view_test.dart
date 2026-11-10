@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/bot_group_conversation.dart';
 import 'package:wing/core/widgets/conversation_page.dart';
 import 'package:wing/core/widgets/gateway_approval_panel.dart';
@@ -1113,7 +1114,7 @@ void main() {
             await session.refresh();
             await tester.pumpAndSettle();
             expect(
-              find.text('Atlas could not finish. Retry this attempt.'),
+              find.widgetWithText(StudioError, 'Atlas could not finish.'),
               findsOneWidget,
             );
             expect(find.byTooltip('Stop group work'), findsNothing);
@@ -1198,7 +1199,7 @@ void main() {
             expect(session.runtime!.actions, isEmpty);
             expect(session.canStopGroupWork, isFalse);
             expect(
-              find.text('Atlas could not finish. Retry this attempt.'),
+              find.widgetWithText(StudioError, 'Atlas could not finish.'),
               findsNothing,
             );
             expect(
@@ -2884,7 +2885,26 @@ void main() {
           expect(controller.text, 'Review @Atlas this evidence');
           expect(find.byTooltip('Retry same message'), findsOneWidget);
           expect(find.byType(ActionChip), findsNothing);
+          final recovery = find.widgetWithText(
+            StudioError,
+            'Message not confirmed. Retry sends the same message once.',
+          );
+          expect(recovery, findsOneWidget);
           await _render(tester, frame, 'uncertain-${brightness.name}-$scale');
+          keyboard.value = true;
+          await tester.pumpAndSettle();
+          expect(recovery.hitTestable(), findsOneWidget);
+          expect(
+            find.byTooltip('Retry same message').hitTestable(),
+            findsOneWidget,
+          );
+          await _render(
+            tester,
+            frame,
+            'uncertain-keyboard-${brightness.name}-$scale',
+          );
+          keyboard.value = false;
+          await tester.pumpAndSettle();
           fixture.readHook = null;
           await tester.tap(find.byTooltip('Retry same message'));
           await tester.pumpAndSettle();
@@ -3248,7 +3268,10 @@ void main() {
         await tester.pump(const Duration(milliseconds: 300));
         expect(find.byType(StudioLoading), findsNothing);
         expect(
-          find.text('Message not confirmed · Retry the same message'),
+          find.widgetWithText(
+            StudioError,
+            'Message not confirmed. Retry sends the same message once.',
+          ),
           findsOneWidget,
         );
         expect(tester.takeException(), isNull);

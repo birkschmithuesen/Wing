@@ -422,6 +422,7 @@ class AdministrationHealth extends ChangeNotifier {
           : status,
       checkedAt: at,
       destination: destination,
+      readFailed: error != null && !loading,
     );
   }
 

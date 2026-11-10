@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/remote_files_client.dart';
+import '../theme/wing_theme.dart';
 import 'source_code_block.dart';
 import 'resource_filename.dart';
 
@@ -134,6 +135,9 @@ class _WebOutputPreviewState extends State<WebOutputPreview> {
                     'muted': theme.colorScheme.onSurfaceVariant.toARGB32(),
                     'border': theme.colorScheme.outlineVariant.toARGB32(),
                     'error': theme.colorScheme.error.toARGB32(),
+                    'error-surface': WingTokens.of(
+                      context,
+                    ).dangerSurface.toARGB32(),
                     'accent': theme.colorScheme.primary.toARGB32(),
                   },
                 },

@@ -17,6 +17,7 @@ import 'package:wing/core/services/wing_plugin_releases.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/web_link_scope.dart';
 import 'package:wing/core/widgets/wing_plugin_settings_card.dart';
 import 'support/form_family_capture.dart';
@@ -67,6 +68,7 @@ class Fixture {
   Completer<void>? readGate, writeGate, connectGate, releaseGate, readbackGate;
   Object? releaseFailure;
   bool failRelease = false, loseReceipt = false, closed = false;
+  bool failDiscovery = false;
   bool wrongInstalledPin = false;
   final gateways = <String, ProfileGateway>{};
   late final AdministrationRepository server = AdministrationRepository(
@@ -75,6 +77,7 @@ class Fixture {
     connectionLabel: 'Home Hermes',
     request: (_, endpoint, _, _) async {
       if (endpoint == 'profiles') {
+        if (failDiscovery) throw StateError('Profiles unavailable');
         return {
           'profiles': [
             for (final name in names) {'name': name},
@@ -771,11 +774,56 @@ void main() {
       expect(find.byType(StudioLoading), findsNothing);
       expect(session.profiles[1].plugin!.enabled, isTrue);
       await captureFormFamily(tester, 'wing-plugin-partial-result');
+      await tester.pageBack();
+      await flush(tester);
+      expect(
+        find.descendant(
+          of: find.byType(WingPluginSettingsCard),
+          matching: find.byType(StudioError),
+        ),
+        findsOneWidget,
+      );
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets('settings inventory failure ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(scale == 2 ? 320 : 390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final fixture = Fixture()..failDiscovery = true;
+        await frame(
+          tester,
+          fixture.session(),
+          brightness: brightness,
+          scale: scale,
+        );
+        await flush(tester);
+        final cardError = find.descendant(
+          of: find.byType(WingPluginSettingsCard),
+          matching: find.byType(StudioError),
+        );
+        expect(cardError, findsOneWidget);
+        expect(
+          find.descendant(
+            of: cardError,
+            matching: find.text('Version unavailable'),
+          ),
+          findsOneWidget,
+        );
+        await captureFormFamily(
+          tester,
+          'wing-plugin-inventory-error-${brightness.name}-$scale',
+        );
+        await openManager(tester);
+        expect(find.text('Could not check versions'), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+
       testWidgets('release reason stays readable ${brightness.name} $scale', (
         tester,
       ) async {

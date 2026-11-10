@@ -43,7 +43,11 @@ Future<void> _render(WidgetTester tester, String name) async {
       reason: 'Every composer anchors its attachment glyph at the leading edge',
     );
     expect(tester.getSize(attachment).width, 48);
-    expect(attachment.hitTestable(), findsOneWidget);
+    if (name.startsWith('phone-link-menu-')) {
+      expect(attachment.hitTestable(), findsNothing);
+    } else {
+      expect(attachment.hitTestable(), findsOneWidget);
+    }
   }
   await _captureFrame(tester, name);
   if (name.endsWith('-portrait') && !name.startsWith('worker-') ||

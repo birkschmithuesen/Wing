@@ -494,14 +494,12 @@ final class SubagentSupervisionDetail extends ChangeNotifier
         canDispatch: () => _current && state.acceptsSteer,
       );
       if (!_current) return false;
-      _controlMessage = accepted
-          ? 'Steering queued.'
-          : 'The subagent did not accept that steering.';
+      _controlMessage = accepted ? 'Steering queued.' : 'Steer rejected';
       _controlFailed = !accepted;
       return accepted;
     } catch (_) {
       if (_current) {
-        _controlMessage = 'Steering could not be queued.';
+        _controlMessage = 'Steering failed';
         _controlFailed = true;
       }
       return false;
@@ -532,7 +530,7 @@ final class SubagentSupervisionDetail extends ChangeNotifier
       }
     } catch (_) {
       if (_current) {
-        _controlMessage = 'Interrupt could not be requested.';
+        _controlMessage = 'Interrupt failed';
         _controlFailed = true;
       }
     } finally {

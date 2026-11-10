@@ -823,16 +823,11 @@ void main() {
     expect(restored.composer.observation.attachments.single.name, fileName);
     expect(
       restored.composer.observation.attachments.single.error,
-      contains('no longer available'),
+      'File missing. Remove and reattach.',
     );
     expect(find.text(fileName), findsOneWidget);
-    expect(
-      find.byTooltip(
-        'This staged file is no longer available. Remove it and attach it again.',
-      ),
-      findsOneWidget,
-    );
-    // Reopening preserves the prior reading point. The failed-file chip is
+    expect(find.text('File missing. Remove and reattach.'), findsOneWidget);
+    // Reopening preserves the prior reading point. The failed-file card is
     // immediately actionable; use Latest to inspect the transcript's warning.
     await tapJourneyControl(
       tester,
@@ -861,7 +856,7 @@ void main() {
     // entry; per-file queued editing is not the behavior under test here.
     final removeAttachment = find.descendant(
       of: find.widgetWithText(InputChip, fileName),
-      matching: find.byTooltip('Delete'),
+      matching: find.byTooltip('Remove $fileName'),
     );
     await tester.ensureVisible(removeAttachment);
     await tapJourneyControl(tester, removeAttachment);

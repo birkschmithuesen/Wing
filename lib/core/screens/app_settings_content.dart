@@ -33,6 +33,7 @@ class AppSettingsContent extends StatefulWidget {
     required this.onChanged,
     this.enableNotifications,
     this.backgroundMonitoringState,
+    this.retryBackgroundMonitoring,
     this.openMonitoringBatterySettings,
   });
 
@@ -42,6 +43,7 @@ class AppSettingsContent extends StatefulWidget {
   final VoidCallback onChanged;
   final Future<void> Function()? enableNotifications;
   final ValueListenable<BackgroundMonitoringState>? backgroundMonitoringState;
+  final Future<void> Function()? retryBackgroundMonitoring;
   final Future<void> Function()? openMonitoringBatterySettings;
 
   @override
@@ -50,6 +52,67 @@ class AppSettingsContent extends StatefulWidget {
 
 class _AppSettingsContentState extends State<AppSettingsContent> {
   bool _requesting = false;
+  bool _retryingMonitoring = false;
+
+  Future<void> _retryMonitoring() async {
+    if (_retryingMonitoring) return;
+    setState(() => _retryingMonitoring = true);
+    try {
+      await widget.retryBackgroundMonitoring!();
+    } catch (_) {
+      // A failed retry leaves the existing monitoring notice visible.
+    } finally {
+      if (mounted) setState(() => _retryingMonitoring = false);
+    }
+  }
+
+  Widget _monitoringError(BuildContext context) {
+    const notice = StudioError(
+      'Background notifications paused.',
+      framed: false,
+    );
+    final retry = widget.retryBackgroundMonitoring == null
+        ? null
+        : StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Retry background monitoring',
+              onPressed: _retryingMonitoring ? null : _retryMonitoring,
+              icon: _retryingMonitoring
+                  ? const SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(
+                        semanticsLabel: 'Retrying background monitoring',
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Icon(Icons.refresh),
+            ),
+          );
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      child: StudioErrorFrame(
+        child: Padding(
+          padding: const EdgeInsets.all(WingSpacing.md),
+          child: MediaQuery.textScalerOf(context).scale(14) > 21
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    notice,
+                    if (retry != null)
+                      Align(alignment: Alignment.centerRight, child: retry),
+                  ],
+                )
+              : Row(
+                  children: [
+                    const Expanded(child: notice),
+                    ?retry,
+                  ],
+                ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _notifications() async {
     setState(() => _requesting = true);
     try {
@@ -281,10 +344,13 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                               valueListenable:
                                   widget.backgroundMonitoringState!,
                               builder: (_, state, _) {
+                                if (_retryingMonitoring ||
+                                    state == BackgroundMonitoringState.failed) {
+                                  return _monitoringError(context);
+                                }
                                 if (state !=
-                                        BackgroundMonitoringState
-                                            .batteryRestricted &&
-                                    state != BackgroundMonitoringState.failed) {
+                                    BackgroundMonitoringState
+                                        .batteryRestricted) {
                                   return const SizedBox.shrink();
                                 }
                                 return Padding(
@@ -298,18 +364,12 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        state ==
-                                                BackgroundMonitoringState
-                                                    .batteryRestricted
-                                            ? 'Notifications may be delayed.'
-                                            : 'Notifications paused.',
+                                      const Text(
+                                        'Notifications may be delayed.',
                                       ),
-                                      if (state ==
-                                              BackgroundMonitoringState
-                                                  .batteryRestricted &&
-                                          widget.openMonitoringBatterySettings !=
-                                              null)
+                                      if (widget
+                                              .openMonitoringBatterySettings !=
+                                          null)
                                         Builder(
                                           builder: (anchor) => StudioButtonPress(
                                             child: TextButton(
@@ -339,14 +399,6 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                                                 'Allow background activity',
                                               ),
                                             ),
-                                          ),
-                                        ),
-                                      if (state ==
-                                          BackgroundMonitoringState.failed)
-                                        StudioButtonPress(
-                                          child: TextButton(
-                                            onPressed: widget.onChanged,
-                                            child: const Text('Retry'),
                                           ),
                                         ),
                                     ],

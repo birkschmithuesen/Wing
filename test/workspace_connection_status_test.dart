@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/server_connection_status.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/workspace_connection_status.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/server_connection_label.dart';
+import 'package:wing/core/widgets/wing_app_bar.dart';
+import 'support/form_family_capture.dart';
 
 void main() {
+  setUpAll(loadFormFamilyFonts);
   late ServerConnectionStatus status;
 
   setUp(() {
@@ -18,14 +24,28 @@ void main() {
     WidgetTester tester, {
     bool showHint = true,
     bool reducedMotion = false,
+    Brightness brightness = Brightness.light,
+    double scale = 1,
   }) => tester.pumpWidget(
     MaterialApp(
-      home: MediaQuery(
-        data: MediaQueryData(disableAnimations: reducedMotion),
-        child: Scaffold(
-          appBar: AppBar(
+      theme: wingTheme(brightness),
+      debugShowCheckedModeBanner: false,
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context).copyWith(
+          disableAnimations: reducedMotion,
+          textScaler: TextScaler.linear(scale),
+        ),
+        child: RepaintBoundary(key: formFamilyCapture, child: child!),
+      ),
+      home: Builder(
+        builder: (context) => Scaffold(
+          appBar: WingAppBar(
+            context: context,
             title: const Text('Recents'),
-            actions: const [StudioLoadingSlot()],
+            contextRow: ServerConnectionLabel(
+              label: status.label,
+              status: status,
+            ),
           ),
           body: Column(
             children: [
@@ -90,21 +110,11 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       final expanded = tester.getSize(bar).height;
       expect(expanded, greaterThan(entering));
-      expect(
-        find.bySemanticsLabel(
-          'Chat unavailable · Tap the status icon to retry.',
-        ),
-        findsOneWidget,
-      );
+      expect(find.bySemanticsLabel(RegExp('Chat unavailable')), findsOneWidget);
 
       status.endRecovery('chat');
       await tester.pump();
-      expect(
-        find.bySemanticsLabel(
-          'Chat unavailable · Tap the status icon to retry.',
-        ),
-        findsNothing,
-      );
+      expect(find.bySemanticsLabel(RegExp('Chat unavailable')), findsNothing);
       await tester.pump(const Duration(milliseconds: 60));
       expect(tester.getSize(bar).height, inExclusiveRange(0, expanded));
       await tester.pumpAndSettle();
@@ -112,17 +122,11 @@ void main() {
 
       status.failRecovery('chat', 'History unavailable');
       await tester.pumpAndSettle();
-      expect(
-        find.text('Chat unavailable · Tap the status icon to retry.'),
-        findsOneWidget,
-      );
+      expect(find.text('Chat unavailable'), findsOneWidget);
       await render(tester, showHint: false);
       await tester.pumpAndSettle();
       expect(tester.getSize(bar).height, 0);
-      expect(
-        find.text('Chat unavailable · Tap the status icon to retry.'),
-        findsNothing,
-      );
+      expect(find.text('Chat unavailable'), findsNothing);
       await render(tester);
       await tester.pumpAndSettle();
       expect(tester.getSize(bar).height, expanded);
@@ -130,6 +134,51 @@ void main() {
       semantics.dispose();
     },
   );
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('local connection repair ${brightness.name} $scale', (
+        tester,
+      ) async {
+        tester.view.physicalSize = Size(scale == 2 ? 320 : 390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        await render(tester, brightness: brightness, scale: scale);
+        status.forgetLive('chat');
+        await tester.pumpAndSettle();
+        expect(status.phase, ServerConnectionPhase.limited);
+        expect(find.byType(StudioError), findsNothing);
+
+        status.observeChatEndpoint(false);
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioError), findsOneWidget);
+        expect(find.text('Chat address needs changing'), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'workspace-endpoint-error-${brightness.name}-$scale',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey('connection-status-target')),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('Connection details'), findsOneWidget);
+        await tester.tap(find.byTooltip('Close connection details'));
+        await tester.pumpAndSettle();
+
+        status.observeChatEndpoint(true);
+        status.liveChanged('chat', true);
+        status.failRecovery('chat', 'History unavailable');
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioError), findsOneWidget);
+        expect(find.text('Chat unavailable'), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'workspace-recovery-error-${brightness.name}-$scale',
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
 
   for (final reducedMotion in [false, true]) {
     testWidgets(

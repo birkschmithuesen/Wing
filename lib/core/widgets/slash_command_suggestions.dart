@@ -262,12 +262,7 @@ class _SlashCommandSuggestionsState extends State<SlashCommandSuggestions> {
       text: edit.text,
       selection: TextSelection.collapsed(offset: edit.cursor),
     );
-    try {
-      await widget.saveDraft(edit.text);
-    } catch (_) {
-      if (!mounted) return;
-      showStudioError(context, 'Could not save the draft. Your text is kept.');
-    }
+    await widget.saveDraft(edit.text);
   }
 
   Future<void> _inspect(BuildContext anchor, SlashCommand item) async {

@@ -422,10 +422,9 @@ class _ProcessTile extends StatelessWidget {
               ],
             ),
           if (error case final message?)
-            ActivityDetailStatus(
-              label: message,
-              error: true,
-              icon: Icons.error_outline,
+            Padding(
+              padding: const EdgeInsets.all(WingSpacing.sm),
+              child: StudioError(message),
             ),
           ActivityDetailStatus(
             working: confirmed && process.isRunning,

@@ -198,6 +198,7 @@ class _HeldPromptDraftStore extends ComposerDraftStore {
   String? holdPrompt;
   final preparing = Completer<void>();
   final release = Completer<void>();
+  Future<void> Function(String)? beforeWrite;
   @override
   Future<void> write({
     required String profileName,
@@ -209,6 +210,7 @@ class _HeldPromptDraftStore extends ComposerDraftStore {
     Iterable<QueuedPromptDraft> queuedPrompts = const [],
     bool queuePaused = false,
   }) async {
+    if (beforeWrite case final callback?) await callback(text);
     final files = attachments.toList();
     final queue = queuedPrompts.toList();
     if (holdPrompt != null && queue.any((entry) => entry.text == holdPrompt)) {
@@ -2738,6 +2740,110 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'slash draft save failure stays beside composer ${brightness.name} ${scale}x',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          tester.view.viewInsets = const FakeViewPadding(bottom: 260);
+          addTearDown(tester.view.reset);
+          final boundary = GlobalKey();
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: boundary,
+              child: MaterialApp(
+                theme: wingTheme(brightness),
+                debugShowCheckedModeBanner: false,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: ProfileWorkspaceScreen(
+                  controller: controller,
+                  createBotsSession: () => BotsSession((_) async => const []),
+                ),
+              ),
+            ),
+          );
+          final composer = find.byKey(const Key('profile-message-composer'));
+          final error = find.text('Could not save draft');
+          var write = Completer<void>();
+          var selections = 0;
+          draftStore.beforeWrite = (text) async {
+            if (text == '/a-skill ') {
+              selections++;
+              await write.future;
+            }
+          };
+          Future<void> select() async {
+            await tester.enterText(composer, '/a-sk');
+            await tester.pump(const Duration(milliseconds: 200));
+            await tester.pumpAndSettle();
+            final suggestion = find.text('/a-skill');
+            await tester.ensureVisible(suggestion);
+            await tester.tap(suggestion);
+            await tester.pumpAndSettle();
+          }
+
+          await select();
+          expect(selections, 1);
+          expect(
+            tester.widget<TextField>(composer).controller!.text,
+            '/a-skill ',
+          );
+          expect(error, findsNothing);
+          write.completeError(StateError('Local draft write failed'));
+          await tester.pumpAndSettle();
+          // The test-only Ahem font needs additional room at 200%. The
+          // composer stays scrollable even with larger glyphs than Roboto.
+          if (error.hitTestable().evaluate().isEmpty) {
+            await tester.ensureVisible(error);
+            await tester.pumpAndSettle();
+          }
+          expect(error.hitTestable(), findsOneWidget);
+          expect(
+            tester.getBottomRight(error).dy,
+            lessThan(tester.getTopLeft(composer).dy),
+          );
+          expect(find.byType(Dialog), findsNothing);
+          expect(
+            tester.widget<TextField>(composer).focusNode!.hasFocus,
+            isTrue,
+          );
+          expect(chat.composer.observation.text, '/a-skill ');
+          if (Platform.environment.containsKey('CAPTURE_SKILL_COMPOSER')) {
+            await tester.runAsync(() async {
+              final render =
+                  boundary.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary;
+              final image = await render.toImage();
+              final data = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/skill-composer/draft-save-failed-${brightness.name}-${scale}x.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(data!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+
+          write = Completer<void>();
+          await select();
+          expect(selections, 2);
+          await tester.enterText(composer, 'Keep my newer draft');
+          write.completeError(StateError('Older draft write failed'));
+          await tester.pumpAndSettle();
+          expect(error, findsNothing);
+          expect(chat.composer.observation.text, 'Keep my newer draft');
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+
       testWidgets('command and skill distinction ${brightness.name} $scale', (
         tester,
       ) async {

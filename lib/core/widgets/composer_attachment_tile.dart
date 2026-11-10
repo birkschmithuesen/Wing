@@ -196,19 +196,72 @@ class ComposerAttachmentTile extends StatelessWidget {
     this.onRemove,
   }) : assert(kind != AttachmentDraftKind.image || previewImage != null);
 
+  void _openPreview(BuildContext context, Future<Uint8List> Function() read) {
+    Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => _ComposerAttachmentPreview(name: name, readBytes: read),
+      ),
+    );
+  }
+
+  Widget _failure(BuildContext context, String message) => SizedBox(
+    width: 256,
+    child: StudioErrorFrame(
+      child: Padding(
+        padding: const EdgeInsets.all(WingSpacing.md),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 120),
+              child: SingleChildScrollView(
+                primary: false,
+                child: StudioError(message, framed: false),
+              ),
+            ),
+            const SizedBox(height: WingSpacing.xs),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                if (readPreview case final read?)
+                  StudioButtonPress(
+                    child: IconButton(
+                      tooltip: 'Preview $name',
+                      onPressed: () => _openPreview(context, read),
+                      icon: const Icon(Icons.image_outlined),
+                    ),
+                  ),
+                if (onRemove != null)
+                  StudioButtonPress(
+                    child: IconButton(
+                      tooltip: 'Remove $name',
+                      onPressed: onRemove,
+                      icon: const Icon(Icons.close),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
-    final warning = error == null
-        ? null
-        : Tooltip(
-            message: error!,
-            child: const Icon(Icons.warning_amber_rounded, size: 18),
-          );
+    if (error case final message?) return _failure(context, message);
     if (kind != AttachmentDraftKind.image) {
       return StudioButtonPress(
         child: InputChip(
           showCheckmark: false,
-          avatar: warning,
           label: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 180),
             child: Text(name, overflow: TextOverflow.ellipsis),
@@ -233,14 +286,7 @@ class ComposerAttachmentTile extends StatelessWidget {
                 child: InkWell(
                   onTap: readPreview == null
                       ? null
-                      : () => Navigator.of(context).push<void>(
-                          MaterialPageRoute(
-                            builder: (_) => _ComposerAttachmentPreview(
-                              name: name,
-                              readBytes: readPreview!,
-                            ),
-                          ),
-                        ),
+                      : () => _openPreview(context, readPreview!),
                   child: Tooltip(
                     message: 'Preview $name',
                     child: Image(
@@ -275,21 +321,6 @@ class ComposerAttachmentTile extends StatelessWidget {
                     ),
                     child: Icon(Icons.close, color: colors.onSurface, size: 16),
                   ),
-                ),
-              ),
-            ),
-          if (warning != null)
-            Positioned(
-              left: 4,
-              bottom: 4,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: colors.errorContainer,
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(3),
-                  child: warning,
                 ),
               ),
             ),

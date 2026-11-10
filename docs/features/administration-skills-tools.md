@@ -87,3 +87,8 @@ For plugin maintenance through Android connected to an existing production gatew
 use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
 Its named outcomes and stated prerequisites distinguish real production actions
 from fixture recovery coverage.
+
+If a skill reference cannot be opened, its eye control shows a transient error
+nearby and stays available for retry. The current skill document remains open.
+`test/skill_document_viewer_test.dart` covers held reads, failure, retry and
+retirement of an older reader.

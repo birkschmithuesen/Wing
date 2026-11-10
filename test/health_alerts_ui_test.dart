@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/services/health_alert_incident_store.dart';
 import 'package:wing/core/screens/health_alert_health_screen.dart';
 import 'package:wing/core/widgets/health_alerts/health_alert_notice.dart';
@@ -34,6 +35,7 @@ import 'package:wing/core/screens/profile_capabilities_screen.dart';
 import 'support/host_resources_fixture.dart';
 import 'support/health_alerts_fixture.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/workspace_connection_status.dart';
 
 class _DelayedSettingsStore extends HealthAlertSettingsStore {
   _DelayedSettingsStore(super.preferences);
@@ -950,6 +952,9 @@ void main() {
                       status: connection,
                     ),
                   ),
+                  body: Column(
+                    children: [WorkspaceConnectionStatus(status: connection)],
+                  ),
                 ),
               ),
             ),
@@ -957,6 +962,14 @@ void main() {
           connection.liveChanged('chat', false);
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
+          final headerNotice = find.byKey(
+            const ValueKey('workspace-connection-status'),
+          );
+          expect(tester.getSize(headerNotice).height, 0);
+          await shot(
+            tester,
+            'connection-interrupted-${brightness.name}-$scale',
+          );
           await tester.tap(find.byKey(const ValueKey('health-alert-bell')));
           await tester.pump(const Duration(milliseconds: 300));
           expect(find.text('Connection interrupted'), findsWidgets);
@@ -995,6 +1008,37 @@ void main() {
               fixture.coordinator.alerts,
               recovered ? isEmpty : hasLength(1),
             );
+            if (!recovered) {
+              await tester.tap(find.byTooltip('Close connection details'));
+              await tester.pumpAndSettle();
+              final bell = find.byKey(const ValueKey('health-alert-bell'));
+              await tester.tap(bell);
+              await tester.pumpAndSettle();
+              await tester.tap(
+                find.byTooltip(
+                  brightness == Brightness.light
+                      ? 'Acknowledge issue'
+                      : 'Snooze for 30 minutes',
+                ),
+              );
+              await tester.pumpAndSettle();
+              await tester.tap(find.byTooltip('Close alerts'));
+              await tester.pumpAndSettle();
+              expect(bell, findsNothing);
+              expect(tester.getSize(headerNotice).height, 0);
+              expect(fixture.coordinator.alerts, hasLength(1));
+              final statusControl = find.byKey(
+                const ValueKey('connection-status-target'),
+              );
+              expect(statusControl.hitTestable(), findsOneWidget);
+              await shot(
+                tester,
+                'connection-silenced-${brightness.name}-$scale',
+              );
+              await tester.tap(statusControl);
+              await tester.pumpAndSettle();
+              expect(find.byTooltip('Retry connection'), findsOneWidget);
+            }
           }
           expect(find.text('Connected'), findsOneWidget);
           expect(find.byTooltip('Retry connection'), findsNothing);
@@ -1225,7 +1269,10 @@ void main() {
             expect(find.byType(Dialog), findsNothing);
             if (failedCount == 2) {
               expect(find.byType(AdminConnectorsPage), findsOneWidget);
-              expect(find.text('Failed health check · http'), findsNWidgets(2));
+              expect(
+                find.widgetWithText(StudioError, 'Failed health check · http'),
+                findsNWidgets(2),
+              );
               await shot(tester, 'connector-list-${brightness.name}-$scale');
               await tester.tap(find.text(names.first));
               await tester.pumpAndSettle();

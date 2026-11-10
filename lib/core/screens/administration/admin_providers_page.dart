@@ -105,7 +105,7 @@ class _AdminProvidersPageState extends State<AdminProvidersPage> {
             ],
           ),
           if (!data.selectionsAvailable)
-            const AdminNotice(
+            const AdminNotice.error(
               'Profile selections could not be loaded. Refresh to retry.',
             ),
           if (session.providers.isEmpty)

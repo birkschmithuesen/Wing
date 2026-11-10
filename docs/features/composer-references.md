@@ -61,3 +61,8 @@ from fixture recovery coverage.
 
 After applied compression, its confirmation follows the refreshed conversation.
 If readback fails, the confirmed result remains visible with the instruction to refresh.
+
+If selecting a slash suggestion cannot save the draft, the error stays beside
+the composer and the edited text remains available. It does not open an
+acknowledgement dialog. A failed skill-reference preview reports near its eye
+control, which remains available for retry.

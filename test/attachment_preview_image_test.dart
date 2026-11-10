@@ -11,6 +11,7 @@ import 'package:wing/core/presentation/attachment_preview_image.dart';
 import 'package:wing/core/services/attachment_draft_service.dart';
 import 'package:wing/core/widgets/composer_attachment_tile.dart';
 import 'package:wing/core/widgets/chat_image_preview.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 Future<ui.Image> _decode(ImageProvider provider) async {
   final stream = provider.resolve(ImageConfiguration.empty);
@@ -324,7 +325,7 @@ void main() {
   );
 
   testWidgets(
-    'unavailable preview renders fallback without changing draft or removal action',
+    'preview fallback stays neutral and failed upload has visible repair',
     (tester) async {
       final staged = (await tester.runAsync(
         () => _stage(image.encodePng(image.Image(width: 8, height: 6))),
@@ -338,26 +339,28 @@ void main() {
         ..error = 'Upload failed';
       await tester.runAsync(() => service.removeCachedFile(staged.draft));
       var removes = 0;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Center(
-            child: ComposerAttachmentTile(
-              name: staged.draft.name,
-              kind: staged.draft.kind,
-              error: staged.draft.error,
-              previewImage: AttachmentPreviewImage(
-                service.previewSource(staged.draft),
-              ),
-              onRemove: () => removes++,
+      Widget app({String? error}) => MaterialApp(
+        home: Center(
+          child: ComposerAttachmentTile(
+            name: staged.draft.name,
+            kind: staged.draft.kind,
+            error: error,
+            previewImage: AttachmentPreviewImage(
+              service.previewSource(staged.draft),
             ),
+            onRemove: () => removes++,
           ),
         ),
       );
+      await tester.pumpWidget(app());
       await _settleNative(
         tester,
         () => find.byIcon(Icons.broken_image_outlined).evaluate().isNotEmpty,
       );
-      expect(find.byTooltip('Upload failed'), findsOneWidget);
+      expect(find.byType(StudioError), findsNothing);
+      await tester.pumpWidget(app(error: staged.draft.error));
+      expect(find.text('Upload failed'), findsOneWidget);
+      expect(find.byType(StudioError), findsOneWidget);
       await tester.tap(find.byTooltip('Remove Preview image'));
       expect(removes, 1);
       expect(staged.draft.status, AttachmentDraftStatus.failed);
@@ -486,9 +489,13 @@ void main() {
   );
 
   testWidgets(
-    'generic tile retains filename warning and delegated removal without image work',
+    'generic tile retains filename, readable failure and delegated removal',
     (tester) async {
       var removes = 0;
+      const failure =
+          'Upload failed. The destination could not accept this file because '
+          'there was not enough storage to finish the upload. Check the '
+          'available storage before sending the file again.';
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -496,7 +503,7 @@ void main() {
               child: ComposerAttachmentTile(
                 name: 'notes.txt',
                 kind: AttachmentDraftKind.genericFile,
-                error: 'Upload failed',
+                error: failure,
                 previewImage: null,
                 onRemove: () => removes++,
               ),
@@ -506,8 +513,19 @@ void main() {
       );
       expect(find.byType(Image), findsNothing);
       expect(find.text('notes.txt'), findsOneWidget);
-      expect(find.byTooltip('Upload failed'), findsOneWidget);
-      await tester.tap(find.byTooltip('Delete'));
+      expect(find.text(failure), findsOneWidget);
+      expect(find.byType(StudioError), findsOneWidget);
+      final remove = find.byTooltip('Remove notes.txt');
+      final bounds = tester.getRect(remove);
+      final scroll = find.byType(Scrollable);
+      await tester.drag(scroll, const Offset(0, -80));
+      await tester.pumpAndSettle();
+      expect(
+        tester.state<ScrollableState>(scroll).position.pixels,
+        greaterThan(0),
+      );
+      expect(tester.getRect(remove), bounds);
+      await tester.tap(remove);
       await tester.pump();
       expect(removes, 1);
       expect(tester.takeException(), isNull);

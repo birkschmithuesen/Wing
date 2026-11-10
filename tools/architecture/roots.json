@@ -3426,6 +3426,15 @@
       "selector": "main"
     },
     {
+      "id": "host-test-test/installed_app_version_card_failure_test.dart",
+      "kind": "host-test",
+      "path": "test/installed_app_version_card_failure_test.dart",
+      "purpose": "Explicit test/driver entry; environment flags and owned target prerequisites apply",
+      "source": "internal/docs/TESTING.md; test/installed_app_version_card_failure_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
       "id": "host-test-test/installed_app_version_card_test.dart",
       "kind": "host-test",
       "path": "test/installed_app_version_card_test.dart",
@@ -12570,6 +12579,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/installed_app_version_card_failure_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "test/installed_app_version_card_test.dart",
       "area": "test",
       "provenance": "tracked"
@@ -16725,6 +16739,7 @@
         "test/home_share_review_test.dart",
         "test/html_preview_screen_test.dart",
         "test/image_paste_test.dart",
+        "test/installed_app_version_card_failure_test.dart",
         "test/installed_app_version_card_test.dart",
         "test/intelligence_sheet_layout_test.dart",
         "test/internal_message_visibility_test.dart",
@@ -17693,6 +17708,7 @@
         "test/image_codec_confinement_test.dart",
         "test/image_codec_provenance_test.dart",
         "test/image_paste_test.dart",
+        "test/installed_app_version_card_failure_test.dart",
         "test/installed_app_version_card_test.dart",
         "test/intelligence_sheet_layout_test.dart",
         "test/internal_message_visibility_test.dart",

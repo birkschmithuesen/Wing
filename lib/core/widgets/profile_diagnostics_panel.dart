@@ -41,8 +41,6 @@ class ProfileModelAccessRow extends StatelessWidget {
           ? '$model · ${provider != null && provider.isNotEmpty ? provider : 'Automatic provider'}'
           : modelObservation.loading
           ? 'Loading model…'
-          : unavailable
-          ? 'Model unavailable'
           : 'No model selected';
       final color = checking
           ? theme.colorScheme.onSurfaceVariant
@@ -115,13 +113,15 @@ class ProfileModelAccessRow extends StatelessWidget {
                       ),
                     ),
                   const SizedBox(height: 4),
-                  Text(modelLabel, style: theme.textTheme.bodySmall),
-                  if (unavailable && hasModel)
-                    const StudioError(
-                      'Last known model; refresh failed.',
-                      icon: Icons.refresh,
-                      framed: false,
+                  if (hasModel || !unavailable)
+                    Text(modelLabel, style: theme.textTheme.bodySmall),
+                  if (unavailable) ...[
+                    if (hasModel) const SizedBox(height: WingSpacing.xs),
+                    StudioError(
+                      'Could not read the selected model.',
+                      detail: hasModel ? 'Showing the last known model.' : null,
                     ),
+                  ],
                   if (!checking &&
                       result != ProfileAccessResult.notChecked &&
                       result.message.isNotEmpty) ...[

@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'dart:async';
 import 'dart:io';
@@ -192,7 +193,10 @@ void main() {
     await tester.pumpAndSettle(const Duration(milliseconds: 250));
   }
 
-  Future<Map<String, Rect>> sectionGeometry(WidgetTester tester) async {
+  Future<Map<String, Rect>> sectionGeometry(
+    WidgetTester tester, {
+    List<String> extra = const [],
+  }) async {
     final outer = find
         .descendant(
           of: find.byType(ListView).first,
@@ -209,6 +213,7 @@ void main() {
       'usage-breakdown-slot',
       'usage-trend-group',
       'usage-trend-slot',
+      ...extra,
     ]) {
       final target = find.byKey(ValueKey(id));
       for (
@@ -391,13 +396,24 @@ void main() {
           await tester.pump();
           await tester.pump();
           expect(find.byType(StudioLoading), findsOneWidget);
-          expectSameGeometry(await sectionGeometry(tester), original);
+          const modelError = 'usage-retained-models-error';
+          final geometry = await sectionGeometry(tester, extra: [modelError]);
+          final withModelError = {
+            for (final entry in original.entries)
+              entry.key: entry.key.startsWith('usage-trend-')
+                  ? entry.value.translate(0, geometry[modelError]!.height)
+                  : entry.value,
+          };
+          expectSameGeometry(geometry, withModelError);
           year.complete(dailyData());
           await tester.pumpAndSettle();
           expect(find.byType(StudioLoading), findsNothing);
-          expectSameGeometry(await sectionGeometry(tester), original);
+          expectSameGeometry(await sectionGeometry(tester), withModelError);
           expect(find.text('USD 5.44'), findsOneWidget);
-          await reveal(tester, find.textContaining('Showing retained data'));
+          await reveal(
+            tester,
+            find.widgetWithText(StudioError, 'Could not load model totals.'),
+          );
           await snapshot(tester, 'refresh-error-${brightness.name}-$scale');
           fixture.override = (_, path, _, _) async =>
               path == 'analytics/models' ? {'models': []} : {'daily': []};
@@ -474,7 +490,24 @@ void main() {
       fixture.override = (_, _, _, _) async =>
           throw const SocketException('Offline');
       await tap(tester, find.byTooltip('Refresh usage'));
-      final original = await sectionGeometry(tester);
+      final notice = find.byKey(const ValueKey('usage-retained-year-error'));
+      await reveal(tester, notice);
+      final noticeHeight = tester.getSize(notice).height;
+      const modelError = 'usage-retained-models-error';
+      final original = await sectionGeometry(tester, extra: [modelError]);
+      final recovered = {
+        for (final entry in original.entries)
+          if (entry.key != modelError)
+            entry.key: switch (entry.key) {
+              'usage-calendar-slot' => entry.value,
+              'usage-trend-group' ||
+              'usage-trend-slot' => entry.value.translate(
+                0,
+                -noticeHeight - original[modelError]!.height,
+              ),
+              _ => entry.value.translate(0, -noticeHeight),
+            },
+      };
       final pending = Completer<Map<String, dynamic>>();
       fixture.override = (_, path, _, _) => path == 'analytics/models'
           ? pending.future
@@ -484,13 +517,18 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.byType(StudioLoading), findsNothing);
-      expectSameGeometry(await sectionGeometry(tester), original);
+      expectSameGeometry(await sectionGeometry(tester), {
+        ...recovered,
+        for (final id in ['usage-trend-group', 'usage-trend-slot'])
+          id: recovered[id]!.translate(0, original[modelError]!.height),
+      });
       expect(find.text('USD 5.44'), findsOneWidget);
+      expect(notice, findsNothing);
       pending.complete({
         'models': [_paid()..['cache_read_tokens'] = 0],
       });
       await tester.pumpAndSettle();
-      expectSameGeometry(await sectionGeometry(tester), original);
+      expectSameGeometry(await sectionGeometry(tester), recovered);
       expect(find.text('USD 3.00'), findsOneWidget);
       expect(find.byType(StudioLoading), findsNothing);
       expect(tester.takeException(), isNull);
@@ -679,8 +717,14 @@ void main() {
     offline = true;
     await tap(tester, find.byTooltip('Refresh usage'));
     await reveal(tester, find.text('USD 5.44'));
-    await reveal(tester, find.textContaining('Showing retained data'));
-    expect(find.textContaining('Showing retained data'), findsOneWidget);
+    await reveal(
+      tester,
+      find.widgetWithText(StudioError, 'Could not load model totals.'),
+    );
+    expect(
+      find.widgetWithText(StudioError, 'Could not load model totals.'),
+      findsOneWidget,
+    );
     await snapshot(tester, 'refresh-error');
     offline = false;
     rows = [_astra()];
@@ -752,28 +796,58 @@ void main() {
     }
   }
 
-  testWidgets('initial failure is distinct from empty history and retries', (
-    tester,
-  ) async {
-    final pending = Completer<Map<String, dynamic>>();
-    fixture.override = (_, _, _, _) => pending.future;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: AnalyticsPage(profile: fixture.server.profile('personal')),
-      ),
-    );
-    await tester.pump();
-    expect(find.byType(StudioLoading), findsOneWidget);
-    pending.completeError(StateError('Offline'));
-    await tester.pumpAndSettle(const Duration(milliseconds: 250));
-    expect(find.textContaining('Could not load'), findsWidgets);
-    expect(find.text('No recorded model usage in this period.'), findsNothing);
-    fixture.override = (_, path, _, _) async =>
-        path == 'analytics/models' ? {'models': []} : {'daily': []};
-    await tap(tester, find.byTooltip('Refresh usage'));
-    await reveal(tester, find.text('No recorded model usage in this period.'));
-    expect(find.textContaining('Could not load'), findsNothing);
-  });
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'initial failure is distinct from empty history and retries ${brightness.name} $scale',
+        (tester) async {
+          final pending = Completer<Map<String, dynamic>>();
+          fixture.override = (_, _, _, _) => pending.future;
+          await show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            settle: false,
+          );
+          expect(find.byType(StudioLoading), findsOneWidget);
+          pending.completeError(StateError('Offline'));
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
+          for (final (section, message) in [
+            (
+              'calendar',
+              'Could not load the activity year. Use Refresh to retry.',
+            ),
+            ('breakdown', 'Could not load model totals.'),
+            ('trend', 'Could not load daily usage.'),
+          ]) {
+            final failure = find.widgetWithText(StudioError, message);
+            await reveal(tester, failure);
+            expect(failure, findsOneWidget);
+            expect(find.text(message), findsOneWidget);
+            await snapshot(
+              tester,
+              'initial-$section-error-${brightness.name}-$scale',
+            );
+          }
+          expect(find.text('Period breakdown unavailable.'), findsNothing);
+          expect(find.text('Daily usage unavailable.'), findsNothing);
+          expect(
+            find.text('No recorded model usage in this period.'),
+            findsNothing,
+          );
+          fixture.override = (_, path, _, _) async =>
+              path == 'analytics/models' ? {'models': []} : {'daily': []};
+          await tap(tester, find.byTooltip('Refresh usage'));
+          await reveal(
+            tester,
+            find.text('No recorded model usage in this period.'),
+          );
+          expect(find.textContaining('Could not load'), findsNothing);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
 
   testWidgets('late period responses cannot replace the selected range', (
     tester,

@@ -43,3 +43,8 @@ source clearance, deduplication, collision, lifecycle and both themes at enlarge
 text. Device accessibility timing and real keyboard behavior need Android proof.
 Operational conditions use [Alerts](health-alerts.md), including acknowledgement
 and snooze; local save/validation errors retain drafts and recovery controls.
+
+Compact attachment errors use the same error family with the status icon above
+the text. Long errors remain readable and their recovery controls stay reachable
+at enlarged text sizes. `test/studio_error_test.dart` covers compact cards and
+acknowledgement-dialog sizing alongside capsule behavior.

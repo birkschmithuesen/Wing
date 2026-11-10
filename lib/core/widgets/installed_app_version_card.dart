@@ -47,9 +47,6 @@ class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
       future: _info,
       builder: (context, snapshot) {
         final info = snapshot.data;
-        final unavailable =
-            snapshot.hasError ||
-            snapshot.connectionState == ConnectionState.done && info == null;
         return Material(
           type: MaterialType.transparency,
           child: Column(
@@ -62,14 +59,17 @@ class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
                       ? 'Wing'
                       : info.appName,
                 ),
-                subtitle: Text(
-                  info != null
-                      ? 'Version ${info.version}'
-                      : unavailable
-                      ? 'Version information is unavailable.'
-                      : 'Version —',
-                ),
+                subtitle: snapshot.hasError
+                    ? null
+                    : Text(
+                        info == null ? 'Version —' : 'Version ${info.version}',
+                      ),
               ),
+              if (snapshot.hasError)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: StudioError('Version information is unavailable.'),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                 child: Wrap(

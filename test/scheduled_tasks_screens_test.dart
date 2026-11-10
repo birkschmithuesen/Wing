@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/models/profile_session_key.dart';
 import 'dart:convert';
@@ -1367,6 +1368,140 @@ void main() {
       },
     );
   }
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      final width = scale == 1 ? 390.0 : 320.0;
+      final name = '${brightness.name}-$scale';
+      testWidgets('task catalog failures stay with their controls $name', (
+        tester,
+      ) async {
+        var offline = true;
+        Completer<void>? held;
+        fixture.admin.override = (method, path, query, body) async {
+          if ({'cron/blueprints', 'model/options'}.contains(path)) {
+            await held?.future;
+            if (offline) throw StateError('Offline');
+          }
+          return fixture.send(method, path, query, body);
+        };
+        final c = await controller();
+        final editor = AdminScheduledTaskEditorPage(controller: c);
+        await show(
+          tester,
+          editor,
+          brightness: brightness,
+          width: width,
+          scale: scale,
+        );
+        for (final (section, message) in [
+          (
+            'templates',
+            'Templates could not be loaded. You can still create your own task.',
+          ),
+          (
+            'models',
+            'Model choices could not be loaded. Your current choice is kept.',
+          ),
+        ]) {
+          final error = find.widgetWithText(StudioError, message);
+          final retry = find.byTooltip('Refresh $section');
+          await tester.scrollUntilVisible(
+            error,
+            280,
+            scrollable: find.byType(Scrollable).first,
+          );
+          await tester.ensureVisible(error);
+          await tester.pumpAndSettle();
+          expect(error, findsOneWidget);
+          await screenshot(tester, 'error-$section-$name');
+          await tester.ensureVisible(retry);
+          await tester.pumpAndSettle();
+          held = Completer<void>();
+          await tester.tap(retry);
+          await tester.pump();
+          expect(find.bySemanticsLabel('Refreshing $section'), findsOneWidget);
+          held.complete();
+          await tester.pumpAndSettle();
+          expect(error, findsOneWidget);
+          expect(find.bySemanticsLabel('Refreshing $section'), findsNothing);
+        }
+        if (scale == 2) {
+          await show(
+            tester,
+            editor,
+            brightness: brightness,
+            width: width,
+            scale: scale,
+            keyboard: 260,
+          );
+          await tester.ensureVisible(
+            find.widgetWithText(
+              StudioError,
+              'Model choices could not be loaded. Your current choice is kept.',
+            ),
+          );
+          await tester.pumpAndSettle();
+          await screenshot(tester, 'error-models-keyboard-$name');
+          await show(
+            tester,
+            editor,
+            brightness: brightness,
+            width: width,
+            scale: scale,
+          );
+        }
+        offline = false;
+        final retryModel = find.byTooltip('Refresh models');
+        await tester.scrollUntilVisible(
+          retryModel,
+          280,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.ensureVisible(retryModel);
+        await tester.pumpAndSettle();
+        await tester.tap(retryModel);
+        await tester.pumpAndSettle();
+        expect(retryModel, findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets('task lookup failure differs from a missing task $name', (
+        tester,
+      ) async {
+        fixture.failList = true;
+        await show(
+          tester,
+          AdminTaskRoute(
+            profile: fixture.profile,
+            acquireController: () =>
+                ScheduledTasksController.acquire(fixture.profile, prefs),
+            title: 'Task details',
+            taskId: 'missing-task',
+            builder: (_, _) => throw StateError('Missing task opened'),
+          ),
+          brightness: brightness,
+          width: width,
+          scale: scale,
+        );
+        expect(find.byType(StudioError), findsOneWidget);
+        expect(
+          find.text('This task is not available in this profile.'),
+          findsNothing,
+        );
+        await screenshot(tester, 'error-task-lookup-$name');
+        fixture.failList = false;
+        await tester.tap(find.text('Refresh'));
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioError), findsNothing);
+        expect(
+          find.text('This task is not available in this profile.'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
   testWidgets('empty and unavailable states are distinct', (tester) async {
     fixture.jobs.clear();
     await show(tester, list());

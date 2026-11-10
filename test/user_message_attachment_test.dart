@@ -15,6 +15,7 @@ import 'package:wing/core/models/reading_snapshot_message.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/chat_image_preview.dart';
 import 'package:wing/core/widgets/profile_message.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:wing/core/widgets/user_message_attachment.dart';
 
 Future<void> settleImages(WidgetTester tester) async {
@@ -484,7 +485,7 @@ void main() {
       );
       await tester.pumpWidget(app());
       await settleImages(tester);
-      expect(find.text('Preview unavailable'), findsOneWidget);
+      expect(find.text('Can’t load image'), findsOneWidget);
       await tester.tap(find.byTooltip('Retry image preview'));
       await settleImages(tester);
       expect(find.byType(Image), findsOneWidget);
@@ -495,7 +496,7 @@ void main() {
     },
   );
 
-  testWidgets('malformed image data produces an unavailable card', (
+  testWidgets('malformed image data retains the original viewer action', (
     tester,
   ) async {
     await tester.pumpWidget(
@@ -510,7 +511,11 @@ void main() {
       ),
     );
     await settleImages(tester);
-    expect(find.text('Preview unavailable'), findsOneWidget);
+    expect(find.text('Can’t load image'), findsOneWidget);
+    await tester.tap(find.byTooltip('Open original image'));
+    await settleImages(tester);
+    expect(find.byType(ChatImageViewport), findsOneWidget);
+    expect(find.text('This image could not be previewed.'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -536,7 +541,7 @@ void main() {
       ),
     );
     await settleImages(tester);
-    expect(find.text('Preview unavailable'), findsOneWidget);
+    expect(find.text('Can’t load image'), findsOneWidget);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -545,7 +550,7 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await settleImages(tester);
-    expect(find.text('Preview unavailable'), findsNothing);
+    expect(find.text('Can’t load image'), findsNothing);
     expect(find.byType(Image), findsOneWidget);
     expect(requests, 2);
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -580,10 +585,10 @@ void main() {
       );
       await tester.pumpWidget(app(online: false));
       await settleImages(tester);
-      expect(find.text('Preview unavailable'), findsOneWidget);
+      expect(find.text('Can’t load image'), findsOneWidget);
       await tester.pumpWidget(app(online: true));
       await settleImages(tester);
-      expect(find.text('Preview unavailable'), findsNothing);
+      expect(find.text('Can’t load image'), findsNothing);
       expect(find.byType(Image), findsOneWidget);
       await tester.pumpWidget(app(online: false));
       await settleImages(tester);
@@ -624,7 +629,8 @@ void main() {
       );
       await tester.pump();
       await tester.pump();
-      expect(find.byIcon(Icons.broken_image_outlined), findsOneWidget);
+      expect(find.text('Can’t load image'), findsOneWidget);
+      expect(find.byType(StudioErrorFrame), findsOneWidget);
       expect(find.byType(CircularProgressIndicator), findsWidgets);
       final tiles = find.byType(UserMessageAttachmentTile);
       final first = tester.getRect(tiles.at(0));
@@ -682,7 +688,7 @@ void main() {
     expect(find.byType(Image), findsOneWidget);
     interrupted.completeError(StateError('Old connection closed'));
     await settleImages(tester);
-    expect(find.text('Preview unavailable'), findsNothing);
+    expect(find.text('Can’t load image'), findsNothing);
     expect(find.byType(Image), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -1153,7 +1159,9 @@ void main() {
       ),
     );
     await settleImages(tester);
-    await tester.tapAt(tester.getCenter(find.text('+1')));
+    final gallery = find.byTooltip('Open image gallery, 1 more image');
+    await tester.ensureVisible(gallery);
+    await tester.tap(gallery);
     await settleImages(tester);
     expect(find.byTooltip('Retry image preview'), findsOneWidget);
     await tester.tap(find.byTooltip('Next image'));
@@ -1312,6 +1320,120 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'grid and gallery recover failed previews ${brightness.name} ${scale}x',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 740);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final boundary = GlobalKey();
+          var broken = true;
+          Completer<Uint8List>? reload;
+          var requests = 0;
+          await tester.pumpWidget(
+            RepaintBoundary(
+              key: boundary,
+              child: MaterialApp(
+                theme: wingTheme(brightness),
+                debugShowCheckedModeBanner: false,
+                builder: (context, child) => MediaQuery(
+                  data: MediaQuery.of(
+                    context,
+                  ).copyWith(textScaler: TextScaler.linear(scale)),
+                  child: child!,
+                ),
+                home: Scaffold(
+                  body: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: ProfileMessage(
+                      message: TranscriptMessage.fromRow({
+                        'id': 42,
+                        'role': 'user',
+                        'content':
+                            'Compare the screenshots.\n@image:/server/ready.png\n@image:/server/failed.png\n@image:/server/damaged.png',
+                      }),
+                      loadAttachmentImage: (path) async {
+                        if (path.endsWith('/failed.png') && broken) {
+                          requests++;
+                          if (reload case final pending?) return pending.future;
+                          throw StateError('File could not be read');
+                        }
+                        if (path.endsWith('/damaged.png') && broken) {
+                          return Uint8List.fromList([1, 2, 3]);
+                        }
+                        return bytes;
+                      },
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          Future<void> capture(String state) async {
+            if (!const bool.fromEnvironment('CAPTURE_ATTACHMENTS')) return;
+            await tester.runAsync(() async {
+              final render =
+                  boundary.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary;
+              final image = await render.toImage();
+              final data = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/attachment-review/error-$state-${brightness.name}-${scale}x.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(data!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+
+          final failure = find.text('Can’t load image');
+          final retry = find.byTooltip('Retry image preview');
+          await settleImages(tester);
+          expect(failure, findsNWidgets(2));
+          expect(failure.first.hitTestable(), findsOneWidget);
+          expect(find.byType(StudioErrorFrame), findsNWidgets(2));
+          expect(
+            tester.getSize(retry.first).shortestSide,
+            greaterThanOrEqualTo(48),
+          );
+          await capture('grid');
+          final gallery = find.byTooltip('Open image gallery');
+          await tester.ensureVisible(gallery);
+          await tester.tap(gallery);
+          await settleImages(tester);
+          expect(find.text('3 / 3'), findsOneWidget);
+          expect(failure.hitTestable(), findsOneWidget);
+          await capture('gallery-decode');
+          await tester.tap(find.byTooltip('Previous image'));
+          await settleImages(tester);
+          expect(failure.hitTestable(), findsOneWidget);
+          await capture('gallery-acquire');
+          reload = Completer<Uint8List>();
+          await tester.tap(retry);
+          await tester.pump();
+          expect(failure.hitTestable(), findsNothing);
+          expect(
+            find.bySemanticsLabel('Loading attachment').hitTestable(),
+            findsOneWidget,
+          );
+          reload.complete(bytes);
+          await settleImages(tester);
+          expect(requests, greaterThanOrEqualTo(2));
+          expect(failure.hitTestable(), findsNothing);
+          await tester.tap(find.byTooltip('Next image'));
+          await settleImages(tester);
+          expect(failure.hitTestable(), findsOneWidget);
+          broken = false;
+          await tester.tap(retry);
+          await settleImages(tester);
+          expect(retry.hitTestable(), findsNothing);
+          expect(find.text('3 / 3'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+
       testWidgets('gallery cards move continuously, $brightness, ${scale}x', (
         tester,
       ) async {

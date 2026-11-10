@@ -38,3 +38,8 @@ Current plan allowance is separate from historical token/cost analytics. It is
 shown in the conversation composer and model chooser through
 [model selection](model-selection.md); those observations do not alter usage
 history or imply an invoice amount.
+
+A failed chart or activity-calendar read shows recovery at that section. Other
+sections and retained chart data stay usable; retained data keeps its freshness
+qualification. `test/administration_usage_test.dart` checks initial failures,
+retained-data errors and recovery in both themes and text sizes.

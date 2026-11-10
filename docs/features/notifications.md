@@ -100,3 +100,8 @@ For detached work discovery through Android connected to an existing production 
 use the [selected Hermes production recipe](multi-surface-journeys.md#selected-hermes-features-on-an-existing-production-gateway).
 Its named outcomes and stated prerequisites distinguish real production actions
 from fixture recovery coverage.
+
+App settings shows a persistent error when background notification monitoring
+fails. Its Retry icon shows progress until the monitoring attempt settles and
+disables duplicate taps. `test/background_monitoring_settings_test.dart` covers
+failure, held retry and recovery in both themes and text sizes.

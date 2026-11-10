@@ -101,6 +101,7 @@ ProfileWorkspaceScreen _buildWorkspaceScreen({
   required Future<void> Function()? enableNotifications,
   required ValueListenable<BackgroundMonitoringState>?
   backgroundMonitoringState,
+  required Future<void> Function()? retryBackgroundMonitoring,
   required Future<void> Function()? openMonitoringBatterySettings,
   required VoidCallback onConnections,
   required Widget Function(BuildContext, VoidCallback) configurationActions,
@@ -126,6 +127,7 @@ ProfileWorkspaceScreen _buildWorkspaceScreen({
   initialSearchChats: initialSearchChats,
   enableNotifications: enableNotifications,
   backgroundMonitoringState: backgroundMonitoringState,
+  retryBackgroundMonitoring: retryBackgroundMonitoring,
   openMonitoringBatterySettings: openMonitoringBatterySettings,
   onConnections: onConnections,
   configurationActions: configurationActions,
@@ -259,6 +261,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     initialInvestigation: initialInvestigation,
     enableNotifications: enableProfileNotifications,
     backgroundMonitoringState: _backgroundMonitoring.state,
+    retryBackgroundMonitoring: _chatNotices.syncMonitoring,
     openMonitoringBatterySettings: _backgroundMonitoring.openBatterySettings,
     onConnections: openConnections,
     configurationActions: (context, onRestored) =>
@@ -615,6 +618,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
             onChanged: refreshPreferences,
             enableNotifications: enableProfileNotifications,
             backgroundMonitoringState: _backgroundMonitoring.state,
+            retryBackgroundMonitoring: _chatNotices.syncMonitoring,
             openMonitoringBatterySettings:
                 _backgroundMonitoring.openBatterySettings,
           ),
@@ -746,6 +750,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
           if (mounted) unawaited(_chatNotices.syncMonitoring());
         },
         backgroundMonitoringState: _backgroundMonitoring.state,
+        retryBackgroundMonitoring: _chatNotices.syncMonitoring,
         openMonitoringBatterySettings:
             _backgroundMonitoring.openBatterySettings,
         shareIntents: widget.shareIntents,
@@ -784,6 +789,7 @@ class HomeScreen extends StatefulWidget {
   final VoidCallback? onPreferencesChanged;
   final VoidCallback? onConfigurationChanged;
   final ValueListenable<BackgroundMonitoringState>? backgroundMonitoringState;
+  final Future<void> Function()? retryBackgroundMonitoring;
   final Future<void> Function()? openMonitoringBatterySettings;
   final AndroidShareIntentService? shareIntents;
   final AndroidLaunchIntentService? launchIntents;
@@ -801,6 +807,7 @@ class HomeScreen extends StatefulWidget {
     this.onPreferencesChanged,
     this.onConfigurationChanged,
     this.backgroundMonitoringState,
+    this.retryBackgroundMonitoring,
     this.openMonitoringBatterySettings,
     this.shareIntents,
     this.launchIntents,
@@ -1178,6 +1185,7 @@ class HomeScreenState extends State<HomeScreen> {
           configurationActions: buildConfigurationActions,
           enableNotifications: widget.enableProfileNotifications,
           backgroundMonitoringState: widget.backgroundMonitoringState,
+          retryBackgroundMonitoring: widget.retryBackgroundMonitoring,
           openMonitoringBatterySettings: widget.openMonitoringBatterySettings,
           destination: switch (launchAction) {
             AndroidLaunchAction.activity => AppDestination.activity,
@@ -1444,6 +1452,7 @@ class HomeScreenState extends State<HomeScreen> {
                 ),
                 enableNotifications: widget.enableProfileNotifications,
                 backgroundMonitoringState: widget.backgroundMonitoringState,
+                retryBackgroundMonitoring: widget.retryBackgroundMonitoring,
                 openMonitoringBatterySettings:
                     widget.openMonitoringBatterySettings,
                 onChanged: () {

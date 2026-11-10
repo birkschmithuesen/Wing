@@ -9,11 +9,13 @@ class AdministrationHealthFinding {
     required this.status,
     this.destination,
     this.checkedAt,
+    this.readFailed = false,
   });
   final String title, detail;
   final AdministrationHealthStatus status;
   final String? destination;
   final DateTime? checkedAt;
+  final bool readFailed;
 }
 
 /// An explicit access check remains attached to its captured workspace.

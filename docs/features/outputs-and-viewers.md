@@ -56,3 +56,7 @@ The isolated Mermaid renderer handles line-break and nonbreaking-space labels;
 configuration overrides, script execution, external assets and HTML isolation.
 Inline images retain their phone-width envelope; video content opens through
 explicit viewer navigation rather than eager transcript loading.
+
+Image, diagram, SVG and HTML preview failures use the shared error appearance.
+The embedded viewer also keeps that treatment when its rendering script cannot
+load. Preview failure does not remove the original file or its recovery actions.

@@ -17,6 +17,7 @@ import 'package:wing/core/widgets/profile_diagnostics_panel.dart';
 import 'package:wing/core/services/profile_diagnostics_controller.dart';
 import 'package:wing/core/screens/administration/admin_widgets.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 class _DiagnosticsHost {
   final reads = <(String, Map<String, String>)>[];
@@ -550,6 +551,7 @@ void main() {
         'initial',
         'model-loading',
         'model-unavailable',
+        'model-malformed',
         'model-stale',
         'checking',
         'ready',
@@ -616,6 +618,9 @@ void main() {
                 'model-unavailable' => AdministrationObservation(
                   error: 'Offline',
                 ),
+                'model-malformed' => AdministrationObservation(
+                  data: {'model': 17},
+                ),
                 'model-stale' => AdministrationObservation(
                   data: {'model': 'gpt-5.6-sol', 'provider': 'openai-codex'},
                   error: 'Offline',
@@ -651,12 +656,21 @@ void main() {
           );
           if (state == 'model-loading') {
             expect(find.text('Loading model…'), findsOneWidget);
-          } else if (state == 'model-unavailable') {
-            expect(find.text('Model unavailable'), findsOneWidget);
-          } else if (state == 'model-stale') {
+          } else if (const {
+            'model-unavailable',
+            'model-malformed',
+            'model-stale',
+          }.contains(state)) {
             expect(
-              find.text('Last known model; refresh failed.'),
+              find.descendant(
+                of: find.byType(StudioError),
+                matching: find.text('Could not read the selected model.'),
+              ),
               findsOneWidget,
+            );
+            expect(
+              find.text('Showing the last known model.'),
+              state == 'model-stale' ? findsOneWidget : findsNothing,
             );
           }
           await snapshot(tester, name);
