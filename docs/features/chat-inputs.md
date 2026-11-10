@@ -56,7 +56,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   readback, failure and retry, both themes and enlarged text. It checks that a
   valid compressed fork opens, the original stays intact, an archived target is
   refused before creation, and genuinely missing, extra or changed copied
-  messages still fail validation.
+  messages still fail validation. Independent stock-shaped source/child snapshots
+  verify reopen with new saved row IDs, numeric archive flags, retained tool rows,
+  differing RPC display text, and compressed histories across the 500-row page
+  boundary. Corrupting the hidden summary also fails validation.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

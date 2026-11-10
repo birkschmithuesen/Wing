@@ -89,26 +89,32 @@ class AnswerHost {
         ],
       );
 
+  // Stock ec3249919accf7bc51f780dcff663e8f19a0e176:
+  // hermes_state_mutation_branch.py clones active rows by saved ID, while
+  // hermes_state_messages.py exposes numeric active/compacted flags.
   void addCompressedContext() {
+    for (final row in history('a', 'original')) {
+      row['row_id'] = (row['row_id'] as int) + 100;
+    }
     history('a', 'original').insertAll(0, [
       {
         'role': 'user',
         'text': 'Archived prompt',
-        'row_id': 6,
+        'row_id': 1,
         'active': 0,
-        'compacted': true,
+        'compacted': 1,
       },
       {
         'role': 'assistant',
         'text': 'Archived answer',
-        'row_id': 7,
+        'row_id': 2,
         'active': 0,
-        'compacted': true,
+        'compacted': 1,
       },
       {
         'role': 'user',
         'text': 'Compressed context summary',
-        'row_id': 8,
+        'row_id': 100,
         'active': 1,
         'display_kind': 'hidden',
         '_compressed_summary': true,
@@ -125,7 +131,7 @@ class AnswerHost {
     final rows = history(profile, id).where((row) {
       final active = row['active'] != 0;
       return active ||
-          (query['include_compacted'] == 'true' && row['compacted'] == true);
+          (query['include_compacted'] == 'true' && row['compacted'] == 1);
     }).toList();
     final offset = int.parse(query['offset']!);
     final limit = int.parse(query['limit']!);
@@ -140,7 +146,15 @@ class AnswerHost {
         'order': query['order'],
         'returned': selected.length,
       },
-      'messages': answerHistoryRows(selected),
+      // Model the wire producer independently of Wing's display conversion.
+      'messages': [
+        for (final row in selected)
+          {
+            ...row,
+            'id': row['row_id'],
+            'content': row['content'] ?? row['text'],
+          },
+      ],
     };
   }
 
@@ -219,10 +233,12 @@ class AnswerHost {
             'parent_session_id': null
           else if (!omitSessionParent && parents.containsKey(child))
             'parent_session_id': parents[child],
-          'messages': history(
-            profile,
-            child,
-          ).where(shown).map((m) => Map<String, dynamic>.from(m)).toList(),
+          'messages':
+              (parents.containsKey(child) && branchReplyMessages != null
+                      ? branchReplyMessages!
+                      : history(profile, child).where(shown))
+                  .map((row) => Map<String, dynamic>.from(row))
+                  .toList(),
           'info': {'profile_name': profile},
           'title': 'Branched chat',
         };
@@ -262,7 +278,7 @@ class AnswerHost {
             return {
               'messages': history(profile, id)
                   .where(shown)
-                  .where((m) => m['compacted'] != true)
+                  .where((m) => m['active'] != 0)
                   .map(
                     (m) => {
                       ...m,
@@ -320,7 +336,6 @@ class AnswerHost {
             histories['$profile/$child'] = source
                 .take(boundary + 1)
                 .where((row) => row['active'] != 0)
-                .where(isBranchMessage)
                 .map((m) => Map<String, dynamic>.from(m))
                 .toList();
             for (var i = 0; i < histories['$profile/$child']!.length; i++) {
@@ -471,6 +486,8 @@ void main() {
           tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.reset);
+          host.addCompressedContext();
+          await controller.refreshHistory(original);
           final frame = GlobalKey();
           await tester.pumpWidget(
             MaterialApp(
@@ -516,7 +533,7 @@ void main() {
           await tester.pumpAndSettle();
           await tester.pump(const Duration(milliseconds: 300));
           await tester.settleMarkdown();
-          final actions = find.byKey(const ValueKey('answer-actions-3'));
+          final actions = find.byKey(const ValueKey('answer-actions-103'));
           await tester.ensureVisible(actions);
           await tester.pump(const Duration(milliseconds: 300));
           final fork = find.descendant(
@@ -526,7 +543,6 @@ void main() {
           expect(tester.widget<AnswerActions>(actions).onBranch, isNotNull);
           expect(tester.widget<AnswerActions>(actions).onRegenerate, isNotNull);
           await picture('available');
-          host.addCompressedContext();
           host.branchDelay = Completer<void>();
           host.branchError = StateError('Fork failed; try again');
           host.branchReadDelay = Completer<void>();
@@ -942,7 +958,7 @@ void main() {}
       child.reading.messages
           .where((m) => !isHiddenAnswerMessage(m))
           .map(answerMessageText),
-      ['Original prompt', 'Original answer'],
+      ['Original prompt', 'Tool output', 'Original answer'],
     );
     expect(
       host.calls
@@ -956,29 +972,221 @@ void main() {}
   });
 
   test(
+    'stock fork receipt retains tools independently of visible prose',
+    () async {
+      final child = (await controller.branchAnswer(original, 2))!;
+      // Stock branch_in_transaction clones active database rows, including tools.
+      // Literal expectations must not reuse isBranchMessage/answerHistoryRows.
+      expect(host.history('a', child.key.sessionId).map((row) => row['role']), [
+        'user',
+        'tool',
+        'assistant',
+      ]);
+      expect(host.history('a', child.key.sessionId).map((row) => row['text']), [
+        'Original prompt',
+        'Tool output',
+        'Original answer',
+      ]);
+    },
+  );
+
+  test('stock REST archive selection uses numeric storage flags', () {
+    host.history('a', 'original').insertAll(0, [
+      {
+        'row_id': 10,
+        'role': 'user',
+        'text': 'Archived',
+        'active': 0,
+        'compacted': 1,
+      },
+      {
+        'row_id': 11,
+        'role': 'user',
+        'text': 'Rewound',
+        'active': 0,
+        'compacted': 0,
+      },
+    ]);
+    List<Object?> ids(bool archived) =>
+        (host.historyPage('a', 'sessions/original/messages', {
+                  'offset': '0',
+                  'limit': '500',
+                  'order': 'oldest',
+                  'include_compacted': '$archived',
+                })['messages']
+                as List)
+            .map((row) => row['id'])
+            .toList();
+    expect(ids(true), [10, 1, 2, 3, 4, 5]);
+    expect(ids(false), [1, 2, 3, 4, 5]);
+  });
+
+  test('stock REST rows retain structured content without Wing projection', () {
+    const content = [
+      {'type': 'text', 'text': 'Saved answer'},
+    ];
+    host.history('a', 'original')[2]['content'] = content;
+    final page = host.historyPage('a', 'sessions/original/messages', {
+      'offset': '0',
+      'limit': '500',
+      'order': 'oldest',
+      'include_compacted': 'false',
+    });
+    expect(page['messages'][2]['content'], content);
+  });
+
+  test(
     'fork after compression verifies active context instead of archived history',
     () async {
       host.addCompressedContext();
-      final child = (await controller.branchAnswer(original, 2))!;
+      await controller.refreshHistory(original);
+      final selected = original.reading.messages.indexWhere(
+        (row) => row['id'] == 103,
+      );
+      final child = (await controller.branchAnswer(original, selected))!;
       expect(controller.current!.chat, same(child));
       expect(
         child.reading.messages
             .where((row) => !isHiddenAnswerMessage(row))
             .map(answerMessageText),
-        ['Original prompt', 'Original answer'],
+        ['Original prompt', 'Tool output', 'Original answer'],
       );
       expect(host.parents.length, 1);
       expect(host.history('a', 'original').length, 8);
       expect(host.history('a', child.key.sessionId).map(answerMessageText), [
         'Compressed context summary',
         'Original prompt',
+        'Tool output',
         'Original answer',
       ]);
     },
   );
 
+  test(
+    'compressed fork matches independent stock child snapshot after reopening',
+    () async {
+      // Synthetic stock-shaped source and child are specified independently.
+      // No child prefix or expected result is computed with Wing's projections.
+      host.histories['a/original'] = [
+        {
+          'row_id': 1,
+          'role': 'user',
+          'content': 'Old prompt',
+          'active': 0,
+          'compacted': 1,
+        },
+        {
+          'row_id': 2,
+          'role': 'assistant',
+          'content': 'Old answer',
+          'active': 0,
+          'compacted': 1,
+        },
+        {
+          'row_id': 3,
+          'role': 'assistant',
+          'content': 'Rewound answer',
+          'active': 0,
+          'compacted': 0,
+        },
+        {
+          'row_id': 10,
+          'role': 'user',
+          'content': 'Summary',
+          'active': 1,
+          'display_kind': 'hidden',
+          '_compressed_summary': true,
+        },
+        {
+          'row_id': 11,
+          'role': 'user',
+          'content': 'Current prompt',
+          'active': 1,
+        },
+        {'row_id': 12, 'role': 'tool', 'content': 'Tool result', 'active': 1},
+        {
+          'row_id': 13,
+          'role': 'assistant',
+          'content': 'Selected answer',
+          'active': 1,
+        },
+        {'row_id': 14, 'role': 'user', 'content': 'Later prompt', 'active': 1},
+        {
+          'row_id': 15,
+          'role': 'assistant',
+          'content': 'Later answer',
+          'active': 1,
+        },
+      ];
+      host.alterBranch = (rows) => rows
+        ..clear()
+        ..addAll([
+          {
+            'row_id': 101,
+            'role': 'user',
+            'content': 'Summary',
+            'active': 1,
+            'display_kind': 'hidden',
+            '_compressed_summary': true,
+          },
+          {
+            'row_id': 102,
+            'role': 'user',
+            'content': 'Current prompt',
+            'active': 1,
+          },
+          {
+            'row_id': 103,
+            'role': 'tool',
+            'content': 'Tool result',
+            'active': 1,
+          },
+          {
+            'row_id': 104,
+            'role': 'assistant',
+            'content': 'Selected answer',
+            'active': 1,
+          },
+        ]);
+      final before = host
+          .history('a', 'original')
+          .map((row) => {...row})
+          .toList();
+      await controller.refreshHistory(original);
+      final selected = original.reading.messages.indexWhere(
+        (row) => row['id'] == 13,
+      );
+      final child = (await controller.branchAnswer(original, selected))!;
+      final childKey = child.key;
+      expect(controller.current!.chat, same(child));
+      expect(host.history('a', 'original'), before);
+      expect(
+        host.history('a', childKey.sessionId).map((row) => row['content']),
+        ['Summary', 'Current prompt', 'Tool result', 'Selected answer'],
+      );
+      controller.dispose();
+      controller = makeController();
+      await controller.initialize();
+      await controller.openSession(childKey);
+      final reopened = controller.current!.chat!;
+      expect(reopened.reading.messages.map((row) => row['content']), [
+        'Summary',
+        'Current prompt',
+        'Tool result',
+        'Selected answer',
+      ]);
+      expect(reopened.reading.messages.map((row) => row['id']), [
+        101,
+        102,
+        103,
+        104,
+      ]);
+      expect(host.parents.length, 1);
+    },
+  );
+
   test('fork refuses an archived answer before creating a child', () async {
-    host.history('a', 'original')[2].addAll({'active': 0, 'compacted': true});
+    host.history('a', 'original')[2].addAll({'active': 0, 'compacted': 1});
     await expectLater(controller.branchAnswer(original, 2), throwsStateError);
     expect(host.parents, isEmpty);
     expect(controller.current!.chat, same(original));
@@ -1000,17 +1208,31 @@ void main() {}
       ];
       final child = (await controller.branchAnswer(original, 2))!;
       expect(controller.current!.chat, same(child));
+      final resumed = await controller.current!.gateway.resume(
+        child.key.sessionId,
+      );
+      expect(
+        ProfileGateway.records(resumed['messages']).map((row) => row['text']),
+        ['Projected prompt', 'Original answer'],
+        reason: 'The fixture must actually supply a different RPC projection',
+      );
       expect(child.reading.messages.map(answerMessageText), [
         'Original prompt',
+        'Tool output',
         'Original answer',
       ]);
     },
   );
 
-  for (final fault in ['missing', 'extra', 'changed']) {
+  for (final fault in ['missing', 'extra', 'changed', 'summary']) {
     test(
       'fork rejects $fault saved content and keeps the child reachable',
       () async {
+        host.addCompressedContext();
+        await controller.refreshHistory(original);
+        final selected = original.reading.messages.indexWhere(
+          (row) => row['id'] == 103,
+        );
         host.alterBranch = (rows) {
           switch (fault) {
             case 'missing':
@@ -1023,10 +1245,12 @@ void main() {}
               });
             case 'changed':
               rows.last['text'] = 'Different answer';
+            case 'summary':
+              rows.first['text'] = 'Different compressed context';
           }
         };
         await expectLater(
-          controller.branchAnswer(original, 2),
+          controller.branchAnswer(original, selected),
           throwsA(
             isA<StateError>().having(
               (error) => error.message,
@@ -1042,45 +1266,62 @@ void main() {}
           isTrue,
         );
         expect(host.parents.length, 1);
-        expect(host.history('a', 'original').length, 5);
+        expect(host.history('a', 'original').length, 8);
         expect(original.runtime.changingAnswer, isFalse);
       },
     );
   }
 
-  test(
-    'resolves saved fork boundaries beyond the first history page',
-    () async {
-      host
-          .history('a', 'original')
-          .insertAll(
-            0,
-            List.generate(
-              505,
-              (i) => {
-                'role': 'user',
-                'text': '[System: notice $i]',
-                'row_id': 1000 + i,
-              },
-            ),
-          );
-      final child = (await controller.branchAnswer(original, 2))!;
-      expect(
-        child.reading.messages
-            .where((m) => !isHiddenAnswerMessage(m))
-            .map(answerMessageText),
-        ['Original prompt', 'Original answer'],
-      );
-      expect(
-        host.calls
-            .lastWhere(
-              (c) => c.$1 == 'session.mutate' && c.$2['operation'] == 'branch',
-            )
-            .$2['payload']['through_message_id'],
-        3,
-      );
-    },
-  );
+  for (final prefixLength in [498, 499, 505]) {
+    test(
+      'compressed fork reads complete pages at boundary $prefixLength',
+      () async {
+        host.addCompressedContext();
+        final source = host.history('a', 'original');
+        for (final row in source.skip(3)) {
+          row['row_id'] = (row['row_id'] as int) + 1000;
+        }
+        source.insertAll(
+          3,
+          List.generate(
+            prefixLength,
+            (i) => {
+              'role': i.isEven ? 'user' : 'tool',
+              'text': i.isEven ? '[System: notice $i]' : 'Tool result $i',
+              'row_id': 101 + i,
+              'active': 1,
+            },
+          ),
+        );
+        await controller.refreshHistory(original);
+        final selected = original.reading.messages.indexWhere(
+          (row) => row['id'] == 1103,
+        );
+        final child = (await controller.branchAnswer(original, selected))!;
+        expect(controller.current!.chat, same(child));
+        final saved = host.history('a', child.key.sessionId);
+        expect(saved, hasLength(prefixLength + 4));
+        expect(saved.first['text'], 'Compressed context summary');
+        expect(saved.last['text'], 'Original answer');
+        final fresh = host.gateway(child.key.workspace);
+        addTearDown(fresh.close);
+        final copied = await fresh.branchHistory(child.key.sessionId);
+        expect(copied, hasLength((prefixLength + 1) ~/ 2 + 3));
+        expect(copied.first['content'], 'Compressed context summary');
+        expect(copied.last['content'], 'Original answer');
+        expect(
+          host.calls
+              .lastWhere(
+                (call) =>
+                    call.$1 == 'session.mutate' &&
+                    call.$2['operation'] == 'branch',
+              )
+              .$2['payload']['through_message_id'],
+          1103,
+        );
+      },
+    );
+  }
 
   test('a missing saved answer refuses before creating a child', () async {
     host.history('a', 'original')[2].remove('row_id');
@@ -1154,14 +1395,14 @@ void main() {}
   );
 
   test(
-    'branches at the selected answer, ignoring tools and later turns',
+    'branches at the selected answer, retaining tools but excluding later turns',
     () async {
       final child = (await controller.branchAnswer(original, 2))!;
       expect(
         child.reading.messages
             .where((m) => !isHiddenAnswerMessage(m))
             .map(answerMessageText),
-        ['Original prompt', 'Original answer'],
+        ['Original prompt', 'Tool output', 'Original answer'],
       );
       expect(original.reading.messages.length, 5);
       expect(controller.current!.chat, same(child));
