@@ -10,10 +10,10 @@ Feature ID: `chat-browser`.
   Working status includes detached child tasks and background processes known
   to the connected gateway. Recents uses the same captured profile and saved
   conversation when opening that work; discovery does not attach the chat.
-  If refreshes fail, Recents shows one summary above cached chats instead of
-  listing each failed read. Use the header status icon to retry an interrupted
-  connection. Partial failures stay visible as one summary until refreshed;
-  an unavailable catalog is not presented as an empty chat list.
+  Connection outages appear once in Alerts; Recents keeps cached chats visible
+  without an inline outage message. Open the alert or status icon for connection
+  details and retry. Partial refresh failures on available transports still show
+  one summary. An unavailable catalog is not presented as an empty chat list.
   Recents suspends its display work while Wing is paused and catches up previews
   and unread state on resume. Repeated connection updates reuse unchanged saved
   message summaries; edits still replace them.
@@ -65,7 +65,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```
 
 The Recents outage matrix covers simultaneous chat/bot/group refresh failures,
-cached content, transport-only notice updates and successful recovery in both
+cached content, transport-only updates, no inline outage notice and successful recovery in both
 themes at normal and doubled text size. Add `--dart-define=CAPTURE_RECENTS=true`
 to the activity suite to capture its rendered states. The app-shell Recents route
 checks also require one summary when both profiles fail to refresh.

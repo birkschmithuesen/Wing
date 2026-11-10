@@ -62,6 +62,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
     bool chatsLoaded,
     bool botsLoading,
     bool groupsAvailable,
+    bool connectionInterrupted,
   })
   _loadingFacts = (
     initialLoading: false,
@@ -69,10 +70,13 @@ class WorkspaceRecentsSession extends ChangeNotifier
     chatsLoaded: false,
     botsLoading: false,
     groupsAvailable: false,
+    connectionInterrupted: false,
   );
   bool get contentAvailable =>
       _items.isNotEmpty ||
-      (_loadingFacts.chatsLoaded && _loadingFacts.groupsAvailable);
+      (_loadingFacts.chatsLoaded &&
+          _loadingFacts.groupsAvailable &&
+          !_loadingFacts.connectionInterrupted);
   bool get contentLoading =>
       _loadingFacts.initialLoading ||
       (!contentAvailable &&
@@ -196,14 +200,14 @@ class WorkspaceRecentsSession extends ChangeNotifier
           item.group == null ? null : bots.appearanceForGroup(item.group!),
         ),
     ];
+    final connectionInterrupted =
+        controller.connectionStatus.transportAvailability ==
+        ConnectionAvailability.unavailable;
+    // Connection incidents belong to Alerts, including the conversation switcher.
     final error =
-        controller.recentsProfileErrors.isEmpty && bots.state.errors.isEmpty
+        connectionInterrupted ||
+            controller.recentsProfileErrors.isEmpty && bots.state.errors.isEmpty
         ? null
-        : controller.connectionStatus.access ==
-                  ConnectionAvailability.unavailable ||
-              controller.connectionStatus.live ==
-                  ConnectionAvailability.unavailable
-        ? 'Connection interrupted. Try again.'
         : 'Some recent conversations could not be loaded.';
     final loadingFacts = (
       initialLoading: !_initialLoadSettled && _refreshing != null,
@@ -211,6 +215,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
       chatsLoaded: controller.recentsLoaded,
       botsLoading: bots.state.loading,
       groupsAvailable: bots.state.groupsAvailable,
+      connectionInterrupted: connectionInterrupted,
     );
     final catalogChanged =
         !listEquals(facts, _facts) || error != _catalog.error;

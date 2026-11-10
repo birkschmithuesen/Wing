@@ -39,6 +39,10 @@ The registry checks rename reconciliation and reuse without reconnecting; the
 picker checks the open conversation and menu in both themes at normal and 200%
 text size.
 
+Connection interruptions also appear once in [Health alerts](health-alerts.md).
+Opening that alert shows the same connection-details sheet as the status icon,
+for the captured instance. It does not switch the selected workspace.
+
 ## Gotchas
 
 A successful probe does not establish a saved connection. Reopen from Android secure storage. Cancelled or replaced setup must not acquire the next route.

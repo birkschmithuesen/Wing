@@ -3,25 +3,29 @@ import '../../models/health_alert.dart';
 import '../../presentation/health_alert_presentation.dart';
 import '../../theme/wing_theme.dart';
 import 'health_alerts_scope.dart';
+import 'health_alert_notice.dart';
 import '../studio_loading.dart';
 
 Future<void> showHealthAlerts(
   BuildContext context,
   HealthAlertsScope scope, {
   bool includeSilenced = false,
-}) => showDialog<void>(
-  context: context,
-  animationStyle: MediaQuery.disableAnimationsOf(context)
-      ? AnimationStyle.noAnimation
-      : const AnimationStyle(
-          duration: Duration(milliseconds: 210),
-          reverseDuration: Duration(milliseconds: 150),
-          curve: Curves.easeOutCubic,
-        ),
-  builder: (_) => StudioLoadingFrame(
-    child: _HealthAlertDialog(scope: scope, includeSilenced: includeSilenced),
-  ),
-);
+}) {
+  HealthAlertNotice.dismiss(context);
+  return showDialog<void>(
+    context: context,
+    animationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : const AnimationStyle(
+            duration: Duration(milliseconds: 210),
+            reverseDuration: Duration(milliseconds: 150),
+            curve: Curves.easeOutCubic,
+          ),
+    builder: (_) => StudioLoadingFrame(
+      child: _HealthAlertDialog(scope: scope, includeSilenced: includeSilenced),
+    ),
+  );
+}
 
 class _HealthAlertDialog extends StatefulWidget {
   const _HealthAlertDialog({
@@ -257,11 +261,12 @@ class _HealthAlertDialogState extends State<_HealthAlertDialog> {
                         child: IconButton(
                           tooltip: healthAlertActionLabel(alert),
                           onPressed: () => _open(alert),
-                          icon: Icon(
-                            alert.scope == HealthAlertScope.host
-                                ? Icons.health_and_safety_outlined
-                                : Icons.tune,
-                          ),
+                          icon: Icon(switch (alert.scope) {
+                            HealthAlertScope.host =>
+                              Icons.health_and_safety_outlined,
+                            HealthAlertScope.profile => Icons.tune,
+                            HealthAlertScope.connection => Icons.dns_outlined,
+                          }),
                         ),
                       ),
                     ],

@@ -6,13 +6,19 @@ Feature ID: `health-alerts`.
 
 ## Sub-features
 
+- `health-alerts.connection` — Receive one connection alert per instance when
+  server access or live chat is interrupted. Open its connection details to retry;
+  acknowledge or snooze it through the existing controls. Repeated failures and
+  retries retain the same occurrence. Confirmed server and live recovery clear
+  it; unknown observations retain it as last known. A chat-specific opening
+  failure on healthy transports does not create a connection alert.
 - `health-alerts.configure` — Save valid local threshold rules.
 - `health-alerts.respond` — Acknowledge or snooze the intended occurrence.
 - `health-alerts.recover` — Clear or recur only on the qualifying observation.
 
 ## How to get to it (user POV)
 
-Choose Hermes health → Alert settings. Change local thresholds; when an issue appears open the header warning triangle or brief notice. Acknowledge or snooze it, and inspect Health alerts for retained issues.
+Choose Hermes health → Alert settings. Change local thresholds; when an issue appears open the header warning triangle or brief notice. Opening the alert list dismisses the brief notice so the review stays unobstructed. Acknowledge or snooze it, and inspect Health alerts for retained issues.
 
 ## Driving it with Wing harnesses
 
@@ -43,6 +49,15 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```
 
 ## Gotchas
+
+Connection alerts follow the global Health alerts setting and existing collection
+lifetime. They use the current connection owner, without additional polling or
+backend changes. The connection status indicator remains available when alerts
+are silenced or disabled. The connection outage and recovery-control cases in the
+host suites cover acknowledgement, snooze/restart, unknown and partial recovery,
+failed/successful retry, both themes and enlarged text. Capture the recovery UI
+with `--dart-define=CAPTURE_ALERTS=true` and
+`--dart-define=CAPTURE_ALERT_DIR=build/design-previews/connection-alerts`.
 
 These are device-local in-app alerts, distinct from Android notifications. Durations, hysteresis, snooze deadlines and fresh recovery determine the outcome; a warning icon alone is not proof.
 

@@ -42,6 +42,21 @@ class ServerConnectionStatus extends ChangeNotifier {
       : _live.values.contains(ConnectionAvailability.available)
       ? ConnectionAvailability.available
       : ConnectionAvailability.unchecked;
+
+  /// Transport health is independent of a particular chat's restoration.
+  /// An unchecked channel cannot establish recovery of a retained incident.
+  ConnectionAvailability get transportAvailability {
+    if (access == ConnectionAvailability.unavailable ||
+        live == ConnectionAvailability.unavailable) {
+      return ConnectionAvailability.unavailable;
+    }
+    if (access == ConnectionAvailability.available &&
+        live == ConnectionAvailability.available) {
+      return ConnectionAvailability.available;
+    }
+    return ConnectionAvailability.unchecked;
+  }
+
   bool hasLiveObservation(String owner) => _live.containsKey(owner);
   bool liveAvailable(String owner) =>
       _live[owner] == ConnectionAvailability.available;

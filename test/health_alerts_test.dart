@@ -12,6 +12,7 @@ import 'package:wing/core/services/administration_health.dart';
 import 'package:wing/core/services/health_alert_settings_session.dart';
 import 'package:wing/core/services/health_alert_settings_store.dart';
 import 'package:wing/core/services/health_alerts_session.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/services/host_resources_session.dart';
 import 'support/host_resources_fixture.dart';
 import 'support/health_alerts_fixture.dart';
@@ -96,6 +97,85 @@ void main() {
       sample(i, value);
     }
   }
+
+  test(
+    'connection snooze survives restart and only confirmed recovery clears it',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var prefs = await SharedPreferences.getInstance();
+      var fixture = HealthAlertsFixture(prefs);
+      var connection = fixture.owner.connectionStatus;
+      connection.accessAvailable();
+      connection.liveChanged('chat', false);
+      final initial = fixture.coordinator.alerts.single;
+      expect(initial.scope, HealthAlertScope.connection);
+      await fixture.coordinator.snooze(initial);
+      final deadline = fixture.coordinator.alerts.single.snoozedUntil!.toUtc();
+      final saved = {for (final key in prefs.getKeys()) key: prefs.get(key)!};
+      fixture.dispose();
+      SharedPreferences.setMockInitialValues(saved);
+      prefs = await SharedPreferences.getInstance();
+      fixture = HealthAlertsFixture(prefs);
+      connection = fixture.owner.connectionStatus;
+      expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
+      expect(fixture.coordinator.alerts.single.snoozedUntil!.toUtc(), deadline);
+      expect(fixture.coordinator.attentionAlerts, isEmpty);
+      connection.accessAvailable();
+      connection.beginRecovery('chat');
+      expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
+      connection.liveChanged('chat', false);
+      expect(fixture.coordinator.alerts.single.snoozedUntil!.toUtc(), deadline);
+      connection.forgetLive('chat');
+      expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
+      connection.liveChanged('chat', true);
+      connection.endRecovery('chat');
+      expect(fixture.coordinator.alerts, isEmpty);
+      await Future<void>.delayed(Duration.zero);
+      expect(
+        HealthAlertIncidentStore(prefs).read(fixture.owner.connectionIdentity),
+        isEmpty,
+      );
+      fixture.dispose();
+    },
+  );
+
+  test(
+    'connection alerts follow global settings and foreground lifetime',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final fixture = HealthAlertsFixture(
+        await SharedPreferences.getInstance(),
+      );
+      final connection = fixture.owner.connectionStatus;
+      await fixture.settings.update(
+        (current) => current.copyWith(profile: false),
+      );
+      connection.accessAvailable();
+      connection.liveChanged('chat', false);
+      expect(fixture.coordinator.alerts, hasLength(1));
+      await fixture.settings.update(
+        (current) => current.copyWith(enabled: false),
+      );
+      expect(fixture.coordinator.alerts, isEmpty);
+      connection.liveChanged('chat', false);
+      expect(fixture.coordinator.alerts, isEmpty);
+      fixture.coordinator.setForeground(false);
+      await fixture.settings.update(
+        (current) => current.copyWith(enabled: true),
+      );
+      expect(fixture.coordinator.alerts, isEmpty);
+      fixture.coordinator.setForeground(true);
+      expect(fixture.coordinator.alerts, hasLength(1));
+      fixture.coordinator.setForeground(false);
+      connection.liveChanged('chat', true);
+      expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
+      fixture.coordinator.setForeground(true);
+      expect(fixture.coordinator.alerts, isEmpty);
+      fixture.dispose();
+      // Retired listeners cannot recreate the removed incident.
+      connection.liveChanged('chat', false);
+    },
+  );
 
   test('acknowledgement survives device-preference reconstruction', () async {
     SharedPreferences.setMockInitialValues({});
@@ -265,6 +345,7 @@ void main() {
       HealthAlertSettingsStore(prefs),
     );
     final session = HealthAlertsSession(
+      connectionStatus: ServerConnectionStatus('Test server'),
       host: host,
       health: health,
       settings: settings,
@@ -460,6 +541,7 @@ void main() {
         ),
       );
       final session = HealthAlertsSession(
+        connectionStatus: ServerConnectionStatus('Test server'),
         incidents: HealthAlertIncidentStore(
           await SharedPreferences.getInstance(),
         ),
@@ -889,6 +971,7 @@ void main() {
         HealthAlertSettingsStore(await SharedPreferences.getInstance()),
       );
       final session = HealthAlertsSession(
+        connectionStatus: ServerConnectionStatus('Test server'),
         incidents: HealthAlertIncidentStore(
           await SharedPreferences.getInstance(),
         ),
@@ -974,6 +1057,7 @@ void main() {
         ),
       );
       final session = HealthAlertsSession(
+        connectionStatus: ServerConnectionStatus('Test server'),
         incidents: HealthAlertIncidentStore(
           await SharedPreferences.getInstance(),
         ),
@@ -1033,6 +1117,7 @@ void main() {
             ),
           );
           final session = HealthAlertsSession(
+            connectionStatus: ServerConnectionStatus('Test server'),
             incidents: HealthAlertIncidentStore(
               await SharedPreferences.getInstance(),
             ),
@@ -1103,6 +1188,7 @@ void main() {
         HealthAlertSettingsStore(prefs),
       );
       final session = HealthAlertsSession(
+        connectionStatus: ServerConnectionStatus('Test server'),
         incidents: HealthAlertIncidentStore(
           await SharedPreferences.getInstance(),
         ),
@@ -1162,6 +1248,7 @@ void main() {
         HealthAlertSettingsStore(prefs),
       );
       final session = HealthAlertsSession(
+        connectionStatus: ServerConnectionStatus('Test server'),
         incidents: HealthAlertIncidentStore(
           await SharedPreferences.getInstance(),
         ),

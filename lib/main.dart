@@ -491,6 +491,17 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
     final controller = _healthAlerts.ownerFor(alert);
     if (controller == null || !mounted) return;
     try {
+      if (alert.scope == HealthAlertScope.connection) {
+        final context = _navigatorKey.currentContext;
+        if (context != null) {
+          await showServerConnectionDetails(
+            context,
+            label: controller.connection.label,
+            status: controller.connectionStatus,
+          );
+        }
+        return;
+      }
       await _navigatorKey.currentState?.push<void>(
         MaterialPageRoute(
           builder: (_) => HealthAlertHealthScreen(

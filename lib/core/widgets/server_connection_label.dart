@@ -13,6 +13,18 @@ typedef WorkspacePickerCallback =
 
 const _connectionIdentityGap = 6.0;
 
+/// Shared recovery sheet for header status controls and connection alerts.
+Future<void> showServerConnectionDetails(
+  BuildContext context, {
+  required String label,
+  required ServerConnectionStatus? status,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  builder: (_) => _ConnectionDetails(label: label, status: status),
+);
+
 class ServerConnectionScope extends InheritedWidget {
   final ServerConnectionStatus status;
   final WorkspacePickerCallback? onPickWorkspace;
@@ -79,12 +91,8 @@ class ServerConnectionLabel extends StatelessWidget {
     final effectiveIcon = icon ?? scope?.icon ?? ConnectionIcon.server;
     final identity =
         '$label${suffix == null || suffix!.isEmpty ? '' : ' · $suffix'}';
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget labelBody() => Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -198,12 +206,8 @@ class DrawerConnectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = connection?.label ?? 'No server selected';
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget contents() {
       final description = '$label, ${status?.description ?? 'Not checked'}';
       final onTap = connection == null ? null : openDetails;
@@ -283,12 +287,8 @@ class ServerConnectionIndicator extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget contents() => Semantics(
       button: true,
       label:

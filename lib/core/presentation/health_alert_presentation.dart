@@ -2,6 +2,7 @@ import '../models/host_thresholds.dart';
 import '../models/health_alert.dart';
 
 String healthAlertActionLabel(HealthAlert alert) => switch (alert.destination) {
+  'Connection details' => 'Open connection details',
   'MCP connectors' =>
     alert.connectorNames.length == 1
         ? 'Open connector ${alert.connectorNames.single}'

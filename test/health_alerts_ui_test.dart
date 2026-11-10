@@ -20,6 +20,7 @@ import 'package:wing/core/services/health_alert_settings_store.dart';
 import 'package:wing/core/services/health_alerts_coordinator.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/wing_app_bar.dart';
+import 'package:wing/core/widgets/server_connection_label.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/core/widgets/health_alerts/health_alerts_scope.dart';
 import 'package:wing/core/services/administration_overview.dart';
@@ -724,93 +725,210 @@ void main() {
       admin.server.close();
     });
   }
-  testWidgets('connection failures never create health incidents or notices', (
-    tester,
-  ) async {
-    SharedPreferences.setMockInitialValues({});
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    final fixture = HealthAlertsFixture(await SharedPreferences.getInstance());
-    final connection = fixture.owner.connectionStatus;
-    connection.accessAvailable();
-    connection.liveChanged('chat', true);
-    await fixture.owner.hostResources().refresh();
-    final navigatorKey = GlobalKey<NavigatorState>();
-    await tester.pumpWidget(
-      MaterialApp(
-        navigatorKey: navigatorKey,
-        builder: (context, child) => HealthAlertsScope(
-          alerts: fixture.coordinator,
-          openAlert: (_) async {},
-          child: HealthAlertNotice(navigatorKey: navigatorKey, child: child!),
-        ),
-        home: Builder(
-          builder: (context) => Scaffold(
-            appBar: WingAppBar(context: context, title: const Text('Bots')),
+  testWidgets(
+    'connection failures share one alert and recover from live observations',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final fixture = HealthAlertsFixture(
+        await SharedPreferences.getInstance(),
+      );
+      final connection = fixture.owner.connectionStatus;
+      connection.accessAvailable();
+      connection.liveChanged('chat', true);
+      await fixture.owner.hostResources().refresh();
+      final navigatorKey = GlobalKey<NavigatorState>();
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigatorKey,
+          builder: (context, child) => HealthAlertsScope(
+            alerts: fixture.coordinator,
+            openAlert: (_) async {},
+            child: HealthAlertNotice(navigatorKey: navigatorKey, child: child!),
+          ),
+          home: Builder(
+            builder: (context) => Scaffold(
+              appBar: WingAppBar(
+                context: context,
+                title: const Text('Recents'),
+              ),
+            ),
           ),
         ),
-      ),
-    );
-    // A waking socket can report a loss before its owner starts recovery.
-    connection.liveChanged('chat', false);
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    expect(find.byTooltip('Dismiss health notice'), findsNothing);
-
-    connection.beginRecovery('chat');
-    connection.beginRecovery('another-profile');
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    fixture.coordinator.setForeground(false);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    fixture.coordinator.setForeground(true);
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-
-    connection.failRecovery('chat', 'Connection attempts exhausted');
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    connection.endRecovery('another-profile');
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    expect(find.byTooltip('Dismiss health notice'), findsNothing);
-
-    // Network, sign-in and certificate failures remain in connection status.
-    for (final failure in [
-      const SocketException('Network asleep'),
-      TimeoutException('Connection timed out'),
-      const DashboardHttpException(401, '/auth'),
-      const DashboardHttpException(403, '/auth'),
-      const HandshakeException('Certificate rejected'),
-    ]) {
-      connection.accessFailed(failure);
-      connection.beginRecovery('chat');
-      connection.failRecovery('chat', 'Connection attempts exhausted');
+      );
+      // A chat-local failure does not establish a gateway outage.
+      connection.failRecovery('missing-chat', 'Chat no longer exists');
       await tester.pump();
       expect(fixture.coordinator.alerts, isEmpty);
-      expect(find.byTooltip('Dismiss health notice'), findsNothing);
+      connection.endRecovery('missing-chat');
+      connection.liveChanged('chat', false);
+      await tester.pump();
+      expect(fixture.coordinator.alerts, hasLength(1));
+      final occurrence = fixture.coordinator.alerts.single.occurrence;
+      expect(find.byKey(const ValueKey('health-alert-bell')), findsOneWidget);
+      expect(find.byTooltip('Dismiss health notice'), findsOneWidget);
+
+      // Every failing refresh/recovery belongs to this same occurrence.
+      for (final failure in [
+        const SocketException('offline'),
+        TimeoutException('timed out'),
+        const DashboardHttpException(401, '/auth'),
+        const HandshakeException('certificate rejected'),
+      ]) {
+        connection.accessFailed(failure);
+        connection.beginRecovery('chat');
+        await tester.pump();
+        expect(fixture.coordinator.alerts, hasLength(1));
+        expect(fixture.coordinator.alerts.single.occurrence, occurrence);
+      }
+      await tester.tap(find.byKey(const ValueKey('health-alert-bell')));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.text('Connection interrupted'), findsWidgets);
+      await tester.tap(find.byTooltip('Acknowledge issue'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Close alerts'));
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(fixture.coordinator.alerts.single.acknowledged, isTrue);
       expect(find.byKey(const ValueKey('health-alert-bell')), findsNothing);
+      connection.liveChanged('another-profile', false);
+      await tester.pump();
+      expect(fixture.coordinator.alerts.single.occurrence, occurrence);
+      expect(fixture.coordinator.alerts.single.acknowledged, isTrue);
+
+      // HTTP success or starting retry alone cannot clear failed live sockets.
+      connection.accessAvailable();
+      connection.liveChanged('chat', true);
+      connection.endRecovery('chat');
+      await tester.pump();
+      expect(fixture.coordinator.alerts, hasLength(1));
+      connection.liveChanged('another-profile', true);
+      await tester.pump();
+      expect(fixture.coordinator.alerts, isEmpty);
+      connection.liveChanged('chat', false);
+      await tester.pump();
+      expect(
+        fixture.coordinator.alerts.single.occurrence,
+        greaterThan(occurrence),
+      );
+      expect(fixture.coordinator.alerts.single.acknowledged, isFalse);
+      await tester.pumpWidget(const SizedBox());
+      fixture.dispose();
+    },
+  );
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'connection alert recovery controls ${brightness.name} $scale',
+        (tester) async {
+          SharedPreferences.setMockInitialValues({});
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final fixture = HealthAlertsFixture(
+            await SharedPreferences.getInstance(),
+          );
+          final connection = fixture.owner.connectionStatus;
+          connection.accessAvailable();
+          connection.liveChanged('chat', true);
+          await fixture.owner.hostResources().refresh();
+          final navigatorKey = GlobalKey<NavigatorState>();
+          await tester.pumpWidget(
+            MaterialApp(
+              navigatorKey: navigatorKey,
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: RepaintBoundary(
+                  key: const ValueKey('capture-alerts'),
+                  child: HealthAlertsScope(
+                    alerts: fixture.coordinator,
+                    openAlert: (alert) async {
+                      expect(
+                        alert.connectionIdentity,
+                        fixture.owner.connectionIdentity,
+                      );
+                      expect(alert.scope, HealthAlertScope.connection);
+                      await showServerConnectionDetails(
+                        navigatorKey.currentContext!,
+                        label: connection.label,
+                        status: connection,
+                      );
+                    },
+                    child: HealthAlertNotice(
+                      navigatorKey: navigatorKey,
+                      child: child!,
+                    ),
+                  ),
+                ),
+              ),
+              home: Builder(
+                builder: (context) => Scaffold(
+                  appBar: WingAppBar(
+                    context: context,
+                    title: const Text('Recents'),
+                    contextRow: ServerConnectionLabel(
+                      label: connection.label,
+                      status: connection,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+          connection.liveChanged('chat', false);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.byKey(const ValueKey('health-alert-bell')));
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text('Connection interrupted'), findsWidgets);
+          expect(find.byTooltip('Dismiss health notice'), findsNothing);
+          final openDetails = find.descendant(
+            of: find.byType(Dialog),
+            matching: find.byTooltip('Open connection details'),
+          );
+          expect(openDetails, findsOneWidget);
+          await shot(tester, 'connection-alert-${brightness.name}-$scale');
+          await tester.tap(openDetails);
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.text('Connection details'), findsOneWidget);
+          expect(find.byTooltip('Retry connection'), findsOneWidget);
+          for (final recovered in [false, true]) {
+            final gate = Completer<void>();
+            connection.retry = () async {
+              connection.beginRecovery('chat');
+              await gate.future;
+              connection.liveChanged('chat', recovered);
+              connection.endRecovery('chat');
+            };
+            await tester.ensureVisible(find.byTooltip('Retry connection'));
+            await tester.pump();
+            await tester.tap(find.byTooltip('Retry connection'));
+            await tester.pump();
+            expect(find.text('Reconnecting'), findsOneWidget);
+            expect(fixture.coordinator.alerts, hasLength(1));
+            if (!recovered) {
+              await shot(tester, 'connection-retry-${brightness.name}-$scale');
+            }
+            gate.complete();
+            await tester.pump();
+            expect(
+              fixture.coordinator.alerts,
+              recovered ? isEmpty : hasLength(1),
+            );
+          }
+          expect(find.text('Connected'), findsOneWidget);
+          expect(find.byTooltip('Retry connection'), findsNothing);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+          fixture.dispose();
+        },
+      );
     }
-
-    // Automatic or manual retries remain quiet too.
-    connection.beginRecovery('chat');
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    expect(find.byTooltip('Dismiss health notice'), findsNothing);
-    connection.liveChanged('chat', true);
-    connection.endRecovery('chat');
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-
-    // A missing conversation on a healthy transport is a chat-local issue.
-    connection.failRecovery('notification', 'Chat no longer exists');
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    // That old chat failure must not turn a later transient loss into a notice.
-    connection.liveChanged('chat', false);
-    await tester.pump();
-    expect(fixture.coordinator.alerts, isEmpty);
-    await tester.pumpWidget(const SizedBox());
-    fixture.dispose();
-  });
+  }
   testWidgets(
     'one application notice is transient and opens details only by intent',
     (tester) async {

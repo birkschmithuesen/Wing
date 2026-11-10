@@ -10,6 +10,7 @@ import 'administration_health.dart';
 import 'health_alert_settings_session.dart';
 import 'health_alert_incident_store.dart';
 import 'host_resources_session.dart';
+import 'server_connection_status.dart';
 
 /// Connection-owned evaluator borrowing canonical observations. Owns only its
 /// watch demand and incidents; never runs diagnostics. Inventory recovery reads
@@ -17,6 +18,7 @@ import 'host_resources_session.dart';
 class HealthAlertsSession extends ChangeNotifier {
   HealthAlertsSession({
     required this.host,
+    required this.connectionStatus,
     required this.health,
     required this.settings,
     required this.incidents,
@@ -36,12 +38,14 @@ class HealthAlertsSession extends ChangeNotifier {
     _watch = host.watch(interval: const Duration(seconds: 15), active: false);
     _lastSettings = settings.settings;
     host.addListener(_changed);
+    connectionStatus.addListener(_changed);
     health.addListener(_changed);
     health.server.connectorInventory.addListener(_changed);
     settings.addListener(_settingsChanged);
     _changed();
   }
   final HostResourcesSession host;
+  final ServerConnectionStatus connectionStatus;
   final AdministrationHealth health;
   final HealthAlertSettingsSession settings;
   final HealthAlertIncidentStore incidents;
@@ -180,6 +184,19 @@ class HealthAlertsSession extends ChangeNotifier {
       return;
     }
     final now = _now(), data = host.state;
+    _evaluator.finding(
+      key: '${host.connectionIdentity}:connection',
+      title: 'Connection interrupted',
+      detail: 'Updates may be delayed. Open connection details to retry.',
+      scope: HealthAlertScope.connection,
+      destination: 'Connection details',
+      at: now,
+      failed: switch (connectionStatus.transportAvailability) {
+        ConnectionAvailability.unavailable => true,
+        ConnectionAvailability.available => false,
+        ConnectionAvailability.unchecked => null,
+      },
+    );
     final observation = (data.stats, data.pressure);
     if (!data.refreshing && _evaluatedHost != observation) {
       // Repeated owner notifications are not new host samples. In particular,
@@ -429,6 +446,7 @@ class HealthAlertsSession extends ChangeNotifier {
     _connectorRecheck?.cancel();
     _watch.close();
     host.removeListener(_changed);
+    connectionStatus.removeListener(_changed);
     health.removeListener(_changed);
     health.server.connectorInventory.removeListener(_changed);
     settings.removeListener(_settingsChanged);

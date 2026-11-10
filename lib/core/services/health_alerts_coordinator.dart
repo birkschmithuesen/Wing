@@ -72,6 +72,7 @@ class HealthAlertsCoordinator extends ChangeNotifier {
       _sessions.putIfAbsent(owner, () {
         final session = HealthAlertsSession(
           host: owner.hostResources(),
+          connectionStatus: owner.connectionStatus,
           health: owner.healthSession().health,
           settings: settings,
           incidents: incidents,

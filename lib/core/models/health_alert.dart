@@ -2,7 +2,7 @@ import 'host_thresholds.dart';
 
 enum HealthAlertSeverity { warning, critical }
 
-enum HealthAlertScope { host, profile }
+enum HealthAlertScope { host, profile, connection }
 
 /// The host reading and policy that admitted an occurrence, retained as later
 /// readings update its detail or qualify it as last known.

@@ -14,6 +14,14 @@ class HealthAlertNotice extends StatefulWidget {
     required this.child,
     required this.navigatorKey,
   });
+
+  /// Opening the incident review replaces its transient announcement.
+  static void dismiss(BuildContext context) {
+    final notice = context.findAncestorStateOfType<_HealthAlertNoticeState>();
+    notice?._expiry?.cancel();
+    notice?._hide();
+  }
+
   final Widget child;
   final GlobalKey<NavigatorState> navigatorKey;
   @override

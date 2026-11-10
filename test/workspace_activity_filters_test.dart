@@ -410,7 +410,7 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
-        'gateway outage has one notice in ${brightness.name} at $scale',
+        'gateway outage leaves reporting to Alerts in ${brightness.name} at $scale',
         (tester) async {
           tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
           tester.view.devicePixelRatio = 1;
@@ -468,11 +468,8 @@ void main() {
               image.dispose();
             });
           }
-          expect(find.byType(StudioError), findsOneWidget);
-          expect(
-            find.text('Connection interrupted. Try again.'),
-            findsOneWidget,
-          );
+          expect(find.byType(StudioError), findsNothing);
+          expect(recents.catalog.error, isNull);
           expect(find.text('Draft the setup guide'), findsOneWidget);
           expect(find.text('Live status could not be loaded.'), findsNothing);
           expect(tester.takeException(), isNull);
@@ -506,6 +503,43 @@ void main() {
       );
     }
   }
+  testWidgets('offline empty Recents does not claim there are no chats', (
+    tester,
+  ) async {
+    host.includeHistory = false;
+    host.live.clear();
+    await controller.refreshRecents();
+    final emptyBots = BotsSession((_) async => []);
+    await emptyBots.refresh();
+    final emptyRecents = WorkspaceRecentsSession(
+      controller,
+      emptyBots,
+      foreground: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WorkspaceActivityContent(
+            recents: emptyRecents,
+            visible: false,
+            onOpen: (_, _) {},
+            onOpenGroup: (_) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('No recent chats'), findsOneWidget);
+    controller.connectionStatus.onInterruption = null;
+    controller.connectionStatus.accessFailed(const SocketException('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('No recent chats'), findsNothing);
+    expect(find.byType(StudioError), findsNothing);
+    expect(emptyRecents.contentAvailable, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    emptyRecents.dispose();
+    emptyBots.dispose();
+  });
   testWidgets('retains partial status failures with usable chats', (
     tester,
   ) async {
