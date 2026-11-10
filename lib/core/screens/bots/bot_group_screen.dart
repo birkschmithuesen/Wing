@@ -580,8 +580,8 @@ class _BotGroupScreenState extends State<BotGroupScreen>
       active = false;
       icon = Icons.pause_circle_outline;
     } else if (runtime?.working == true &&
-        _session.error == null &&
-        _session.pendingText == null) {
+        (pendingAction ||
+            (_session.error == null && _session.pendingText == null))) {
       label = memberActivity.isEmpty ? 'Bots are working…' : memberActivity;
       active = true;
       icon = null;

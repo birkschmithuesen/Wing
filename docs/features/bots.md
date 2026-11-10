@@ -33,9 +33,9 @@ Choose Bots in the drawer. Use the Bots and Groups tabs. Tap a name or preview f
 
 Open **Alerts** in the main menu to review failed automatic bot, group and
 desktop updates. Previously received roster rows and group messages remain
-readable during a failed refresh. The group stops showing a working pulse until
-a fresh read confirms activity. Use the original view's Refresh action to retry
-and see feedback there.
+readable during a failed refresh. When no group action is pending, a failed
+refresh hides the working pulse until a fresh read confirms activity. Use the
+original view's Refresh action to retry and see feedback there.
 
 ## Driving it with Wing harnesses
 
