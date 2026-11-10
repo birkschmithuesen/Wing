@@ -17,6 +17,10 @@ Feature ID: `chat-browser`.
   Recents suspends its display work while Wing is paused and catches up previews
   and unread state on resume. Repeated connection updates reuse unchanged saved
   message summaries; edits still replace them.
+  Once the workspace is ready, Wing prepares Recents quietly in the background.
+  Opening it reuses the shared catalog or joins preparation already underway;
+  an early visit retains loading feedback until the initial read settles.
+  Hidden Recents does not poll, and warm-up does not repeat on every app resume.
 - `chat-browser.open` — Enter the captured row immediately.
 - `chat-browser.organize` — Change a chat or project and retain browser state. The current-project card in Move to project has an icon-only cross to remove a chat from its project. Confirmation moves it to the captured profile's default folder, keeping messages and drafts. New projects start in the captured profile's default folder and propose a kebab-case subfolder as the name changes; typing or choosing a location keeps that override.
 
@@ -54,6 +58,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```sh
   flutter test --no-pub test/chat_browser_transport_test.dart test/profile_workspace_browser_test.dart test/profile_row_actions_test.dart
   flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart test/app_shell_navigation_test.dart
+  flutter test --no-pub test/profile_recents_visibility_test.dart
   flutter test --no-pub test/project_picker_design_test.dart
   flutter test --no-pub test/server_files_repository_test.dart test/profile_project_management_test.dart test/profile_project_actions_test.dart test/project_folder_picker_test.dart test/project_icon_picker_test.dart
   ```
@@ -73,6 +78,11 @@ Run `test/profile_recents_test.dart` with
 `--dart-define=WING_PERF_INSTRUMENTATION=true` to enforce the unchanged-history
 summary work budget. Its lifecycle checks also verify that paused connection
 updates do not rebuild the catalog and background replies appear on resume.
+The visibility suite starts on Chats and opens Recents through the drawer with
+startup preparation held or completed. It checks cached cards, visible pending
+feedback, no duplicate chat/group reads, deferred foreground admission, failure
+recovery and no hidden polling. Add `--dart-define=CAPTURE_RECENTS_LOADING=true`
+to capture the rendered Recents loading and settled states.
 
 The creation-route host checks enter New project through its FAB and menu,
 verify the profile default and generated location, save the proposed path, and

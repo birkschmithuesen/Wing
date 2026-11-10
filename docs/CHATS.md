@@ -9,6 +9,10 @@ Open **Chats** to search, pin and group conversations. Filter by profile, projec
 Tapping a chat in Recents opens its screen immediately; loading and any retry
 stay there. Back returns to Recents even while the chat is loading.
 
+Wing prepares Recents in the background once your workspace is ready. Opening
+it reuses those results; if preparation is still underway, you can use the
+available cards while the header shows progress.
+
 You can open a visible chat while its profile or chat list is refreshing. Wing
 opens the conversation and loads its history independently of that refresh.
 Back returns to Chats while the conversation is still connecting.

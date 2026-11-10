@@ -45,6 +45,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
   bool get _active => _foreground && _visible.isNotEmpty;
   Future<void>? _refreshing;
   bool _initialLoadSettled = false;
+  bool _warmUpRequested = false;
   Future<void>? _preparingAppearances;
   DateTime? _lastRefresh;
   static const refreshInterval = Duration(seconds: 30);
@@ -135,6 +136,14 @@ class WorkspaceRecentsSession extends ChangeNotifier
   }
 
   List<WorkspaceRecentItem> items() => _items;
+
+  /// Prepare the shared catalog once after workspace startup, without admitting
+  /// hidden-route polling or speculative image/transcript preparation.
+  void warmUp() {
+    if (_closed || _warmUpRequested) return;
+    _warmUpRequested = true;
+    _changed();
+  }
 
   @override
   Future<void> refresh({bool force = false}) {
@@ -240,6 +249,14 @@ class WorkspaceRecentsSession extends ChangeNotifier
       scheduleMicrotask(() {
         _publicationPending = false;
         _publish();
+        if (!_closed &&
+            _foreground &&
+            _warmUpRequested &&
+            controller.initialized &&
+            !_initialLoadSettled &&
+            _refreshing == null) {
+          unawaited(refresh());
+        }
       });
     }
     if (!_active) return;

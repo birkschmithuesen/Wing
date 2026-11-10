@@ -940,7 +940,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     // Shortcut navigation can reuse an owner still observed by the outgoing
     // route. Start its notifications after both routes finish building.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) unawaited(_enter());
+      if (!mounted) return;
+      _recents.warmUp();
+      unawaited(_enter());
     });
   }
 
@@ -992,7 +994,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     if (_destination == AppDestination.bots) _bots.setVisible(_appIsActive);
     if (_destination == AppDestination.activity) {
-      await controller.refreshRecents();
+      await _recents.refresh();
     }
     if (widget.initialSearchChats) {
       await controller.navigateProfile(controller.current!.scope.profileName);
@@ -4000,7 +4002,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     controller.setRouteVisibility(this, _hasChatFocus);
     if (destination == AppDestination.activity) {
-      unawaited(_run(controller.refreshRecents));
+      unawaited(_run(_recents.refresh));
     }
   }
 

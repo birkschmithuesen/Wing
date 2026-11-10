@@ -770,6 +770,197 @@ void main() {
       );
     }
   }
+  for (final failWarmUp in [false, true]) {
+    testWidgets(
+      'Recents warm-up respects readiness and foreground without hidden polling (failure=$failWarmUp)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        final fixture = TechnicalSessionsFixture();
+        final controller = ProfileWorkspaceController(
+          access: ConnectionAccess(
+            connection: identityTestConnection(),
+            dashboardOAuth: null,
+          ),
+          connectionIdentity: 'deferred-warm-up',
+          preferences: preferences,
+          appPreferences: appPreferences,
+          gatewayFactory: fixture.gateway,
+        );
+        final bots = BotsSession((_) async => const []);
+        final recents = WorkspaceRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
+        addTearDown(() {
+          recents.dispose();
+          bots.dispose();
+          controller.dispose();
+          appPreferences.dispose();
+        });
+        recents.warmUp();
+        await tester.pump();
+        expect(
+          fixture.reads,
+          isEmpty,
+          reason: 'Wait for workspace initialization',
+        );
+        recents.setForeground(false);
+        await controller.initialize();
+        final startupReads = fixture.reads.length;
+        await tester.pump();
+        expect(fixture.reads.length, startupReads);
+        expect(controller.recentsLoaded, isFalse);
+        fixture.failHistory = failWarmUp;
+        recents.setForeground(true);
+        for (var i = 0; i < 30; i++) {
+          await tester.pump();
+        }
+        expect(controller.recentsLoaded, isTrue);
+        expect(recents.contentLoading, isFalse);
+        expect(recents.catalog.error, failWarmUp ? isNotNull : isNull);
+        final preparedReads = fixture.reads.length;
+        recents.warmUp();
+        recents.setForeground(false);
+        recents.setForeground(true);
+        await tester.pump(const Duration(minutes: 2));
+        expect(
+          fixture.reads.length,
+          preparedReads,
+          reason: 'Startup warm-up does not admit polling or repeat on resume',
+        );
+        fixture.failHistory = false;
+        await recents.refresh(force: true);
+        expect(recents.catalog.error, isNull);
+        expect(recents.items(), isNotEmpty);
+        expect(fixture.reads.length, greaterThan(preparedReads));
+      },
+    );
+  }
+
+  for (final enterWhileLoading in [false, true]) {
+    testWidgets(
+      'startup warms Recents before navigation (pending=$enterWhileLoading)',
+      (tester) async {
+        tester.view.physicalSize = const Size(390, 844);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        final fixture = TechnicalSessionsFixture();
+        final controller = ProfileWorkspaceController(
+          access: ConnectionAccess(
+            connection: identityTestConnection(),
+            dashboardOAuth: null,
+          ),
+          connectionIdentity: 'startup-recents',
+          preferences: preferences,
+          appPreferences: appPreferences,
+          gatewayFactory: fixture.gateway,
+        );
+        final botFixture = BotsFixture();
+        botFixture.events.add({
+          'room_id': 'room-1',
+          'seq': 1,
+          'kind': 'message.member',
+          'created_at': fixture.now,
+          'actor': {'kind': 'member', 'id': 'atlas'},
+          'payload': {'text': 'Warm group preview'},
+        });
+        final release = Completer<void>();
+        var historyReads = 0;
+        botFixture.readHook = (_, method, _) async {
+          if (method == 'groups.log') {
+            historyReads++;
+            await release.future;
+          }
+          return null;
+        };
+        addTearDown(() async {
+          if (!release.isCompleted) release.complete();
+          await tester.pumpWidget(const SizedBox.shrink());
+          controller.dispose();
+          appPreferences.dispose();
+        });
+        final frame = GlobalKey();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: wingTheme(Brightness.light),
+            home: RepaintBoundary(
+              key: frame,
+              child: ProfileWorkspaceScreen(
+                controller: controller,
+                createBotsSession: () =>
+                    BotsSession((_) async => [botFixture.repository]),
+              ),
+            ),
+          ),
+        );
+        for (var i = 0; i < 30; i++) {
+          await tester.pump();
+        }
+        expect(controller.initialized, isTrue);
+        expect(find.byType(WorkspaceActivityContent), findsNothing);
+        expect(
+          historyReads,
+          1,
+          reason: 'Warm the shared catalog before opening Recents',
+        );
+        expect(
+          find.byType(StudioLoading),
+          findsNothing,
+          reason: 'Automatic preparation must leave Chats usable and quiet',
+        );
+        if (!enterWhileLoading) {
+          release.complete();
+          for (var i = 0; i < 30; i++) {
+            await tester.pump();
+          }
+        }
+        final chatReads = fixture.reads.length;
+        await tester.tap(find.byTooltip('Open navigation menu'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('nav-activity')));
+        await tester.pump();
+        expect(find.byType(WorkspaceActivityContent), findsOneWidget);
+        expect(find.text('User conversation'), findsOneWidget);
+        // The shared header publishes sibling loading registrations after build.
+        await tester.pump();
+        expect(
+          find.byType(StudioLoading),
+          enterWhileLoading ? findsOneWidget : findsNothing,
+        );
+        await _captureRecents(
+          tester,
+          frame,
+          'startup-entry-$enterWhileLoading',
+        );
+        if (enterWhileLoading) {
+          release.complete();
+        }
+        await tester.pumpAndSettle();
+        expect(find.text('Research team'), findsOneWidget);
+        expect(find.text('Warm group preview'), findsOneWidget);
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(
+          historyReads,
+          1,
+          reason: 'Navigation joins or reuses startup preparation',
+        );
+        expect(
+          fixture.reads.length,
+          chatReads,
+          reason: 'Navigation must also reuse the prepared chat catalog',
+        );
+        await _captureRecents(tester, frame, 'startup-warm-$enterWhileLoading');
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
   testWidgets('empty Recents settles loading without replacing its catalog', (
     tester,
   ) async {

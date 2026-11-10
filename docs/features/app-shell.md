@@ -7,6 +7,8 @@ Feature ID: `app-shell`.
 ## Sub-features
 
 - `app-shell.enter` — Open the intended workspace.
+  The first workspace frame remains independent of Recents preparation. Once
+  initialization completes, its shared catalog warms quietly for later entry.
 - `app-shell.return` — Return to its canonical list.
 - `app-shell.restore` — Reopen with the separate draft retained.
 
@@ -27,6 +29,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/app_shell_navigation_test.dart test/android_launch_intent_service_test.dart
+  flutter test --no-pub test/profile_recents_visibility_test.dart
   ```
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.

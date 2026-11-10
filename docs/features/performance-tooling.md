@@ -7,6 +7,10 @@ Feature ID: `performance-tooling`.
 ## Sub-features
 
 - `performance-tooling.bound` — Prepare only work required by observed demand.
+  Workspace startup warms the existing Recents catalog once after initialization,
+  sharing pending reads and freshness with later navigation. Hidden warm-up does
+  not start polling, avatar demand or rendered conversation previews; see the
+  [Recents startup regression](chat-browser.md#driving-it-with-wing-harnesses).
 - `performance-tooling.measure` — Enable diagnostics explicitly for a selected question.
 - `performance-tooling.release` — Refuse instrumentation in release execution.
 
