@@ -27,7 +27,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart test/connector_runtime_test.dart
+  flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/app_notification_routing_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart test/connector_runtime_test.dart
   ```
 
 - **Android `health-normal`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -55,7 +55,10 @@ lifetime. They use the current connection owner, without additional polling or
 backend changes. The connection status indicator remains available when alerts
 are silenced or disabled. The connection outage and recovery-control cases in the
 host suites cover acknowledgement, snooze/restart, unknown and partial recovery,
-failed/successful retry, both themes and enlarged text. Capture the recovery UI
+failed/successful retry, both themes and enlarged text. The application notification
+routing suite also verifies foreground recovery beneath Alert settings: retries
+retain one connection occurrence, confirmed recovery clears it, and drafts survive.
+Capture the recovery UI
 with `--dart-define=CAPTURE_ALERTS=true` and
 `--dart-define=CAPTURE_ALERT_DIR=build/design-previews/connection-alerts`.
 

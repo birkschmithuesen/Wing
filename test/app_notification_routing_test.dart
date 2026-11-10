@@ -1,3 +1,4 @@
+import 'package:wing/core/models/health_alert.dart';
 import 'package:wing/core/services/notification_delivery_ledger.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -973,14 +974,22 @@ void main() {
           harness.controller.connectionStatus.recoveryAttemptInProgress,
           scenario.held,
         );
-        expect(alerts.alerts, isEmpty);
+        expect(alerts.alerts, hasLength(scenario.opening ? 1 : 0));
         final attempts = harness.host.connectCalls;
         harness.host.connectDelay = gate;
         if (serverRecovers) harness.host.connectError = null;
         if (scenario.held) harness.host.connectFailures = 1;
-        final notices = <String>[];
-        void observe() =>
-            notices.addAll(alerts.alerts.map((alert) => alert.title));
+        final occurrences = <(String, int)>{};
+        void observe() {
+          expectSync(alerts.alerts.length, lessThanOrEqualTo(1));
+          for (final alert in alerts.alerts) {
+            expectSync(alert.scope, HealthAlertScope.connection);
+            expectSync(alert.connectionIdentity, harness.identity);
+            occurrences.add((alert.id, alert.occurrence));
+          }
+        }
+
+        observe();
         alerts.addListener(observe);
         addTearDown(() => alerts.removeListener(observe));
         tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
@@ -991,7 +1000,9 @@ void main() {
           AppLifecycleState.resumed,
         );
         await tester.pump();
-        expect(notices, isEmpty);
+        expect(alerts.alerts, hasLength(1));
+        final interrupted = alerts.alerts.single;
+        expect(occurrences, {(interrupted.id, interrupted.occurrence)});
         expect(harness.host.connectCalls, attempts + (scenario.held ? 0 : 1));
         expect(
           harness.controller.connectionStatus.phase,
@@ -1018,7 +1029,7 @@ void main() {
         if (serverRecovers) {
           if (joinedRecovery != null) await joinedRecovery;
           if (scenario.held) expect(harness.host.connectCalls, attempts + 1);
-          expect(notices, isEmpty);
+          expect(occurrences, {(interrupted.id, interrupted.occurrence)});
           expect(harness.controller.notificationChat, isNull);
           expect(harness.controller.recovering, isFalse);
           expect(
@@ -1038,8 +1049,9 @@ void main() {
             harness.controller.connectionStatus.recoveryAttemptInProgress,
             isFalse,
           );
-          expect(notices, isEmpty);
-          expect(alerts.alerts, isEmpty);
+          expect(occurrences, {(interrupted.id, interrupted.occurrence)});
+          expect(alerts.alerts, hasLength(1));
+          expect(alerts.alerts.single.occurrence, interrupted.occurrence);
         }
         expect(chat.composer.observation.text, 'Keep the unsent follow-up');
         expect(
