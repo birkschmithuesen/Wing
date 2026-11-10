@@ -11,6 +11,7 @@ void main() {
     expect(values.accent, AppAccentPreference.teal);
     expect(values.textSize, AppTextSizePreference.system);
     expect(values.runningAction, ComposerAction.steer);
+    expect(values.webLinkDestination, WebLinkDestination.wing);
     expect(values.voiceInput, AppVoiceProcessing.local);
     expect(values.voiceOutput, AppVoiceProcessing.local);
     expect(values.voiceLanguage, '');
@@ -27,6 +28,7 @@ void main() {
       'workspace_accent_v1': 'teal',
       'app_text_size_preference': 'extra_large',
       'composer_running_action': 'queue',
+      'web_link_destination': 'externalBrowser',
       'completion_notifications': false,
       'attention_notifications': true,
       'notification_message_previews': false,
@@ -44,6 +46,7 @@ void main() {
     expect(values.textSize, AppTextSizePreference.extraLarge);
     expect(values.textSize!.multiplier, 1.30);
     expect(values.runningAction, ComposerAction.queue);
+    expect(values.webLinkDestination, WebLinkDestination.externalBrowser);
     expect(values.completedNotifications, isFalse);
     expect(values.attentionNotifications, isTrue);
     expect(values.notificationPreviews, isFalse);
@@ -61,6 +64,7 @@ void main() {
       'workspace_accent_v1': 'mint',
       'app_text_size_preference': 1.15,
       'composer_running_action': 'send',
+      'web_link_destination': 'system',
       'completion_notifications': 'false',
       'voice.input': 'automatic',
       'voice.android_voice': true,
@@ -71,6 +75,7 @@ void main() {
     expect(read.values.accent, isNull);
     expect(read.values.textSize, isNull);
     expect(read.values.runningAction, isNull);
+    expect(read.values.webLinkDestination, isNull);
     expect(read.values.completedNotifications, isNull);
     expect(read.values.voiceInput, isNull);
     expect(read.values.voice, isNull);
@@ -93,7 +98,7 @@ void main() {
     expect(read.values, AppPreferencesSchema.read({}).values);
     expect(
       AppPreferenceField.values.map((field) => field.storageKey).toSet(),
-      hasLength(15),
+      hasLength(16),
     );
     expect(
       AppPreferenceField.values.map((field) => field.storageKey).toSet(),
@@ -113,6 +118,7 @@ void main() {
       'workspace_accent_v1': 'teal',
       'app_text_size_preference': 'system',
       'composer_running_action': 'steer',
+      'web_link_destination': 'wing',
       'completion_notifications': true,
       'attention_notifications': true,
       'notification_message_previews': true,

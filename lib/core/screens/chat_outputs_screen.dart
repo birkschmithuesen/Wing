@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../models/chat_output.dart';
+import '../models/app_preferences.dart';
 import '../services/chat_outputs_session.dart';
 import '../services/file_open_error_message.dart';
 import '../services/remote_files_client.dart';
@@ -18,6 +19,7 @@ import '../theme/wing_theme.dart';
 import '../widgets/markdown_code_block.dart';
 import '../widgets/markdown_message_content.dart';
 import '../widgets/web_output_preview.dart';
+import '../widgets/web_link_scope.dart';
 import 'pdf_preview_screen.dart';
 import 'html_preview_screen.dart';
 
@@ -130,14 +132,15 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
     }
   }
 
-  Future<void> _openLink(String target) => _session.openLink(target);
-
   Future<void> _preview(ChatOutput output) async {
     final prepared = await _session.prepare(output);
     if (!mounted) return;
     final path = output.path;
     if (prepared.kind == OutputPreviewKind.external) {
-      return _openLink(output.url!);
+      return _session.openLink(
+        output.url!,
+        WebLinkScope.destinationOf(context),
+      );
     }
     if (prepared.kind == OutputPreviewKind.image ||
         prepared.kind == OutputPreviewKind.svg) {
@@ -183,7 +186,10 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                 if (imageFile != null) {
                   await _share(imageFile);
                 } else {
-                  await _openLink(output.url!);
+                  await _session.openLink(
+                    output.url!,
+                    WebLinkDestination.externalBrowser,
+                  );
                 }
               } catch (error) {
                 if (previewContext.mounted) _error(previewContext, error);

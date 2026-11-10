@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../services/web_preview.dart';
+import '../widgets/web_link_scope.dart';
 
 /// Bundled with the app so privacy information is available before connecting.
 class PrivacyPolicyScreen extends StatefulWidget {
@@ -65,7 +66,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           onTapLink: (_, href, _) async {
             final uri = href == null ? null : externalWebLink(href);
             if (uri == null) return;
-            final opened = await openWebPreview(uri);
+            final opened = await WebLinkScope.open(context, uri);
             if (!opened && context.mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(

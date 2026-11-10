@@ -54,6 +54,11 @@ The host `flutter test --no-pub test/conversation_assembly_test.dart` recipe als
 
 Phone reading is covered by the `transcript-expansion` family: enter table reading mode, rotate, return to the retained draft, reveal composer controls and use Back without leaving the chat.
 
+For `journeys.conversation`, hold a web link while revisiting an answer to
+select its text or choose where it opens. For regular taps, set the default
+under App settings → Open links in. See the
+[link context menu recipe](markdown.md#link-context-menu).
+
 For `journeys.conversation`, the host Send-and-return recipe in
 [conversation](conversation.md) checks that a reply arriving while Wing is in the
 background opens at its beginning. Reading-position tests also cover leaving a

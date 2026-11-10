@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import '../models/chat_output.dart';
+import '../models/app_preferences.dart';
 import 'android_file_delivery_service.dart';
 import 'media_preview_service.dart';
 import 'owned_remote_files.dart';
@@ -176,10 +177,12 @@ final class ChatOutputsSession extends ChangeNotifier {
     );
   }
 
-  Future<void> openLink(String target) async {
+  Future<void> openLink(String target, WebLinkDestination? destination) async {
     _requireActive();
     final uri = externalWebLink(target);
-    if (uri == null || !await openWebPreview(uri)) {
+    if (uri == null ||
+        destination == null ||
+        !await openWebLink(uri, destination)) {
       throw StateError('Could not open link');
     }
   }

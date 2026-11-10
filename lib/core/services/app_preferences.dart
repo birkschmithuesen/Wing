@@ -78,6 +78,7 @@ class AppPreferencesState {
     required this.accent,
     required this.textSize,
     required this.runningAction,
+    required this.webLinkDestination,
     required this.completedNotifications,
     required this.attentionNotifications,
     required this.notificationPreviews,
@@ -108,6 +109,7 @@ class AppPreferencesState {
   final AppPreferenceControl<AppAccentPreference> accent;
   final AppPreferenceControl<AppTextSizePreference> textSize;
   final AppPreferenceControl<ComposerAction> runningAction;
+  final AppPreferenceControl<WebLinkDestination> webLinkDestination;
   final AppPreferenceControl<bool> completedNotifications;
   final AppPreferenceControl<bool> attentionNotifications;
   final AppPreferenceControl<bool> notificationPreviews;
@@ -144,6 +146,10 @@ class AppPreferencesState {
   ComposerAction? get preferredRunningAction =>
       isFieldCurrent(AppPreferenceField.runningAction)
       ? values.runningAction
+      : null;
+  WebLinkDestination? get preferredWebLinkDestination =>
+      isFieldCurrent(AppPreferenceField.webLinkDestination)
+      ? values.webLinkDestination
       : null;
 
   VoiceInputSettings? get voiceInputSettings {
@@ -238,6 +244,9 @@ class AppPreferences {
       _save(AppPreferenceField.textSize, value.storageValue);
   Future<AppPreferenceSaveResult> setRunningAction(ComposerAction value) =>
       _save(AppPreferenceField.runningAction, value.name);
+  Future<AppPreferenceSaveResult> setWebLinkDestination(
+    WebLinkDestination value,
+  ) => _save(AppPreferenceField.webLinkDestination, value.name);
   Future<AppPreferenceSaveResult> setCompletedNotifications(bool value) =>
       _save(AppPreferenceField.completedNotifications, value);
   Future<AppPreferenceSaveResult> setAttentionNotifications(bool value) =>
@@ -289,6 +298,11 @@ class AppPreferences {
       AppPreferenceField.runningAction,
       _values.runningAction,
       setRunningAction,
+    ),
+    webLinkDestination: _control(
+      AppPreferenceField.webLinkDestination,
+      _values.webLinkDestination,
+      setWebLinkDestination,
     ),
     completedNotifications: _control(
       AppPreferenceField.completedNotifications,

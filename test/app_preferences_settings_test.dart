@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -7,6 +9,7 @@ import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/screens/app_settings_content.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/voice_preferences_session.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'support/voice_fixture.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/main.dart';
@@ -22,6 +25,84 @@ void main() {
       buildSignature: '',
     );
   });
+  testWidgets(
+    'link preference shows pending save and keeps the confirmed choice on failure',
+    (tester) async {
+      SharedPreferences.resetStatic();
+      final platform = _HeldLinkPreference();
+      SharedPreferencesStorePlatform.instance = platform;
+      final owner = AppPreferences(await SharedPreferences.getInstance());
+      addTearDown(() {
+        owner.dispose();
+        SharedPreferences.setMockInitialValues({});
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(actions: const [StudioLoadingSlot()]),
+            body: AppSettingsContent(
+              pluginServer: null,
+              preferences: owner,
+              createVoiceSession: () => VoicePreferencesSession(
+                preferences: owner,
+                device: VoiceDeviceFixture(),
+                hermesProfileLabel: null,
+                openHermesSettings: null,
+              ),
+              onChanged: () {},
+            ),
+          ),
+        ),
+      );
+      final choices = find.byKey(const ValueKey('link-destination'));
+      Future<void> chooseBrowser() async {
+        await tester.tap(choices);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Open in external browser'));
+      }
+
+      await tester.ensureVisible(choices);
+      await tester.pumpAndSettle();
+      await chooseBrowser();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 250));
+      expect(find.byType(StudioLoading), findsOneWidget);
+      expect(
+        tester.widget<PopupMenuButton<WebLinkDestination>>(choices).enabled,
+        isFalse,
+      );
+      expect(
+        tester
+            .widget<PopupMenuButton<WebLinkDestination>>(choices)
+            .initialValue,
+        WebLinkDestination.wing,
+      );
+      expect(
+        owner.current.preferredWebLinkDestination,
+        WebLinkDestination.wing,
+      );
+      platform.reply.complete(false);
+      await tester.pumpAndSettle();
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(
+        find.text('Could not save the setting. Please retry.'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<PopupMenuButton<WebLinkDestination>>(choices)
+            .initialValue,
+        WebLinkDestination.wing,
+      );
+      await chooseBrowser();
+      await tester.pumpAndSettle();
+      expect(
+        owner.current.preferredWebLinkDestination,
+        WebLinkDestination.externalBrowser,
+      );
+    },
+  );
+
   testWidgets(
     'unverified save exposes an explicit owner reload before repair',
     (tester) async {
@@ -185,4 +266,18 @@ class _UnconfirmedWrites extends InMemorySharedPreferencesStore {
   @override
   Future<bool> setValue(String valueType, String key, Object value) =>
       Future.value(false);
+}
+
+class _HeldLinkPreference extends InMemorySharedPreferencesStore {
+  _HeldLinkPreference() : super.withData({});
+
+  final reply = Completer<bool>();
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    if (key == 'flutter.web_link_destination' && !reply.isCompleted) {
+      return reply.future;
+    }
+    return super.setValue(valueType, key, value);
+  }
 }

@@ -9,6 +9,7 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/models/gateway_activity.dart';
 import 'package:wing/core/models/gateway_todo.dart';
 import 'package:wing/core/screens/chat_outputs_screen.dart';
@@ -175,13 +176,14 @@ class _Menu extends StatelessWidget {
           ),
           ListTile(
             title: const Text('Browser preview'),
-            onTap: () => openWebPreview(
+            onTap: () => openWebLink(
               Uri.parse(
                 const String.fromEnvironment(
                   'HERMES_QA_BROWSER_URL',
                   defaultValue: 'http://127.0.0.1:8765/',
                 ),
               ),
+              WebLinkDestination.wing,
             ),
           ),
           ListTile(

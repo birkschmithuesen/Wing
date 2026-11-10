@@ -107,6 +107,11 @@ Model changes show Hermes warnings before you confirm them.
 Copy actions throughout Wing write directly to the clipboard without a bottom
 confirmation popup. Android may show its own clipboard confirmation.
 
+Hold a web link in a reply, or right-click it with a mouse, to choose
+**Select text**, **Open in external browser** or **Open here**. Selecting text
+highlights the link label so you can adjust the selection or copy it.
+Set the default destination for regular taps in **App settings → Open links in**.
+
 [Explore Wing](FEATURES.md) · [Conversation details](CONVERSATION_ACTIONS_AND_READING.md)
 
 ## Questions and approvals

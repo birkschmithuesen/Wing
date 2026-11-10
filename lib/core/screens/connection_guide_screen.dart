@@ -2,7 +2,7 @@ import '../widgets/selection_viewport.dart';
 import '../widgets/wing_app_bar.dart';
 import 'package:flutter/material.dart';
 
-import '../services/web_preview.dart';
+import '../widgets/web_link_scope.dart';
 import '../theme/wing_theme.dart';
 import '../widgets/studio_error.dart';
 import '../widgets/wing_wordmark.dart';
@@ -180,7 +180,8 @@ class ConnectionGuideScreen extends StatelessWidget {
                         StudioButtonPress(
                           child: IconButton.outlined(
                             onPressed: () async {
-                              final opened = await openWebPreview(
+                              final opened = await WebLinkScope.open(
+                                context,
                                 Uri.parse(
                                   'https://github.com/tarkilhk/Wing/blob/main/docs/GETTING_STARTED.md',
                                 ),

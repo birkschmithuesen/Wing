@@ -17,7 +17,7 @@ import 'support/profile_actions_fixture.dart';
 import 'support/composer_fixture.dart';
 
 const phoneReadingTable = '''
-## My first proposed changes
+## [My first proposed changes](https://example.com/plan)
 
 | Current UI | Proposed change |
 | --- | --- |
@@ -101,6 +101,47 @@ void main({
           final tableState = tester.state(table);
           final field = find.byKey(const Key('profile-message-composer'));
           final draft = tester.widget<TextField>(field).controller!;
+          final link = find.text(
+            'My first proposed changes',
+            findRichText: true,
+          );
+          await tester.ensureVisible(link);
+          await tester.pumpAndSettle();
+          await capture?.call(
+            tester,
+            'phone-link-before-${brightness.name}-$scale',
+          );
+          final editable = tester
+              .stateList<EditableTextState>(find.byType(EditableText))
+              .singleWhere(
+                (state) =>
+                    state.textEditingValue.text == 'My first proposed changes',
+              );
+          final render = editable.renderEditable;
+          final firstGlyph = render
+              .getBoxesForSelection(
+                const TextSelection(baseOffset: 0, extentOffset: 1),
+              )
+              .single
+              .toRect();
+          await tester.longPressAt(render.localToGlobal(firstGlyph.center));
+          await tester.pumpAndSettle();
+          for (final label in [
+            'Select text',
+            'Open in external browser',
+            'Open here',
+          ]) {
+            expect(find.text(label).hitTestable(), findsOneWidget);
+          }
+          await capture?.call(
+            tester,
+            'phone-link-menu-${brightness.name}-$scale',
+          );
+          await tester.binding.handlePopRoute();
+          await tester.pumpAndSettle();
+          expect(find.text('Open here'), findsNothing);
+          expect(tester.widget<TextField>(field).controller, same(draft));
+
           final portraitHeader = tester
               .widget<WingAppBar>(find.byType(WingAppBar))
               .preferredSize

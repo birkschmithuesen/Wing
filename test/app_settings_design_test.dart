@@ -269,6 +269,46 @@ void main() {
         await tester.tap(queue);
         await tester.pumpAndSettle();
         expect(preferences.getString('composer_running_action'), 'queue');
+        final linkChoices = find.byKey(const ValueKey('link-destination'));
+        final label = find.text('Open links in');
+        await tester.ensureVisible(linkChoices);
+        await tester.pumpAndSettle();
+        void expectOneLine(String value) {
+          final displayed = find.descendant(
+            of: linkChoices,
+            matching: find.text(value),
+          );
+          expect(displayed.hitTestable(), findsOneWidget);
+          expect(
+            tester.getCenter(displayed).dy,
+            closeTo(tester.getCenter(label).dy, 1),
+          );
+          for (final text in [label, displayed]) {
+            expect(tester.widget<Text>(text).maxLines, 1);
+            final paragraph = find.descendant(
+              of: text,
+              matching: find.byType(RichText),
+            );
+            expect(
+              tester.renderObject<RenderParagraph>(paragraph).didExceedMaxLines,
+              isFalse,
+            );
+          }
+        }
+
+        expectOneLine('Wing');
+        await _captureFrame(
+          tester,
+          '${brightness.name}-$scale-link-destination',
+        );
+        await tester.tap(linkChoices);
+        await tester.pumpAndSettle();
+        final externalBrowser = find.text('Open in external browser');
+        expect(externalBrowser.hitTestable(), findsOneWidget);
+        await _captureFrame(tester, '${brightness.name}-$scale-link-menu');
+        await tester.tap(externalBrowser);
+        await tester.pumpAndSettle();
+        expectOneLine('Browser');
         await tester.ensureVisible(
           find.byKey(const ValueKey('privacy-policy')),
         );

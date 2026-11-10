@@ -8,6 +8,7 @@ import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_manager.dart'
     show ConnectionManager, CredentialStore;
 import 'package:wing/main.dart';
+import 'package:wing/core/widgets/web_link_scope.dart';
 
 class _Credentials implements CredentialStore {
   final values = <String, String>{};
@@ -78,6 +79,24 @@ void main() {
             .widget<AppSettingsContent>(find.byType(AppSettingsContent))
             .preferences,
         same(owner),
+      );
+      final linkDestination = find.byKey(const ValueKey('link-destination'));
+      await tester.ensureVisible(linkDestination);
+      await tester.tap(linkDestination);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open in external browser'));
+      await tester.pumpAndSettle();
+      expect(
+        WebLinkScope.destinationOf(tester.element(find.byType(HomeScreen))),
+        WebLinkDestination.externalBrowser,
+      );
+      final storage = await SharedPreferences.getInstance();
+      expect(storage.getString('web_link_destination'), 'externalBrowser');
+      final reopened = AppPreferences(storage);
+      addTearDown(reopened.dispose);
+      expect(
+        reopened.current.preferredWebLinkDestination,
+        WebLinkDestination.externalBrowser,
       );
 
       // Remove the borrowing settings consumer through normal navigation while

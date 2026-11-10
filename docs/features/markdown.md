@@ -8,14 +8,14 @@ Feature ID: `markdown`.
 
 - `markdown.render` — Read partial and completed formatted content.
 - `markdown.tables` — Tables open as a wrapped grid, with horizontal scrolling when too wide; use the icon controls to choose stacked header/value rows or the table. The latest explicit choice stays with the table through message updates, completion and rotation. Full screen enters the containing conversation’s reading mode.
-- `markdown.links` — Open web links, explicitly linked Hermes files and email drafts. Inline code preserves its full text without file actions, including API routes ending in `.md`. Email addresses open Android’s email app chooser, preserving recipients and any subject/body supplied by the link.
+- `markdown.links` — Tap a web link to open it in the destination chosen in App settings → Open links in. Hold or right-click to select its displayed text or choose a destination for that link. Explicitly linked Hermes files open their file preview. Inline code preserves its full text without file actions, including API routes ending in `.md`. Email addresses open Android’s email app chooser, preserving recipients and any subject/body supplied by the link.
 - Completed `wing-email-draft` fences render the exact plugin artifact in the originating conversation; see [`conversation.email-draft`](conversation.md#structured-email-draft-verification). Partial or malformed references remain readable source.
 - `markdown.copy` — Select or copy exact code and output.
 - `markdown.reuse` — Retain current content through asynchronous rendering.
 
 ## How to get to it (user POV)
 
-Read a streamed reply, saved answer, Activity result or supported file preview. Open code actions to copy exact text, wrap lines or inspect a full view. Tap an email address or email link to choose an email app and compose a draft. Back dismisses the chooser and returns to the content.
+Read a streamed reply, saved answer, Activity result or supported file preview. Hold a web link to show **Select text**, **Open in external browser** and **Open here**. **Select text** starts with the link label and shows the native selection controls. Open code actions to copy exact text, wrap lines or inspect a full view. Tap an email address or email link to choose an email app and compose a draft. Back dismisses the chooser and returns to the content.
 
 ## Driving it with Wing harnesses
 
@@ -45,6 +45,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   append-only updates; links use current callbacks, syntax changes retire old
   controls, and custom builders keep their own widgets and interactions.
 
+  The [link context menu recipe](#link-context-menu) exercises formatted
+  conversation links and table cells.
+
   Document assertions distinguish whole prose segments from the table cells'
   nested renderers. Growing tables must retain exact cell content and selection
   bounds and match a fresh adaptive-table render.
@@ -70,6 +73,23 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 Partial streams can be plain until completion. Unsupported syntax must remain readable. A parser test alone does not prove Android selection or a WebView render.
 
-The Android `transcript-expansion` family also exercises the table-owned reading toggle, rotation, draft retention and compact composer through the production chat screen, in both themes and at normal/enlarged text. Run `python3 scripts/test_nightly_native.py transcript-expansion --output build/feature-verification/phone-reading`.
+The Android `transcript-expansion` family also exercises the table-owned reading toggle, rotation, draft retention and compact composer through the production chat screen, in both themes and at normal/enlarged text. In the same conversation, hold a link, inspect the three menu actions and press Back to return to the same draft. Run `python3 scripts/test_nightly_native.py transcript-expansion --output build/feature-verification/phone-reading`.
 
 The conversation UI suite taps email links, checks exact mailto handoff, held-launch feedback, repeat taps, failure, retry and departure. These platform-channel fixtures do not prove the Android chooser or an installed email app. On Android, tap an email link, select an installed email app and check the draft recipient; a link with subject/body must retain those fields. Back must return without sending. With no email app, Wing explains that one must be installed or enabled.
+
+### Link context menu
+
+```sh
+flutter test --no-pub test/profile_conversation_ui_test.dart --name 'link context menu|link taps use the current preference'
+```
+
+Hold a formatted reply link and check that the anchored menu appears before
+release. Choose **Select text** and check that the complete visible label has
+selection handles and the native toolbar. Holding adjacent prose still
+selects text. Right-click a link in a table, dismiss with Escape and reopen.
+The browser choices send the exact URL to the chosen destination and show
+progress through handoff. A refused **Open here** shows an error in Wing.
+Change the saved destination and tap the already-rendered link again. A
+one-time menu choice does not change the destination of the next regular tap.
+The fixture covers launch requests; an Android run with an installed browser
+is needed to observe the actual handoff and Back behavior.

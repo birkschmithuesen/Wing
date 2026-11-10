@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 
 import '../presentation/tool_activity_details.dart';
 import '../presentation/tool_call_presentation.dart';
-import '../services/web_preview.dart';
+import 'web_link_scope.dart';
 import '../services/file_open_error_message.dart';
 import '../theme/wing_theme.dart';
 import 'chat_inline_image.dart';
@@ -1044,7 +1044,7 @@ class _ActivityDetailSectionState extends State<ActivityDetailSection> {
             label: 'Open source',
             icon: Icons.visibility_outlined,
             onPressed: () async {
-              final opened = await openWebPreview(link);
+              final opened = await WebLinkScope.open(context, link);
               if (!opened && context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(

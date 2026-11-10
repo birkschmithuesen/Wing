@@ -47,6 +47,7 @@ import 'core/services/config_backup_io.dart';
 import 'core/services/config_backup_service.dart';
 import 'core/services/connection_manager.dart';
 import 'core/services/app_preferences.dart';
+import 'core/widgets/web_link_scope.dart';
 import 'core/theme/app_preferences_rendering.dart';
 import 'core/screens/profile_workspace_screen.dart';
 import 'core/screens/shared_draft_review.dart';
@@ -651,7 +652,12 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
                             ),
                           ),
                         ),
-                      Expanded(child: LiveVoiceLayout(child: child!)),
+                      Expanded(
+                        child: WebLinkScope(
+                          preferences: _appPreferences,
+                          child: LiveVoiceLayout(child: child!),
+                        ),
+                      ),
                     ],
                   ),
                 ),

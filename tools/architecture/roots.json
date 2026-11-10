@@ -11074,6 +11074,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/widgets/web_link_scope.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
       "path": "lib/core/widgets/web_output_preview.dart",
       "area": "lib",
       "provenance": "tracked"

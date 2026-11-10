@@ -144,6 +144,7 @@ void main() {
         AppPreferenceField.voiceInput.storageKey: 'local',
         'workspace_accent_v1': 'iris',
         'composer_running_action': 'queue',
+        'web_link_destination': 'externalBrowser',
         'completion_notifications': false,
         'attention_notifications': true,
         'notification_message_previews': true,
@@ -161,6 +162,7 @@ void main() {
       );
       expect(backup.preferences['workspace_accent_v1'], 'iris');
       expect(backup.preferences['composer_running_action'], 'queue');
+      expect(backup.preferences['web_link_destination'], 'externalBrowser');
       expect(backup.preferences['completion_notifications'], false);
       expect(backup.preferences['attention_notifications'], true);
       expect(backup.preferences['notification_message_previews'], true);
@@ -201,6 +203,7 @@ void main() {
         AppPreferenceField.voiceInput.storageKey: 'local',
         'workspace_accent_v1': 'iris',
         'composer_running_action': 'queue',
+        'web_link_destination': 'externalBrowser',
         'completion_notifications': false,
         'attention_notifications': true,
         'notification_message_previews': true,
@@ -233,6 +236,7 @@ void main() {
       );
       expect(targetPrefs.getString('workspace_accent_v1'), 'iris');
       expect(targetPrefs.getString('composer_running_action'), 'queue');
+      expect(targetPrefs.getString('web_link_destination'), 'externalBrowser');
       expect(targetPrefs.getBool('completion_notifications'), false);
       expect(targetPrefs.getBool('attention_notifications'), true);
       expect(targetPrefs.getBool('notification_message_previews'), true);
