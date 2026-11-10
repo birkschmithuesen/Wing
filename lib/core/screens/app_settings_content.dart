@@ -535,11 +535,11 @@ Widget _webLinkSettings(
               highlightColor: theme.colorScheme.primaryContainer,
             ),
             child: Builder(
-              builder: (anchor) => StudioButtonPress(
-                child: Tooltip(
-                  message: 'Default link destination',
-                  child: Semantics(
-                    button: true,
+              builder: (anchor) => Tooltip(
+                message: 'Default link destination',
+                child: Semantics(
+                  button: true,
+                  child: StudioButtonPress(
                     child: InkWell(
                       key: const ValueKey('link-destination'),
                       borderRadius: WingRadius.card,
