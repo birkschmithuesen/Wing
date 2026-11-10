@@ -37,10 +37,14 @@ connectors → Connected apps**, when supported by your Hermes setup. Add a name
 account, open its authorization link, then use **Check authorization** to confirm
 it. Accounts for the same app can be named, reconnected or removed separately.
 
-A chat may ask you to connect an account. Open its authorization link, return to
-**Check connection status**, then choose **Continue**. Opening the browser alone
-does not establish access. MCP consent shows the server-supplied command or URL,
-working directory and environment variable names for you to review.
+A chat can ask you to sign in, enable a disabled MCP server or install a
+connector. Use the browser icon for sign-in, the power icon for Enable or the
+download icon for Install. Review the command or address shown in the card and
+enter any credentials requested by Hermes. Return from browser sign-in to see
+Hermes' result or open **More connection actions** to check status or skip a
+target. **Retry** appears on a failed or expired target. The **Close connection
+request** icon (×) closes the card and returns the results so far to Hermes.
+For directory requests, **Browse apps** opens Connected apps with suggestions first.
 
 ## Check the result
 

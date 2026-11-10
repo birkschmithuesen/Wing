@@ -10522,20 +10522,69 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Future<void> continueConnectionOperation(
     ProfileChat chat,
     HostedConnectionOperation expected,
-  ) => _connectionOperationRequest(chat, expected, continueRequest: true);
+  ) => _connectionOperationRequest(
+    chat,
+    expected,
+    answer: const {'settled_by': 'continue'},
+  );
 
   Future<void> refreshConnectionOperation(
     ProfileChat chat,
     HostedConnectionOperation expected,
-  ) => _connectionOperationRequest(chat, expected, continueRequest: false);
+  ) => _connectionOperationRequest(chat, expected);
+
+  Future<void> respondToConnectionTarget(
+    ProfileChat chat,
+    HostedConnectionOperation expected,
+    HostedConnectionTarget target, {
+    bool skip = false,
+    Map<String, String> credentials = const {},
+  }) async {
+    if (!expected.targets.contains(target) ||
+        (skip
+            ? !target.canSkip
+            : !const {
+                HostedConnectionStep.enable,
+                HostedConnectionStep.install,
+                HostedConnectionStep.retry,
+              }.contains(target.step))) {
+      throw StateError('This connector action is no longer available.');
+    }
+    if (!skip && target.kind == 'connector') {
+      await _connectionOperationRequest(chat, expected, retryTarget: target);
+      return;
+    }
+    final env = {
+      for (final field in target.fields)
+        if (credentials[field.name]?.isNotEmpty == true)
+          field.name: credentials[field.name]!,
+    };
+    if (!skip && !target.hasRequiredCredentials(env)) {
+      throw StateError('Enter the required connector credentials.');
+    }
+    await _connectionOperationRequest(
+      chat,
+      expected,
+      answer: {
+        'targets': [
+          {
+            'name': target.name,
+            'status': skip ? 'skipped' : 'approved',
+            if (!skip && env.isNotEmpty) 'env': env,
+          },
+        ],
+      },
+    );
+  }
 
   Future<void> _connectionOperationRequest(
     ProfileChat chat,
     HostedConnectionOperation expected, {
-    required bool continueRequest,
+    Map<String, dynamic>? answer,
+    HostedConnectionTarget? retryTarget,
   }) async {
     final resource = _commandOwner(chat);
-    if (!(continueRequest
+    if (!(answer != null || retryTarget != null
         ? canContinueConnectionOperation(chat, expected)
         : canRefreshConnectionOperation(chat, expected))) {
       throw StateError(
@@ -10568,10 +10617,30 @@ class ProfileWorkspaceController extends ChangeNotifier {
     _changed();
     try {
       requireCurrent();
-      if (continueRequest) {
+      if (retryTarget != null) {
+        // Stock retries the named target on the session's current operation.
+        final status = await resource.gateway.call('connectors.connect', {
+          'owner': params['owner'],
+          'connectors': [retryTarget.name],
+          'reconnect': true,
+          if (retryTarget.alias != null)
+            'alias': retryTarget.alias
+          else if (retryTarget.connectionId != null)
+            'connection_id': retryTarget.connectionId,
+        });
+        requireCurrent();
+        if (status['op_id'] != expected.id) {
+          throw const FormatException(
+            'Connection retry belongs to another request.',
+          );
+        }
+        _observeConnectionOperation(chat, status, update: true);
+        return;
+      }
+      if (answer != null) {
         final receipt = await resource.gateway.call('connection.respond', {
           ...params,
-          'result': {'settled_by': 'continue'},
+          'result': answer,
         });
         requireCurrent();
         if (receipt['status'] != 'ok' || receipt['settled'] is! bool) {
@@ -10581,7 +10650,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
         if (receipt['settled'] == true) {
           // Stock closes the operation before replying; it can no longer be read.
-          chat._connectionOperation = null;
+          if (answer['settled_by'] == 'continue' ||
+              chat.connectionOperation?.settled != true) {
+            chat._connectionOperation = null;
+          }
           return;
         }
       }

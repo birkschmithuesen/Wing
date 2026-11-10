@@ -48,6 +48,7 @@ DIRECT_SUITES = {
         'Connected apps retain named-account drafts through held failure and retry',
         'Subagent route and prepared compression save through production controls',
         'Conversation connection requests retain owner through pending failure and retry',
+        'Conversation MCP enable approves the exact target and follows Hermes progress',
     }),
     'queued_message_edit_test.dart': frozenset({
         'long press opens the native keyboard; Queue restores text and files',

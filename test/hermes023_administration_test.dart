@@ -490,6 +490,7 @@ void main() {
               {
                 'name': 'Research tools',
                 'kind': 'mcp',
+                'action': 'install',
                 'state': 'pending',
                 'launch': {
                   'kind': 'stdio',
@@ -502,6 +503,7 @@ void main() {
               {
                 'name': 'Remote sources',
                 'kind': 'mcp',
+                'action': 'install',
                 'state': 'pending',
                 'launch': {
                   'kind': 'remote',
@@ -522,8 +524,10 @@ void main() {
                     working: false,
                     onContinue: () async {},
                     onRefresh: () async {},
-                    onOpenAccounts: () async {},
+                    onOpenAccounts: () {},
                     onAuthorize: (_) async {},
+                    onRespond:
+                        (_, {required skip, required credentials}) async {},
                   ),
                 ),
               ),
@@ -540,7 +544,7 @@ void main() {
           expect(find.textContaining('RESEARCH_API_KEY'), findsOneWidget);
           await _snapshot(tester, '${brightness.name}-$scale-launch');
           await tester.ensureVisible(
-            find.byTooltip('Continue connection request'),
+            find.byTooltip('Close connection request'),
           );
           expect(tester.takeException(), isNull);
         },

@@ -12,8 +12,13 @@ import 'admin_widgets.dart';
 import 'admin_providers_page.dart';
 
 class AdminHostedConnectorAccountsPage extends StatefulWidget {
-  const AdminHostedConnectorAccountsPage({super.key, required this.profile});
+  const AdminHostedConnectorAccountsPage({
+    super.key,
+    required this.profile,
+    this.suggested = const [],
+  });
   final ProfileAdministration profile;
+  final List<String> suggested;
   @override
   State<AdminHostedConnectorAccountsPage> createState() =>
       _HostedAccountsState();
@@ -106,6 +111,16 @@ class _HostedAccountsState extends State<AdminHostedConnectorAccountsPage>
         child: IconButton(tooltip: label, onPressed: action, icon: Icon(icon)),
       );
 
+  Iterable<HostedConnector> get _visibleConnectors {
+    final matches = _session.catalog.where((row) => row.matches(_query));
+    if (widget.suggested.isEmpty) return matches;
+    final bySlug = {for (final row in matches) row.slug: row};
+    return [
+      for (final slug in widget.suggested) ?bySlug.remove(slug),
+      ...bySlug.values,
+    ];
+  }
+
   @override
   Widget build(BuildContext context) => ListenableBuilder(
     listenable: _session,
@@ -189,9 +204,7 @@ class _HostedAccountsState extends State<AdminHostedConnectorAccountsPage>
                   ),
                 ),
             ],
-            for (final connector in _session.catalog.where(
-              (row) => row.matches(_query),
-            )) ...[
+            for (final connector in _visibleConnectors) ...[
               const SizedBox(height: 16),
               Row(
                 children: [

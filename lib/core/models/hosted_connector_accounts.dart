@@ -96,35 +96,102 @@ final class HostedConnectionLaunch {
   }
 }
 
+enum HostedConnectionStep { signIn, enable, install, retry, working }
+
+final class HostedConnectionField {
+  const HostedConnectionField({
+    required this.name,
+    required this.required,
+    required this.secret,
+    required this.defaultValue,
+    this.prompt,
+  });
+
+  final String name, defaultValue;
+  final bool required, secret;
+  final String? prompt;
+
+  factory HostedConnectionField.fromJson(Map row) => HostedConnectionField(
+    name: _text(row, 'name'),
+    required: _boolean(row, 'required'),
+    secret: _boolean(row, 'secret'),
+    defaultValue: _text(row, 'default'),
+    prompt: _optionalText(row, 'prompt'),
+  );
+}
+
 final class HostedConnectionTarget {
-  const HostedConnectionTarget({
+  HostedConnectionTarget({
     required this.name,
     required this.kind,
+    required this.action,
     required this.state,
     required this.detail,
     required this.alias,
     required this.connectUrl,
+    this.connectionId,
+    this.instructions,
+    this.discoveryError,
     this.launch,
-  });
-  final String name, kind, state;
-  final String? detail, alias;
+    Iterable<HostedConnectionField> fields = const [],
+  }) : fields = List.unmodifiable(fields);
+
+  final String name, kind, action, state;
+  final String? detail, alias, connectionId, instructions, discoveryError;
   final Uri? connectUrl;
   final HostedConnectionLaunch? launch;
+  final List<HostedConnectionField> fields;
   bool get connected => state == 'connected';
-  bool get needsAuthorization =>
-      {'connector', 'mcp'}.contains(kind) &&
-      !connected &&
-      connectUrl != null &&
-      !{'failed', 'expired', 'skipped'}.contains(state);
-  String get statusLabel => switch (state) {
-    'connected' => 'Connected',
-    'pending' => 'Waiting for connection',
-    'initiated' => 'Authorization pending',
-    'failed' => 'Connection failed',
-    'expired' => 'Authorization expired',
-    'skipped' => 'Skipped',
-    'not_connected' => 'Not connected',
-    _ => state,
+  bool get canSkip => switch (kind) {
+    'connector' => const {
+      'pending',
+      'initiated',
+      'failed',
+      'expired',
+    }.contains(state),
+    'mcp' => const {'pending', 'initiated', 'failed'}.contains(state),
+    _ => false,
+  };
+
+  HostedConnectionStep? get step => switch ((kind, state)) {
+    ('connector', 'failed' || 'expired') ||
+    ('mcp', 'failed' || 'expired') => HostedConnectionStep.retry,
+    ('mcp', 'pending') when action == 'enable' => HostedConnectionStep.enable,
+    ('mcp', 'pending') when action == 'install' => HostedConnectionStep.install,
+    ('mcp', 'initiated') || ('connector', 'pending' || 'initiated')
+        when connectUrl != null =>
+      HostedConnectionStep.signIn,
+    ('mcp', 'initiated') => HostedConnectionStep.working,
+    _ => null,
+  };
+  bool get needsAuthorization => step == HostedConnectionStep.signIn;
+  bool hasRequiredCredentials(Map<String, String> values) => fields.every(
+    (field) => !field.required || values[field.name]?.isNotEmpty == true,
+  );
+  String get title => alias == null ? name : '$name · $alias';
+  String get statusLabel => switch (step) {
+    HostedConnectionStep.enable => 'Approval required to enable',
+    HostedConnectionStep.install => 'Approval required to install',
+    HostedConnectionStep.signIn => 'Browser sign-in ready',
+    HostedConnectionStep.working => switch (action) {
+      'enable' => 'Enabling…',
+      'install' => 'Installing…',
+      _ => 'Preparing browser sign-in…',
+    },
+    _ => switch (state) {
+      'connected' when discoveryError?.isNotEmpty == true =>
+        'Connected · tools unavailable',
+      'connected' when kind == 'mcp' && action == 'enable' => 'Enabled',
+      'connected' when kind == 'mcp' && action == 'install' => 'Installed',
+      'connected' => 'Connected',
+      'pending' => 'Waiting for connection',
+      'initiated' => 'Authorization pending',
+      'failed' => 'Connection failed',
+      'expired' => 'Authorization expired',
+      'skipped' => 'Skipped',
+      'not_connected' => 'Not connected',
+      _ => state,
+    },
   };
   static HostedConnectionTarget fromJson(Map row) {
     final url = _optionalText(row, 'connect_url');
@@ -132,10 +199,17 @@ final class HostedConnectionTarget {
     return HostedConnectionTarget(
       name: _text(row, 'name'),
       kind: _text(row, 'kind'),
+      action: _text(row, 'action'),
       state: _text(row, 'state'),
       detail: _optionalText(row, 'detail'),
       alias: _optionalText(row, 'alias'),
+      connectionId: _optionalText(row, 'connection_id'),
+      instructions: _optionalText(row, 'instructions'),
+      discoveryError: _optionalText(row, 'discovery_error'),
       launch: HostedConnectionLaunch.parse(row['launch']),
+      fields: row['required_env'] == null
+          ? const []
+          : _rows(row, 'required_env').map(HostedConnectionField.fromJson),
       connectUrl:
           uri != null &&
               {'http', 'https'}.contains(uri.scheme) &&

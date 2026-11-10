@@ -2617,13 +2617,21 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                     controller.continueConnectionOperation(chat, operation),
                 onRefresh: () =>
                     controller.refreshConnectionOperation(chat, operation),
+                onRespond: (target, {required skip, required credentials}) =>
+                    controller.respondToConnectionTarget(
+                      chat,
+                      operation,
+                      target,
+                      skip: skip,
+                      credentials: credentials,
+                    ),
                 onAuthorize: (target) async {
                   if (!controller.canContinueConnectionOperation(
                         chat,
                         operation,
                       ) ||
                       !target.needsAuthorization) {
-                    return;
+                    throw StateError('This connection request has changed.');
                   }
                   if (!await launchUrl(
                     target.connectUrl!,
@@ -2632,7 +2640,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                     throw StateError('Authorization could not open.');
                   }
                 },
-                onOpenAccounts: () async {
+                onOpenAccounts: () {
                   if (!controller.canContinueConnectionOperation(
                     chat,
                     operation,
@@ -2642,10 +2650,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   final profile = controller.administration().profile(
                     chat.key.workspace.profileName,
                   );
-                  await Navigator.of(context).push<void>(
+                  Navigator.of(context).push<void>(
                     MaterialPageRoute(
-                      builder: (_) =>
-                          AdminHostedConnectorAccountsPage(profile: profile),
+                      builder: (_) => AdminHostedConnectorAccountsPage(
+                        profile: profile,
+                        suggested: operation.suggested,
+                      ),
                     ),
                   );
                 },

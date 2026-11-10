@@ -10,8 +10,9 @@ Feature ID: `administration-connectors`.
 ## Sub-features
 
 - `administration-connectors.received-request` — Resolve a received conversation
-  connection request with captured account authorization, Check status and explicit
-  Continue; canonical snapshots clear requests no longer pending.
+  connection request with browser authorization, explicit MCP enable or install
+  consent, per-target Skip and Retry, Check status, and Close. Canonical
+  snapshots clear requests no longer pending.
 - `administration-connectors.runtime` — Read cached runtime/authentication state
   without probing or launching a connector; retain explicit-test provenance.
 - `administration-connectors.configure` — Edit the captured connector.
@@ -38,13 +39,22 @@ Check authorization to read the result. Each account has separate rename,
 reconnect and remove actions. Profile sign-in opens the existing provider-account
 editor; merely opening Connected apps never creates an account.
 
-A conversation can also show a received Connect apps request beside its other
-pending input. Open the authorization icon for the named account, return and use
-Check connection status, then Continue. Suggestions link to the same Connected
-apps destination. Opening authorization does not mark an account connected. MCP requests show
-the server-scrubbed command or remote address, working directory and supplied
-environment-variable names beside consent. Environment values and headers are
-never reconstructed on the phone. Long launch details remain selectable.
+A conversation shows Connect apps or MCP setup beside its other pending input.
+Open the sign-in icon for a named account or MCP server when the browser link is
+ready. Return to Wing to see Hermes' result or use Check connection status
+under More connection actions. Directory requests open Connected apps with
+suggested apps first.
+
+For a pending MCP approval, the power icon enables the named server and the
+download icon installs it. Enable shows progress immediately and reports
+Enabled once Hermes confirms the change. Review the server-scrubbed command
+or remote address, working directory and environment-variable names before
+approving. If Hermes
+requests install credentials, enter them in the card and confirm. Wing sends the
+entered values to Hermes and keeps the draft on the current screen. More
+connection actions offers Skip for each eligible target. Retry appears on a
+failed or expired target. The cross closes the request and returns the
+results so far to Hermes. Pending targets remain unapproved.
 
 ## Driving it with Wing harnesses
 
@@ -61,9 +71,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 - **Android administration:** `python3 scripts/test_nightly_native.py administration --output build/feature-verification/administration-connectors`
   includes the named Connected apps draft/failure/retry journey and received
-  conversation request/held/failure/retry at both text scales/themes using isolated
-  accounts. It verifies the production controls, exact-account save and recovery;
-  it does not establish external vendor authorization.
+  conversation request and MCP enable journeys at both text scales and themes
+  using isolated fixtures. It verifies the production controls, exact-account
+  save, exact-target consent and recovery. External vendor authorization needs
+  the separate authorized instance entry.
 
 ## Gotchas
 

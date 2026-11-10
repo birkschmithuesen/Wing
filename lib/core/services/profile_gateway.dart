@@ -590,7 +590,9 @@ class ProfileGateway {
           method,
           params,
           timeout: switch (method) {
-            'mcp.servers.oauth.start' => const Duration(seconds: 45),
+            'mcp.servers.oauth.start' ||
+            'connection.respond' ||
+            'connectors.connect' => const Duration(seconds: 45),
             'command.dispatch' || 'slash.exec' => commandTimeout,
             // Plugin maintenance can clone, scan and install dependencies;
             // healthy operations can outlast the ordinary RPC wait.
