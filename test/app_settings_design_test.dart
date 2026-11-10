@@ -301,14 +301,36 @@ void main() {
           tester,
           '${brightness.name}-$scale-link-destination',
         );
-        await tester.tap(linkChoices);
+        void expectTrailingMenu() {
+          final row = tester.getRect(linkChoices);
+          final firstItem = find.ancestor(
+            of: find.text('Open in Wing'),
+            matching: find.byType(StudioPopupMenuItem<WebLinkDestination>),
+          );
+          final menu = tester.getRect(firstItem);
+          expect(menu.top, greaterThanOrEqualTo(row.bottom - 1));
+          expect(menu.right, closeTo(row.right, 1));
+        }
+
+        await tester.tap(label);
         await tester.pumpAndSettle();
         final externalBrowser = find.text('Open in external browser');
         expect(externalBrowser.hitTestable(), findsOneWidget);
+        expectTrailingMenu();
         await _captureFrame(tester, '${brightness.name}-$scale-link-menu');
         await tester.tap(externalBrowser);
         await tester.pumpAndSettle();
         expectOneLine('Browser');
+        await tester.tap(find.text('Browser'));
+        await tester.pumpAndSettle();
+        expectTrailingMenu();
+        await _captureFrame(
+          tester,
+          '${brightness.name}-$scale-browser-link-menu',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(externalBrowser, findsNothing);
         await tester.ensureVisible(
           find.byKey(const ValueKey('privacy-policy')),
         );

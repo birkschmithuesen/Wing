@@ -67,16 +67,12 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 250));
       expect(find.byType(StudioLoading), findsOneWidget);
-      expect(
-        tester.widget<PopupMenuButton<WebLinkDestination>>(choices).enabled,
-        isFalse,
+      expect(tester.widget<InkWell>(choices).onTap, isNull);
+      final wingValue = find.descendant(
+        of: choices,
+        matching: find.text('Wing'),
       );
-      expect(
-        tester
-            .widget<PopupMenuButton<WebLinkDestination>>(choices)
-            .initialValue,
-        WebLinkDestination.wing,
-      );
+      expect(wingValue, findsOneWidget);
       expect(
         owner.current.preferredWebLinkDestination,
         WebLinkDestination.wing,
@@ -88,12 +84,7 @@ void main() {
         find.text('Could not save the setting. Please retry.'),
         findsOneWidget,
       );
-      expect(
-        tester
-            .widget<PopupMenuButton<WebLinkDestination>>(choices)
-            .initialValue,
-        WebLinkDestination.wing,
-      );
+      expect(wingValue, findsOneWidget);
       await chooseBrowser();
       await tester.pumpAndSettle();
       expect(

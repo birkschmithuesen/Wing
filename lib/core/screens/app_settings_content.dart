@@ -482,77 +482,70 @@ Widget _webLinkSettings(
             data: theme.copyWith(
               highlightColor: theme.colorScheme.primaryContainer,
             ),
-            child: StudioButtonPress(
-              child: PopupMenuButton<WebLinkDestination>(
-                key: const ValueKey('link-destination'),
-                tooltip: 'Default link destination',
-                initialValue: control.selected,
-                enabled: control.choose != null,
-                onSelected: control.choose,
-                position: PopupMenuPosition.under,
-                borderRadius: WingRadius.card,
-                popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
-                    ? AnimationStyle.noAnimation
-                    : null,
-                itemBuilder: (_) => const [
-                  StudioPopupMenuItem(
-                    value: WebLinkDestination.wing,
-                    child: Text('Open in Wing'),
-                  ),
-                  StudioPopupMenuItem(
-                    value: WebLinkDestination.externalBrowser,
-                    child: Text('Open in external browser'),
-                  ),
-                ],
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, constraints) => FittedBox(
-                              fit: BoxFit.scaleDown,
-                              alignment: AlignmentDirectional.centerStart,
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  minWidth: constraints.maxWidth,
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      'Open links in',
-                                      maxLines: 1,
-                                      style: theme.textTheme.bodyLarge,
-                                    ),
-                                    const SizedBox(width: 12),
-                                    Text(
-                                      value,
-                                      semanticsLabel: accessibleValue,
-                                      maxLines: 1,
-                                      style: theme.textTheme.bodyLarge
-                                          ?.copyWith(
-                                            color: theme
-                                                .colorScheme
-                                                .onSurfaceVariant,
+            child: Builder(
+              builder: (anchor) => StudioButtonPress(
+                child: Tooltip(
+                  message: 'Default link destination',
+                  child: Semantics(
+                    button: true,
+                    child: InkWell(
+                      key: const ValueKey('link-destination'),
+                      borderRadius: WingRadius.card,
+                      onTap: control.choose == null
+                          ? null
+                          : () => _showWebLinkDestinationMenu(anchor, control),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 48),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) => FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    alignment: AlignmentDirectional.centerStart,
+                                    child: ConstrainedBox(
+                                      constraints: BoxConstraints(
+                                        minWidth: constraints.maxWidth,
+                                      ),
+                                      child: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Text(
+                                            'Open links in',
+                                            maxLines: 1,
+                                            style: theme.textTheme.bodyLarge,
                                           ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            value,
+                                            semanticsLabel: accessibleValue,
+                                            maxLines: 1,
+                                            style: theme.textTheme.bodyLarge
+                                                ?.copyWith(
+                                                  color: theme
+                                                      .colorScheme
+                                                      .onSurfaceVariant,
+                                                ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
-                                  ],
+                                  ),
                                 ),
                               ),
-                            ),
+                              const SizedBox(width: 4),
+                              const Icon(Icons.arrow_drop_down),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        const Icon(Icons.arrow_drop_down),
-                      ],
+                      ),
                     ),
                   ),
                 ),
@@ -569,6 +562,54 @@ Widget _webLinkSettings(
       ),
     ),
   );
+}
+
+Future<void> _showWebLinkDestinationMenu(
+  BuildContext context,
+  AppPreferenceControl<WebLinkDestination> control,
+) async {
+  final overlay =
+      Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+  final row = context.findRenderObject()! as RenderBox;
+  final alignment = AlignmentDirectional.bottomEnd.resolve(
+    Directionality.of(context),
+  );
+  RelativeRect position() {
+    final anchor = row.localToGlobal(
+      alignment.alongSize(row.size),
+      ancestor: overlay,
+    );
+    return RelativeRect.fromSize(anchor & Size.zero, overlay.size);
+  }
+
+  var lastPosition = position();
+  final selected = await showMenu<WebLinkDestination>(
+    context: context,
+    initialValue: control.selected,
+    requestFocus: true,
+    positionBuilder: (_, _) {
+      if (row.attached && overlay.attached && row.hasSize && overlay.hasSize) {
+        lastPosition = position();
+      }
+      return lastPosition;
+    },
+    popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+        ? AnimationStyle.noAnimation
+        : null,
+    items: const [
+      StudioPopupMenuItem(
+        value: WebLinkDestination.wing,
+        child: Text('Open in Wing'),
+      ),
+      StudioPopupMenuItem(
+        value: WebLinkDestination.externalBrowser,
+        child: Text('Open in external browser'),
+      ),
+    ],
+  );
+  if (selected != null && context.mounted) {
+    await control.choose?.call(selected);
+  }
 }
 
 class _SettingsSection extends StatelessWidget {
