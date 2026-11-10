@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../models/wing_plugin.dart';
-import '../services/web_preview.dart';
+import 'web_link_scope.dart';
 import '../services/wing_plugin_session.dart';
 import '../theme/wing_theme.dart';
 import 'studio_error.dart';
@@ -36,7 +36,8 @@ class _WingPluginPageState extends State<WingPluginPage> {
       _openingGitHub = true;
       _githubFailed = false;
     });
-    final opened = await openWebPreview(
+    final opened = await WebLinkScope.open(
+      context,
       Uri.parse(WingPluginRelease.repository),
     );
     if (!mounted) return;

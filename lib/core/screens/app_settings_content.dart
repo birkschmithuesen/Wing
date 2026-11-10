@@ -251,6 +251,10 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
                     preferences: widget.preferences,
                   ),
                 ),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 24),
+                  child: _webLinkSettings(context, state.webLinkDestination),
+                ),
                 if (widget.enableNotifications != null)
                   _SettingsSection(
                     title: 'Notifications',
@@ -451,6 +455,120 @@ class _AppSettingsContentState extends State<AppSettingsContent> {
       ),
     );
   }
+}
+
+Widget _webLinkSettings(
+  BuildContext context,
+  AppPreferenceControl<WebLinkDestination> control,
+) {
+  final theme = Theme.of(context);
+  final (value, accessibleValue) = switch (control.selected) {
+    WebLinkDestination.wing => ('Wing', 'Open in Wing'),
+    WebLinkDestination.externalBrowser => (
+      'Browser',
+      'Open in external browser',
+    ),
+    null => ('Choose', 'Choose a link destination'),
+  };
+  return Card(
+    child: StudioLoadingRegion(
+      available: !control.busy,
+      busy: control.busy,
+      label: 'Saving link preference',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Theme(
+            data: theme.copyWith(
+              highlightColor: theme.colorScheme.primaryContainer,
+            ),
+            child: StudioButtonPress(
+              child: PopupMenuButton<WebLinkDestination>(
+                key: const ValueKey('link-destination'),
+                tooltip: 'Default link destination',
+                initialValue: control.selected,
+                enabled: control.choose != null,
+                onSelected: control.choose,
+                position: PopupMenuPosition.under,
+                borderRadius: WingRadius.card,
+                popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+                    ? AnimationStyle.noAnimation
+                    : null,
+                itemBuilder: (_) => const [
+                  StudioPopupMenuItem(
+                    value: WebLinkDestination.wing,
+                    child: Text('Open in Wing'),
+                  ),
+                  StudioPopupMenuItem(
+                    value: WebLinkDestination.externalBrowser,
+                    child: Text('Open in external browser'),
+                  ),
+                ],
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, constraints) => FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: AlignmentDirectional.centerStart,
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  minWidth: constraints.maxWidth,
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Text(
+                                      'Open links in',
+                                      maxLines: 1,
+                                      style: theme.textTheme.bodyLarge,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Text(
+                                      value,
+                                      semanticsLabel: accessibleValue,
+                                      maxLines: 1,
+                                      style: theme.textTheme.bodyLarge
+                                          ?.copyWith(
+                                            color: theme
+                                                .colorScheme
+                                                .onSurfaceVariant,
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 4),
+                        const Icon(Icons.arrow_drop_down),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+          for (final message in [control.notice, control.error])
+            if (message != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: StudioError(message),
+              ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _SettingsSection extends StatelessWidget {

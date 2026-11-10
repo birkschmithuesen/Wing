@@ -2636,6 +2636,11 @@
       "feature": "voice",
       "library": "lib/core/widgets/voice_preferences_card.dart"
     },
+    "lib/core/widgets/web_link_scope.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/web_link_scope.dart"
+    },
     "lib/core/widgets/web_output_preview.dart": {
       "role": "view",
       "feature": "outputs-and-viewers",

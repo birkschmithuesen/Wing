@@ -7,10 +7,12 @@ import 'package:flutter/cupertino.dart';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../services/completion_diagnostics.dart';
+import '../services/web_preview.dart';
 import 'retained_markdown_paragraph.dart';
 import 'bot_mention_scope.dart';
 
@@ -44,10 +46,13 @@ class BlockReusingMarkdownBody extends MarkdownBody {
     super.fitContent,
     super.softLineBreak,
     this.parsedNodes,
+    this.onWebLinkMenu,
   });
 
   /// Background preparation supplies resolved nodes; widget work stays here.
   final List<md.Node>? parsedNodes;
+  final void Function(Uri uri, Offset position, VoidCallback selectText)?
+  onWebLinkMenu;
 
   @override
   State<MarkdownWidget> createState() => _BlockReusingMarkdownBodyState();
@@ -96,9 +101,10 @@ class _BlockReusingMarkdownBodyState extends State<MarkdownWidget> {
   @override
   void didUpdateWidget(covariant MarkdownWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    final body = widget as BlockReusingMarkdownBody;
+    final oldBody = oldWidget as BlockReusingMarkdownBody;
     if (widget.data != oldWidget.data ||
-        (widget as BlockReusingMarkdownBody).parsedNodes !=
-            (oldWidget as BlockReusingMarkdownBody).parsedNodes) {
+        body.parsedNodes != oldBody.parsedNodes) {
       _content = null;
       if (CompletionDiagnostics.enabled) {
         CompletionDiagnostics.event('markdown.blocks.invalidate');
@@ -123,8 +129,8 @@ class _BlockReusingMarkdownBodyState extends State<MarkdownWidget> {
             oldWidget.listItemCrossAxisAlignment ||
         widget.fitContent != oldWidget.fitContent ||
         widget.softLineBreak != oldWidget.softLineBreak ||
-        (widget as MarkdownBody).shrinkWrap !=
-            (oldWidget as MarkdownBody).shrinkWrap ||
+        body.shrinkWrap != oldBody.shrinkWrap ||
+        (body.onWebLinkMenu == null) != (oldBody.onWebLinkMenu == null) ||
         (widget.onTapLink == null) != (oldWidget.onTapLink == null)) {
       _content = null;
       _refreshBlocks = true;
@@ -234,6 +240,7 @@ class _BlockReusingMarkdownBodyState extends State<MarkdownWidget> {
                 textAlign: align,
               ),
               onTapLink: widget.onTapLink,
+              onWebLinkMenu: (widget as BlockReusingMarkdownBody).onWebLinkMenu,
               onSelectionChanged: widget.onSelectionChanged,
               onTapText: widget.onTapText,
               sizedImageBuilder: widget.sizedImageBuilder,
@@ -353,10 +360,84 @@ class _BlockDelegate implements MarkdownBuilderDelegate {
 
   @override
   GestureRecognizer createLink(String text, String? href, String title) {
-    final recognizer = TapGestureRecognizer()
-      ..onTap = () => owner.widget.onTapLink?.call(text, href, title);
+    final body = owner.widget as BlockReusingMarkdownBody;
+    final uri = body.selectable && body.onWebLinkMenu != null && href != null
+        ? externalWebLink(href)
+        : null;
+    final recognizer = uri == null
+        ? TapGestureRecognizer()
+        : _WebLinkRecognizer();
+    recognizer.onTap = () => owner.widget.onTapLink?.call(text, href, title);
+    if (recognizer is _WebLinkRecognizer) {
+      recognizer.onMenu = (position) =>
+          _showLinkMenu(uri!, position, recognizer);
+    }
     _recognizers.add(recognizer);
     return recognizer;
+  }
+
+  void _showLinkMenu(Uri uri, Offset position, _WebLinkRecognizer recognizer) {
+    final callback = (owner.widget as BlockReusingMarkdownBody).onWebLinkMenu;
+    if (callback == null) return;
+    // Resolve the native control at the actual hit. A link can wrap, appear in
+    // a table, or share its label with a different link in the same message.
+    final hit = HitTestResult();
+    RendererBinding.instance.hitTestInView(
+      hit,
+      position,
+      View.of(owner.context).viewId,
+    );
+    final render = hit.path
+        .map((entry) => entry.target)
+        .whereType<RenderEditable>()
+        .firstOrNull;
+    if (render == null) return;
+    EditableTextState? editable;
+    void findEditable(Element element) {
+      if (element case StatefulElement(state: final EditableTextState state)) {
+        if (identical(state.renderEditable, render)) editable = state;
+      } else if (editable == null) {
+        element.visitChildren(findEditable);
+      }
+    }
+
+    owner.context.visitChildElements(findEditable);
+    final target = editable;
+    if (target == null) return;
+
+    int? start;
+    var end = 0;
+    var offset = 0;
+    render.text?.visitChildren((span) {
+      final text = span as TextSpan;
+      final next = offset + text.text!.length;
+      if (identical(text.recognizer, recognizer)) {
+        start ??= offset;
+        end = next;
+      } else if (start != null) {
+        return false;
+      }
+      offset = next;
+      return true;
+    });
+    final begin = start;
+    if (begin == null) return;
+    final label = target.textEditingValue.text.substring(begin, end);
+    callback(uri, position, () {
+      if (!target.mounted) return;
+      final value = target.textEditingValue;
+      if (end > value.text.length ||
+          value.text.substring(begin, end) != label) {
+        return;
+      }
+      target.userUpdateTextEditingValue(
+        value.copyWith(
+          selection: TextSelection(baseOffset: begin, extentOffset: end),
+        ),
+        SelectionChangedCause.longPress,
+      );
+      target.showToolbar();
+    });
   }
 
   @override
@@ -371,6 +452,37 @@ class _BlockDelegate implements MarkdownBuilderDelegate {
       recognizer.dispose();
     }
     _recognizers.clear();
+  }
+}
+
+// Flutter Markdown expects a TapGestureRecognizer for links. Feed a native
+// long-press recognizer the same span hit so it can compete with scrolling and
+// ordinary text selection without enlarging or replacing the link's hit area.
+class _WebLinkRecognizer extends TapGestureRecognizer {
+  _WebLinkRecognizer() {
+    onSecondaryTapUp = (details) => onMenu(details.globalPosition);
+    _hold.onLongPressStart = (details) => onMenu(details.globalPosition);
+  }
+
+  final _hold = LongPressGestureRecognizer(
+    supportedDevices: const {
+      PointerDeviceKind.touch,
+      PointerDeviceKind.stylus,
+      PointerDeviceKind.invertedStylus,
+    },
+  );
+  late final ValueChanged<Offset> onMenu;
+
+  @override
+  void addPointer(PointerDownEvent event) {
+    _hold.addPointer(event);
+    super.addPointer(event);
+  }
+
+  @override
+  void dispose() {
+    _hold.dispose();
+    super.dispose();
   }
 }
 

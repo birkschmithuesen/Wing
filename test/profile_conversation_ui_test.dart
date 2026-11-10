@@ -6,24 +6,47 @@ import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/services/web_preview.dart';
 import 'support/composer_fixture.dart';
 import 'package:wing/core/models/transcript_message.dart';
+import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/models/profile_session_key.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/profile_message.dart';
 import 'package:wing/core/widgets/markdown_message_content.dart';
 import 'package:wing/core/widgets/markdown_code_block.dart';
 import 'package:wing/core/widgets/adaptive_markdown_table.dart';
+import 'package:wing/core/widgets/web_link_scope.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'helpers/pump_markdown_widget.dart';
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'support/profile_history_fixture.dart';
+
+class _LinkBrowser extends UrlLauncherPlatform {
+  final launched = <(String, PreferredLaunchMode)>[];
+  final reply = Completer<bool>();
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> supportsMode(PreferredLaunchMode mode) async => true;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) {
+    launched.add((url, options.mode));
+    return reply.future;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -71,6 +94,224 @@ void main() {
       expect(externalWebLink(uri), isNull, reason: uri);
     }
   });
+
+  testWidgets(
+    'link taps use the current preference and menu choices override it',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = AppPreferences(await SharedPreferences.getInstance());
+      addTearDown(preferences.dispose);
+      final original = UrlLauncherPlatform.instance;
+      final browser = _LinkBrowser()..reply.complete(true);
+      UrlLauncherPlatform.instance = browser;
+      addTearDown(() => UrlLauncherPlatform.instance = original);
+      const href = 'https://example.com/leg?day=4#map';
+      await tester.pumpMarkdownWidget(
+        WebLinkScope(
+          preferences: preferences,
+          child: MaterialApp(
+            home: Scaffold(
+              body: ProfileMessage(
+                message: TranscriptMessage.fromRow(const {
+                  'role': 'assistant',
+                  'content': '[Road leg]($href)',
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+      final link = find.text('Road leg', findRichText: true);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      await preferences.setWebLinkDestination(
+        WebLinkDestination.externalBrowser,
+      );
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      await tester.longPress(link);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open here'));
+      await tester.pumpAndSettle();
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(browser.launched, [
+        (href, PreferredLaunchMode.inAppBrowserView),
+        (href, PreferredLaunchMode.externalApplication),
+        (href, PreferredLaunchMode.inAppBrowserView),
+        (href, PreferredLaunchMode.externalApplication),
+      ]);
+    },
+  );
+
+  for (final (brightness, scale) in [
+    for (final brightness in Brightness.values)
+      for (final scale in [1.0, 2.0]) (brightness, scale),
+  ]) {
+    testWidgets(
+      'link context menu selects the full label at ${brightness.name} $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        const label = 'Melbourne to Sydney';
+        await tester.pumpMarkdownWidget(
+          MaterialApp(
+            theme: wingTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(scale),
+                disableAnimations: scale == 2,
+              ),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: ProfileMessage(
+                  message: TranscriptMessage.fromRow(const {
+                    'role': 'assistant',
+                    'content':
+                        '- **[Melbourne to Sydney](https://example.com/leg)** after lunch.',
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+        final editable = tester.state<EditableTextState>(
+          find.descendant(
+            of: find.byType(MarkdownMessageContent),
+            matching: find.byType(EditableText),
+          ),
+        );
+        final render = editable.renderEditable;
+        Offset characterAt(int offset) => render.localToGlobal(
+          render
+              .getBoxesForSelection(
+                TextSelection(baseOffset: offset, extentOffset: offset + 1),
+              )
+              .single
+              .toRect()
+              .center,
+        );
+        final start = editable.textEditingValue.text.indexOf(label);
+        final link = characterAt(start + 4);
+        await tester.dragFrom(link, const Offset(0, 50));
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+
+        final hold = await tester.startGesture(link);
+        await tester.pump(kLongPressTimeout);
+        await tester.pumpAndSettle();
+        expect(find.text('Select text'), findsOneWidget);
+        expect(
+          find.text('Open in external browser').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.text('Open here'), findsOneWidget);
+        expect(editable.textEditingValue.selection.isCollapsed, isTrue);
+        await hold.up();
+        await tester.tap(find.text('Select text'));
+        await tester.pumpAndSettle();
+        expect(
+          editable.textEditingValue.selection.textInside(
+            editable.textEditingValue.text,
+          ),
+          label,
+        );
+        expect(editable.selectionOverlay?.handlesVisible, isTrue);
+        expect(editable.selectionOverlay?.toolbarIsVisible, isTrue);
+
+        editable.hideToolbar();
+        await tester.pumpAndSettle();
+        await tester.longPressAt(characterAt(start + label.length + 2));
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+        expect(editable.selectionOverlay?.toolbarIsVisible, isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final external in [false, true]) {
+    testWidgets(
+      'link context menu uses only the chosen browser (external: $external)',
+      (tester) async {
+        final original = UrlLauncherPlatform.instance;
+        final browser = _LinkBrowser();
+        UrlLauncherPlatform.instance = browser;
+        addTearDown(() => UrlLauncherPlatform.instance = original);
+        const href = 'https://example.com/leg?day=4#map';
+        await tester.pumpMarkdownWidget(
+          MaterialApp(
+            theme: wingTheme(Brightness.dark),
+            home: Scaffold(
+              appBar: AppBar(actions: const [StudioLoadingSlot()]),
+              body: const MarkdownMessageContent(
+                data:
+                    '| Destination |\n| --- |\n'
+                    '| [Road leg](https://example.com/other) |\n'
+                    '| [Road leg]($href) |',
+              ),
+            ),
+          ),
+        );
+        final link = find.text('Road leg', findRichText: true).last;
+        Future<void> openMenu() async {
+          await tester.tap(
+            link,
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await openMenu();
+        expect(find.text('Open here'), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+        expect(browser.launched, isEmpty);
+        await openMenu();
+        await tester.tap(
+          find.text(external ? 'Open in external browser' : 'Open here'),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(browser.launched, [
+          (
+            href,
+            external
+                ? PreferredLaunchMode.externalApplication
+                : PreferredLaunchMode.inAppBrowserView,
+          ),
+        ]);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(link, findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(link);
+        await tester.pump();
+        expect(browser.launched, hasLength(1));
+        browser.reply.complete(external);
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(browser.launched, hasLength(1));
+        expect(
+          find.text(
+            'Could not open here. Try opening the link in an external browser.',
+          ),
+          external ? findsNothing : findsOneWidget,
+        );
+        if (!external) {
+          await openMenu();
+          expect(find.text('Open in external browser'), findsOneWidget);
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+          expect(browser.launched, hasLength(1));
+        }
+      },
+    );
+  }
 
   testWidgets('formatted prose, lists and tables render on a narrow phone', (
     tester,

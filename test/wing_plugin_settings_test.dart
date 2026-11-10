@@ -4,17 +4,20 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/models/wing_plugin.dart';
 import 'package:wing/core/services/administration_repository.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/wing_plugin_session.dart';
 import 'package:wing/core/services/wing_plugin_releases.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/web_link_scope.dart';
 import 'package:wing/core/widgets/wing_plugin_settings_card.dart';
 import 'support/form_family_capture.dart';
 
@@ -200,18 +203,24 @@ Future<void> frame(
   Brightness brightness = Brightness.light,
   double scale = 1,
   Object key = 'server',
+  AppPreferences? preferences,
 }) async {
   await tester.pumpWidget(
     RepaintBoundary(
       key: formFamilyCapture,
       child: MaterialApp(
         theme: wingTheme(brightness),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(scale)),
-          child: child!,
-        ),
+        builder: (context, child) {
+          final scaled = MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: TextScaler.linear(scale)),
+            child: child!,
+          );
+          return preferences == null
+              ? scaled
+              : WebLinkScope(preferences: preferences, child: scaled);
+        },
         home: MediaQuery(
           data: MediaQueryData(
             size: const Size(390, 844),
@@ -852,7 +861,12 @@ void main() {
     final browser = _GitHubBrowser();
     UrlLauncherPlatform.instance = browser;
     addTearDown(() => UrlLauncherPlatform.instance = original);
-    await frame(tester, Fixture().session());
+    SharedPreferences.setMockInitialValues({
+      'web_link_destination': 'externalBrowser',
+    });
+    final preferences = AppPreferences(await SharedPreferences.getInstance());
+    addTearDown(preferences.dispose);
+    await frame(tester, Fixture().session(), preferences: preferences);
     await flush(tester);
     await openManager(tester);
     expect(

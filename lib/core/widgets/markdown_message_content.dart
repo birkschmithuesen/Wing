@@ -9,6 +9,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../models/chat_output.dart';
+import '../models/app_preferences.dart';
 import '../models/deliverable_reference.dart';
 import '../services/file_open_error_message.dart';
 import '../services/email_composer.dart';
@@ -26,8 +27,18 @@ import 'markdown_code_block.dart';
 import 'block_reusing_markdown_body.dart';
 import 'background_markdown_content.dart';
 import 'deliverable_attachment.dart';
+import 'web_link_scope.dart';
 
 typedef MarkdownHeadingAnchor = ({String label, int level, GlobalKey key});
+
+enum _WebLinkAction {
+  selectText('Select text'),
+  openExternally('Open in external browser'),
+  openHere('Open here');
+
+  const _WebLinkAction(this.label);
+  final String label;
+}
 
 /// Renders Markdown message content without conversation chrome.
 class MarkdownMessageContent extends StatefulWidget {
@@ -61,7 +72,7 @@ class MarkdownMessageContent extends StatefulWidget {
 }
 
 class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
-  bool _openingEmail = false;
+  String? _openingLink;
   String? _linkError;
   // Retain only this mounted message's rendering. Unrelated stream/activity
   // updates must not split code fences, recreate styles and reparse its prose.
@@ -198,13 +209,13 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   }
 
   Future<void> _open(String href) async {
-    if (_openingEmail) return;
+    if (_openingLink != null) return;
     if (_linkError != null) setState(() => _linkError = null);
     if (EmailComposer.accepts(href)) {
-      setState(() => _openingEmail = true);
+      setState(() => _openingLink = 'Opening email apps');
       final opened = await EmailComposer.open(href);
       if (!mounted) return;
-      setState(() => _openingEmail = false);
+      setState(() => _openingLink = null);
       if (!opened) {
         _showLinkFailure(
           'Could not open an email app. Install or enable one and try again.',
@@ -214,8 +225,12 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
     }
     final uri = externalWebLink(href);
     if (uri != null) {
-      final opened = await openWebPreview(uri);
-      if (!opened) _showLinkFailure('Could not open this link.');
+      final destination = WebLinkScope.destinationOf(context);
+      if (destination == null) {
+        _showLinkFailure('Choose where to open links in App settings.');
+      } else {
+        await _openWebLink(uri, destination);
+      }
       return;
     }
     final output = widget.documentPath == null
@@ -242,6 +257,69 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
 
   void _tapLink(String text, String? href, String title) {
     if (href != null) _open(href);
+  }
+
+  Future<void> _showWebLinkMenu(
+    Uri uri,
+    Offset position,
+    VoidCallback selectText,
+  ) async {
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final anchor = overlay.globalToLocal(position);
+    final action = await showMenu<_WebLinkAction>(
+      context: context,
+      position: RelativeRect.fromSize(anchor & Size.zero, overlay.size),
+      constraints: const BoxConstraints(maxWidth: 280),
+      popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      items: [
+        for (final action in _WebLinkAction.values)
+          StudioPopupMenuItem(
+            value: action,
+            enabled:
+                action == _WebLinkAction.selectText || _openingLink == null,
+            child: Text(action.label),
+          ),
+      ],
+    );
+    if (!mounted ||
+        action == null ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
+    if (action == _WebLinkAction.selectText) {
+      selectText();
+      return;
+    }
+    await _openWebLink(
+      uri,
+      action == _WebLinkAction.openExternally
+          ? WebLinkDestination.externalBrowser
+          : WebLinkDestination.wing,
+    );
+  }
+
+  Future<void> _openWebLink(Uri uri, WebLinkDestination destination) async {
+    if (_openingLink != null) return;
+    final external = destination == WebLinkDestination.externalBrowser;
+    setState(() {
+      _linkError = null;
+      _openingLink = external
+          ? 'Opening external browser'
+          : 'Opening web preview';
+    });
+    final opened = await openWebLink(uri, destination);
+    if (!mounted) return;
+    setState(() => _openingLink = null);
+    if (!opened) {
+      _showLinkFailure(
+        external
+            ? 'Could not open the external browser.'
+            : 'Could not open here. Try opening the link in an external browser.',
+      );
+    }
   }
 
   Widget _buildImage(MarkdownImageConfig config) {
@@ -284,8 +362,8 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   @override
   Widget build(BuildContext context) {
     return StudioPageLoading(
-      active: _openingEmail,
-      label: 'Opening email apps',
+      active: _openingLink != null,
+      label: _openingLink ?? '',
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -450,6 +528,7 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
           builders: builders,
           selectable: true,
           onTapLink: _tapLink,
+          onWebLinkMenu: _showWebLinkMenu,
           sizedImageBuilder: _buildImage,
           styleSheet: styleSheet,
         );

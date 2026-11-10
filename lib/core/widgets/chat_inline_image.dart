@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../services/owned_remote_files.dart';
 import '../services/web_preview.dart';
+import '../models/app_preferences.dart';
 import '../theme/wing_theme.dart';
 import 'chat_image_preview.dart';
 import 'studio_error.dart';
@@ -68,7 +69,10 @@ class _ChatInlineImageState extends State<ChatInlineImage> {
           onOpenExternal: provider is NetworkImage
               ? () async {
                   try {
-                    if (await openWebPreview(Uri.parse(provider.url))) {
+                    if (await openWebLink(
+                      Uri.parse(provider.url),
+                      WebLinkDestination.externalBrowser,
+                    )) {
                       return null;
                     }
                   } catch (_) {

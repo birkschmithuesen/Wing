@@ -18,6 +18,8 @@ enum AppTextSizePreference {
 
 enum AppVoiceProcessing { local, hermes }
 
+enum WebLinkDestination { wing, externalBrowser }
+
 enum LiveVoiceMode {
   subscription([
     'arbor',
@@ -70,6 +72,7 @@ enum AppPreferenceField {
   accent('workspace_accent_v1'),
   textSize('app_text_size_preference'),
   runningAction('composer_running_action'),
+  webLinkDestination('web_link_destination'),
   completedNotifications('completion_notifications'),
   attentionNotifications('attention_notifications'),
   notificationPreviews('notification_message_previews'),
@@ -92,6 +95,7 @@ class AppPreferencesSnapshot {
     required this.accent,
     required this.textSize,
     required this.runningAction,
+    required this.webLinkDestination,
     required this.completedNotifications,
     required this.attentionNotifications,
     required this.notificationPreviews,
@@ -109,6 +113,7 @@ class AppPreferencesSnapshot {
   final AppAccentPreference accent;
   final AppTextSizePreference textSize;
   final ComposerAction runningAction;
+  final WebLinkDestination webLinkDestination;
   final bool completedNotifications;
   final bool attentionNotifications;
   final bool notificationPreviews;
@@ -127,6 +132,7 @@ class AppPreferencesSnapshot {
     accent: AppAccentPreference.teal,
     textSize: AppTextSizePreference.system,
     runningAction: ComposerAction.steer,
+    webLinkDestination: WebLinkDestination.wing,
     completedNotifications: true,
     attentionNotifications: true,
     notificationPreviews: true,
@@ -145,6 +151,7 @@ class AppPreferencesSnapshot {
     AppPreferenceField.accent.storageKey: accent.name,
     AppPreferenceField.textSize.storageKey: textSize.storageValue,
     AppPreferenceField.runningAction.storageKey: runningAction.name,
+    AppPreferenceField.webLinkDestination.storageKey: webLinkDestination.name,
     AppPreferenceField.completedNotifications.storageKey:
         completedNotifications,
     AppPreferenceField.attentionNotifications.storageKey:
@@ -204,6 +211,8 @@ class AppPreferencesValues {
 
   ComposerAction? get runningAction =>
       _named(AppPreferenceField.runningAction, ComposerAction.runningDefaults);
+  WebLinkDestination? get webLinkDestination =>
+      _named(AppPreferenceField.webLinkDestination, WebLinkDestination.values);
   bool? get completedNotifications =>
       _values[AppPreferenceField.completedNotifications] as bool?;
   bool? get attentionNotifications =>
@@ -259,6 +268,9 @@ class AppPreferencesSchema {
           (choice) => choice.storageValue == value,
         ),
         AppPreferenceField.runningAction => ComposerAction.runningDefaults.any(
+          (choice) => choice.name == value,
+        ),
+        AppPreferenceField.webLinkDestination => WebLinkDestination.values.any(
           (choice) => choice.name == value,
         ),
         AppPreferenceField.completedNotifications ||

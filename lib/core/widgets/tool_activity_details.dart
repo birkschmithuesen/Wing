@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 
 import '../presentation/tool_activity_details.dart';
 import '../presentation/tool_call_presentation.dart';
-import '../services/web_preview.dart';
+import 'web_link_scope.dart';
 import '../services/file_open_error_message.dart';
 import '../theme/wing_theme.dart';
 import 'chat_inline_image.dart';
@@ -1070,7 +1070,7 @@ class _ActivityDetailSectionState extends State<ActivityDetailSection> {
               onPressed: () async {
                 final key = ('open-tool-source', link);
                 dismissTransientError(anchor, errorKey: key);
-                final opened = await openWebPreview(link);
+                final opened = await WebLinkScope.open(anchor, link);
                 if (!opened && anchor.mounted) {
                   showTransientError(
                     anchor,
