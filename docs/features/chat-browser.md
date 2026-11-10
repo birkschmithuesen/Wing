@@ -14,6 +14,9 @@ Feature ID: `chat-browser`.
   listing each failed read. Use the header status icon to retry an interrupted
   connection. Partial failures stay visible as one summary until refreshed;
   an unavailable catalog is not presented as an empty chat list.
+  Recents suspends its display work while Wing is paused and catches up previews
+  and unread state on resume. Repeated connection updates reuse unchanged saved
+  message summaries; edits still replace them.
 - `chat-browser.open` — Enter the captured row immediately.
 - `chat-browser.organize` — Change a chat or project and retain browser state. The current-project card in Move to project has an icon-only cross to remove a chat from its project. Confirmation moves it to the captured profile's default folder, keeping messages and drafts. New projects start in the captured profile's default folder and propose a kebab-case subfolder as the name changes; typing or choosing a location keeps that override.
 
@@ -66,6 +69,10 @@ cached content, transport-only notice updates and successful recovery in both
 themes at normal and doubled text size. Add `--dart-define=CAPTURE_RECENTS=true`
 to the activity suite to capture its rendered states. The app-shell Recents route
 checks also require one summary when both profiles fail to refresh.
+Run `test/profile_recents_test.dart` with
+`--dart-define=WING_PERF_INSTRUMENTATION=true` to enforce the unchanged-history
+summary work budget. Its lifecycle checks also verify that paused connection
+updates do not rebuild the catalog and background replies appear on resume.
 
 The creation-route host checks enter New project through its FAB and menu,
 verify the profile default and generated location, save the proposed path, and

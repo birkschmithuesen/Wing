@@ -131,7 +131,11 @@ void main() {
             });
             answer(1);
             final bots = BotsSession((_) async => [host.repository]);
-            final recents = WorkspaceRecentsSession(controller, bots);
+            final recents = WorkspaceRecentsSession(
+              controller,
+              bots,
+              foreground: true,
+            );
             final notices = ChatNotificationCoordinator(
               preferences,
               RecordingTurnNotificationSink(),
@@ -345,7 +349,11 @@ void main() {
               (_) async => [botFixture.repository],
               now: () => now,
             );
-            final recents = WorkspaceRecentsSession(controller, bots);
+            final recents = WorkspaceRecentsSession(
+              controller,
+              bots,
+              foreground: true,
+            );
             final release = Completer<void>(), started = Completer<void>();
             Future<void>? refresh;
             addTearDown(() {
@@ -561,7 +569,11 @@ void main() {
           return null;
         };
         final bots = BotsSession((_) async => [botFixture.repository]);
-        final recents = WorkspaceRecentsSession(controller, bots);
+        final recents = WorkspaceRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
         addTearDown(() {
           if (!catalogRelease.isCompleted) catalogRelease.complete();
           if (!historyRelease.isCompleted) historyRelease.complete();
@@ -780,7 +792,7 @@ void main() {
       await release.future;
       return const [];
     });
-    final recents = WorkspaceRecentsSession(controller, bots);
+    final recents = WorkspaceRecentsSession(controller, bots, foreground: true);
     addTearDown(() {
       if (!release.isCompleted) release.complete();
       recents.dispose();

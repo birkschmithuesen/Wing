@@ -1,3 +1,4 @@
+import 'package:wing/core/services/completion_diagnostics.dart';
 import 'support/composer_fixture.dart' show stockChatReply;
 import 'package:wing/core/services/group_observations.dart';
 import 'package:wing/core/services/bots_session.dart';
@@ -138,16 +139,35 @@ class _RecentsFixture extends ProfileBrowserFixture {
   ];
 }
 
+class _MeasuredWorkspace extends ProfileWorkspaceController {
+  _MeasuredWorkspace({
+    required super.access,
+    required super.connectionIdentity,
+    required super.preferences,
+    required super.appPreferences,
+    required super.gatewayFactory,
+    super.onAttention,
+  });
+
+  int recentProjections = 0;
+
+  @override
+  List<ProfileRecentChat> recentChats({DateTime? now}) {
+    recentProjections++;
+    return super.recentChats(now: now);
+  }
+}
+
 void main() {
   late _RecentsFixture fixture;
-  late ProfileWorkspaceController controller;
+  late _MeasuredWorkspace controller;
   late AppPreferences appPreferences;
   late SharedPreferences preferences;
 
-  ProfileWorkspaceController makeController({
+  _MeasuredWorkspace makeController({
     String identity = 'recents',
     Future<void> Function(ProfileNotification)? onAttention,
-  }) => ProfileWorkspaceController(
+  }) => _MeasuredWorkspace(
     access: ConnectionAccess(
       connection: identityTestConnection(),
       dashboardOAuth: null,
@@ -160,7 +180,7 @@ void main() {
   );
 
   WorkspaceRecentsSession recentsFor(BotsSession bots) {
-    final recents = WorkspaceRecentsSession(controller, bots);
+    final recents = WorkspaceRecentsSession(controller, bots, foreground: true);
     addTearDown(recents.dispose);
     return recents;
   }
@@ -1385,7 +1405,7 @@ void main() {
   test('Recents reuses its cached list between observations', () async {
     await controller.refreshRecents();
     final bots = BotsSession((_) async => [BotsFixture().repository]);
-    final recents = WorkspaceRecentsSession(controller, bots);
+    final recents = WorkspaceRecentsSession(controller, bots, foreground: true);
     addTearDown(recents.dispose);
     addTearDown(bots.dispose);
     final items = recents.items();
@@ -1503,6 +1523,146 @@ void main() {
     },
   );
 
+  test('unchanged retained history is summarized once for Recents', () async {
+    final key = ProfileSessionKey(controller.current!.scope, 'shared-id');
+    final chat = (await controller.openSession(key))!;
+    void history(String content) => chat.reading.installSavedHistory([
+      {
+        'id': 1,
+        'role': 'assistant',
+        'content': content,
+        'timestamp': fixture.now,
+      },
+    ]);
+    history('Original **answer**');
+    CompletionDiagnostics.reset();
+    int summaries() {
+      final totals = CompletionDiagnostics.snapshot()['totals'];
+      if (totals is! Map) return 0;
+      final summary = totals['recents.reading_summary'];
+      return summary is Map ? summary['count'] as int : 0;
+    }
+
+    for (var i = 0; i < 100; i++) {
+      final item = controller.recentChats().singleWhere(
+        (row) => row.key == key,
+      );
+      expect(item.messagePreview, 'Original answer');
+    }
+    expect(summaries(), CompletionDiagnostics.enabled ? 1 : 0);
+    // Editing the same message ID and timestamp must replace its cached text.
+    history('Revised **answer**');
+    expect(
+      controller
+          .recentChats()
+          .singleWhere((row) => row.key == key)
+          .messagePreview,
+      'Revised answer',
+    );
+    expect(summaries(), CompletionDiagnostics.enabled ? 2 : 0);
+    history('');
+    expect(
+      controller
+          .recentChats()
+          .singleWhere((row) => row.key == key)
+          .messagePreview,
+      '',
+    );
+    expect(summaries(), CompletionDiagnostics.enabled ? 3 : 0);
+  });
+
+  test(
+    'paused Recents skips retained-history projections and catches up on resume',
+    () async {
+      fixture.messageRows[('personal', 'shared-id')] = [
+        {
+          'id': 1,
+          'role': 'assistant',
+          'content': 'Saved **answer**. ' * 1000,
+          'timestamp': fixture.now,
+        },
+      ];
+      final key = ProfileSessionKey(controller.current!.scope, 'shared-id');
+      final chat = (await controller.openSession(key))!;
+      final gateway = controller.current!.gateway;
+      final recents = emptyRecents();
+      await recents.refresh();
+      await Future<void>.delayed(Duration.zero);
+      final cached = recents.items();
+      recents.setForeground(false);
+      final projections = controller.recentProjections;
+      for (var i = 0; i < 100; i++) {
+        // Actual HTTP observations notify this shared connection owner, even
+        // when access remains healthy. Each previously reparsed saved replies.
+        controller.connectionStatus.accessAvailable();
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(controller.recentProjections, projections);
+      expect(recents.items(), same(cached));
+
+      fixture.messageRows[('personal', 'shared-id')] = [
+        {
+          'id': 2,
+          'role': 'assistant',
+          'content': 'Answer delivered in the background',
+          'timestamp': fixture.now + 1,
+        },
+      ];
+      gateway.onEvent!(
+        StreamEvent(
+          type: 'message.start',
+          sessionId: chat.runtime.runtimeId,
+          data: stockChatReply(gateway, 'message.start', {}),
+        ),
+      );
+      gateway.onEvent!(
+        StreamEvent(
+          type: 'message.complete',
+          sessionId: chat.runtime.runtimeId,
+          data: {'text': 'Answer delivered in the background'},
+        ),
+      );
+      for (var tick = 0; tick < 30; tick++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(controller.recentProjections, projections);
+      expect(recents.items(), same(cached));
+      recents.setForeground(true);
+      await Future<void>.delayed(Duration.zero);
+      final item = recents.items().singleWhere((item) => item.chat?.key == key);
+      expect(item.messagePreview, 'Answer delivered in the background');
+      expect(item.unread, isTrue);
+    },
+  );
+
+  testWidgets(
+    'Recents suspends retained and late readers until the app resumes',
+    (tester) async {
+      final recents = emptyRecents();
+      final reader = Object(), lateReader = Object();
+      recents.setVisible(reader, true);
+      await tester.pump();
+      await recents.refresh();
+      final reads = fixture.reads.length;
+      expect(reads, greaterThan(0));
+
+      recents.setForeground(false);
+      // A delayed route callback must not restart background work.
+      recents.setVisible(lateReader, true);
+      await tester.pump(const Duration(minutes: 5));
+      expect(fixture.reads.length, reads);
+      await recents.prepareAppearances();
+      expect(fixture.reads.length, reads);
+
+      recents.setForeground(true);
+      await tester.pump();
+      await tester.pump(WorkspaceRecentsSession.refreshInterval);
+      expect(fixture.reads.length, greaterThan(reads));
+      recents.setVisible(reader, false);
+      recents.setVisible(lateReader, false);
+    },
+  );
+
   test(
     'new conversation sources share cached reading revision and screenshot ownership',
     () async {
@@ -1553,7 +1713,11 @@ void main() {
           (_) async => [fixture.repository],
           now: () => now,
         );
-        final recents = WorkspaceRecentsSession(controller, bots);
+        final recents = WorkspaceRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
         addTearDown(recents.dispose);
         addTearDown(bots.dispose);
         now = now.add(const Duration(minutes: 5));
@@ -1643,7 +1807,11 @@ void main() {
         return null;
       };
       final bots = BotsSession((_) async => [roomFixture.repository]);
-      final recents = WorkspaceRecentsSession(controller, bots);
+      final recents = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: true,
+      );
       final refresh = bots.refresh();
       addTearDown(() async {
         if (!release.isCompleted) release.complete();
@@ -1783,7 +1951,11 @@ void main() {
         return null;
       };
       final bots = BotsSession((_) async => [roomFixture.repository]);
-      final recents = WorkspaceRecentsSession(controller, bots);
+      final recents = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: true,
+      );
       addTearDown(bots.dispose);
       addTearDown(recents.dispose);
       await bots.refresh();
@@ -1858,7 +2030,11 @@ void main() {
         return null;
       };
       final bots = BotsSession((_) async => [roomFixture.repository]);
-      final recents = WorkspaceRecentsSession(controller, bots);
+      final recents = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: true,
+      );
       final refresh = bots.refresh();
       addTearDown(() async {
         if (!release.isCompleted) release.complete();
@@ -1956,7 +2132,11 @@ void main() {
         ProfileSessionKey(controller.current!.scope, 'recent-5'),
       );
       await controller.refreshRecents();
-      final merged = WorkspaceRecentsSession(controller, bots);
+      final merged = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: true,
+      );
       addTearDown(merged.dispose);
       final expected = merged
           .items()
@@ -2137,7 +2317,11 @@ void main() {
           return null;
         };
         final bots = BotsSession((_) async => [botFixture.repository]);
-        final recents = WorkspaceRecentsSession(controller, bots);
+        final recents = WorkspaceRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
         var published = false;
         recents.addListener(() {
           if (recents.items().any((item) => item.group != null)) {

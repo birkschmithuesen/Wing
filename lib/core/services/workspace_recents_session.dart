@@ -13,7 +13,11 @@ import 'workspace_recents_cache.dart';
 /// Reads return cached immutable observations. Visible borrowers share refreshes.
 class WorkspaceRecentsSession extends ChangeNotifier
     implements WorkspaceRecentsCache {
-  WorkspaceRecentsSession(this.controller, this.bots) {
+  WorkspaceRecentsSession(
+    this.controller,
+    this.bots, {
+    required this._foreground,
+  }) {
     bots.attachGroupMessages(groupMessages);
     controller.addListener(_changed);
     controller.connectionStatus.addListener(_changed);
@@ -37,6 +41,8 @@ class WorkspaceRecentsSession extends ChangeNotifier
       _readingRevisions[messages] ??= Object();
   bool _closed = false, _publicationPending = false;
   final _visible = <Object>{};
+  bool _foreground;
+  bool get _active => _foreground && _visible.isNotEmpty;
   Future<void>? _refreshing;
   bool _initialLoadSettled = false;
   Future<void>? _preparingAppearances;
@@ -76,22 +82,39 @@ class WorkspaceRecentsSession extends ChangeNotifier
   Set<ProfileSessionKey> _keys = {};
   final _colorProfiles = <String>{};
   Timer? _poll;
+
+  /// Route borrowers can remain mounted after Android stops delivering frames.
+  /// Their last rendered visibility must not keep catalog/appearance I/O alive.
+  void setForeground(bool foreground) {
+    if (_closed || _foreground == foreground) return;
+    _foreground = foreground;
+    for (final reader in _visible) {
+      bots.setRecentsVisible(reader, foreground);
+    }
+    _syncPolling();
+    if (foreground) _changed();
+  }
+
   @override
   void setVisible(Object reader, bool visible) {
     if (_closed) return;
-    bots.setRecentsVisible(reader, visible);
-    final wasVisible = _visible.isNotEmpty;
+    bots.setRecentsVisible(reader, visible && _foreground);
+    final wasActive = _active;
     if (visible) {
       _visible.add(reader);
     } else {
       _visible.remove(reader);
     }
-    if (wasVisible == _visible.isNotEmpty) return;
-    if (_visible.isNotEmpty) {
+    if (wasActive != _active) _syncPolling();
+  }
+
+  void _syncPolling() {
+    if (_active) {
+      if (_poll != null) return;
       // Borrowers can attach during route composition. Publish/read only after
       // the caller returns, and recheck whether any reader still needs data.
       scheduleMicrotask(() {
-        if (_closed || _visible.isEmpty) return;
+        if (_closed || !_active) return;
         _changed();
         unawaited(refresh());
       });
@@ -101,6 +124,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
       );
     } else {
       _poll?.cancel();
+      _poll = null;
       ++_appearanceGeneration;
       _appearanceEpoch = -1;
     }
@@ -126,7 +150,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
         await Future.wait([controller.refreshRecents(), bots.refresh()]);
         // Metadata and admitted image reads can outlive the catalog reads.
         // Join the current decoration generation before settling initial entry.
-        while (!_closed) {
+        while (!_closed && _foreground) {
           final preparation = prepareAppearances();
           await preparation;
           if (identical(preparation, _preparingAppearances)) break;
@@ -144,7 +168,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
   }
 
   void _publish() {
-    if (_closed) return;
+    if (_closed || !_foreground) return;
     final items = workspaceRecentItems(controller, bots);
     final facts = <Object?>[
       for (final item in items)
@@ -205,7 +229,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
   }
 
   void _changed() {
-    if (_closed) return;
+    if (_closed || !_foreground) return;
     if (!_publicationPending) {
       _publicationPending = true;
       scheduleMicrotask(() {
@@ -213,13 +237,13 @@ class WorkspaceRecentsSession extends ChangeNotifier
         _publish();
       });
     }
-    if (_visible.isEmpty) return;
+    if (!_active) return;
     prepareAppearances();
   }
 
   /// A mounted identity list can request decoration without starting polling.
   Future<void> prepareAppearances() {
-    if (_closed) return Future.value();
+    if (_closed || !_foreground) return Future.value();
     final keys = controller.recentChats().map((c) => c.key).toSet();
     for (final name in keys.map((key) => key.workspace.profileName)) {
       if (_colorProfiles.add(name)) {
@@ -236,13 +260,21 @@ class WorkspaceRecentsSession extends ChangeNotifier
       _preparingAppearances = bots
           .appearancesForConversations(
             keys,
-            canRead: () => !_closed && generation == _appearanceGeneration,
+            canRead: () =>
+                !_closed && _foreground && generation == _appearanceGeneration,
           )
           .then((value) async {
-            if (_closed || generation != _appearanceGeneration) return;
+            if (_closed ||
+                !_foreground ||
+                generation != _appearanceGeneration) {
+              return;
+            }
             _changed();
             await bots.prepareRecentsAvatars(
-              canRead: () => !_closed && generation == _appearanceGeneration,
+              canRead: () =>
+                  !_closed &&
+                  _foreground &&
+                  generation == _appearanceGeneration,
             );
           });
     }

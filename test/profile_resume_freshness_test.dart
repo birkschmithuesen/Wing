@@ -50,7 +50,7 @@ void main() {
   RecentConversationSession recentVisit(Iterable<ProfileChat> chats) {
     final activity = ValueNotifier<ChatNoticeActivity?>(null);
     final bots = BotsSession((_) async => const []);
-    final recents = WorkspaceRecentsSession(controller, bots);
+    final recents = WorkspaceRecentsSession(controller, bots, foreground: true);
     final visit = controller.recentConversationSession(
       onOpenGroup: (_) async {},
       recents: recents,

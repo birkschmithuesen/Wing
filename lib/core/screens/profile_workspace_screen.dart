@@ -210,7 +210,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               ),
             ],
           );
-      _recentsOwner = WorkspaceRecentsSession(controller, bots);
+      _recentsOwner = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: _appIsActive,
+      );
     }
     return _botsOwner!;
   }
@@ -218,7 +222,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   WorkspaceRecentsSession get _recents {
     if (_borrowedRecents case final borrowed?) return borrowed;
     final bots = _bots;
-    return _recentsOwner ??= WorkspaceRecentsSession(controller, bots);
+    return _recentsOwner ??= WorkspaceRecentsSession(
+      controller,
+      bots,
+      foreground: _appIsActive,
+    );
   }
 
   Future<void> _openProfileBotChat(String profile) async {
@@ -1007,6 +1015,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       _cancelVoice();
     }
     final active = state == AppLifecycleState.resumed;
+    _recentsOwner?.setForeground(active);
     _botsOwner?.setVisible(active && _destination == AppDestination.bots);
     _supervision?.setActive(active);
     if (_appIsActive != active) {

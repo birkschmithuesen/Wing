@@ -523,7 +523,11 @@ void main() {
           ];
           host.rosters['a'] = roster('outside', processes: 1);
           final bots = BotsSession((_) async => const []);
-          final recents = WorkspaceRecentsSession(owner, bots);
+          final recents = WorkspaceRecentsSession(
+            owner,
+            bots,
+            foreground: true,
+          );
           ProfileSessionKey? opened;
           addTearDown(() async {
             await tester.pumpWidget(const SizedBox.shrink());

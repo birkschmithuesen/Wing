@@ -56,7 +56,7 @@ void main() {
         'timestamp': DateTime.now().millisecondsSinceEpoch / 1000,
       },
     ]);
-    recents = WorkspaceRecentsSession(controller, bots);
+    recents = WorkspaceRecentsSession(controller, bots, foreground: true);
   });
 
   tearDown(() {

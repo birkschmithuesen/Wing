@@ -1200,6 +1200,23 @@ class ProfileWorkspaceController extends ChangeNotifier {
   final _recentSessionRows = <ProfileSessionKey, Map<String, dynamic>>{};
   final _recentMessageTimes = <ProfileSessionKey, double>{};
   final _recentMessagePreviews = <ProfileSessionKey, String>{};
+  // TranscriptReading replaces its immutable rows on every history edit.
+  // Weak keys reuse unchanged excerpts without retaining evicted histories.
+  final _recentReadingSummaries = Expando<({double? time, String preview})>();
+
+  ({double? time, String preview}) _recentReadingSummary(
+    List<Map<String, dynamic>> messages,
+  ) {
+    if (_recentReadingSummaries[messages] case final cached?) return cached;
+    final started = CompletionDiagnostics.start();
+    final summary = (
+      time: _latestMessageTime(messages),
+      preview: recentChatMessagePreview(messages) ?? '',
+    );
+    CompletionDiagnostics.finish('recents.reading_summary', started);
+    return _recentReadingSummaries[messages] = summary;
+  }
+
   bool _recentsLoading = false;
   Future<void>? _recentsRefresh;
   bool get recentsLoading => _recentsLoading;
@@ -1419,14 +1436,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
       ..._savedRecents,
       for (final resource in _resources.values)
         for (final chat in resource._chats.values)
-          if (_latestMessageTime(chat.reading.messages) case final time?)
+          if (_recentReadingSummary(chat.reading.messages) case (
+            time: final time?,
+            preview: final preview,
+          ))
             ProfileRecentChat(
               key: chat._key,
               title: chat._title,
               source: chat._source,
               lastActive: time,
-              messagePreview:
-                  recentChatMessagePreview(chat.reading.messages) ?? '',
+              messagePreview: preview,
             ),
     ]) {
       if (!SessionVisibility.chats.includes(item.source) ||

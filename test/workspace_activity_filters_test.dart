@@ -243,7 +243,7 @@ void main() {
       now: () => now,
     );
     await bots.refresh();
-    recents = WorkspaceRecentsSession(controller, bots);
+    recents = WorkspaceRecentsSession(controller, bots, foreground: true);
   });
   tearDown(() {
     recents.dispose();

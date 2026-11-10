@@ -4536,6 +4536,7 @@ void main() {
                 .baseOffset,
             5,
           );
+          final backgroundReads = fixture.reads.length;
           tester.binding.handleAppLifecycleStateChanged(
             AppLifecycleState.inactive,
           );
@@ -4545,7 +4546,13 @@ void main() {
           tester.binding.handleAppLifecycleStateChanged(
             AppLifecycleState.paused,
           );
-          await tester.pump();
+          // Android can stop frames immediately after pause. Timers still run.
+          await tester.pump(const Duration(minutes: 5));
+          expect(
+            fixture.reads.length,
+            backgroundReads,
+            reason: 'Hidden Recents must stop polling before another frame',
+          );
           final other = visit.entries.last.key;
           activity.value = ChatNoticeActivity(
             key: other,

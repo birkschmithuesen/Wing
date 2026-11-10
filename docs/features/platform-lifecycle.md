@@ -8,6 +8,9 @@ Feature ID: `platform-lifecycle`.
 
 - `platform-lifecycle.resume` — Reenter the intended captured workspace.
 - `platform-lifecycle.monitor` — Share and retire background work correctly.
+  Pausing stops Recents display polling and catalog projections immediately,
+  even when Android renders no final frame. Background replies and notifications
+  continue; reopening catches up the preview and unread state.
 - `platform-lifecycle.intent` — Handle native entry without crossing draft ownership.
 
 ## How to get to it (user POV)
@@ -22,7 +25,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/background_monitoring_service_test.dart test/android_share_intent_service_test.dart
+  flutter test --no-pub --dart-define=WING_PERF_INSTRUMENTATION=true test/profile_recents_test.dart
+  flutter test --no-pub test/recent_conversation_switcher_test.dart --plain-name 'ordinary chat pinch activates Recents and preserves draft'
   ```
+
+  Recents checks cover five paused minutes without a final frame, late visibility
+  callbacks, repeated connection-status observations and background reply delivery
+  followed by fresh preview/unread state on resume.
 
 - **Android `background`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
