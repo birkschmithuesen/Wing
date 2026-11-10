@@ -354,7 +354,7 @@ void main() {
 
         Future<void> restore(String attempt, String password) async {
           await stage.writeAsString('pick-$label$attempt', flush: true);
-          await tester.tap(find.byTooltip('Restore configuration'));
+          await tester.tap(find.byTooltip('Restore configuration').hitTestable());
           await waitFor(
             tester,
             () => find
@@ -383,6 +383,9 @@ void main() {
           );
           expect(manager.getConnections().single.label, 'Local only');
           expect(prefs.getString('workspace_accent_v1'), 'coral');
+          await tester.tap(find.byTooltip('Close').hitTestable());
+          await tester.pumpAndSettle();
+          expect(find.textContaining('Wrong passphrase'), findsNothing);
         }
         await restore('', passphrase);
         await waitFor(
