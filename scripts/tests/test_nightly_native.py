@@ -363,6 +363,8 @@ class Catalog(unittest.TestCase):
                                 ('delegation', ('-keyboard', '-pending')),
                                 ('prepared-compression', ('',)),
                                 ('connection-request', ('-request', '-pending', '-failed')),
+                                ('connection-mcp-enable',
+                                 ('-request', '-menu', '-pending', '-failed', '-enabled')),
                             ):
                                 for state in states:
                                     name = f'{surface}-{theme}-{scale}{state}'
