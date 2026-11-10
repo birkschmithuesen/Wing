@@ -24,6 +24,7 @@ import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/core/widgets/health_alerts/health_alerts_scope.dart';
 import 'package:wing/main.dart';
 
+import '../test/helpers/journey_controls.dart' show tapJourneyControl;
 import '../test/support/administration_design_fixture.dart';
 import '../test/support/host_resources_fixture.dart';
 import '../test/support/profile_browser_fixture.dart';
@@ -316,10 +317,8 @@ Future<void> _retentionJourney(WidgetTester tester) async {
     ),
   );
   await _waitFor(tester, find.text('Chats'));
-  await tester.tap(find.byTooltip('Open navigation menu'));
-  await _settleScreen(tester);
-  await tester.ensureVisible(find.byKey(const ValueKey('nav-health')));
-  await tester.tap(find.byKey(const ValueKey('nav-health')));
+  await tapJourneyControl(tester, find.byTooltip('Open navigation menu'));
+  await tapJourneyControl(tester, find.byKey(const ValueKey('nav-health')));
   await _settleScreen(tester);
   final scope = HealthAlertsScope.maybeOf(
     tester.element(find.byType(AppBar).last),
