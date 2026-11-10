@@ -1281,8 +1281,8 @@ class ProfileGateway {
     return {...await resume(child), 'parent': runtimeId};
   }
 
-  /// The persisted transcript that session.branch copies, including archived
-  /// turns and hidden notices. RPC history is a different, active projection.
+  /// The active persisted context that canonical branching copies, including
+  /// hidden compression summaries and notices, but excluding archived turns.
   /// Resolve [throughRowId] before writing, then verify the child through the
   /// same REST representation instead of its projected RPC response.
   Future<List<Map<String, dynamic>>> branchHistory(
@@ -1297,7 +1297,7 @@ class ProfileGateway {
             'limit': '500',
             'offset': '$offset',
             'order': 'oldest',
-            'include_compacted': 'true',
+            'include_compacted': 'false',
           });
       if (result['session_id'] != durableId) {
         throw StateError(

@@ -89,13 +89,44 @@ class AnswerHost {
         ],
       );
 
+  void addCompressedContext() {
+    history('a', 'original').insertAll(0, [
+      {
+        'role': 'user',
+        'text': 'Archived prompt',
+        'row_id': 6,
+        'active': 0,
+        'compacted': true,
+      },
+      {
+        'role': 'assistant',
+        'text': 'Archived answer',
+        'row_id': 7,
+        'active': 0,
+        'compacted': true,
+      },
+      {
+        'role': 'user',
+        'text': 'Compressed context summary',
+        'row_id': 8,
+        'active': 1,
+        'display_kind': 'hidden',
+        '_compressed_summary': true,
+      },
+    ]);
+  }
+
   Map<String, dynamic> historyPage(
     String profile,
     String path,
     Map<String, String> query,
   ) {
     final id = Uri.decodeComponent(path.split('/')[1]);
-    final rows = history(profile, id);
+    final rows = history(profile, id).where((row) {
+      final active = row['active'] != 0;
+      return active ||
+          (query['include_compacted'] == 'true' && row['compacted'] == true);
+    }).toList();
     final offset = int.parse(query['offset']!);
     final limit = int.parse(query['limit']!);
     final selected = query['order'] == 'oldest'
@@ -281,11 +312,14 @@ class AnswerHost {
             final child = 'child-${++next}';
             final source = history(profile, id);
             final boundary = source.indexWhere(
-              (row) => row['row_id'] == payload['through_message_id'],
+              (row) =>
+                  row['row_id'] == payload['through_message_id'] &&
+                  row['active'] != 0,
             );
             if (boundary < 0) throw StateError('Missing branch boundary');
             histories['$profile/$child'] = source
                 .take(boundary + 1)
+                .where((row) => row['active'] != 0)
                 .where(isBranchMessage)
                 .map((m) => Map<String, dynamic>.from(m))
                 .toList();
@@ -492,6 +526,7 @@ void main() {
           expect(tester.widget<AnswerActions>(actions).onBranch, isNotNull);
           expect(tester.widget<AnswerActions>(actions).onRegenerate, isNotNull);
           await picture('available');
+          host.addCompressedContext();
           host.branchDelay = Completer<void>();
           host.branchError = StateError('Fork failed; try again');
           host.branchReadDelay = Completer<void>();
@@ -921,43 +956,39 @@ void main() {}
   });
 
   test(
-    'fork opens after copying archived turns omitted by RPC history',
+    'fork after compression verifies active context instead of archived history',
     () async {
-      host.history('a', 'original').insertAll(0, [
-        {
-          'role': 'user',
-          'text': 'Archived prompt',
-          'row_id': 6,
-          'compacted': true,
-        },
-        {
-          'role': 'assistant',
-          'text': 'Archived answer',
-          'row_id': 7,
-          'compacted': true,
-        },
-      ]);
+      host.addCompressedContext();
       final child = (await controller.branchAnswer(original, 2))!;
       expect(controller.current!.chat, same(child));
-      expect(child.reading.messages.map(answerMessageText), [
-        'Archived prompt',
-        'Archived answer',
+      expect(
+        child.reading.messages
+            .where((row) => !isHiddenAnswerMessage(row))
+            .map(answerMessageText),
+        ['Original prompt', 'Original answer'],
+      );
+      expect(host.parents.length, 1);
+      expect(host.history('a', 'original').length, 8);
+      expect(host.history('a', child.key.sessionId).map(answerMessageText), [
+        'Compressed context summary',
         'Original prompt',
         'Original answer',
       ]);
-      expect(host.parents.length, 1);
-      expect(host.history('a', 'original').length, 7);
     },
   );
 
-  test('fork can target a saved archived answer', () async {
-    host.history('a', 'original')[2]['compacted'] = true;
-    final child = (await controller.branchAnswer(original, 2))!;
-    expect(controller.current!.chat, same(child));
-    expect(child.reading.messages.map(answerMessageText), [
-      'Original prompt',
-      'Original answer',
-    ]);
+  test('fork refuses an archived answer before creating a child', () async {
+    host.history('a', 'original')[2].addAll({'active': 0, 'compacted': true});
+    await expectLater(controller.branchAnswer(original, 2), throwsStateError);
+    expect(host.parents, isEmpty);
+    expect(controller.current!.chat, same(original));
+    expect(
+      host.calls.where(
+        (call) =>
+            call.$1 == 'session.mutate' && call.$2['operation'] == 'branch',
+      ),
+      isEmpty,
+    );
   });
 
   test(
