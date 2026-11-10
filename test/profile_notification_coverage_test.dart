@@ -69,201 +69,210 @@ class NotificationCoverageHost {
     activeName: 'a',
   );
 
-  ProfileGateway gateway(
-    WorkspaceScope scope,
-  ) => gateways[scope.profileName] = ProfileGateway(
-    scope: scope,
-    discover: discover,
-    connect: () async => connectProfiles.add(scope.profileName),
-    get: (path, query) async {
-      if (path == 'sessions/search') {
-        if (failedMetadataProfiles.contains(scope.profileName)) {
-          throw StateError('profile unavailable');
+  ProfileGateway gateway(WorkspaceScope scope) {
+    late final ProfileGateway gateway;
+    gateway = ProfileGateway(
+      scope: scope,
+      discover: discover,
+      connect: () async {
+        connectProfiles.add(scope.profileName);
+        // Short-lived catalog readers have no stream consumer. Events still
+        // belong to the retained conversation gateway after those readers close.
+        if (gateway.onEvent != null) gateways[scope.profileName] = gateway;
+      },
+      get: (path, query) async {
+        if (path == 'sessions/search') {
+          if (failedMetadataProfiles.contains(scope.profileName)) {
+            throw StateError('profile unavailable');
+          }
+          return {
+            'results': (saved[scope.profileName] ?? const [])
+                .where((row) => row['id'] == query['q'])
+                .map(
+                  (row) => {
+                    'session_id': row['id'],
+                    'title': row['title'],
+                    'profile': row['profile'],
+                  },
+                )
+                .toList(),
+          };
         }
+        if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+          if (failedMetadataProfiles.contains(scope.profileName)) {
+            throw StateError('profile unavailable');
+          }
+          final id = Uri.decodeComponent(path.split('/')[1]);
+          await metadataDelays[(scope.profileName, id)]?.future;
+          final rows =
+              (saved[scope.profileName] ?? const <Map<String, dynamic>>[])
+                  .where((row) => row['id'] == id)
+                  .toList();
+          if (rows.isEmpty) throw DashboardSessionNotFound(path);
+          return rows.single;
+        }
+        if (path == 'sessions') {
+          final rows = saved[scope.profileName] ?? const [];
+          return {
+            'sessions': rows,
+            'offset': int.parse(query['offset']!),
+            'limit': int.parse(query['limit']!),
+            'total': rows.length,
+          };
+        }
+        if (path == 'logs') return {'entries': <Map<String, dynamic>>[]};
+        await historyDelay?.future;
+        if (historyFails) throw StateError('history unavailable');
+        final savedHistory = historyByProfile[scope.profileName] ?? history;
+        final offset = int.tryParse(query['offset'] ?? '') ?? 0;
+        final limit = int.tryParse(query['limit'] ?? '') ?? 50;
+        final page = savedHistory.skip(offset).take(limit).toList();
         return {
-          'results': (saved[scope.profileName] ?? const [])
-              .where((row) => row['id'] == query['q'])
-              .map(
-                (row) => {
-                  'session_id': row['id'],
-                  'title': row['title'],
-                  'profile': row['profile'],
-                },
+          'session_id': path.split('/')[1],
+          'messages': page,
+          'pagination': {
+            'offset': offset,
+            'limit': limit,
+            'returned': page.length,
+            'order': 'latest',
+          },
+        };
+      },
+      rpc: (method, params) async {
+        if (method == 'subagent.roster') {
+          final profile = params['profile'] as String;
+          rosterReads.add((source: scope.profileName, profile: profile));
+          final snapshot = rosters[profile] ?? {'sessions': <Object>[]};
+          await (rosterDelays[profile] ?? rosterDelay)?.future;
+          if (failedRosters.contains(profile)) {
+            throw StateError('Roster offline');
+          }
+          return snapshot;
+        }
+        if (method.startsWith('groups.') && groupFails) {
+          throw StateError('group unavailable');
+        }
+        if (method == 'groups.list') {
+          return {'rooms': groups, 'next_offset': null};
+        }
+        if (method == 'groups.state') {
+          final state = groupStates[params['room_id']]!;
+          return {
+            ...state,
+            'room': {
+              'members': <Map<String, dynamic>>[],
+              ...Map<String, dynamic>.from(state['room']),
+            },
+            'driver_status': {
+              'pending_actions': <Map<String, dynamic>>[],
+              ...Map<String, dynamic>.from(state['driver_status'] ?? {}),
+            },
+          };
+        }
+        if (method == 'groups.log') {
+          final events = groupLogs[params['room_id']] ?? [];
+          final latest = groupStates[params['room_id']]!['room']['latest_seq'];
+          return {
+            'events': events
+                .where((e) => e['seq'] > params['since_seq'])
+                .toList(),
+            'cursor': latest,
+            'latest_seq': latest,
+            'has_more': false,
+            'authority': {'gateway_id': 'fixture', 'epoch': 1},
+          };
+        }
+        if (method == 'session.active_list') {
+          activeReads++;
+          if (activeFails) throw StateError('offline');
+          return {'sessions': active};
+        }
+        if (method == 'projects.tree') return {'projects': []};
+        if (method == 'approval.pending') {
+          approvalReads.add(Map.of(params));
+          return {'approvals': pendingApprovals};
+        }
+        if (method == 'prompt.submit') {
+          if (params['submission_id'] is! String) {
+            throw const FormatException('Missing submission identity');
+          }
+          return admissions.putIfAbsent(
+            '${scope.profileName}:${params['session_id']}:${params['submission_id']}',
+            () => canonicalReceipt(
+              params,
+              admissionId: 'notification-admission-${admissions.length + 1}',
+              sequence: admissions.length + 1,
+            ),
+          );
+        }
+        if (method == 'session.create' || method == 'session.resume') {
+          int? resumeCall;
+          if (method == 'session.resume') {
+            resumeCalls.add(Map.of(params));
+            resumeCall = resumeCalls.length;
+            await (resumeDelays[resumeCall] ?? resumeDelay)?.future;
+            if (resumeFails) throw StateError('resume unavailable');
+          }
+          final sessionId = method == 'session.create'
+              ? createdSessionIds[scope.profileName] ?? 'loaded'
+              : durableIds['${scope.profileName}:${params['session_id']}'] ??
+                    params['session_id'] as String;
+          durableIds['${scope.profileName}:$sessionId-runtime'] = sessionId;
+          final pending = admissions.values
+              .where(
+                (row) =>
+                    (row['ref'] as Map)['session_id'] == '$sessionId-runtime' &&
+                    (row['ref'] as Map)['profile_id'] ==
+                        '/fixture/${scope.profileName}' &&
+                    row['status'] != 'terminal',
               )
-              .toList(),
-        };
-      }
-      if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
-        if (failedMetadataProfiles.contains(scope.profileName)) {
-          throw StateError('profile unavailable');
-        }
-        final id = Uri.decodeComponent(path.split('/')[1]);
-        await metadataDelays[(scope.profileName, id)]?.future;
-        final rows =
-            (saved[scope.profileName] ?? const <Map<String, dynamic>>[])
-                .where((row) => row['id'] == id)
-                .toList();
-        if (rows.isEmpty) throw DashboardSessionNotFound(path);
-        return rows.single;
-      }
-      if (path == 'sessions') {
-        final rows = saved[scope.profileName] ?? const [];
-        return {
-          'sessions': rows,
-          'offset': int.parse(query['offset']!),
-          'limit': int.parse(query['limit']!),
-          'total': rows.length,
-        };
-      }
-      if (path == 'logs') return {'entries': <Map<String, dynamic>>[]};
-      await historyDelay?.future;
-      if (historyFails) throw StateError('history unavailable');
-      final savedHistory = historyByProfile[scope.profileName] ?? history;
-      final offset = int.tryParse(query['offset'] ?? '') ?? 0;
-      final limit = int.tryParse(query['limit'] ?? '') ?? 50;
-      final page = savedHistory.skip(offset).take(limit).toList();
-      return {
-        'session_id': path.split('/')[1],
-        'messages': page,
-        'pagination': {
-          'offset': offset,
-          'limit': limit,
-          'returned': page.length,
-          'order': 'latest',
-        },
-      };
-    },
-    rpc: (method, params) async {
-      if (method == 'subagent.roster') {
-        final profile = params['profile'] as String;
-        rosterReads.add((source: scope.profileName, profile: profile));
-        final snapshot = rosters[profile] ?? {'sessions': <Object>[]};
-        await (rosterDelays[profile] ?? rosterDelay)?.future;
-        if (failedRosters.contains(profile)) throw StateError('Roster offline');
-        return snapshot;
-      }
-      if (method.startsWith('groups.') && groupFails) {
-        throw StateError('group unavailable');
-      }
-      if (method == 'groups.list') {
-        return {'rooms': groups, 'next_offset': null};
-      }
-      if (method == 'groups.state') {
-        final state = groupStates[params['room_id']]!;
-        return {
-          ...state,
-          'room': {
-            'members': <Map<String, dynamic>>[],
-            ...Map<String, dynamic>.from(state['room']),
-          },
-          'driver_status': {
-            'pending_actions': <Map<String, dynamic>>[],
-            ...Map<String, dynamic>.from(state['driver_status'] ?? {}),
-          },
-        };
-      }
-      if (method == 'groups.log') {
-        final events = groupLogs[params['room_id']] ?? [];
-        final latest = groupStates[params['room_id']]!['room']['latest_seq'];
-        return {
-          'events': events
-              .where((e) => e['seq'] > params['since_seq'])
-              .toList(),
-          'cursor': latest,
-          'latest_seq': latest,
-          'has_more': false,
-          'authority': {'gateway_id': 'fixture', 'epoch': 1},
-        };
-      }
-      if (method == 'session.active_list') {
-        activeReads++;
-        if (activeFails) throw StateError('offline');
-        return {'sessions': active};
-      }
-      if (method == 'projects.tree') return {'projects': []};
-      if (method == 'approval.pending') {
-        approvalReads.add(Map.of(params));
-        return {'approvals': pendingApprovals};
-      }
-      if (method == 'prompt.submit') {
-        if (params['submission_id'] is! String) {
-          throw const FormatException('Missing submission identity');
-        }
-        return admissions.putIfAbsent(
-          '${scope.profileName}:${params['session_id']}:${params['submission_id']}',
-          () => canonicalReceipt(
-            params,
-            admissionId: 'notification-admission-${admissions.length + 1}',
-            sequence: admissions.length + 1,
-          ),
-        );
-      }
-      if (method == 'session.create' || method == 'session.resume') {
-        int? resumeCall;
-        if (method == 'session.resume') {
-          resumeCalls.add(Map.of(params));
-          resumeCall = resumeCalls.length;
-          await (resumeDelays[resumeCall] ?? resumeDelay)?.future;
-          if (resumeFails) throw StateError('resume unavailable');
-        }
-        final sessionId = method == 'session.create'
-            ? createdSessionIds[scope.profileName] ?? 'loaded'
-            : durableIds['${scope.profileName}:${params['session_id']}'] ??
-                  params['session_id'] as String;
-        durableIds['${scope.profileName}:$sessionId-runtime'] = sessionId;
-        final pending = admissions.values
-            .where(
-              (row) =>
-                  (row['ref'] as Map)['session_id'] == '$sessionId-runtime' &&
-                  (row['ref'] as Map)['profile_id'] ==
-                      '/fixture/${scope.profileName}' &&
-                  row['status'] != 'terminal',
-            )
-            .toList();
-        if (method == 'session.resume' && lazyResume) {
+              .toList();
+          if (method == 'session.resume' && lazyResume) {
+            return {
+              ...canonicalSnapshotFields,
+              'pending': pending,
+              'running': false,
+              'open_requests': <Map<String, dynamic>>[],
+              'session_id': '$sessionId-runtime',
+              'stored_session_id': sessionId,
+              'message_count': 0,
+              'messages': <Map<String, dynamic>>[],
+              'info': {'profile_name': scope.profileName, 'lazy': true},
+            };
+          }
           return {
             ...canonicalSnapshotFields,
             'pending': pending,
-            'running': false,
-            'open_requests': <Map<String, dynamic>>[],
             'session_id': '$sessionId-runtime',
             'stored_session_id': sessionId,
-            'message_count': 0,
-            'messages': <Map<String, dynamic>>[],
-            'info': {'profile_name': scope.profileName, 'lazy': true},
+            'running':
+                method == 'session.resume' &&
+                workingProfiles.contains(scope.profileName),
+            'open_requests': [
+              if (method == 'session.resume' &&
+                  waitingProfiles.contains(scope.profileName))
+                {
+                  'id': 'question-${scope.profileName}',
+                  'method': 'clarify',
+                  'params': {
+                    'session_id': '$sessionId-runtime',
+                    if (questions == null)
+                      'question': 'Continue?'
+                    else
+                      'questions': questions,
+                  },
+                },
+            ],
+            'info': {'profile_name': scope.profileName},
+            if (method == 'session.resume') ...resumeOverrides,
+            ...?resumeSnapshots[resumeCall],
           };
         }
-        return {
-          ...canonicalSnapshotFields,
-          'pending': pending,
-          'session_id': '$sessionId-runtime',
-          'stored_session_id': sessionId,
-          'running':
-              method == 'session.resume' &&
-              workingProfiles.contains(scope.profileName),
-          'open_requests': [
-            if (method == 'session.resume' &&
-                waitingProfiles.contains(scope.profileName))
-              {
-                'id': 'question-${scope.profileName}',
-                'method': 'clarify',
-                'params': {
-                  'session_id': '$sessionId-runtime',
-                  if (questions == null)
-                    'question': 'Continue?'
-                  else
-                    'questions': questions,
-                },
-              },
-          ],
-          'info': {'profile_name': scope.profileName},
-          if (method == 'session.resume') ...resumeOverrides,
-          ...?resumeSnapshots[resumeCall],
-        };
-      }
-      return {};
-    },
-  );
+        return {};
+      },
+    );
+    return gateway;
+  }
 
   void changed() => gateways['a']!.onEvent!(
     StreamEvent(type: 'sessions.changed', data: const {}),
@@ -409,6 +418,9 @@ void main() {
     'answered background question settles after reconnect and posts its reply',
     () async {
       final chat = await controller.createChat(canDispatch: () => true);
+      // Startup catalog readers must not replace the live event target used
+      // by the background device fixture.
+      await controller.refreshRecents();
       // The device fixture exposes working state before the UI submits. A
       // foreground recovery can observe it and correctly enqueue the input.
       host.workingProfiles.add('a');

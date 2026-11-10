@@ -59,8 +59,12 @@ void main() {
     final reads = fixture.reads
         .where((r) => r.$1 == 'sessions' && r.$2['limit'] == '100')
         .toList();
-    expect(reads.length, 4);
-    expect(reads.where((r) => r.$2['offset'] == '100').length, 2);
+    final browserReads = reads.where((r) => r.$2['archived'] != 'include');
+    final recentsReads = reads.where((r) => r.$2['archived'] == 'include');
+    expect(browserReads, hasLength(4));
+    expect(browserReads.where((r) => r.$2['offset'] == '100'), hasLength(2));
+    expect(recentsReads, hasLength(4));
+    expect(recentsReads.where((r) => r.$2['offset'] == '100'), hasLength(2));
     expect(
       find.byKey(const ValueKey('chat-personal-chat-120')),
       findsOneWidget,

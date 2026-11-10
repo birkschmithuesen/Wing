@@ -92,6 +92,16 @@ class _Observations extends ProfileBrowserFixture {
       scope: scope,
       discover: browser.discover,
       rpc: (method, params) async {
+        // Startup Recents observes the group catalog even before Health opens.
+        // This fixture has no discussions and a healthy stock group driver.
+        if (method == 'groups.capabilities') {
+          return {
+            'driver': true,
+            'seatable_profiles': ['personal', 'work'],
+            'methods': <String>[],
+          };
+        }
+        if (method == 'groups.list') return {'rooms': <Map<String, dynamic>>[]};
         final response = await browser.call(method, params);
         if (method == 'session.active_list') {
           return {

@@ -2973,6 +2973,9 @@ void main() {
           });
           await botSession.refresh();
           sources = [bots.repository];
+          // Startup warming must also encounter the unavailable discovery;
+          // otherwise the retained roster already admits this Bot offline.
+          failSources = true;
           final frame = GlobalKey();
           await tester.pumpMarkdownWidget(
             MaterialApp(

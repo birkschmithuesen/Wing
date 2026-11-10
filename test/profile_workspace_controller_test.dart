@@ -4491,7 +4491,6 @@ void main() {
     final chat = await controller.createChat(canDispatch: () => true);
     await controller.updateDraft(chat, 'Keep this draft');
     host.running = false;
-    host.connectFailures = 5;
     await tester.pumpWidget(
       MaterialApp(
         home: ProfileWorkspaceScreen(
@@ -4500,6 +4499,9 @@ void main() {
         ),
       ),
     );
+    // Settle the startup Recents read before exercising recovery backoff.
+    await tester.pumpAndSettle();
+    host.connectFailures = 5;
     final before = host.connectsByProfile['a']!;
     host.gateways['a']!.onConnectionChanged!(false);
     for (final seconds in [1, 2, 4, 8, 16]) {

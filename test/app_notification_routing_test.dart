@@ -143,6 +143,11 @@ Future<NotificationHarness> _harness({
             'profiles': <Map<String, dynamic>>[],
           },
           'groups.list' => {'rooms': <Map<String, dynamic>>[]},
+          'groups.capabilities' => {
+            'driver': true,
+            'seatable_profiles': <String>[],
+            'methods': <String>[],
+          },
           _ => throw StateError('Unexpected administration method: $method'),
         },
       ),
@@ -899,13 +904,38 @@ void main() {
           request: resources.server.request,
           settingsWrite: resources.server.settingsWrite,
           ownedMutation: resources.server.ownedMutation,
-          gateway: (name) => harness.host.gateway(
-            WorkspaceScope(
+          gateway: (name) {
+            final scope = WorkspaceScope(
               connectionId: harness.connection.id,
               connectionIdentity: harness.identity,
               profileName: name,
-            ),
-          ),
+            );
+            final base = harness.host.gateway(scope);
+            return ProfileGateway(
+              scope: scope,
+              discover: base.discover,
+              // Match the production administration adapter: failed access
+              // belongs to the connection outage, not three Bot incidents.
+              connect: () => harness.controller.connectionStatus.observeAccess(
+                base.connect,
+              ),
+              get: base.read,
+              rpc: (method, params) async => switch (method) {
+                'profiles.list' => {
+                  'bot_mode_protocol': true,
+                  'install_id': harness.identity,
+                  'profiles': <Map<String, dynamic>>[],
+                },
+                'groups.list' => {'rooms': <Map<String, dynamic>>[]},
+                'groups.capabilities' => {
+                  'driver': true,
+                  'seatable_profiles': <String>[],
+                  'methods': <String>[],
+                },
+                _ => await base.call(method, params),
+              },
+            )..reportsLiveChat = false;
+          },
         );
         harness.controller.hostResources(repository: repository);
         addTearDown(resources.server.close);

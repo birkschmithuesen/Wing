@@ -5,6 +5,9 @@ library;
 
 import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/administration_repository.dart';
+import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/models/hermes_profile.dart';
 
 import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
@@ -25,6 +28,7 @@ import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/main.dart';
 
 import '../test/profile_connection_identity_test.dart' show MemoryIdentityStore;
+import '../test/support/host_resources_fixture.dart';
 import '../test/profile_notification_coverage_test.dart'
     show NotificationCoverageHost;
 
@@ -147,6 +151,46 @@ Future<void> _runFixture(_NotificationPollProbe probe) async {
     ),
   );
   final controller = await registry.forConnection(connection);
+  // Recents warms the independent Bots transport at startup too. Keep it on
+  // fixture responses instead of attempting the deliberately unused TCP port.
+  final resources = HostResourcesFixture(
+    identity: controller.connectionIdentity,
+  );
+  controller.healthSession(
+    repository: AdministrationRepository(
+      connectionId: connection.id,
+      connectionIdentity: controller.connectionIdentity,
+      connectionLabel: connection.label,
+      request: resources.server.request,
+      settingsWrite: resources.server.settingsWrite,
+      ownedMutation: resources.server.ownedMutation,
+      gateway: (profile) => ProfileGateway(
+        scope: WorkspaceScope(
+          connectionId: connection.id,
+          connectionIdentity: controller.connectionIdentity,
+          profileName: profile,
+        ),
+        discover: host.discover,
+        get: (path, query) async =>
+            throw StateError('Unexpected administration read: $path'),
+        rpc: (method, params) async => switch (method) {
+          'profiles.list' => {
+            'bot_mode_protocol': true,
+            'install_id': controller.connectionIdentity,
+            'profiles': <Map<String, dynamic>>[],
+          },
+          'groups.list' => {'rooms': <Map<String, dynamic>>[]},
+          'groups.capabilities' => {
+            'driver': true,
+            'seatable_profiles': <String>[],
+            'methods': <String>[],
+          },
+          'setup.status' => {'profile': profile, 'provider_configured': true},
+          _ => throw StateError('Unexpected administration method: $method'),
+        },
+      ),
+    ),
+  );
   await controller.initialize();
   final chats = <String, ProfileChat>{};
   for (final profile in ['a', 'b']) {

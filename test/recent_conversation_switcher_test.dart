@@ -4484,7 +4484,7 @@ void main() {
               )
               .session;
           expect(visit.modeEnabled, isFalse);
-          expect(controller.recentsLoaded, isFalse);
+          expect(controller.recentsLoaded, isTrue);
           final resumes = fixture.calls
               .where((call) => call.$2 == 'session.resume')
               .length;

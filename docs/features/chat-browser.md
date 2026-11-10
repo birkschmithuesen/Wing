@@ -59,9 +59,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/chat_browser_transport_test.dart test/profile_workspace_browser_test.dart test/profile_row_actions_test.dart
   flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart test/app_shell_navigation_test.dart
   flutter test --no-pub test/profile_recents_visibility_test.dart
+  flutter test --no-pub test/profile_pagination_browser_test.dart
   flutter test --no-pub test/project_picker_design_test.dart
   flutter test --no-pub test/server_files_repository_test.dart test/profile_project_management_test.dart test/profile_project_actions_test.dart test/project_folder_picker_test.dart test/project_icon_picker_test.dart
   ```
+
+  Pagination checks count browser and startup Recents reads separately, keeping
+  both bounded while preserving unique pinned rows.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
