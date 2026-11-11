@@ -182,5 +182,5 @@ dependencies {
    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 }
 
-// Fork (Wing Voice): own build additions, see voice-offline.gradle.kts.
-apply(from = "voice-offline.gradle.kts")
+// Fork (Wing Voice): own build additions, see voice-offline.gradle.
+apply(from = "voice-offline.gradle")
