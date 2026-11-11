@@ -340,7 +340,43 @@ void main() {
           matching: find.byTooltip('Expand task'),
         );
         await tester.ensureVisible(expand);
-        await tester.tap(expand);
+        // The task text is a disclosure target, not only the chevron.
+        await tester.tap(find.text(_todos[1].content));
+        await tester.pump();
+        expect(find.byType(SelectableText), findsOneWidget);
+        // Status and blank padding must toggle the same row, too.
+        final status = find.descendant(
+          of: running,
+          matching: find.text('In progress'),
+        );
+        await tester.tap(status);
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsNothing);
+        await tester.tapAt(tester.getTopLeft(expand) + const Offset(2, 2));
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsOneWidget);
+        await tester.tap(status);
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsNothing);
+        // Vertical scrolling on the header must not open the task.
+        await tester.drag(find.text(_todos[1].content), const Offset(0, -30));
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsNothing);
+        await tester.ensureVisible(expand);
+        Focus.of(tester.element(find.text(_todos[1].content))).requestFocus();
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsNothing);
+        await tester.tap(
+          find.descendant(
+            of: running,
+            matching: find.byIcon(Icons.chevron_right),
+          ),
+        );
         await tester.pumpAndSettle();
         expect(find.byType(SelectableText), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -349,6 +385,10 @@ void main() {
           of: running,
           matching: find.byKey(const ValueKey('activity-content-scroll')),
         );
+        await tester.ensureVisible(contentScroll);
+        await tester.tap(contentScroll);
+        await tester.pumpAndSettle();
+        expect(find.byType(SelectableText), findsOneWidget);
         await tester.drag(contentScroll, const Offset(0, -140));
         await tester.pumpAndSettle();
         expect(

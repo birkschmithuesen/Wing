@@ -4,6 +4,9 @@
 
 Activity's Timeline preserves individual tool calls and supplied reasoning in order. Tasks, Agents and Work show their related progress. Expand a detail to read received content, or open a full reader for longer output. Progress reported by Hermes is read-only.
 
+Tap anywhere on a task row's header to expand or collapse it. Expanded task text
+remains selectable and scrollable.
+
 Completed timing uses supplied durations. An active call can show a labelled estimate; missing timing remains unavailable. Saved conversation content stays readable even when optional timing recovery fails. Source, commands and literal output have wrap controls.
 
 Temporary review notices can appear in Activity. Open one to read its full text; it is not an approval request or saved memory entry. See [Tool activity](TOOL_ACTIVITY.md) for more.
