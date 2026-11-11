@@ -49,7 +49,6 @@ import '../services/chat_browser_data.dart';
 import '../services/completion_diagnostics.dart';
 import '../models/transcript_timeline.dart';
 import '../models/transcript_message.dart';
-import 'package:wing/core/services/chat_outputs_session.dart';
 import '../models/profile_session_key.dart';
 import '../models/hermes_profile.dart';
 import 'package:wing/core/models/model_choice.dart';
@@ -80,7 +79,7 @@ import '../models/composer_action.dart';
 import '../widgets/composer_action_button.dart';
 import '../widgets/composer_attachment_tile.dart';
 import '../presentation/attachment_preview_image.dart';
-import '../services/owned_remote_files.dart';
+import '../services/transcript_resource_session.dart';
 import '../widgets/profile_message.dart';
 import '../widgets/profile_activity_tabs.dart';
 import '../widgets/profile_queued_messages.dart';
@@ -399,7 +398,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   final _chatSearchFocus = FocusNode();
   (ProfileSessionKey, ComposerQueueId?, String)? _steerError;
   final _queuedEditErrors = <ProfileSessionKey, String>{};
-  final _fileReads = <OwnedRemoteFiles>{};
+  final _traceResources = <TranscriptResourceSession>{};
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   int _settingsRevision = 0;
   String? _analyticsProfileName;
@@ -1068,10 +1067,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (_renderedReadingFocus case final rendered?) {
       rendered.$1.releaseReadingFocus(rendered.$2);
     }
-    for (final files in _fileReads) {
+    for (final files in _traceResources) {
       files.dispose();
     }
-    _fileReads.clear();
+    _traceResources.clear();
     controller.removeListener(_syncVoiceTarget);
     controller.removeListener(_supervisionWorkspaceChanged);
     _supervision?.dispose();
@@ -1925,29 +1924,24 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   Future<void> _openOutputs(ProfileChat chat) async {
-    final files = _retainOutputFiles(chat);
+    final files = _retainTraceResources(chat);
     final ownedFiles = files;
     try {
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
           builder: (_) => ChatOutputsScreen(
             chatTitle: chat.title,
-            createSession: () => ChatOutputsSession(
-              loadHistory: (offset) =>
-                  controller.savedHistoryPage(chat, offset: offset),
-              download: ownedFiles.download,
-              readText: ownedFiles.readText,
-            ),
+            createSession: ownedFiles.createOutputsSession,
           ),
         ),
       );
     } finally {
-      _releaseOutputFiles(files);
+      _releaseTraceResources(files);
     }
   }
 
   Future<void> _openAnswerOutput(ProfileChat chat, ChatOutput output) async {
-    final files = _retainOutputFiles(chat);
+    final files = _retainTraceResources(chat);
     final ownedFiles = files;
     try {
       await Navigator.of(context).push(
@@ -1955,17 +1949,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           builder: (_) => ChatOutputsScreen(
             chatTitle: chat.title,
             initialOutput: output,
-            createSession: () => ChatOutputsSession(
-              loadHistory: (offset) =>
-                  controller.savedHistoryPage(chat, offset: offset),
-              download: ownedFiles.download,
-              readText: ownedFiles.readText,
-            ),
+            createSession: ownedFiles.createOutputsSession,
           ),
         ),
       );
     } finally {
-      _releaseOutputFiles(files);
+      _releaseTraceResources(files);
     }
   }
 
@@ -1974,9 +1963,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     ChatOutput output,
   ) async {
     final owner = chat.key;
-    final files = _retainOutputFiles(chat);
+    final files = _retainTraceResources(chat);
     try {
-      return await files.downloadAndSave(
+      return await files.files.downloadAndSave(
         output.path!,
         admitPresentation: () =>
             mounted &&
@@ -1984,15 +1973,15 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             ModalRoute.of(context)?.isCurrent == true,
       );
     } finally {
-      _releaseOutputFiles(files);
+      _releaseTraceResources(files);
     }
   }
 
   Future<void> _shareToolResource(ProfileChat chat, ChatOutput output) async {
     final owner = chat.key;
-    final files = _retainOutputFiles(chat);
+    final files = _retainTraceResources(chat);
     try {
-      await files.downloadAndShare(
+      await files.files.downloadAndShare(
         output.path!,
         admitPresentation: () =>
             mounted &&
@@ -2000,27 +1989,27 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             ModalRoute.of(context)?.isCurrent == true,
       );
     } finally {
-      _releaseOutputFiles(files);
+      _releaseTraceResources(files);
     }
   }
 
   Future<Uint8List> _loadAttachmentImage(ProfileChat chat, String path) async {
-    final files = _retainOutputFiles(chat);
+    final files = _retainTraceResources(chat);
     try {
-      return (await files.download(path)).bytes;
+      return await files.loadImage(path);
     } finally {
-      _releaseOutputFiles(files);
+      _releaseTraceResources(files);
     }
   }
 
-  OwnedRemoteFiles _retainOutputFiles(ProfileChat chat) {
-    final files = controller.outputFiles(chat);
-    _fileReads.add(files);
+  TranscriptResourceSession _retainTraceResources(ProfileChat chat) {
+    final files = controller.traceResources(chat.key);
+    _traceResources.add(files);
     return files;
   }
 
-  void _releaseOutputFiles(OwnedRemoteFiles files) {
-    if (_fileReads.remove(files)) files.dispose();
+  void _releaseTraceResources(TranscriptResourceSession files) {
+    if (_traceResources.remove(files)) files.dispose();
   }
 
   ((ProfileSessionKey, String, String), String)? _approvalError;
@@ -2865,8 +2854,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     beforeMessagePresentationId: beforeMessagePresentationId,
     todos: chat.currentTodos,
     inspection: _supervisionFor(chat),
-    agentsBuilder: () =>
-        ProfileSubagentPanel(session: _supervisionFor(chat), embedded: true),
+    agentsBuilder: () => ProfileSubagentPanel(
+      session: _supervisionFor(chat),
+      createResources: controller.traceResources,
+      embedded: true,
+    ),
     live: _liveAnswering(chat),
     taskCount: chat.todoRevision == null ? null : chat.currentTodos.length,
     agentCount: chat.subagentsAvailable ? chat.currentSubagents.length : null,

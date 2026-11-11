@@ -1841,6 +1841,11 @@
       "feature": "conversation",
       "library": "lib/core/services/transcript_reading.dart"
     },
+    "lib/core/services/transcript_resource_session.dart": {
+      "role": "application",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/transcript_resource_session.dart"
+    },
     "lib/core/services/turn_notification_service.dart": {
       "role": "application",
       "feature": "notifications",

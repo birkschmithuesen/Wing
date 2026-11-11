@@ -15,15 +15,19 @@ import 'profile_transcript_disclosure.dart';
 
 import '../models/gateway_insight.dart';
 import '../models/profile_supervision.dart';
+import '../models/profile_session_key.dart';
+import '../services/transcript_resource_session.dart';
 
 class ProfileSubagentPanel extends StatefulWidget {
   final SubagentInspectionSession session;
+  final TranscriptResourceSession Function(ProfileSessionKey) createResources;
   final bool initiallyExpanded;
   final bool embedded;
 
   const ProfileSubagentPanel({
     super.key,
     required this.session,
+    required this.createResources,
     this.initiallyExpanded = false,
     this.embedded = false,
   });
@@ -71,8 +75,12 @@ class _ProfileSubagentPanelState extends State<ProfileSubagentPanel> {
         isScrollControlled: true,
         useSafeArea: true,
         showDragHandle: true,
-        builder: (_) =>
-            StudioLoadingFrame(child: _SubagentDetailSheet(session: detail)),
+        builder: (_) => StudioLoadingFrame(
+          child: _SubagentDetailSheet(
+            session: detail,
+            createResources: widget.createResources,
+          ),
+        ),
       );
     } finally {
       detail.dispose();
@@ -162,7 +170,11 @@ class _ProfileSubagentPanelState extends State<ProfileSubagentPanel> {
 
 class _SubagentDetailSheet extends StatefulWidget {
   final SubagentInspectionDetail session;
-  const _SubagentDetailSheet({required this.session});
+  final TranscriptResourceSession Function(ProfileSessionKey) createResources;
+  const _SubagentDetailSheet({
+    required this.session,
+    required this.createResources,
+  });
 
   @override
   State<_SubagentDetailSheet> createState() => _SubagentDetailSheetState();
@@ -345,8 +357,10 @@ class _SubagentDetailSheetState extends State<_SubagentDetailSheet>
                     child: ClipRect(
                       child: SubagentTimeline(
                         session: timeline,
+                        createResources: widget.createResources,
                         agentsBuilder: (inspection) => ProfileSubagentPanel(
                           session: inspection,
+                          createResources: widget.createResources,
                           embedded: true,
                         ),
                       ),

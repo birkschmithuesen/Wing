@@ -325,7 +325,10 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
                                 ),
                               ],
                             ),
-                            ProfileSubagentPanel(session: supervision),
+                            ProfileSubagentPanel(
+                              session: supervision,
+                              createResources: controller.traceResources,
+                            ),
                           ],
                         ),
                       ),

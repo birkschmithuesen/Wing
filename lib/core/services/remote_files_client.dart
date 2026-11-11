@@ -88,29 +88,12 @@ class RemoteFilesClient implements RemoteFilesDataSource {
     required String storedSessionId,
   }) async {
     final owner = _owner(profileName, storedSessionId);
-    var previewPath = path;
-    // Stock read-text has no session_id parameter. Resolve relative paths
-    // against the originating session before calling it, just as desktop does.
-    // Downloads resolve their own session cwd on the server.
-    if (!_rootedPath.hasMatch(path)) {
-      final session = await dashboard.apiGet(
-        'sessions/${Uri.encodeComponent(owner['session_id']!)}',
-        queryParameters: {'profile': owner['profile']!},
-      );
-      final cwd = session['cwd'] as String?;
-      if (cwd == null || !_rootedPath.hasMatch(cwd)) {
-        throw const DashboardHttpException(400, 'fs/read-text');
-      }
-      previewPath = '$cwd/$path';
-    }
     final data = await dashboard.apiGet(
       'fs/read-text',
-      queryParameters: {'path': previewPath, ...owner},
+      queryParameters: {'path': path, ...owner},
     );
     return RemoteTextPreview.fromJson(data);
   }
-
-  static final _rootedPath = RegExp(r'^(?:/|~|[A-Za-z]:[\\/]|\\\\)');
 
   @override
   Future<RemoteFileDownload> download(

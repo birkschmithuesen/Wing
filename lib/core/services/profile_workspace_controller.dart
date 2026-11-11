@@ -8,6 +8,7 @@ import 'chat_transcript_events.dart';
 import 'hermes_question_history.dart';
 import 'subagent_timeline_session.dart';
 import '../models/operational_error.dart';
+import 'transcript_resource_session.dart';
 import 'group_observations.dart';
 import '../models/server_reference.dart';
 import '../models/composer_reference.dart';
@@ -3424,16 +3425,32 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
-  OwnedRemoteFiles outputFiles(ProfileChat chat) {
-    _owned(chat);
+  TranscriptResourceSession traceResources(ProfileSessionKey key) {
+    final resource = _resources[key.workspace];
+    if (_closed || !owns(key) || resource == null) {
+      throw StateError('This trace workspace is closed.');
+    }
+    final chat = resource._chats[key.sessionId];
     final files = RemoteFilesClient(
       dashboard: _gatewayConnection.createFileReadClient(),
     );
-    return OwnedRemoteFiles(
-      source: files,
-      profileName: chat._key.workspace.profileName,
-      storedSessionId: chat._key.sessionId,
-      release: files.close,
+    return TranscriptResourceSession(
+      files: OwnedRemoteFiles(
+        source: files,
+        profileName: key.workspace.profileName,
+        storedSessionId: key.sessionId,
+        release: files.close,
+      ),
+      // Mounted chats retain their authoritative reading workflow, including
+      // a live turn whose rows are not durable yet. Child visits stay passive.
+      loadHistory: chat == null
+          ? (offset) => resource.gateway.history(
+              key.sessionId,
+              offset: offset,
+              inlineImages: false,
+            )
+          : (offset) => savedHistoryPage(chat, offset: offset),
+      createSkillReader: resource.gateway.skillReader,
     );
   }
 

@@ -1,3 +1,15 @@
+import 'dart:convert';
+import 'package:file_picker/file_picker.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/connection_manager.dart';
+import 'package:wing/core/services/owned_remote_files.dart';
+import 'package:wing/core/services/remote_files_client.dart';
+import 'package:wing/core/services/transcript_resource_session.dart';
+import 'package:wing/core/screens/chat_outputs_screen.dart';
+import 'package:wing/core/widgets/chat_image_preview.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -33,6 +45,7 @@ import 'helpers/pump_markdown_widget.dart';
 
 class _SubagentFixture extends ProfileActionsFixture {
   List<Map<String, dynamic>>? childMessages;
+  List<Map<String, dynamic>>? nestedMessages;
   final childEvents = <Map<String, dynamic>>[];
   int listCalls = 0;
   int tailCalls = 0;
@@ -56,11 +69,14 @@ class _SubagentFixture extends ProfileActionsFixture {
       scope: scope,
       discover: base.discover,
       get: (path, query) async {
-        if (path == 'sessions/child-session/messages') {
+        if (path == 'sessions/child-session/messages' ||
+            path == 'sessions/nested-session/messages') {
+          final nested = path.contains('nested-session');
+          final messages = nested ? nestedMessages : childMessages;
           return {
-            'session_id': 'child-session',
+            'session_id': nested ? 'nested-session' : 'child-session',
             'messages':
-                childMessages?.reversed.toList() ??
+                messages?.reversed.toList() ??
                 [
                   {
                     'id': 101,
@@ -71,7 +87,7 @@ class _SubagentFixture extends ProfileActionsFixture {
             'pagination': {
               'offset': int.parse(query['offset']!),
               'limit': int.parse(query['limit']!),
-              'returned': childMessages?.length ?? 1,
+              'returned': messages?.length ?? 1,
               'order': 'latest',
             },
           };
@@ -80,30 +96,33 @@ class _SubagentFixture extends ProfileActionsFixture {
       },
       rpc: (method, params) async {
         requests.add((method, params));
-        if (method == 'session.resume' &&
-            params['session_id'] == 'child-session') {
+        final id = params['session_id'];
+        final isChild = id == 'child-session' || id == 'nested-session';
+        final events = id == 'nested-session'
+            ? <Map<String, dynamic>>[]
+            : childEvents;
+        if (method == 'session.resume' && isChild) {
           expect(params['display_projection'], isTrue);
           expect(params.containsKey('lazy'), isFalse);
           expect(params.containsKey('omit_messages'), isFalse);
           return {
-            'session_id': 'child-session',
-            'stored_session_id': 'child-session',
+            'session_id': id,
+            'stored_session_id': id,
             'replay_epoch': 'child-epoch',
-            'last_sequence': childEvents.length,
+            'last_sequence': events.length,
             'running': true,
           };
         }
-        if (method == 'session.events.since' &&
-            params['session_id'] == 'child-session') {
+        if (method == 'session.events.since' && isChild) {
           expect(params['replay_epoch'], 'child-epoch');
           return {
             'replay_epoch': 'child-epoch',
             'events': [
-              for (final event in childEvents)
+              for (final event in events)
                 if ((event['seq'] as int) > (params['last_sequence'] as int))
                   event,
             ],
-            'latest_seq': childEvents.fold<int>(
+            'latest_seq': events.fold<int>(
               0,
               (latest, event) =>
                   (event['seq'] as int) > latest ? event['seq'] as int : latest,
@@ -164,6 +183,26 @@ class _SubagentFixture extends ProfileActionsFixture {
   }
 }
 
+class _TracePicker extends FilePickerPlatform {
+  final files = <(String, Uint8List)>[];
+  final pending = Completer<Uri?>();
+  @override
+  Future<Uri?> saveFile({
+    required String fileName,
+    required Uint8List bytes,
+    required String mimeType,
+    String? dialogTitle,
+    String? initialDirectory,
+    Function(FilePickerStatus)? onFileSaving,
+    WindowsOptions windowsOptions = const WindowsOptions(),
+    LinuxOptions linuxOptions = const LinuxOptions(),
+    WebOptions webOptions = const WebOptions(),
+  }) {
+    files.add((fileName, bytes));
+    return pending.future;
+  }
+}
+
 void main() {
   const review = bool.fromEnvironment('CAPTURE_SUBAGENT_FIXES');
   const frame = ValueKey('subagent-fixes-render');
@@ -171,6 +210,7 @@ void main() {
     if (!review) return;
     for (final entry in {
       'Roboto': 'build/studio-roboto.ttf',
+      'monospace': '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
       'MaterialIcons': 'build/studio-icons.otf',
       'monospace': 'build/studio-mono.ttf',
       'WingIcons': 'assets/fonts/wing-icons.ttf',
@@ -252,6 +292,7 @@ void main() {
     double scale = 1.8,
     bool motion = false,
     Size size = const Size(320, 640),
+    TranscriptResourceSession Function(ProfileSessionKey)? resources,
   }) async {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await tester.pump();
@@ -275,6 +316,7 @@ void main() {
               children: [
                 ProfileSubagentPanel(
                   session: supervision,
+                  createResources: resources ?? controller.traceResources,
                   initiallyExpanded: true,
                 ),
               ],
@@ -301,6 +343,422 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 100));
   }
+
+  TranscriptResourceSession resourcesFor(
+    ProfileSessionKey key,
+    Future<http.Response> Function(http.Request) respond,
+  ) {
+    final client = RemoteFilesClient(
+      dashboard: DashboardClient(
+        host: 'trace.test',
+        port: 9119,
+        proxied: true,
+        httpClient: MockClient(respond),
+      ),
+    );
+    final gateway = fixture.gateway(key.workspace);
+    return TranscriptResourceSession(
+      files: OwnedRemoteFiles(
+        source: client,
+        profileName: key.workspace.profileName,
+        storedSessionId: key.sessionId,
+        release: client.close,
+      ),
+      loadHistory: (offset) => gateway.history(key.sessionId, offset: offset),
+      createSkillReader: gateway.skillReader,
+    );
+  }
+
+  Future<void> openChild(WidgetTester tester) async {
+    emitChatEvent(controller, chat, 'subagent.start', {
+      'subagent_id': 'child-1',
+      'child_session_id': 'child-session',
+      'goal': 'Inspect the release',
+    });
+    await tester.pump();
+    await tester.tap(find.text('Inspect the release'));
+    await until(
+      tester,
+      () => find.byType(SubagentTimeline).evaluate().isNotEmpty,
+      'child timeline',
+    );
+    for (var i = 0; i < 15; i++) {
+      await tester.pump(const Duration(milliseconds: 30));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+    }
+  }
+
+  List<Map<String, dynamic>> resourceRows(String name, String arguments) => [
+    {'id': 1, 'role': 'user', 'content': 'Inspect source evidence'},
+    {
+      'id': 2,
+      'role': 'assistant',
+      'content': '',
+      'tool_calls': [
+        {
+          'id': 'source-1',
+          'function': {'name': name, 'arguments': arguments},
+        },
+      ],
+    },
+    {
+      'id': 3,
+      'role': 'tool',
+      'tool_call_id': 'source-1',
+      'content': name == 'read_file'
+          ? 'A short file excerpt'
+          : 'Day details are readable.',
+    },
+  ];
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'child trace source image loads retries and opens ${brightness.name} $scale',
+        (tester) async {
+          const path =
+              '/home/tarkil/.hermes/cache/scratch/rwc-ux/390-day29.png';
+          fixture.childMessages = resourceRows(
+            'vision_analyze',
+            jsonEncode({
+              'image_url': path,
+              'question': 'Inspect mobile day details and controls',
+            }),
+          );
+          final requests = <http.Request>[];
+          var response = Completer<http.Response>();
+          await showPanel(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            size: scale == 1 ? const Size(390, 844) : const Size(320, 640),
+            resources: (key) => resourcesFor(key, (request) {
+              requests.add(request);
+              return response.future;
+            }),
+          );
+          await openChild(tester);
+          await tester.openLiveActivity();
+          await Scrollable.ensureVisible(
+            tester.element(find.text('Analyzed image')),
+            alignment: 0.5,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.text('Analyzed image'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.bySemanticsLabel('Loading image'), findsWidgets);
+          await capture(
+            tester,
+            'resource-image-pending-${brightness.name}-$scale',
+          );
+          expect(requests.single.url.path, '/api/fs/download');
+          expect(requests.single.url.queryParameters, {
+            'path': path,
+            'profile': chat.key.workspace.profileName,
+            'session_id': 'child-session',
+          });
+          response.complete(http.Response('{"detail":"File not found"}', 404));
+          await until(
+            tester,
+            () => find
+                .text('This image could not be previewed.')
+                .evaluate()
+                .isNotEmpty,
+            'recoverable image failure',
+          );
+          response = Completer<http.Response>();
+          await Scrollable.ensureVisible(
+            tester.element(find.byTooltip('Retry image')),
+            alignment: 0.5,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.byTooltip('Retry image'));
+          await tester.pump();
+          expect(find.bySemanticsLabel('Loading image'), findsWidgets);
+          response.complete(
+            http.Response.bytes(
+              img.encodePng(
+                img.fill(
+                  img.Image(width: 180, height: 100),
+                  color: img.ColorRgb8(37, 103, 120),
+                ),
+              ),
+              200,
+            ),
+          );
+          await until(
+            tester,
+            () => find.byType(Image).evaluate().isNotEmpty,
+            'image provider',
+          );
+          for (final element in find.byType(Image).evaluate()) {
+            final image = element.widget as Image;
+            await tester.runAsync(() => precacheImage(image.image, element));
+          }
+          await tester.pump();
+          expect(find.text('This image could not be previewed.'), findsNothing);
+          expect(
+            tester.widget<RawImage>(find.byType(RawImage)).image,
+            isNotNull,
+          );
+          expect(requests, hasLength(2));
+          expect(requests.last.url, requests.first.url);
+          await Scrollable.ensureVisible(
+            tester.element(find.byType(RawImage)),
+            alignment: 0.5,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.byType(RawImage).hitTestable(), findsOneWidget);
+          await capture(
+            tester,
+            'resource-image-ready-${brightness.name}-$scale',
+          );
+          await Scrollable.ensureVisible(
+            tester.element(find.byTooltip('Preview image')),
+            alignment: 0.5,
+          );
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.tap(find.byTooltip('Preview image'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          expect(find.byType(ChatImagePreview), findsOneWidget);
+          expect(
+            tester
+                .widget<ChatImagePreview>(find.byType(ChatImagePreview))
+                .bytes,
+            isNotEmpty,
+          );
+          Navigator.of(tester.element(find.byType(ChatImagePreview))).pop();
+          await tester.pumpAndSettle();
+          await tester.tap(find.byTooltip('Close subagent activity'));
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 300));
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
+
+  testWidgets(
+    'child trace file preview binds full content and pending share to the child',
+    (tester) async {
+      fixture.childMessages = resourceRows('read_file', '{"path":"report.md"}');
+      final requests = <http.Request>[];
+      var response = Completer<http.Response>();
+      await showPanel(
+        tester,
+        scale: 1,
+        size: const Size(390, 844),
+        resources: (key) => resourcesFor(key, (request) {
+          requests.add(request);
+          return response.future;
+        }),
+      );
+      await openChild(tester);
+      await tester.openLiveActivity();
+      await Scrollable.ensureVisible(
+        tester.element(find.text('Read file')),
+        alignment: 0.5,
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.text('Read file'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.byTooltip('Preview file'), findsOneWidget);
+      expect(find.byTooltip('Share file'), findsOneWidget);
+      await Scrollable.ensureVisible(
+        tester.element(find.byTooltip('Preview file')),
+        alignment: 0.5,
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byTooltip('Preview file'));
+      await tester.pump();
+      expect(find.byType(ChatOutputsScreen), findsOneWidget);
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(find.bySemanticsLabel('Loading outputs'), findsWidgets);
+      await tester.pumpAndSettle();
+      await capture(tester, 'resource-file-pending');
+      expect(requests.single.url.path, '/api/fs/read-text');
+      expect(requests.single.url.queryParameters, {
+        'path': 'report.md',
+        'profile': chat.key.workspace.profileName,
+        'session_id': 'child-session',
+      });
+      response.complete(
+        http.Response(
+          jsonEncode({
+            'path': '/child/work/report.md',
+            'text': '# Full child report\n\nDetails beyond the excerpt.',
+            'language': 'markdown',
+            'mimeType': 'text/markdown',
+            'binary': false,
+            'truncated': false,
+          }),
+          200,
+        ),
+      );
+      await until(
+        tester,
+        () => find
+            .byWidgetPredicate(
+              (w) =>
+                  w is MarkdownMessageContent &&
+                  w.data.contains('Details beyond the excerpt.'),
+            )
+            .evaluate()
+            .isNotEmpty,
+        'full child file viewer',
+      );
+      await tester.settleMarkdown();
+      await tester.pumpAndSettle();
+      await capture(tester, 'resource-file-ready');
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+      await until(
+        tester,
+        () => find.byTooltip('Share file').evaluate().isNotEmpty,
+        'returned child file action',
+      );
+      response = Completer<http.Response>();
+      await Scrollable.ensureVisible(
+        tester.element(find.byTooltip('Share file')),
+        alignment: 0.5,
+      );
+      await tester.pump(const Duration(milliseconds: 300));
+      await tester.tap(find.byTooltip('Share file'));
+      await tester.pump();
+      expect(
+        find.descendant(
+          of: find.byTooltip('Share file'),
+          matching: find.byIcon(Icons.hourglass_top),
+        ),
+        findsOneWidget,
+      );
+      expect(requests.last.url.path, '/api/fs/download');
+      expect(requests.last.url.queryParameters['session_id'], 'child-session');
+      await tester.tap(find.byTooltip('Close subagent activity'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      response.complete(http.Response.bytes([1, 2, 3], 200));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 20)),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
+      expect(tester.takeException(), isNull);
+      expect(find.byType(SubagentTimeline), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets('nested child message resources save under their own session', (
+    tester,
+  ) async {
+    fixture.childEvents.add({
+      'session_id': 'child-session',
+      'seq': 1,
+      'type': 'subagent.start',
+      'payload': {
+        'subagent_id': 'nested-agent',
+        'child_session_id': 'nested-session',
+        'goal': 'Inspect nested evidence',
+      },
+    });
+    fixture.nestedMessages = [
+      {'id': 1, 'role': 'assistant', 'content': '[Nested report](report.md)'},
+    ];
+    final originalPicker = FilePickerPlatform.instance;
+    final picker = _TracePicker();
+    FilePickerPlatform.instance = picker;
+    addTearDown(() => FilePickerPlatform.instance = originalPicker);
+    final keys = <ProfileSessionKey>[];
+    final requests = <http.Request>[];
+    final response = Completer<http.Response>();
+    await showPanel(
+      tester,
+      scale: 1,
+      size: const Size(390, 844),
+      resources: (key) {
+        keys.add(key);
+        return resourcesFor(key, (request) {
+          requests.add(request);
+          return response.future;
+        });
+      },
+    );
+    await openChild(tester);
+    await tester.tap(find.byKey(const ValueKey(('live-work-tab', 0, false))));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Inspect nested evidence')),
+      alignment: .5,
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.text('Inspect nested evidence'));
+    await until(tester, () => keys.length == 2, 'nested resources');
+    await tester.settleMarkdown();
+    await until(
+      tester,
+      () => find.byTooltip('Download').evaluate().isNotEmpty,
+      'nested deliverable',
+    );
+    expect(keys.map((key) => key.sessionId), [
+      'child-session',
+      'nested-session',
+    ]);
+    await Scrollable.ensureVisible(
+      tester.element(find.byTooltip('Download')),
+      alignment: .5,
+    );
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Download'));
+    await tester.pump();
+    expect(
+      find.descendant(
+        of: find.byTooltip('Download'),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    expect(requests.single.url.queryParameters, {
+      'path': 'report.md',
+      'profile': chat.key.workspace.profileName,
+      'session_id': 'nested-session',
+    });
+    response.complete(
+      http.Response.bytes(
+        utf8.encode('Nested original content'),
+        200,
+        headers: {'content-disposition': 'attachment; filename=report.md'},
+      ),
+    );
+    await until(tester, () => picker.files.isNotEmpty, 'save picker');
+    expect(picker.files.single.$1, 'report.md');
+    expect(utf8.decode(picker.files.single.$2), 'Nested original content');
+    expect(
+      find.descendant(
+        of: find.byTooltip('Download'),
+        matching: find.byType(CircularProgressIndicator),
+      ),
+      findsOneWidget,
+    );
+    picker.pending.complete(Uri.parse('content://documents/nested-report'));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.tap(find.byTooltip('Close subagent activity').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey(('live-work-tab', 0, true))));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Close subagent activity').hitTestable());
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets(
     'normal chat opens child timeline without selecting or controlling it',

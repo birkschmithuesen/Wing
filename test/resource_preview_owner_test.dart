@@ -1,3 +1,6 @@
+import 'package:wing/core/models/chat_output.dart';
+import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/transcript_resource_session.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
@@ -47,6 +50,90 @@ class _Pdf extends PdfPreviewService {
 }
 
 void main() {
+  test(
+    'trace retirement rejects late image and viewer bytes under the captured child',
+    () async {
+      final source = _Files();
+      var releases = 0;
+      final visit = TranscriptResourceSession(
+        files: OwnedRemoteFiles(
+          source: source,
+          profileName: 'child-profile',
+          storedSessionId: 'nested-session',
+          release: () => releases++,
+        ),
+        loadHistory: (offset) async => ProfileHistoryPage(
+          'nested-session',
+          [],
+          offset,
+          20,
+          isComplete: true,
+        ),
+        createSkillReader: (_) => throw UnimplementedError(),
+      );
+      final viewer = visit.createOutputsSession();
+      addTearDown(viewer.dispose);
+      final image = visit.loadImage('relative/image.png');
+      final preview = viewer.prepare(
+        explicitRemoteFileOutput('relative/image.png')!,
+      );
+      final imageFailure = expectLater(image, throwsStateError);
+      final previewFailure = expectLater(preview, throwsStateError);
+      expect(source.profile, 'child-profile');
+      expect(source.session, 'nested-session');
+      visit.dispose();
+      source.downloadResult.complete(
+        RemoteFileDownload(filename: 'image.png', bytes: [1, 2, 3]),
+      );
+      await Future.wait([imageFailure, previewFailure]);
+      await expectLater(visit.loadImage('late.png'), throwsStateError);
+      expect(visit.createOutputsSession, throwsStateError);
+      visit.dispose();
+      expect(releases, 1);
+    },
+  );
+
+  test(
+    'trace output history stays on its captured reader and rejects late history',
+    () async {
+      final source = _Files();
+      final history = Completer<ProfileHistoryPage>();
+      final offsets = <int>[];
+      final visit = TranscriptResourceSession(
+        files: OwnedRemoteFiles(
+          source: source,
+          profileName: 'child-profile',
+          storedSessionId: 'nested-session',
+          release: () {},
+        ),
+        loadHistory: (offset) {
+          offsets.add(offset);
+          return history.future;
+        },
+        createSkillReader: (_) => throw UnimplementedError(),
+      );
+      final outputs = visit.createOutputsSession();
+      addTearDown(outputs.dispose);
+      final pending = outputs.load();
+      visit.dispose();
+      history.complete(
+        ProfileHistoryPage(
+          'nested-session',
+          [
+            {'id': 1, 'role': 'assistant', 'content': '[Late report](late.md)'},
+          ],
+          0,
+          20,
+          isComplete: true,
+        ),
+      );
+      await pending;
+      expect(offsets, [0]);
+      expect(outputs.observation.outputs, isEmpty);
+      expect(outputs.observation.error, isNotNull);
+    },
+  );
+
   test(
     'oversized HTML retains its original for sharing after preview refusal',
     () async {

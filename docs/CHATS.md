@@ -52,6 +52,11 @@ swipes follow the larger horizontal or vertical movement. Tapping the selected
 tab or outside also closes it.
 Your draft stays in place. Past answers keep their existing Activity layout.
 
+Open a subagent to inspect its trace. Images, file previews, skill documents and
+message attachments use the same viewers as the main conversation. Preview,
+share and download actions read from that child's chat, including nested children.
+Failed image reads offer Retry.
+
 While Hermes is working, the composer can **Steer**, **Queue** or **Stop**. The default action is your choice in App settings; hold and slide the arrow for a one-time alternative. Hermes runs accepted queued follow-ups in order, even after Wing disconnects. Work still stored only on the phone needs Wing to reconnect before it can be submitted.
 
 The outbox above the composer appears whenever it contains queued messages.

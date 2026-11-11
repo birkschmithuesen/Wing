@@ -58,9 +58,6 @@ void main() {
     final requests = <http.Request>[];
     final dashboard = dashboardWith((request) async {
       requests.add(request);
-      if (request.url.path == '/api/sessions/original-chat') {
-        return http.Response(jsonEncode({'cwd': '/srv/original-project'}), 200);
-      }
       if (request.url.path.endsWith('/read-text')) {
         return http.Response(
           jsonEncode({
@@ -88,30 +85,33 @@ void main() {
     await owned.download('../exports/report.txt');
 
     expect(requests.map((request) => request.url.path), [
-      '/api/sessions/original-chat',
       '/api/fs/read-text',
       '/api/fs/download',
     ]);
-    expect(requests.first.url.queryParameters, {'profile': 'original-profile'});
-    expect(requests[1].url.queryParameters, {
-      'path': '/srv/original-project/../exports/report.txt',
+    expect(requests[0].url.queryParameters, {
+      'path': '../exports/report.txt',
       'profile': 'original-profile',
       'session_id': 'original-chat',
     });
-    expect(requests[2].url.queryParameters, {
+    expect(requests[1].url.queryParameters, {
       'path': '../exports/report.txt',
       'profile': 'original-profile',
       'session_id': 'original-chat',
     });
   });
 
-  test('relative preview refuses an unavailable session directory', () async {
+  test('relative preview preserves the server session refusal', () async {
     var requests = 0;
     final client = RemoteFilesClient(
       dashboard: dashboardWith((request) async {
         requests++;
-        expect(request.url.path, '/api/sessions/chat-7');
-        return http.Response(jsonEncode({'cwd': ''}), 200);
+        expect(request.url.path, '/api/fs/read-text');
+        expect(request.url.queryParameters, {
+          'path': 'report.md',
+          'profile': 'writer',
+          'session_id': 'chat-7',
+        });
+        return http.Response(jsonEncode({'detail': 'Session not found'}), 404);
       }),
     );
     await expectLater(

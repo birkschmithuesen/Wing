@@ -1529,6 +1529,7 @@ void main() {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       var logins = 0;
       var downloads = 0;
+      var expectedSession = 'same';
       final subscription = server.listen((request) async {
         if (request.uri.path == '/auth/password-login') {
           logins++;
@@ -1543,12 +1544,25 @@ void main() {
             request.response.write('{}');
           }
         } else {
-          expect(request.uri.path, '/api/fs/download');
+          expect(
+            request.uri.path,
+            anyOf('/api/fs/download', '/api/fs/read-text'),
+          );
           expect(request.headers.value('cookie'), 'hermes_session_at=fixture');
           expect(request.uri.queryParameters['profile'], 'a');
-          expect(request.uri.queryParameters['session_id'], 'same');
+          expect(request.uri.queryParameters['session_id'], expectedSession);
           downloads++;
-          request.response.add([1, 2, 3]);
+          if (request.uri.path.endsWith('read-text')) {
+            expect(request.uri.queryParameters['path'], 'relative.md');
+            request.response.write(
+              jsonEncode({
+                'path': '/child/relative.md',
+                'text': 'Child content',
+              }),
+            );
+          } else {
+            request.response.add([1, 2, 3]);
+          }
         }
         await request.response.close();
       });
@@ -1581,9 +1595,9 @@ void main() {
         ProfileSessionKey(controller.current!.scope, 'same'),
       ))!;
       Future<void> imageRead(int index) async {
-        final files = controller.outputFiles(chat);
+        final files = controller.traceResources(chat.key);
         try {
-          expect((await files.download('/images/$index.png')).bytes, [1, 2, 3]);
+          expect(await files.loadImage('/images/$index.png'), [1, 2, 3]);
         } finally {
           files.dispose();
         }
@@ -1596,6 +1610,22 @@ void main() {
         await imageRead(i);
       }
       expect(downloads, 40);
+      for (final child in ['child-session', 'nested-session']) {
+        expectedSession = child;
+        final trace = controller.traceResources(
+          ProfileSessionKey(chat.key.workspace, child),
+        );
+        try {
+          expect(await trace.loadImage('image.png'), [1, 2, 3]);
+          expect(
+            (await trace.files.readText('relative.md')).text,
+            'Child content',
+          );
+        } finally {
+          trace.dispose();
+        }
+      }
+      expect(downloads, 44);
       expect(
         logins,
         1,

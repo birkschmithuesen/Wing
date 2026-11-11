@@ -15,6 +15,7 @@ Feature ID: `outputs-and-viewers`.
 Choose Outputs in the conversation menu, use a file card preview eye, or tap an inline image. Copy, save or share supported results through their icon actions.
 Web-link rows in Outputs follow the destination saved under **App settings →
 Open links in**. An image viewer's **Open in browser** action opens the external browser.
+The same resource actions work inside Subagent activity, including nested child traces. Files and images belong to the displayed child chat; relative paths use that child's workspace.
 
 ## Driving it with Wing harnesses
 

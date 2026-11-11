@@ -453,6 +453,7 @@ void main() {
             ),
             'agents': ProfileSubagentPanel(
               session: session,
+              createResources: controller.traceResources,
               initiallyExpanded: true,
             ),
             'work': ProfileBackgroundWorkPanel(
