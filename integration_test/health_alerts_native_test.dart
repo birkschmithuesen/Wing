@@ -380,7 +380,13 @@ Future<void> _retentionJourney(WidgetTester tester) async {
   }
   await tester.tap(bell);
   await _settleScreen(tester);
-  expect(find.text('High memory usage'), findsOneWidget);
+  expect(
+    find.descendant(
+      of: find.byKey(const ValueKey('health-alert-card')),
+      matching: find.text('High memory usage'),
+    ),
+    findsOneWidget,
+  );
   await _retentionCheckpoint('warning-details', observations);
   await tester.tap(find.byTooltip('Close alerts'));
   await _settleScreen(tester);
