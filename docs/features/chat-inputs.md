@@ -81,7 +81,9 @@ Enter a requested secret in its dedicated masked form and use its icon-only
 confirmation. The form shows submitting feedback until Hermes confirms the
 original request resolved. Cancel sends an empty response. Timeout, interruption
 and connection loss never imply that the password was accepted; passwords stay
-outside drafts and saved history and are never replayed after reconnect.
+outside drafts and saved history and are never replayed after reconnect. The
+transport suite also drives the native roadmap fixture through the production
+controller, so the Android vault journey uses that same response boundary.
 
 ## Gotchas
 

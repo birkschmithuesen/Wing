@@ -1224,7 +1224,6 @@ void main() {
     expect(harness.fixture.sensitiveResponses.single, {
       'id': 'roadmap-vault-unlock',
       'result': {'value': vaultPassword},
-      'profile': 'personal',
     });
     expect(find.text('Unlock Roadmap Vault'), findsNothing);
     expect(chat.composer.observation.text, isNot(contains(vaultPassword)));

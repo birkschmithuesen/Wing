@@ -12,6 +12,7 @@ import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'profile_workspace_controller_test.dart' show Host;
+import '../integration_test/support/roadmap_emulator_fixture.dart';
 
 void main() {
   for (final kind in [
@@ -325,4 +326,46 @@ void main() {
       },
     );
   }
+  test(
+    'native roadmap fixture accepts the production secure response transport',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      final fixture = RoadmapEmulatorFixture();
+      final connection = SavedConnection(
+        id: 'native-roadmap',
+        label: 'Fixture',
+        host: 'localhost',
+        port: 1,
+        apiKey: '',
+      );
+      final controller = ProfileWorkspaceController(
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        connectionIdentity: connection.id,
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: fixture.gateway,
+      );
+      addTearDown(controller.dispose);
+      addTearDown(appPreferences.dispose);
+      await controller.initialize();
+      final chat = await controller.createChat(canDispatch: () => true);
+      fixture.requestVaultUnlock(
+        chat.key.workspace.profileName,
+        chat.runtime.runtimeId,
+      );
+      expect(chat.runtime.secureInput?.requestId, 'roadmap-vault-unlock');
+      await controller.respondSensitivePrompt(
+        chat,
+        'synthetic-vault-secret',
+        expectedRequest: chat.runtime.secureInput!,
+      );
+      expect(chat.runtime.secureInput, isNull);
+      expect(fixture.sensitiveResponses.single, {
+        'id': 'roadmap-vault-unlock',
+        'result': {'value': 'synthetic-vault-secret'},
+      });
+    },
+  );
 }

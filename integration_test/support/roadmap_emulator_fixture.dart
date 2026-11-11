@@ -40,6 +40,7 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
   final projectUpdates = <Map<String, dynamic>>[];
   final projectDeletes = <Map<String, dynamic>>[];
   final sensitiveResponses = <Map<String, dynamic>>[];
+  final _sensitiveRequests = <String, ({String profile, String runtime})>{};
   final supervisionRequests = <(String, Map<String, dynamic>)>[];
   final administrationReads = <(String, Map<String, String>)>[];
   final administrationRequests = <(String, Map<String, dynamic>)>[];
@@ -105,6 +106,29 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
     fixtureGateway = ProfileGateway(
       scope: scope,
       discover: base.discover,
+      serverResponse: (requestId, result) async {
+        final pending = _sensitiveRequests[requestId];
+        if (pending == null || pending.profile != scope.profileName) {
+          throw StateError('No secure request belongs to this fixture profile');
+        }
+        _sensitiveRequests.remove(requestId);
+        sensitiveResponses.add({
+          'id': requestId,
+          'result': Map<String, dynamic>.from(result),
+        });
+        _emit(
+          scope.profileName,
+          StreamEvent(
+            type: 'request.cancel',
+            sessionId: pending.runtime,
+            data: {
+              'id': requestId,
+              'method': 'vault.unlock_prompt',
+              'reason': 'resolved',
+            },
+          ),
+        );
+      },
       connect: base.connect,
       close: () {
         gateways[scope.profileName]?.remove(fixtureGateway);
@@ -487,9 +511,6 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
               (project) => project['id'] == params['id'],
             );
             return {'projects': projects(scope.profileName), 'active_id': null};
-          case 'request.answer':
-            sensitiveResponses.add(Map<String, dynamic>.from(params));
-            return {'status': 'ok'};
           case 'subagent.list':
             supervisionRequests.add((
               method,
@@ -794,13 +815,15 @@ class RoadmapEmulatorFixture extends ProfileHistoryFixture {
   }
 
   void requestVaultUnlock(String profile, String runtimeId) {
+    const requestId = 'roadmap-vault-unlock';
+    _sensitiveRequests[requestId] = (profile: profile, runtime: runtimeId);
     _emit(
       profile,
       StreamEvent(
         type: 'vault.unlock_prompt',
         sessionId: runtimeId,
         data: const {
-          'request_id': 'roadmap-vault-unlock',
+          'request_id': requestId,
           'backend': 'roadmap-vault',
           'display_name': 'Roadmap Vault',
         },
