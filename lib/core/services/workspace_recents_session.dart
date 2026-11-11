@@ -44,6 +44,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
   bool _foreground;
   bool get _active => _foreground && _visible.isNotEmpty;
   Future<void>? _refreshing;
+  bool _retryFailuresRequested = false;
   bool _initialLoadSettled = false;
   bool _warmUpRequested = false;
   Future<void>? _preparingAppearances;
@@ -146,9 +147,12 @@ class WorkspaceRecentsSession extends ChangeNotifier
   }
 
   @override
-  Future<void> refresh({bool force = false}) {
+  Future<void> refresh({bool force = false, bool retryFailures = false}) {
     if (_closed) return Future.value();
-    if (_refreshing case final pending?) return pending;
+    if (_refreshing case final pending?) {
+      _retryFailuresRequested |= retryFailures;
+      return pending;
+    }
     if (!force &&
         _lastRefresh != null &&
         DateTime.now().difference(_lastRefresh!) < refreshInterval) {
@@ -156,17 +160,31 @@ class WorkspaceRecentsSession extends ChangeNotifier
     }
     final completion = Completer<void>();
     _refreshing = completion.future;
+    _retryFailuresRequested = retryFailures;
     _lastRefresh = DateTime.now();
     _changed();
     unawaited(() async {
       try {
-        await Future.wait([controller.refreshRecents(), bots.refresh()]);
+        var retriedFailures = retryFailures;
+        await Future.wait([
+          controller.refreshRecents(),
+          bots.refresh(retryFailures: retryFailures),
+        ]);
         // Metadata and admitted image reads can outlive the catalog reads.
         // Join the current decoration generation before settling initial entry.
         while (!_closed && _foreground) {
+          // An explicit retry can join after automatic bot reads have already
+          // skipped their cooldown. Honor that intent inside this operation.
+          if (_retryFailuresRequested && !retriedFailures) {
+            retriedFailures = true;
+            await bots.refresh(retryFailures: true);
+          }
           final preparation = prepareAppearances();
           await preparation;
-          if (identical(preparation, _preparingAppearances)) break;
+          if (identical(preparation, _preparingAppearances) &&
+              (!_retryFailuresRequested || retriedFailures)) {
+            break;
+          }
         }
         completion.complete();
       } catch (error, stack) {

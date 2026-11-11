@@ -14,6 +14,11 @@ Feature ID: `chat-browser`.
   without an inline outage message. Open the alert or status icon for connection
   details and retry. Partial refresh failures on available transports still show
   one summary. An unavailable catalog is not presented as an empty chat list.
+  Pull down at the top of Recents to refresh, including short or empty lists.
+  Partial-load warnings also offer an icon-only Retry action. Both use the same
+  workspace refresh, retry failed reads immediately and keep known cards usable
+  while the header Wing indicates progress. A failed retry keeps recovery
+  available; successful reads clear the warning.
   Recents suspends its display work while Wing is paused and catches up previews
   and unread state on resume. Repeated connection updates reuse unchanged saved
   message summaries; edits still replace them.
@@ -81,6 +86,25 @@ cached content, transport-only updates, no inline outage notice and successful r
 themes at normal and doubled text size. Add `--dart-define=CAPTURE_RECENTS=true`
 to the activity suite to capture its rendered states. The app-shell Recents route
 checks also require one summary when both profiles fail to refresh.
+The app-shell Recents route cases drive Retry through held failure and pull
+refresh through held chat and group reads, then open a retained card during a
+refresh. They check the header feedback, retry admission, recovery and departure
+in both themes at normal and doubled text size (with reduced motion at doubled
+size). The visibility suite drives pull refresh on short and empty lists and
+checks that concurrent requests join the existing owner. The catalog suite also
+checks that joining Retry upgrades an automatic refresh's failed reads without
+starting another chat refresh. The bot scheduling suite
+checks immediate failed-read retries while successful reads retain their cadence:
+
+```sh
+flutter test --no-pub test/bots_refresh_scheduling_test.dart
+```
+
+Use `--dart-define=CAPTURE_MENU=true` and
+`--dart-define=CAPTURE_FONT_DIR=build/recents-review-fonts` with the app-shell suite
+to capture the warning, Retry and held pull-refresh states. Supply
+`Roboto-Regular.ttf` and `MaterialIcons-Regular.otf` in that ignored font directory.
+
 Run `test/profile_recents_test.dart` with
 `--dart-define=WING_PERF_INSTRUMENTATION=true` to enforce the unchanged-history
 summary work budget. Its lifecycle checks also verify that paused connection

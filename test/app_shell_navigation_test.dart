@@ -137,6 +137,8 @@ void main() {
     double scale = 1,
     Brightness brightness = Brightness.light,
     Widget? home,
+    BotsFixture? botFixture,
+    bool reducedMotion = false,
     Size viewport = const Size(360, 800),
   }) async {
     tester.view.physicalSize = viewport;
@@ -149,9 +151,10 @@ void main() {
         builder: (context, child) => RepaintBoundary(
           key: const ValueKey('menu-capture'),
           child: MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(scale)),
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(scale),
+              disableAnimations: reducedMotion,
+            ),
             child: ChatNoticeActivityScope(activity: activity, child: child!),
           ),
         ),
@@ -160,7 +163,7 @@ void main() {
             ProfileWorkspaceScreen(
               controller: controller,
               createBotsSession: () {
-                final bots = BotsFixture();
+                final bots = botFixture ?? BotsFixture();
                 return BotsSession(
                   (_) async => [
                     BotsRepository(
@@ -284,6 +287,11 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets('recents ${brightness.name} at $scale', (tester) async {
+        final botFixture = BotsFixture()
+          ..readHook = (_, method, _) async {
+            if (method == 'groups.list') throw StateError('Groups unavailable');
+            return null;
+          };
         final chat = await controller.createChat(canDispatch: () => true);
         emitChatEvent(controller, chat, 'session.title', {
           'session_id': chat.key.sessionId,
@@ -301,7 +309,13 @@ void main() {
           'request_id': 'fixture-approval',
           'command': 'Review fixture command',
         });
-        await show(tester, scale: scale, brightness: brightness);
+        await show(
+          tester,
+          scale: scale,
+          brightness: brightness,
+          botFixture: botFixture,
+          reducedMotion: scale == 2,
+        );
         await navigate(tester, AppDestination.activity);
         expect(find.text('Recents'), findsOneWidget);
         expect(find.byType(ServerConnectionLabel), findsOneWidget);
@@ -360,6 +374,111 @@ void main() {
         );
         expect(find.text('Recent chats unavailable for work.'), findsNothing);
         await snapshot(tester, 'recents-errors-${brightness.name}-$scale');
+        final retry = find.byWidgetPredicate(
+          (widget) =>
+              widget is IconButton &&
+              widget.tooltip == 'Retry loading recent chats',
+        );
+        expect(retry, findsOneWidget);
+        expect(find.byTooltip('Retry loading recent chats'), findsOneWidget);
+        final failedCardPosition = tester.getTopLeft(
+          find.byType(RecentIdentityCard).first,
+        );
+        final retryRelease = Completer<void>();
+        addTearDown(() {
+          if (!retryRelease.isCompleted) retryRelease.complete();
+        });
+        fixture.pageDelays[('personal', 0)] = retryRelease;
+        await tester.tap(retry);
+        await tester.pump();
+        await tester.pump();
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(
+          find.ancestor(
+            of: find.byType(StudioLoading),
+            matching: find.byType(WingAppBar),
+          ),
+          findsOneWidget,
+        );
+        expect(tester.widget<IconButton>(retry).onPressed, isNull);
+        expect(
+          tester.getTopLeft(find.byType(RecentIdentityCard).first),
+          failedCardPosition,
+        );
+        final reads = fixture.reads.length;
+        await tester.tap(retry);
+        await tester.pump();
+        expect(fixture.reads.length, reads);
+        await snapshot(tester, 'recents-retrying-${brightness.name}-$scale');
+        retryRelease.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(retry, findsOneWidget);
+        expect(tester.widget<IconButton>(retry).onPressed, isNotNull);
+
+        // Retry immediately inside the owner's freshness window. Hold chats
+        // first and then bot/group reads so feedback must span both stages.
+        fixture.pageFailures.clear();
+        final pullRelease = Completer<void>();
+        final botsRelease = Completer<void>();
+        addTearDown(() {
+          if (!pullRelease.isCompleted) pullRelease.complete();
+          if (!botsRelease.isCompleted) botsRelease.complete();
+        });
+        fixture.pageDelays[('personal', 0)] = pullRelease;
+        var botsStarted = false;
+        botFixture.readHook = (_, method, _) async {
+          if (method == 'groups.list') {
+            botsStarted = true;
+            await botsRelease.future;
+          }
+          return null;
+        };
+        await tester.drag(find.byType(ListView).first, const Offset(0, 350));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(tester.widget<IconButton>(retry).onPressed, isNull);
+        expect(
+          tester.getTopLeft(find.byType(RecentIdentityCard).first),
+          failedCardPosition,
+        );
+        pullRelease.complete();
+        for (var i = 0; i < 20; i++) {
+          await tester.pump();
+        }
+        expect(controller.recentsLoading, isFalse);
+        expect(botsStarted, isTrue);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        await snapshot(
+          tester,
+          'recents-pull-refresh-${brightness.name}-$scale',
+        );
+        botsRelease.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(retry, findsNothing);
+        expect(
+          find.text('Some recent conversations could not be loaded.'),
+          findsNothing,
+        );
+        final departureRelease = Completer<void>();
+        addTearDown(() {
+          if (!departureRelease.isCompleted) departureRelease.complete();
+        });
+        fixture.pageDelays[('personal', 0)] = departureRelease;
+        await tester.drag(find.byType(ListView).first, const Offset(0, 350));
+        await tester.pump();
+        await tester.pump(const Duration(seconds: 1));
+        await tester.pump();
+        expect(find.byType(StudioLoading), findsOneWidget);
+        await tester.tap(find.text('Choose deployment region'));
+        await tester.pumpAndSettle();
+        expect(find.byType(WorkspaceActivityContent), findsNothing);
+        departureRelease.complete();
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
         expect(tester.takeException(), isNull);
       });
 

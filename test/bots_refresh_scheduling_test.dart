@@ -200,6 +200,47 @@ void main() {
     );
   }
 
+  for (final method in [
+    'profiles.list',
+    'session.active_list',
+    'groups.capabilities',
+    'groups.list',
+    'groups.state',
+    'groups.log',
+  ]) {
+    test('requested retry bypasses only failed $method reads', () async {
+      final now = DateTime.utc(2026, 10, 13);
+      final fixture = BotsFixture(now: () => now);
+      _append(fixture, 1);
+      var broken = true;
+      final reads = <String, int>{};
+      fixture.readHook = (_, operation, _) async {
+        reads.update(operation, (count) => count + 1, ifAbsent: () => 1);
+        if (broken && operation == method) throw StateError('Unavailable');
+        return null;
+      };
+      final owner = BotsSession(
+        (_) async => [fixture.repository],
+        now: () => now,
+      );
+      addTearDown(owner.dispose);
+      await owner.refresh();
+      expect(owner.state.errors, isNotEmpty);
+      final failedReads = reads[method]!;
+      final readinessReads = reads['groups.capabilities'];
+      broken = false;
+      await owner.refresh(retryFailures: true);
+      expect(reads[method], greaterThan(failedReads));
+      expect(owner.state.errors, isEmpty);
+      expect(owner.observedGroups.single.observationComplete, isTrue);
+      expect(owner.observedGroups.single.preview, 'Answer 1');
+      if (method != 'groups.capabilities') {
+        expect(reads['groups.capabilities'], readinessReads);
+      }
+      expect(fixture.commands, isEmpty);
+    });
+  }
+
   test('held failure cooldown starts when the failure completes', () async {
     final start = DateTime.utc(2026, 10, 13);
     var now = start;

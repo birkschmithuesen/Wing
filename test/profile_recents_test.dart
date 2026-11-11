@@ -1546,6 +1546,56 @@ void main() {
     expect(identical(recents.items(), items), isTrue);
   });
 
+  test('explicit retry joins and upgrades an automatic refresh', () async {
+    final host = BotsFixture();
+    var groupReads = 0;
+    var broken = true;
+    host.readHook = (_, method, _) async {
+      if (method == 'groups.list') {
+        groupReads++;
+        if (broken) throw StateError('Groups unavailable');
+      }
+      return null;
+    };
+    final bots = BotsSession((_) async => [host.repository]);
+    addTearDown(bots.dispose);
+    final recents = recentsFor(bots);
+    await recents.refresh();
+    expect(recents.catalog.error, isNotNull);
+    expect(groupReads, 1);
+
+    final release = Completer<void>();
+    addTearDown(() {
+      if (!release.isCompleted) release.complete();
+    });
+    fixture.pageDelays[('personal', 0)] = release;
+    final automatic = recents.refresh(force: true);
+    await Future<void>.delayed(Duration.zero);
+    expect(groupReads, 1, reason: 'Automatic reads respect failure cooldown');
+    int firstPageReads() => fixture.reads
+        .where((read) => read.$1 == 'sessions' && read.$2['offset'] == '0')
+        .length;
+    final sessionReads = firstPageReads();
+    broken = false;
+    final explicit = recents.refresh(force: true, retryFailures: true);
+    final repeated = recents.refresh(force: true, retryFailures: true);
+    expect(explicit, same(automatic));
+    expect(repeated, same(automatic));
+    release.complete();
+    await explicit;
+    expect(
+      firstPageReads(),
+      sessionReads,
+      reason: 'Joining must not start another chat refresh',
+    );
+    expect(
+      groupReads,
+      2,
+      reason: 'Joined retry reattempts the failed read once',
+    );
+    expect(recents.catalog.error, isNull);
+  });
+
   test(
     'cached Recents openings share one background refresh and visibility lease',
     () async {

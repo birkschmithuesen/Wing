@@ -6,6 +6,8 @@ import '../services/profile_workspace_controller.dart';
 import '../services/workspace_recents_session.dart';
 import '../widgets/recent_identity_card.dart';
 import '../widgets/studio_error.dart';
+import '../widgets/studio_form_actions.dart';
+import '../theme/wing_theme.dart';
 export 'administration/administration_content.dart';
 
 class WorkspaceActivityContent extends StatefulWidget {
@@ -30,6 +32,7 @@ class WorkspaceActivityContent extends StatefulWidget {
 class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
   late WorkspaceRecentsSession _session;
   bool _opening = false;
+  bool _refreshing = false;
   void _attach() {
     _session = widget.recents;
     _session.addListener(_changed);
@@ -71,6 +74,7 @@ class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
   void didUpdateWidget(WorkspaceActivityContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.recents != widget.recents) {
+      _refreshing = false;
       _session.removeListener(_changed);
       _session.setVisible(this, false);
       _attach();
@@ -100,6 +104,18 @@ class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
     }
   }
 
+  Future<void> _refresh() async {
+    final session = _session;
+    setState(() => _refreshing = true);
+    try {
+      await session.refresh(force: true, retryFailures: true);
+    } finally {
+      if (mounted && identical(_session, session)) {
+        setState(() => _refreshing = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
@@ -111,53 +127,75 @@ class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
     return ValueListenableBuilder(
       valueListenable: colors,
       builder: (context, choices, _) => StudioPageLoading(
-        active: _session.contentLoading,
-        label: 'Loading recent chats',
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            if (_session.catalog.error case final error?)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: StudioError(error),
-              ),
-            if (items.isEmpty &&
-                _session.contentAvailable &&
-                _session.catalog.error == null)
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 48),
-                child: Column(
-                  children: [
-                    const Icon(Icons.history, size: 40),
-                    const SizedBox(height: 16),
-                    const Text('No recent chats'),
-                  ],
+        active: _session.contentLoading || _refreshing,
+        label: _refreshing ? 'Refreshing recent chats' : 'Loading recent chats',
+        child: StudioRefresh(
+          available: true,
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
+            children: [
+              if (_session.catalog.error case final error?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: StudioErrorFrame(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WingSpacing.md),
+                      child: Row(
+                        children: [
+                          Expanded(child: StudioError(error, framed: false)),
+                          const SizedBox(width: WingSpacing.sm),
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Retry loading recent chats',
+                              onPressed: _refreshing ? null : _refresh,
+                              icon: const Icon(Icons.refresh),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            for (final item in items)
-              RecentIdentityCard(
-                item: item,
-                bots: widget.bots.state.bots,
-                now: now,
-                profileChoice: choices
-                    .profiles[item.chat?.key.workspace.profileName]
-                    ?.displayChoice,
-                isDefault:
-                    controller.discovery
-                        ?.named(item.chat?.key.workspace.profileName ?? '')
-                        ?.isDefault ==
-                    true,
-                onTap: controller.switching || _opening
-                    ? null
-                    : () {
-                        if (item.group case final group?) {
-                          _openGroup(group);
-                        } else {
-                          widget.onOpen(item.chat!, items);
-                        }
-                      },
-              ),
-          ],
+              if (items.isEmpty &&
+                  _session.contentAvailable &&
+                  _session.catalog.error == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.history, size: 40),
+                      const SizedBox(height: 16),
+                      const Text('No recent chats'),
+                    ],
+                  ),
+                ),
+              for (final item in items)
+                RecentIdentityCard(
+                  item: item,
+                  bots: widget.bots.state.bots,
+                  now: now,
+                  profileChoice: choices
+                      .profiles[item.chat?.key.workspace.profileName]
+                      ?.displayChoice,
+                  isDefault:
+                      controller.discovery
+                          ?.named(item.chat?.key.workspace.profileName ?? '')
+                          ?.isDefault ==
+                      true,
+                  onTap: controller.switching || _opening
+                      ? null
+                      : () {
+                          if (item.group case final group?) {
+                            _openGroup(group);
+                          } else {
+                            widget.onOpen(item.chat!, items);
+                          }
+                        },
+                ),
+            ],
+          ),
         ),
       ),
     );

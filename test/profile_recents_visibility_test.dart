@@ -30,6 +30,7 @@ import 'support/profile_browser_fixture.dart';
 class TechnicalSessionsFixture extends ProfileBrowserFixture {
   String messagePreviewText = 'Result';
   bool oldTechnicalHistory = false;
+  bool empty = false;
   String technicalSource = 'oneshot';
   final extraRows = <Map<String, dynamic>>[];
   @override
@@ -38,7 +39,8 @@ class TechnicalSessionsFixture extends ProfileBrowserFixture {
       if (row['id'] == query) {...row, 'session_id': row['id']},
   ];
   @override
-  List<Map<String, dynamic>> sessions(String profile) => profile != 'personal'
+  List<Map<String, dynamic>> sessions(String profile) =>
+      profile != 'personal' || empty
       ? []
       : [
           ...extraRows,
@@ -94,6 +96,91 @@ Future<void> _captureRecents(
 }
 
 void main() {
+  for (final empty in [false, true]) {
+    testWidgets('pull refresh works on short Recents empty=$empty', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      final fixture = TechnicalSessionsFixture()..empty = empty;
+      final controller = ProfileWorkspaceController(
+        access: ConnectionAccess(
+          connection: identityTestConnection(),
+          dashboardOAuth: null,
+        ),
+        connectionIdentity: 'short-recents',
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: fixture.gateway,
+      );
+      final bots = BotsSession((_) async => []);
+      final recents = WorkspaceRecentsSession(
+        controller,
+        bots,
+        foreground: true,
+      );
+      final release = Completer<void>();
+      addTearDown(() async {
+        if (!release.isCompleted) release.complete();
+        await tester.pumpWidget(const SizedBox.shrink());
+        recents.dispose();
+        bots.dispose();
+        controller.dispose();
+        appPreferences.dispose();
+      });
+      await controller.initialize();
+      await recents.refresh();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(actions: const [StudioLoadingSlot()]),
+            body: WorkspaceActivityContent(
+              recents: recents,
+              visible: true,
+              onOpen: (_, _) {},
+              onOpenGroup: (_) async {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        find.text(empty ? 'No recent chats' : 'User conversation'),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .state<ScrollableState>(find.byType(Scrollable))
+            .position
+            .maxScrollExtent,
+        0,
+      );
+      fixture.pageDelays[('personal', 0)] = release;
+      final reads = fixture.reads.length;
+      await tester.drag(find.byType(ListView), const Offset(0, 350));
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
+      await tester.pump();
+      expect(fixture.reads.length, greaterThan(reads));
+      expect(find.byType(StudioLoading), findsOneWidget);
+      expect(
+        find.text(empty ? 'No recent chats' : 'User conversation'),
+        findsOneWidget,
+      );
+      // A second intent joins the owner's already admitted operation.
+      final joinedReads = fixture.reads.length;
+      final joined = recents.refresh(force: true, retryFailures: true);
+      await tester.pump();
+      expect(fixture.reads.length, joinedReads);
+      release.complete();
+      await tester.pumpAndSettle();
+      await joined;
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(recents.catalog.error, isNull);
+      expect(tester.takeException(), isNull);
+    });
+  }
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       for (final daysOld in [0, 2]) {

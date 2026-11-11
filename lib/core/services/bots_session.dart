@@ -868,8 +868,27 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     ]);
   }
 
-  Future<void> refresh({bool explicit = true}) async {
+  Future<void> refresh({
+    bool explicit = true,
+    bool retryFailures = false,
+  }) async {
     if (_closed || _busy) return;
+    if (retryFailures) {
+      for (final jobs in [
+        _rosterJobs,
+        _statusJobs,
+        _readinessJobs,
+        _catalogJobs,
+        _stateJobs,
+        _previewJobs,
+      ]) {
+        for (final job in jobs.values) {
+          if (job.failed == null) continue;
+          job.failed = null;
+          job.success = null;
+        }
+      }
+    }
     final generation = _readGeneration;
     bool current() => !_closed && generation == _readGeneration;
     _refreshes++;
