@@ -210,7 +210,6 @@ void main() {
     if (!review) return;
     for (final entry in {
       'Roboto': 'build/studio-roboto.ttf',
-      'monospace': '/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf',
       'MaterialIcons': 'build/studio-icons.otf',
       'monospace': 'build/studio-mono.ttf',
       'WingIcons': 'assets/fonts/wing-icons.ttf',

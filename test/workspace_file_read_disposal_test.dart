@@ -1,5 +1,6 @@
 import 'package:wing/core/services/bots_session.dart';
 import 'package:wing/core/services/owned_remote_files.dart';
+import 'package:wing/core/services/transcript_resource_session.dart';
 import 'package:wing/core/models/profile_session_key.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
@@ -41,7 +42,7 @@ class _StalledBodyClient extends http.BaseClient {
 class _FileReadController extends ProfileWorkspaceController {
   _FileReadController(
     SharedPreferences preferences,
-    AnswerHost host,
+    this.host,
     this.transport, {
     required super.appPreferences,
   }) : super(
@@ -61,9 +62,10 @@ class _FileReadController extends ProfileWorkspaceController {
        );
 
   final _StalledBodyClient transport;
+  final AnswerHost host;
 
   @override
-  OwnedRemoteFiles outputFiles(ProfileChat chat) {
+  TranscriptResourceSession traceResources(ProfileSessionKey key) {
     final files = RemoteFilesClient(
       dashboard: DashboardClient(
         host: 'localhost',
@@ -72,11 +74,16 @@ class _FileReadController extends ProfileWorkspaceController {
         readTimeout: const Duration(minutes: 1),
       ),
     );
-    return OwnedRemoteFiles(
-      source: files,
-      profileName: chat.key.workspace.profileName,
-      storedSessionId: chat.key.sessionId,
-      release: files.close,
+    final gateway = host.gateway(key.workspace);
+    return TranscriptResourceSession(
+      files: OwnedRemoteFiles(
+        source: files,
+        profileName: key.workspace.profileName,
+        storedSessionId: key.sessionId,
+        release: files.close,
+      ),
+      loadHistory: (offset) => gateway.history(key.sessionId, offset: offset),
+      createSkillReader: gateway.skillReader,
     );
   }
 }
