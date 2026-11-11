@@ -130,6 +130,7 @@ class AdminRow extends StatefulWidget {
   final String? attention;
   final String? detail;
   final IconData icon;
+  final Color? iconColor;
   final VoidCallback? onTap;
   const AdminRow({
     super.key,
@@ -139,6 +140,7 @@ class AdminRow extends StatefulWidget {
     this.attention,
     this.detail,
     required this.icon,
+    this.iconColor,
     this.onTap,
   });
   @override
@@ -183,7 +185,7 @@ class _AdminRowState extends State<AdminRow> {
         contentPadding: const EdgeInsets.symmetric(horizontal: 12),
         minTileHeight: 64,
         minVerticalPadding: 8,
-        leading: Icon(widget.icon, size: 22),
+        leading: Icon(widget.icon, size: 22, color: widget.iconColor),
         title: Text(
           widget.title,
           style: const TextStyle(fontWeight: FontWeight.w600),

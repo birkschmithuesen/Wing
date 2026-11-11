@@ -716,6 +716,11 @@
       "feature": "model-selection",
       "library": "lib/core/screens/administration/admin_fallback_page.dart"
     },
+    "lib/core/screens/administration/admin_health_alerts.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_health_alerts.dart"
+    },
     "lib/core/screens/administration/admin_health_page.dart": {
       "role": "view",
       "feature": "administration-health",
@@ -2280,11 +2285,6 @@
       "role": "view",
       "feature": "administration-health",
       "library": "lib/core/widgets/health_alerts/health_alert_notice.dart"
-    },
-    "lib/core/widgets/health_alerts/health_alert_settings_entry.dart": {
-      "role": "view",
-      "feature": "administration-health",
-      "library": "lib/core/widgets/health_alerts/health_alert_settings_entry.dart"
     },
     "lib/core/widgets/health_alerts/health_alerts_scope.dart": {
       "role": "view",

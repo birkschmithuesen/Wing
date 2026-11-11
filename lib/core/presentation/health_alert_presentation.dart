@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 import '../models/host_thresholds.dart';
 import '../models/health_alert.dart';
 import '../widgets/studio_error.dart';
@@ -6,6 +8,25 @@ StudioErrorSeverity healthAlertErrorSeverity(HealthAlert alert) =>
     alert.severity == HealthAlertSeverity.critical || !alert.scope.monitored
     ? StudioErrorSeverity.error
     : StudioErrorSeverity.noResult;
+
+String healthAlertScopeLabel(HealthAlert alert) => [
+  if (alert.scope == HealthAlertScope.host) 'Host',
+  if (alert.scope == HealthAlertScope.profile) 'Profile',
+  if (alert.scope == HealthAlertScope.connection) 'Connection',
+  alert.connectionLabel,
+  ?alert.profileName,
+].join(' · ');
+
+String? healthAlertSilencedLabel(
+  BuildContext context,
+  HealthAlert alert,
+  DateTime now,
+) {
+  if (alert.remindsAt(now)) return null;
+  if (alert.acknowledged) return 'Acknowledged';
+  final until = TimeOfDay.fromDateTime(alert.snoozedUntil!.toLocal());
+  return 'Snoozed until ${until.format(context)}';
+}
 
 String healthAlertActionLabel(HealthAlert alert) => switch (alert.destination) {
   'Connection details' => 'Open connection details',

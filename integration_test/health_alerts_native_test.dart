@@ -565,7 +565,7 @@ void main() {
       } finally {
         observingMotion = false;
       }
-      expect(find.byType(Dialog), findsNothing);
+      expect(find.byKey(const ValueKey('health-alert-card')), findsNothing);
       final dismissNotice = find.byTooltip('Dismiss health notice');
       expect(dismissNotice, findsOneWidget);
       await _capture('$label-notice');
@@ -582,14 +582,31 @@ void main() {
       expect(find.text('Critical memory pressure'), findsOneWidget);
       expect(find.byTooltip('Alert settings'), findsNothing);
       await _capture('$label-alert');
+      final card = find.byKey(const ValueKey('health-alert-card'));
+      final bounds = tester.getRect(card);
+      expect(bounds.top, tester.getRect(bell).bottom + 4);
+      await tapJourneyControl(tester, find.byTooltip('Snooze for 30 minutes'));
+      await _settleScreen(tester);
+      expect(tester.getRect(card), bounds);
+      await tapJourneyControl(tester, find.byTooltip('Unsnooze issue'));
+      await _settleScreen(tester);
+      expect(tester.getRect(card), bounds);
+      await tapJourneyControl(tester, find.byTooltip('Acknowledge issue'));
+      await _settleScreen(tester);
+      expect(tester.getRect(card), bounds);
+      await tapJourneyControl(tester, find.byTooltip('Unacknowledge issue'));
+      await _settleScreen(tester);
+      expect(tester.getRect(card), bounds);
       expect(find.byTooltip('Acknowledge issue'), findsOneWidget);
       expect(find.byTooltip('Snooze for 30 minutes'), findsOneWidget);
       await tester.tap(find.byTooltip('Open Hermes health'));
       await _settleScreen(tester);
-      await _capture('$label-health');
-      await tester.tap(
-        find.byKey(const ValueKey('health-alert-settings-entry')),
+      expect(
+        find.widgetWithText(ListTile, 'Critical memory pressure').hitTestable(),
+        findsOneWidget,
       );
+      await _capture('$label-health');
+      await tester.tap(find.byTooltip('Alert settings'));
       await _settleScreen(tester);
       await _capture('$label-settings');
       await tester.ensureVisible(find.text('Memory usage'));
@@ -658,11 +675,18 @@ void main() {
       await _settleScreen(tester);
       expect(prefs.getString('wing-health-alert-settings'), contains('96.5'));
       expect(bell, findsNothing);
-      await tester.pageBack();
-      await _settleScreen(tester);
-      await tester.pageBack();
-      await _settleScreen(tester);
-      expect(find.text('Improve the conversation list'), findsWidgets);
+      for (final title in ['Alert settings', 'Hermes health']) {
+        final back = find
+            .descendant(
+              of: find.widgetWithText(AppBar, title),
+              matching: find.byType(BackButton),
+            )
+            .hitTestable();
+        await _waitFor(tester, back);
+        await tester.tap(back);
+        await _settleScreen(tester);
+      }
+      await _waitFor(tester, find.text('Improve the conversation list'));
       await tester.binding.handlePopRoute();
       await _settleScreen(tester);
       expect(find.text('Chats'), findsWidgets);
@@ -710,7 +734,7 @@ void main() {
         expect(bell.hitTestable(), findsOneWidget);
         await tester.tap(bell);
         await _settleScreen(tester);
-        final alerts = find.byType(Dialog);
+        final alerts = find.byKey(const ValueKey('health-alert-card'));
         final diskIssue = find.descendant(
           of: alerts,
           matching: find.text('Critical disk pressure'),
@@ -813,6 +837,67 @@ void main() {
       );
       expect(bell, findsOneWidget);
       await _capture('$label-analytics-recovered');
+      await tester.tap(find.byTooltip('Open navigation menu'));
+      await _settleScreen(tester);
+      await tester.ensureVisible(find.byKey(const ValueKey('nav-analytics')));
+      expect(
+        find.descendant(
+          of: find.byType(AppDrawer),
+          matching: find.text('Alerts'),
+        ),
+        findsNothing,
+      );
+      final healthDestination = find.byKey(const ValueKey('nav-health'));
+      await tester.ensureVisible(healthDestination);
+      await tester.tap(healthDestination.hitTestable());
+      await _settleScreen(tester);
+      final memoryRow = find.widgetWithText(
+        ListTile,
+        'Critical memory pressure',
+      );
+      final diskRow = find.widgetWithText(ListTile, 'Critical disk pressure');
+      for (final (row, action, status) in [
+        (memoryRow, 'Snooze for 30 minutes', 'Snoozed until'),
+        (diskRow, 'Acknowledge issue', 'Acknowledged'),
+      ]) {
+        await tester.ensureVisible(row);
+        await _waitFor(tester, row.hitTestable());
+        await tester.tap(row.hitTestable());
+        await _settleScreen(tester);
+        expect(find.byTooltip('Next issue'), findsNothing);
+        final choice = find.byTooltip(action).hitTestable();
+        await _waitFor(tester, choice);
+        await tester.tap(choice);
+        await _settleScreen(tester);
+        final close = find.byTooltip('Close alerts').hitTestable();
+        await _waitFor(tester, close);
+        await tester.tap(close);
+        await _settleScreen(tester);
+        expect(
+          find.descendant(of: row, matching: find.textContaining(status)),
+          findsOneWidget,
+        );
+      }
+      final scope = HealthAlertsScope.maybeOf(tester.element(diskRow))!;
+      final attention = scope.alerts.attentionAlerts;
+      expect(
+        attention.map((alert) => alert.title),
+        isNot(
+          anyOf(
+            contains('Critical memory pressure'),
+            contains('Critical disk pressure'),
+          ),
+        ),
+      );
+      if (attention.isEmpty) {
+        expect(bell.hitTestable(), findsNothing);
+      } else {
+        expect(
+          find.descendant(of: bell, matching: find.text('${attention.length}')),
+          findsOneWidget,
+        );
+      }
+      await _capture('$label-retained-inline-alerts');
       expect(tester.takeException(), isNull);
     });
   }

@@ -12,6 +12,8 @@ import 'health_alert_incident_store.dart';
 import 'host_resources_session.dart';
 import 'server_connection_status.dart';
 
+enum _AlertChoice { acknowledge, snooze, unacknowledge, unsnooze }
+
 /// Connection-owned evaluator borrowing canonical observations. Owns only its
 /// watch demand and incidents; never runs diagnostics. Inventory recovery reads
 /// join the same connection owner used by the connector editor and Health.
@@ -170,19 +172,18 @@ class HealthAlertsSession extends ChangeNotifier {
     final data = host.state;
     if (_active) _observeConnection();
     _observeHostReads(data);
-    if (!policy.enabled) {
-      _evaluator.clearMonitored();
-      _publish();
-      return;
-    }
     // Disabled scopes remove their incidents even while collection is paused.
     for (final alert in alerts) {
       if (alert.scope == HealthAlertScope.profile && !policy.profile) {
         _evaluator.remove(alert.id);
       }
     }
-    for (final metric in hostAlertMetrics) {
-      _evaluator.applyHostRule(metric, policy.rules[metric]!);
+    if (policy.enabled) {
+      for (final metric in hostAlertMetrics) {
+        _evaluator.applyHostRule(metric, policy.rules[metric]!);
+      }
+    } else {
+      _evaluator.clearHostAlerts();
     }
     if (!_active) {
       _publish();
@@ -190,7 +191,7 @@ class HealthAlertsSession extends ChangeNotifier {
     }
     final now = _now();
     final observation = (data.stats, data.pressure);
-    if (!data.refreshing && _evaluatedHost != observation) {
+    if (policy.enabled && !data.refreshing && _evaluatedHost != observation) {
       // Repeated owner notifications are not new host samples. In particular,
       // an aging cached reading must not cancel a retained pending period.
       _evaluatedHost = observation;
@@ -415,19 +416,42 @@ class HealthAlertsSession extends ChangeNotifier {
   }
 
   Future<void> acknowledge(HealthAlert alert) =>
-      _silence(alert, acknowledge: true);
+      _saveChoice(alert, _AlertChoice.acknowledge);
 
-  Future<void> snooze(HealthAlert alert) => _silence(alert, acknowledge: false);
+  Future<void> snooze(HealthAlert alert) =>
+      _saveChoice(alert, _AlertChoice.snooze);
 
-  Future<void> _silence(HealthAlert alert, {required bool acknowledge}) async {
+  Future<void> unacknowledge(HealthAlert alert) =>
+      _saveChoice(alert, _AlertChoice.unacknowledge);
+
+  Future<void> unsnooze(HealthAlert alert) =>
+      _saveChoice(alert, _AlertChoice.unsnooze);
+
+  Future<void> _saveChoice(HealthAlert alert, _AlertChoice choice) async {
     if (_closed || _saving) return;
     final current = alerts.where((a) => a.id == alert.id).firstOrNull;
     if (current == null || current.occurrence != alert.occurrence) return;
-    final until = _now().add(const Duration(minutes: 30));
-    final target = current.copyWith(
-      acknowledged: acknowledge ? true : current.acknowledged,
-      snoozedUntil: acknowledge ? current.snoozedUntil : until,
-    );
+    final now = _now();
+    final HealthAlertSilencing? silencing = switch (choice) {
+      _AlertChoice.acknowledge when !current.acknowledged => (
+        acknowledged: true,
+        snoozedUntil: null,
+      ),
+      _AlertChoice.snooze when current.remindsAt(now) => (
+        acknowledged: false,
+        snoozedUntil: now.add(const Duration(minutes: 30)),
+      ),
+      _AlertChoice.unacknowledge when current.acknowledged => (
+        acknowledged: false,
+        snoozedUntil: null,
+      ),
+      _AlertChoice.unsnooze
+          when !current.acknowledged && !current.remindsAt(now) =>
+        (acknowledged: false, snoozedUntil: null),
+      _ => null,
+    };
+    if (silencing == null) return;
+    final target = current.copyWith(silencing: silencing);
     _saving = true;
     _pendingChoice = target;
     _error = null;
@@ -439,11 +463,7 @@ class HealthAlertsSession extends ChangeNotifier {
       await incidents.write(host.connectionIdentity, snapshot);
       if (!_closed) {
         _error = null;
-        if (acknowledge) {
-          _evaluator.acknowledge(alert.id, alert.occurrence);
-        } else {
-          _evaluator.snooze(alert.id, alert.occurrence, until);
-        }
+        _evaluator.applySilencing(target);
       }
     } catch (_) {
       if (!_closed) {
@@ -477,10 +497,7 @@ class HealthAlertsSession extends ChangeNotifier {
         pending != null &&
                 a.id == pending.id &&
                 a.occurrence == pending.occurrence
-            ? a.copyWith(
-                acknowledged: pending.acknowledged,
-                snoozedUntil: pending.snoozedUntil,
-              )
+            ? a.copyWith(silencing: pending.silencing)
             : a,
     ];
     final state = _incidentState(snapshot);

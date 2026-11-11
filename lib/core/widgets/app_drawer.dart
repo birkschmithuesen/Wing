@@ -1,7 +1,5 @@
 import '../services/connection_access.dart';
 import 'drawer_versions.dart';
-import 'health_alerts/health_alert_dialog.dart';
-import 'health_alerts/health_alerts_scope.dart';
 import '../services/versions_controller.dart';
 import '../services/server_connection_status.dart';
 import 'package:flutter/material.dart';
@@ -47,7 +45,6 @@ class AppDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = Theme.of(context).colorScheme;
     final largeText = MediaQuery.textScalerOf(context).scale(16) > 24;
-    final alerts = HealthAlertsScope.maybeOf(context);
     return Drawer(
       backgroundColor: colors.surfaceContainerLow,
       child: SafeArea(
@@ -104,22 +101,6 @@ class AppDrawer extends StatelessWidget {
                             onSelected(destination);
                           },
                         ),
-                        if (destination == AppDestination.health &&
-                            alerts != null)
-                          _DrawerTile(
-                            tileKey: const ValueKey('nav-alerts'),
-                            label: 'Alerts',
-                            icon: Icons.warning_amber_rounded,
-                            largeText: largeText,
-                            onTap: () {
-                              Navigator.of(context).pop();
-                              showHealthAlerts(
-                                context,
-                                alerts,
-                                includeSilenced: true,
-                              );
-                            },
-                          ),
                       ],
                     ],
                   ),

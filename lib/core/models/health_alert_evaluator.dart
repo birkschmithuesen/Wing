@@ -31,8 +31,8 @@ class HealthAlertEvaluator {
     }
   }
 
-  void clearMonitored() {
-    _alerts.removeWhere((_, alert) => alert.scope.monitored);
+  void clearHostAlerts() {
+    _alerts.removeWhere((_, alert) => alert.scope == HealthAlertScope.host);
     resetPeriods();
   }
 
@@ -332,15 +332,10 @@ class HealthAlertEvaluator {
     );
   }
 
-  void acknowledge(String id, int occurrence) {
-    if (_alerts[id] case final alert? when alert.occurrence == occurrence) {
-      _alerts[id] = alert.copyWith(acknowledged: true);
-    }
-  }
-
-  void snooze(String id, int occurrence, DateTime until) {
-    if (_alerts[id] case final alert? when alert.occurrence == occurrence) {
-      _alerts[id] = alert.copyWith(snoozedUntil: until);
+  void applySilencing(HealthAlert choice) {
+    if (_alerts[choice.id] case final alert?
+        when alert.occurrence == choice.occurrence) {
+      _alerts[choice.id] = alert.copyWith(silencing: choice.silencing);
     }
   }
 }

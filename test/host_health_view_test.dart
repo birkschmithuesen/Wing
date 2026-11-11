@@ -161,8 +161,8 @@ void main() {
             expect(find.text('Unavailable'), findsNWidgets(3));
           }
           if (scenario == 'pressure') {
-            expect(find.textContaining('Memory is low.'), findsOneWidget);
-            expect(find.textContaining('Disk space is low.'), findsOneWidget);
+            expect(find.text('Critical pressure'), findsOneWidget);
+            expect(find.text('Elevated pressure'), findsOneWidget);
           }
           if (scenario == 'error') {
             expect(

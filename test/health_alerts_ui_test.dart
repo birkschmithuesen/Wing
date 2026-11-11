@@ -126,7 +126,17 @@ void main() {
     }
   }
 
-  testWidgets('main menu opens current Alerts including silenced issues', (
+  Widget healthContent(HealthAlertsFixture fixture) => AdminHealthContent(
+    health: fixture.owner.healthSession().health,
+    hostResources: fixture.owner.hostResources(),
+    profile: null,
+    onRefresh: fixture.owner.hostResources().refresh,
+    onOpenDestination: (_) async {},
+    accessChecks: () => null,
+    onReviewAccess: null,
+  );
+
+  testWidgets('the drawer leads to inline alerts even with monitoring off', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -135,64 +145,104 @@ void main() {
       (current) => current.copyWith(enabled: false),
     );
     final scaffold = GlobalKey<ScaffoldState>();
+    var destination = AppDestination.chats;
     await tester.pumpWidget(
       HealthAlertsScope(
         alerts: fixture.coordinator,
         openAlert: (_) async {},
         child: MaterialApp(
-          home: Scaffold(
-            key: scaffold,
-            drawer: AppDrawer(
-              selected: AppDestination.chats,
-              onSelected: (_) => fail('Alerts should keep the current route'),
+          home: StatefulBuilder(
+            builder: (context, setState) => Scaffold(
+              key: scaffold,
+              drawer: AppDrawer(
+                selected: destination,
+                onSelected: (selected) =>
+                    setState(() => destination = selected),
+              ),
+              body: destination == AppDestination.health
+                  ? healthContent(fixture)
+                  : const Text('Current workspace'),
             ),
-            body: const Text('Current workspace'),
           ),
         ),
       ),
     );
 
-    Future<void> openAlerts() async {
-      scaffold.currentState!.openDrawer();
-      await tester.pumpAndSettle();
-      final entry = find.byKey(const ValueKey('nav-alerts'));
-      await tester.ensureVisible(entry);
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
-      expect(scaffold.currentState!.isDrawerOpen, isFalse);
-      expect(find.byType(Dialog), findsOneWidget);
-    }
-
-    await openAlerts();
-    expect(find.text('No current alerts.'), findsOneWidget);
-    await tester.tap(find.byTooltip('Close alerts'));
+    scaffold.currentState!.openDrawer();
     await tester.pumpAndSettle();
+    final drawer = find.byType(AppDrawer);
+    expect(
+      find.descendant(of: drawer, matching: find.text('Alerts')),
+      findsNothing,
+    );
+    final health = find.byKey(const ValueKey('nav-health'));
+    await tester.ensureVisible(health);
+    await tester.tap(health);
+    await tester.pumpAndSettle();
+    expect(scaffold.currentState!.isDrawerOpen, isFalse);
+    expect(find.text('No current alerts'), findsOneWidget);
+    expect(find.byTooltip('Alert settings'), findsOneWidget);
+    expect(find.text('Current workspace'), findsNothing);
 
-    void report(String scope, String title) =>
+    void report(String scope, String title, {required bool failed}) =>
         fixture.coordinator.observeOperationalError(
           fixture.owner,
           scope: scope,
           title: title,
           detail: 'Try refreshing again.',
-          failed: true,
+          failed: failed,
         );
-    report('group:one', 'Group updates failed');
-    report('host-resources', 'Host resources could not refresh');
+    report('group:one', 'Group updates failed', failed: true);
+    report('host-resources', 'Host resources could not refresh', failed: true);
     final alerts = fixture.coordinator.alerts;
     await fixture.coordinator.acknowledge(alerts.first);
     await fixture.coordinator.snooze(alerts.last);
-    expect(fixture.coordinator.attentionAlerts, isEmpty);
-    await openAlerts();
-    expect(find.text('Group updates failed'), findsOneWidget);
-    expect(find.text('Acknowledged.'), findsOneWidget);
-    await tester.tap(find.byTooltip('Next issue'));
     await tester.pumpAndSettle();
-    expect(find.text('Host resources could not refresh'), findsOneWidget);
-    expect(find.textContaining('Snoozed until'), findsOneWidget);
+    expect(fixture.coordinator.attentionAlerts, isEmpty);
+    expect(find.text('No current alerts'), findsNothing);
+    final acknowledged = find.widgetWithText(ListTile, 'Group updates failed');
+    final snoozed = find.widgetWithText(
+      ListTile,
+      'Host resources could not refresh',
+    );
+    expect(
+      find.descendant(
+        of: acknowledged,
+        matching: find.textContaining('Acknowledged'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(
+        of: snoozed,
+        matching: find.textContaining('Snoozed until'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(snoozed);
+    await tester.pumpAndSettle();
+    final dialog = find.byType(Dialog);
+    expect(
+      find.descendant(
+        of: dialog,
+        matching: find.text('Host resources could not refresh'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      find.descendant(of: dialog, matching: find.text('Group updates failed')),
+      findsNothing,
+    );
+    expect(find.byTooltip('Next issue'), findsNothing);
     expect(find.byTooltip('Open Hermes health'), findsNothing);
+
+    report('host-resources', 'Host resources could not refresh', failed: false);
+    await tester.pumpAndSettle();
+    expect(find.text('This issue is no longer current.'), findsOneWidget);
     await tester.tap(find.byTooltip('Close alerts'));
     await tester.pumpAndSettle();
-    expect(find.text('Current workspace'), findsOneWidget);
+    expect(acknowledged, findsOneWidget);
+    expect(snoozed, findsNothing);
     await tester.pumpWidget(const SizedBox());
     fixture.dispose();
   });
@@ -264,11 +314,13 @@ void main() {
       await tester.tap(find.byTooltip('Open alert settings'));
       await tester.pumpAndSettle();
       expect(
-        find.text('Monitor host thresholds and profile health on this device.'),
+        find.text(
+          'Monitor CPU, RAM, and disk. Profile, connection, and service alerts stay available when this is off.',
+        ),
         findsOneWidget,
       );
       await tester.tap(
-        find.widgetWithText(CompactSwitchListTile, 'Health alerts'),
+        find.widgetWithText(CompactSwitchListTile, 'Health monitoring'),
       );
       await tester.pump();
       expect(session.saving, isTrue);
@@ -286,7 +338,7 @@ void main() {
       expect(
         tester
             .widget<CompactSwitchListTile>(
-              find.widgetWithText(CompactSwitchListTile, 'Health alerts'),
+              find.widgetWithText(CompactSwitchListTile, 'Health monitoring'),
             )
             .value,
         isFalse,
@@ -344,23 +396,19 @@ void main() {
       fixture.dispose();
     },
   );
-  Widget healthContent(HealthAlertsFixture fixture) => AdminHealthContent(
-    health: fixture.owner.healthSession().health,
-    hostResources: fixture.owner.hostResources(),
-    profile: null,
-    onRefresh: fixture.owner.hostResources().refresh,
-    onOpenDestination: (_) async {},
-    accessChecks: () => null,
-    onReviewAccess: null,
+  final alertCard = find.byKey(const ValueKey('health-alert-card'));
+  final snoozedStatus = find.byWidgetPredicate(
+    (widget) =>
+        widget is Tooltip &&
+        (widget.message?.startsWith('Snoozed until') ?? false),
   );
-
   void expectSavingFeedback(WidgetTester tester) {
     final pending = find.byType(StudioLoading);
     expect(pending, findsOneWidget);
     // The passive glyph deliberately ignores taps. Prove its rendered bounds
     // remain inside the dialog rather than requiring pointer admission.
     final glyph = tester.getRect(pending);
-    final dialog = tester.getRect(find.byType(Dialog));
+    final dialog = tester.getRect(alertCard);
     expect(glyph.width, greaterThan(0));
     expect(glyph.height, greaterThan(0));
     expect(dialog.intersect(glyph), glyph);
@@ -411,12 +459,14 @@ void main() {
           await tester.pumpAndSettle();
           await tester.tap(find.byKey(const ValueKey('health-alert-bell')));
           await tester.pumpAndSettle();
+          final readyBounds = tester.getRect(alertCard);
           store.gate = Completer<void>();
           await tester.tap(find.byTooltip(action));
           await tester.pump();
           await tester.pump();
           expectSavingFeedback(tester);
-          expect(find.text('Acknowledged.'), findsNothing);
+          expect(tester.getRect(alertCard), readyBounds);
+          expect(find.byTooltip('Acknowledged'), findsNothing);
           for (final icon in [Icons.done, Icons.snooze_outlined]) {
             expect(
               tester
@@ -465,8 +515,8 @@ void main() {
           expect(find.byType(StudioLoading), findsNothing);
           expect(
             action == 'Acknowledge issue'
-                ? find.text('Acknowledged.')
-                : find.textContaining('Snoozed until'),
+                ? find.byTooltip('Acknowledged')
+                : snoozedStatus,
             findsOneWidget,
           );
           expect(fixture.coordinator.attentionAlerts, isEmpty);
@@ -523,9 +573,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(fixture.coordinator.saving, isFalse);
     expect(fixture.coordinator.attentionAlerts, isEmpty);
-    await tester.tap(find.byKey(const ValueKey('health-alerts-entry')));
+    final row = find.widgetWithText(ListTile, 'Critical memory pressure');
+    expect(
+      find.descendant(of: row, matching: find.textContaining('Snoozed until')),
+      findsOneWidget,
+    );
+    await tester.tap(row);
     await tester.pumpAndSettle();
-    expect(find.textContaining('Snoozed until'), findsOneWidget);
+    expect(
+      find.descendant(of: alertCard, matching: snoozedStatus),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox());
     fixture.dispose();
   });
@@ -592,16 +650,34 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    final acknowledgedRow = find.widgetWithText(ListTile, acknowledged.title);
+    final snoozedRow = find.widgetWithText(ListTile, remaining.title);
     expect(
-      find.text('2 current issues · 1 acknowledged · 1 snoozed'),
+      find.descendant(
+        of: acknowledgedRow,
+        matching: find.textContaining('Acknowledged'),
+      ),
       findsOneWidget,
     );
-    await tester.tap(find.byKey(const ValueKey('health-alerts-entry')));
+    expect(
+      find.descendant(
+        of: snoozedRow,
+        matching: find.textContaining('Snoozed until'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(acknowledgedRow);
     await tester.pumpAndSettle();
-    expect(find.text('Acknowledged.'), findsOneWidget);
-    await tester.tap(find.byTooltip('Next issue'));
+    expect(find.byTooltip('Acknowledged'), findsOneWidget);
+    expect(find.byTooltip('Next issue'), findsNothing);
+    await tester.tap(find.byTooltip('Close alerts'));
     await tester.pumpAndSettle();
-    expect(find.textContaining('Snoozed until'), findsOneWidget);
+    await tester.tap(snoozedRow);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: alertCard, matching: snoozedStatus),
+      findsOneWidget,
+    );
     await tester.pumpWidget(const SizedBox());
     fixture.dispose();
   });
@@ -647,8 +723,8 @@ void main() {
       await tester.tap(find.byTooltip('Snooze for 30 minutes'));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Dismiss health notice'), findsNothing);
-      expect(find.textContaining('Snoozed until'), findsOneWidget);
-      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+      expect(snoozedStatus, findsOneWidget);
+      expect(find.byKey(const ValueKey('health-alert-anchor')), findsOneWidget);
       expect(find.byKey(const ValueKey('health-alert-bell')), findsNothing);
       // Stop collection so the reminder must fire without a new host observation.
       fixture.owner.mountedRoute = false;
@@ -660,7 +736,7 @@ void main() {
       await tester.pump(const Duration(minutes: 1));
       await tester.pumpAndSettle();
       expect(find.byTooltip('Dismiss health notice'), findsOneWidget);
-      expect(find.textContaining('Snoozed until'), findsNothing);
+      expect(snoozedStatus, findsNothing);
       expect(find.byKey(const ValueKey('health-alert-bell')), findsOneWidget);
       await tester.pump(const Duration(seconds: 6));
       expect(find.byTooltip('Dismiss health notice'), findsNothing);
@@ -682,7 +758,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byTooltip('Acknowledge issue'));
       await tester.pumpAndSettle();
-      expect(find.textContaining('Acknowledged.'), findsOneWidget);
+      expect(find.byTooltip('Acknowledged'), findsOneWidget);
       var publications = 0;
       void changed() => publications++;
       coordinator.addListener(changed);
@@ -975,7 +1051,7 @@ void main() {
           expect(find.text('Connection interrupted'), findsWidgets);
           expect(find.byTooltip('Dismiss health notice'), findsNothing);
           final openDetails = find.descendant(
-            of: find.byType(Dialog),
+            of: alertCard,
             matching: find.byTooltip('Open connection details'),
           );
           expect(openDetails, findsOneWidget);
@@ -1258,7 +1334,7 @@ void main() {
             );
             await tester.tap(find.byTooltip('Acknowledge issue'));
             await tester.pumpAndSettle();
-            expect(find.text('Acknowledged.'), findsOneWidget);
+            expect(find.byTooltip('Acknowledged'), findsOneWidget);
             expect(
               find.byKey(const ValueKey('health-alert-bell')),
               findsNothing,
@@ -1594,33 +1670,45 @@ void main() {
           expect(fixture.coordinator.alerts, hasLength(1));
           await tester.tap(find.byKey(const ValueKey('health-alert-bell')));
           await tester.pumpAndSettle();
+          final bounds = tester.getRect(alertCard);
+          final bell = find.byKey(const ValueKey('health-alert-bell'));
+          expect(bounds.top, tester.getRect(bell).bottom + 4);
+          expect(bounds.right, tester.getRect(bell).right);
           await shot(tester, '${brightness.name}-$scale-alert');
           await tester.tap(find.byTooltip('Snooze for 30 minutes'));
           await tester.pumpAndSettle();
-          expect(
-            find.textContaining('Snoozed until').hitTestable(),
-            findsOneWidget,
-          );
+          expect(snoozedStatus, findsOneWidget);
           expect(
             fixture.coordinator.alerts.single.remindsAt(
               fixture.coordinator.now,
             ),
             isFalse,
           );
+          expect(tester.getRect(alertCard), bounds);
           await shot(tester, '${brightness.name}-$scale-snoozed');
+          await tester.tap(find.byTooltip('Unsnooze issue'));
+          await tester.pumpAndSettle();
+          expect(fixture.coordinator.attentionAlerts, hasLength(1));
+          expect(tester.getRect(alertCard), bounds);
           await tester.tap(find.byTooltip('Acknowledge issue'));
           await tester.pumpAndSettle();
+          expect(find.byTooltip('Acknowledged'), findsOneWidget);
+          expect(snoozedStatus, findsNothing);
+          expect(tester.getRect(alertCard), bounds);
+          expect(find.byTooltip('Unacknowledge issue'), findsOneWidget);
           expect(
-            find.textContaining('Acknowledged.').hitTestable(),
+            find.descendant(
+              of: find.byTooltip('Acknowledged'),
+              matching: find.byIcon(Icons.done),
+            ),
             findsOneWidget,
           );
-          expect(find.textContaining('Snoozed until'), findsNothing);
-          expect(
-            tester
-                .widget<IconButton>(find.widgetWithIcon(IconButton, Icons.done))
-                .onPressed,
-            isNull,
-          );
+          await tester.tap(find.byTooltip('Unacknowledge issue'));
+          await tester.pumpAndSettle();
+          expect(fixture.coordinator.attentionAlerts, hasLength(1));
+          expect(tester.getRect(alertCard), bounds);
+          await tester.tap(find.byTooltip('Acknowledge issue'));
+          await tester.pumpAndSettle();
           expect(
             tester
                 .widget<IconButton>(
@@ -1639,12 +1727,24 @@ void main() {
           expect(find.byType(Badge), findsNothing);
           await shot(tester, '${brightness.name}-$scale-acknowledged-header');
           await pump('Hermes health', body: healthContent(fixture));
-          expect(find.text('1 current issue · 1 acknowledged'), findsOneWidget);
+          final row = find.widgetWithText(ListTile, 'Critical memory pressure');
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.textContaining('Acknowledged'),
+            ),
+            findsOneWidget,
+          );
           await shot(tester, '${brightness.name}-$scale-retained-health');
-          await tester.tap(find.byKey(const ValueKey('health-alerts-entry')));
+          await tester.tap(row);
           await tester.pumpAndSettle();
-          expect(find.textContaining('Acknowledged.'), findsOneWidget);
-          await tester.tap(find.text('Critical memory pressure'));
+          expect(find.byTooltip('Acknowledged'), findsOneWidget);
+          await tester.tap(
+            find.descendant(
+              of: find.byType(Dialog),
+              matching: find.text('Critical memory pressure'),
+            ),
+          );
           await tester.pumpAndSettle();
           expect(opened, 1);
           await tester.pumpWidget(const SizedBox());
@@ -1707,14 +1807,9 @@ void main() {
           }
 
           await pump('Hermes health', body: healthContent(fixture));
-          expect(
-            find.byKey(const ValueKey('health-alert-settings-entry')),
-            findsOneWidget,
-          );
+          expect(find.byTooltip('Alert settings'), findsOneWidget);
           await shot(tester, '${brightness.name}-$scale-health');
-          await tester.tap(
-            find.byKey(const ValueKey('health-alert-settings-entry')),
-          );
+          await tester.tap(find.byTooltip('Alert settings'));
           await tester.pumpAndSettle();
           expect(find.byType(HealthAlertSettingsScreen), findsOneWidget);
           expect(find.text('Server problems'), findsNothing);

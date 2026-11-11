@@ -36,8 +36,8 @@ class HealthAlertSettingsScreen extends StatelessWidget {
             AdminGroup(
               children: [
                 _toggle(
-                  'Health alerts',
-                  'Monitor host thresholds and profile health on this device.',
+                  'Health monitoring',
+                  'Monitor CPU, RAM, and disk. Profile, connection, and service alerts stay available when this is off.',
                   settings.enabled,
                   (value) => session.update(
                     (current) => current.copyWith(enabled: value),

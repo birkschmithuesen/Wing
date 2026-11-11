@@ -10744,11 +10744,6 @@
       "provenance": "intentional-untracked"
     },
     {
-      "path": "lib/core/widgets/health_alerts/health_alert_settings_entry.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
       "path": "lib/core/widgets/health_alerts/health_alerts_scope.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -16372,6 +16367,11 @@
       "path": "lib/core/services/transcript_resource_session.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/screens/administration/admin_health_alerts.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {
@@ -16599,7 +16599,7 @@
         "lib/core/widgets/health_alerts/health_alert_bell.dart",
         "lib/core/widgets/health_alerts/health_alert_dialog.dart",
         "lib/core/widgets/health_alerts/health_alert_notice.dart",
-        "lib/core/widgets/health_alerts/health_alert_settings_entry.dart",
+        "lib/core/screens/administration/admin_health_alerts.dart",
         "lib/core/widgets/health_alerts/health_alerts_scope.dart",
         "lib/core/widgets/image_paste_menu.dart",
         "lib/core/widgets/installed_app_version_card.dart",

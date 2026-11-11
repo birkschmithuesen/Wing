@@ -15,17 +15,19 @@ Feature ID: `health-alerts`.
 - `health-alerts.operational` — Review failed background reads and service
   updates. A fresh success for the same operation clears its issue.
 - `health-alerts.configure` — Save valid local threshold rules.
-- `health-alerts.respond` — Acknowledge or snooze the intended occurrence.
+- `health-alerts.respond` — Acknowledge or snooze the intended occurrence, or undo either choice.
 - `health-alerts.recover` — Clear or recur only on the qualifying observation.
 
 ## How to get to it (user POV)
 
-Choose **Alerts** in the main menu to review active, acknowledged and snoozed
-issues. The same viewer opens from **Hermes health → Health alerts** when there
-are unresolved issues. The header warning triangle opens issues that need
-attention. Opening the viewer dismisses any brief alert announcement.
-Acknowledge or snooze an issue in the viewer, or open its recovery destination
-when available. To change monitoring rules, choose **Hermes health → Alert settings**.
+Choose **Hermes health** in the main menu. The **Alerts** section lists current
+issues, including acknowledged and snoozed ones, and shows **No current alerts**
+when the list is empty. Tap a row to review that issue, acknowledge or snooze
+it, undo a choice, or open its recovery destination when available. The header
+warning triangle opens a Quick view anchored beneath it, with issues that need
+attention. Both views show a tick for acknowledged issues and a snooze icon with
+the expiry time. Opening either view dismisses any brief alert announcement. Tap the sliders beside **Alerts** to open
+**Alert settings** and edit this device's monitoring rules.
 
 ## Driving it with Wing harnesses
 
@@ -37,15 +39,21 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/health_alerts_test.dart test/health_alerts_ui_test.dart test/administration_connector_health_test.dart test/administration_health_session_test.dart test/connector_runtime_test.dart
   ```
 
-  The two Alerts suites cover the empty main-menu viewer, retained acknowledged
-  and snoozed issues, connection and operational alerts with Health monitoring
-  off, and independent host-read recovery after the shared refresh settles.
+  The two Alerts suites cover drawer entry into the inline empty state, retained
+  acknowledged and snoozed rows, reversal, anchored card geometry during
+  saves and recovery while the selected issue is open. They also cover
+  profile, connection and operational alerts with host monitoring off and
+  independent host-read recovery after the shared refresh settles.
 
 - **Android `health-normal`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
   ```sh
   python3 scripts/test_nightly_native.py health-normal --output build/feature-verification/health-alerts
   ```
+
+  The normal and enlarged Android scenarios open the inline list through the
+  drawer, verify snoozed and acknowledged rows, and edit a threshold through
+  the Alert settings icon with the Android keyboard.
 
 - **Android `health-large`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
@@ -61,8 +69,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
-The Health alerts switch controls host threshold and profile health monitoring.
-Connection and operational issues remain available with monitoring off. They
+The Health monitoring switch controls CPU, memory and disk alerts. Profile
+monitoring has its own switch. Profile, connection and operational issues
+remain available with host monitoring off. They
 use the existing connection and read owners. Background failures covered by a
 known server access outage share its connection incident. The connection status
 indicator remains available when an alert is silenced. The connection outage

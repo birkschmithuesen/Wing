@@ -103,7 +103,7 @@ class HealthAlertsCoordinator extends ChangeNotifier {
     _sessions[owner]?.setActive(active);
     final resumed = active ? _activeOwners.add(owner) : false;
     if (!active) _activeOwners.remove(owner);
-    if (resumed && settings.settings.enabled && settings.settings.profile) {
+    if (resumed && settings.settings.profile) {
       unawaited(_sessions[owner]!.refreshConnectorInventories());
       // Acknowledged incidents still need recovery checks. Use their captured
       // profiles, including those that are not selected in the workspace.
@@ -121,7 +121,6 @@ class HealthAlertsCoordinator extends ChangeNotifier {
     if (active &&
         owner.current != null &&
         settings.settings.profile &&
-        settings.settings.enabled &&
         owner.healthSession().health.profileName !=
             owner.current!.scope.profileName) {
       owner.healthSession().select(owner.current!.gateway);
@@ -191,6 +190,10 @@ class HealthAlertsCoordinator extends ChangeNotifier {
       _sessions[ownerFor(alert)]?.acknowledge(alert);
   Future<void> snooze(HealthAlert alert) async =>
       _sessions[ownerFor(alert)]?.snooze(alert);
+  Future<void> unacknowledge(HealthAlert alert) async =>
+      _sessions[ownerFor(alert)]?.unacknowledge(alert);
+  Future<void> unsnooze(HealthAlert alert) async =>
+      _sessions[ownerFor(alert)]?.unsnooze(alert);
   @override
   void dispose() {
     _closed = true;

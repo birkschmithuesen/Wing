@@ -19,7 +19,7 @@ Feature ID: `chat-activity`.
 
 Open Activity from a conversation. Inspect tools, requests and saved results. During active work open the Subagents, Tasks or Background tab, inspect a child, and return while the parent continues.
 
-Use the main menu's [Alerts](health-alerts.md) to review failed automatic
+Use [Alerts in Hermes health](health-alerts.md) to review failed automatic
 process reads and subagent output updates. Readable content remains available
 with its last-received context. Refresh in the affected view to retry.
 

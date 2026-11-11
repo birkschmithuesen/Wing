@@ -2,6 +2,8 @@ import 'host_thresholds.dart';
 
 enum HealthAlertSeverity { warning, critical }
 
+typedef HealthAlertSilencing = ({bool acknowledged, DateTime? snoozedUntil});
+
 enum HealthAlertScope {
   host,
   profile,
@@ -64,11 +66,12 @@ class HealthAlert {
       scope != HealthAlertScope.operational || destination != null;
   bool remindsAt(DateTime now) =>
       !acknowledged && (snoozedUntil == null || !now.isBefore(snoozedUntil!));
+  HealthAlertSilencing get silencing =>
+      (acknowledged: acknowledged, snoozedUntil: snoozedUntil);
   HealthAlert copyWith({
     List<String>? connectorNames,
     bool? lastKnown,
-    bool? acknowledged,
-    DateTime? snoozedUntil,
+    HealthAlertSilencing? silencing,
   }) => HealthAlert(
     id: id,
     connectionIdentity: connectionIdentity,
@@ -84,8 +87,8 @@ class HealthAlert {
     profileName: profileName,
     trigger: trigger,
     lastKnown: lastKnown ?? this.lastKnown,
-    acknowledged: acknowledged ?? this.acknowledged,
-    snoozedUntil: snoozedUntil ?? this.snoozedUntil,
+    acknowledged: (silencing ?? this.silencing).acknowledged,
+    snoozedUntil: (silencing ?? this.silencing).snoozedUntil,
   );
 }
 

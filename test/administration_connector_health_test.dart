@@ -76,6 +76,9 @@ void main() {
       await SharedPreferences.getInstance(),
       repository: fixture.server,
     );
+    await alerts.settings.update(
+      (settings) => settings.copyWith(enabled: false),
+    );
     final connectors = ProfileConnectorsSession(fixture.server.profile('work'));
     alerts.owner.healthSession().health.selectProfile(overview);
     servers = [

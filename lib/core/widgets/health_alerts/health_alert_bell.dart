@@ -28,6 +28,7 @@ class _HealthAlertBellState extends State<HealthAlertBell>
   HealthAlertsScope? _scope;
   final _seen = <String, int>{};
   bool _updateScheduled = false;
+  bool _quickViewOpen = false;
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -75,24 +76,38 @@ class _HealthAlertBellState extends State<HealthAlertBell>
     setState(() {});
   }
 
+  Future<void> _openQuickView(HealthAlertsScope scope) async {
+    setState(() => _quickViewOpen = true);
+    try {
+      await showHealthAlertQuickView(context, scope);
+    } finally {
+      if (mounted) setState(() => _quickViewOpen = false);
+    }
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) =>
+      SizedBox(width: 48, height: 48, child: _button(context));
+
+  Widget? _button(BuildContext context) {
     final scope = _scope;
     final alerts = scope?.alerts.attentionAlerts ?? <HealthAlert>[];
-    // Keep the title-row slot stable when an issue arrives.
-    if (scope == null || alerts.isEmpty) {
-      return const SizedBox(width: 48, height: 48);
-    }
+    if (scope == null || (alerts.isEmpty && !_quickViewOpen)) return null;
     final tokens = WingTokens.of(context);
-    final color = alerts.first.severity == HealthAlertSeverity.critical
+    final color = alerts.isEmpty
+        ? tokens.muted
+        : alerts.first.severity == HealthAlertSeverity.critical
         ? tokens.danger
         : tokens.warning;
     return StudioButtonPress(
       child: IconButton(
-        key: const ValueKey('health-alert-bell'),
-        tooltip:
-            'Health alerts: ${alerts.length} ${alerts.length == 1 ? 'issue needs' : 'issues need'} attention',
-        onPressed: () => showHealthAlerts(context, scope),
+        key: ValueKey(
+          alerts.isEmpty ? 'health-alert-anchor' : 'health-alert-bell',
+        ),
+        tooltip: alerts.isEmpty
+            ? 'Alert quick view open'
+            : 'Health alerts: ${alerts.length} ${alerts.length == 1 ? 'issue needs' : 'issues need'} attention',
+        onPressed: _quickViewOpen ? null : () => _openQuickView(scope),
         icon: AnimatedBuilder(
           animation: _motion,
           builder: (context, _) => Badge(
@@ -106,6 +121,7 @@ class _HealthAlertBellState extends State<HealthAlertBell>
             offset: const Offset(2, -4),
             backgroundColor: color,
             textColor: tokens.surface,
+            isLabelVisible: alerts.isNotEmpty,
             child: Transform.rotate(
               angle: _motion.isAnimating
                   ? math.sin(_motion.value * math.pi * 8) *

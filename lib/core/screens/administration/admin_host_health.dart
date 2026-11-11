@@ -1,4 +1,3 @@
-import '../../widgets/studio_error.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/host_resources.dart';
@@ -369,11 +368,6 @@ class _HostHeadingState extends State<_HostHeading> {
 }
 
 List<Widget> _notices(HostResourcesState state) {
-  final now = DateTime.now();
-  final pressure = state.pressure.isCurrent(now, const Duration(seconds: 30))
-      ? state.pressure.value
-      : null;
-  final memory = pressure?.memoryAt(now), disk = pressure?.disk;
   final notices = <Widget>[];
   if (state.stats.error case final error?) {
     notices.add(
@@ -398,23 +392,6 @@ List<Widget> _notices(HostResourcesState state) {
     notices.add(
       const AdminNotice.error('Resource pressure could not be refreshed.'),
     );
-  }
-  for (final (label, level) in [('Memory', memory), ('Disk space', disk)]) {
-    if (level == HostPressure.critical || level == HostPressure.elevated) {
-      notices.add(
-        Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: StudioError(
-            '$label is low.',
-            detail: 'Review workloads and free resources on the server.',
-            icon: Icons.warning_amber_rounded,
-            severity: level == HostPressure.critical
-                ? StudioErrorSeverity.error
-                : StudioErrorSeverity.noResult,
-          ),
-        ),
-      );
-    }
   }
   return notices;
 }
@@ -457,6 +434,7 @@ class _HostMeters extends StatelessWidget {
               : _capacity(memory.usedBytes, memory.totalBytes),
           percent: memory?.usedPercent,
           color: color(pressure?.memoryAt(now)),
+          pressure: pressure?.memoryAt(now),
         ),
         _HostMetricRow(
           label: 'Disk',
@@ -466,6 +444,7 @@ class _HostMeters extends StatelessWidget {
               : _capacity(disk.usedBytes, disk.totalBytes),
           percent: disk?.usedPercent,
           color: color(pressure?.disk),
+          pressure: pressure?.disk,
         ),
       ],
     );
@@ -479,93 +458,130 @@ class _HostMetricRow extends StatelessWidget {
     required this.value,
     required this.percent,
     required this.color,
+    this.pressure,
   });
   final String label, value;
   final IconData icon;
   final double? percent;
   final Color color;
+  final HostPressure? pressure;
   @override
-  Widget build(BuildContext context) => Semantics(
-    label: '$label: ${percent == null ? 'unavailable' : value}',
-    child: ExcludeSemantics(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final theme = Theme.of(context),
-              scaler = MediaQuery.textScalerOf(context);
-          final labelStyle = theme.textTheme.bodyMedium?.copyWith(fontSize: 14);
-          final valueStyle = theme.textTheme.bodySmall?.copyWith(fontSize: 13);
-          final painter = TextPainter(
-            text: TextSpan(text: value, style: valueStyle),
-            textDirection: Directionality.of(context),
-            textScaler: scaler,
-          )..layout();
-          final wide =
-              scaler.scale(14) <= 20 &&
-              18 + 24 + 60 + painter.width + 32 < constraints.maxWidth;
-          painter.dispose();
-          final meter = percent == null
-              ? Text('Unavailable', style: theme.textTheme.bodySmall)
-              : SizedBox(
-                  height: 5,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(2),
-                    child: ColoredBox(
-                      color: WingTokens.of(context).border,
-                      child: Align(
-                        alignment: AlignmentDirectional.centerStart,
-                        child: FractionallySizedBox(
-                          widthFactor: (percent! / 100).clamp(0.0, 1.0),
-                          child: ColoredBox(
-                            color: color,
-                            child: const SizedBox.expand(),
+  Widget build(BuildContext context) {
+    final status = switch (pressure) {
+      HostPressure.critical => 'Critical pressure',
+      HostPressure.elevated => 'Elevated pressure',
+      _ => null,
+    };
+    final tokens = WingTokens.of(context);
+    return Semantics(
+      label: [
+        '$label: ${percent == null ? 'unavailable' : value}',
+        ?status,
+      ].join('. '),
+      child: ExcludeSemantics(
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final theme = Theme.of(context),
+                scaler = MediaQuery.textScalerOf(context);
+            final labelStyle = theme.textTheme.bodyMedium?.copyWith(
+              fontSize: 14,
+            );
+            final valueStyle = theme.textTheme.bodySmall?.copyWith(
+              fontSize: 13,
+            );
+            final painter = TextPainter(
+              text: TextSpan(text: value, style: valueStyle),
+              textDirection: Directionality.of(context),
+              textScaler: scaler,
+            )..layout();
+            final wide =
+                scaler.scale(14) <= 20 &&
+                18 + 24 + 60 + painter.width + 32 < constraints.maxWidth;
+            painter.dispose();
+            final meter = percent == null
+                ? Text('Unavailable', style: theme.textTheme.bodySmall)
+                : SizedBox(
+                    height: 5,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(2),
+                      child: ColoredBox(
+                        color: WingTokens.of(context).border,
+                        child: Align(
+                          alignment: AlignmentDirectional.centerStart,
+                          child: FractionallySizedBox(
+                            widthFactor: (percent! / 100).clamp(0.0, 1.0),
+                            child: ColoredBox(
+                              color: color,
+                              child: const SizedBox.expand(),
+                            ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                );
-          final labelWidget = Text(label, style: labelStyle);
-          final valueWidget = Text(value, style: valueStyle);
-          return ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 32),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                crossAxisAlignment: wide
-                    ? CrossAxisAlignment.center
-                    : CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    icon,
-                    size: 18,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 8),
-                  if (wide) ...[
-                    SizedBox(width: 60, child: labelWidget),
-                    valueWidget,
-                    const SizedBox(width: 8),
-                    Expanded(child: meter),
-                  ] else
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          labelWidget,
+                  );
+            final labelWidget = Text(label, style: labelStyle);
+            final valueWidget = Text(value, style: valueStyle);
+            return ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: wide
+                          ? CrossAxisAlignment.center
+                          : CrossAxisAlignment.start,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 18,
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                        const SizedBox(width: 8),
+                        if (wide) ...[
+                          SizedBox(width: 60, child: labelWidget),
                           valueWidget,
-                          const SizedBox(height: 4),
-                          meter,
-                        ],
-                      ),
+                          const SizedBox(width: 8),
+                          Expanded(child: meter),
+                        ] else
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                labelWidget,
+                                valueWidget,
+                                const SizedBox(height: 4),
+                                meter,
+                              ],
+                            ),
+                          ),
+                      ],
                     ),
-                ],
+                    if (status != null)
+                      Padding(
+                        padding: EdgeInsetsDirectional.only(
+                          start: wide ? 86 : 26,
+                          top: 4,
+                        ),
+                        child: Text(
+                          status,
+                          style: valueStyle?.copyWith(
+                            color: pressure == HostPressure.critical
+                                ? tokens.danger
+                                : tokens.warning,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 String _bytes(int value) => value < 1073741824

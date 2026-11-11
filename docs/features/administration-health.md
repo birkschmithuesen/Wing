@@ -12,7 +12,9 @@ Feature ID: `administration-health`.
 
 ## How to get to it (user POV)
 
-Choose Hermes health. Open Host, Server or Profile, inspect Doctor/security output or Logs, and use the relevant refresh or retry action. Findings can offer Ask Hermes.
+Choose **Hermes health**. Review current issues in the [Alerts section](health-alerts.md)
+or inspect Host, Server and Profile. Open Doctor, Security audit or Logs, and use the
+relevant refresh or retry action. Findings can offer Ask Hermes.
 
 ## Driving it with Wing harnesses
 

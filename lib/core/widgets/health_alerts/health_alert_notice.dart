@@ -23,6 +23,17 @@ class HealthAlertNotice extends StatefulWidget {
     notice?._hide();
   }
 
+  /// The open card already provides feedback when the user restores attention.
+  static VoidCallback quietRestoration(
+    BuildContext context,
+    HealthAlert alert,
+  ) {
+    final notice = context.findAncestorStateOfType<_HealthAlertNoticeState>();
+    final occurrence = (alert.id, alert.occurrence);
+    notice?._quietRestorations.add(occurrence);
+    return () => notice?._quietRestorations.remove(occurrence);
+  }
+
   final Widget child;
   final GlobalKey<NavigatorState> navigatorKey;
   @override
@@ -30,6 +41,7 @@ class HealthAlertNotice extends StatefulWidget {
 }
 
 class _HealthAlertNoticeState extends State<HealthAlertNotice> {
+  final _quietRestorations = <(String, int)>{};
   HealthAlertsScope? _scope;
   final _seen = <String, int>{};
   HealthAlert? _notice;
@@ -54,7 +66,13 @@ class _HealthAlertNoticeState extends State<HealthAlertNotice> {
     final alerts = _scope!.alerts.alerts
         .where((a) => a.remindsAt(_scope!.alerts.now))
         .toList();
-    final fresh = alerts.where((a) => _seen[a.id] != a.occurrence).firstOrNull;
+    final fresh = alerts
+        .where(
+          (a) =>
+              _seen[a.id] != a.occurrence &&
+              !_quietRestorations.contains((a.id, a.occurrence)),
+        )
+        .firstOrNull;
     _seen
       ..clear()
       ..addEntries(alerts.map((a) => MapEntry(a.id, a.occurrence)));

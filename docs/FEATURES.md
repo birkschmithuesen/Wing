@@ -108,17 +108,18 @@ decisions use their operation icon and error color.
 Switch between connections and profiles. Manage supported model settings, provider access, MCP connectors and server-run scheduled tasks. Health and diagnostics help you find setup problems; analytics shows activity, tokens and model breakdowns. Analytics keeps its sections in place while loading, with placeholders and a Wing loading indicator in the header. Scroll within the model breakdown to see additional models. Supported controls depend on your Hermes server and profile.
 
 The title-row warning triangle warns about issues affecting Hermes while Wing is open or
-already monitoring work. Tap it for one issue at a time. Configure device-local
-thresholds under **Hermes health → Alert settings**; RAM and disk warnings start
+already monitoring work. Tap it to open Quick view beneath the triangle. Configure device-local
+thresholds with the **Alert settings** sliders beside **Alerts** in **Hermes health**.
+RAM and disk warnings start
 above 90% for two minutes and clear below 85% for two minutes. Valid settings
 save automatically. Separate native-pressure toggles admit Hermes's critical
 memory and disk reports immediately. [Health alerts](ADMINISTRATION.md#health-alerts)
 explains recovery and investigation. Closing the alert dialog leaves unresolved
 issues visible in the alert icon until you acknowledge or snooze them. Use the
 checkmark to acknowledge an occurrence or the snooze icon to pause its cues for
-30 minutes. Acknowledged and snoozed issues are available under **Hermes health
-→ Health alerts**; they do not appear in the header icon or its count. Snooze
-expiry, escalation or recurrence alerts you again.
+30 minutes. Use the undo or clock-arrow icon to bring that issue back to attention.
+Acknowledged and snoozed issues stay in the **Alerts** list until recovery. The header counts only issues that need attention.
+Snooze expiry, escalation or recurrence alerts you again.
 
 ## Make it yours
 

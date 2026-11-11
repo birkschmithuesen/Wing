@@ -328,7 +328,7 @@ void main() {
     },
   );
 
-  test('acknowledgement survives device-preference reconstruction', () async {
+  test('acknowledgement survives restart and its undo persists', () async {
     SharedPreferences.setMockInitialValues({});
     var prefs = await SharedPreferences.getInstance();
     var fixture = HealthAlertsFixture(prefs);
@@ -346,37 +346,64 @@ void main() {
     await fixture.critical();
     expect(fixture.coordinator.alerts.single.acknowledged, isTrue);
     expect(fixture.coordinator.attentionAlerts, isEmpty);
+    final restored = fixture.coordinator.alerts.single;
+    await fixture.coordinator.unacknowledge(restored);
+    expect(
+      fixture.coordinator.attentionAlerts.single.occurrence,
+      restored.occurrence,
+    );
+    expect(
+      HealthAlertIncidentStore(
+        prefs,
+      ).read(restored.connectionIdentity).single.acknowledged,
+      isFalse,
+    );
     fixture.dispose();
   });
 
-  test('snooze survives restart with its original deadline', () async {
-    SharedPreferences.setMockInitialValues({});
-    var prefs = await SharedPreferences.getInstance();
-    var fixture = HealthAlertsFixture(prefs);
-    await fixture.owner.hostResources().refresh();
-    await fixture.critical();
-    await fixture.coordinator.snooze(fixture.coordinator.alerts.single);
-    final until = fixture.coordinator.alerts.single.snoozedUntil!;
-    final saved = {for (final key in prefs.getKeys()) key: prefs.get(key)!};
-    fixture.dispose();
-    SharedPreferences.setMockInitialValues(saved);
-    prefs = await SharedPreferences.getInstance();
-    fixture = HealthAlertsFixture(prefs);
-    expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
-    expect(
-      fixture.coordinator.alerts.single.snoozedUntil!.isAtSameMomentAs(until),
-      isTrue,
-    );
-    expect(fixture.coordinator.alerts.single.remindsAt(until), isTrue);
-    expect(fixture.coordinator.attentionAlerts, isEmpty);
-    await fixture.owner.hostResources().refresh();
-    await fixture.critical();
-    expect(
-      fixture.coordinator.alerts.single.snoozedUntil!.isAtSameMomentAs(until),
-      isTrue,
-    );
-    fixture.dispose();
-  });
+  test(
+    'snooze survives restart and its undo clears the saved deadline',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      var prefs = await SharedPreferences.getInstance();
+      var fixture = HealthAlertsFixture(prefs);
+      await fixture.owner.hostResources().refresh();
+      await fixture.critical();
+      await fixture.coordinator.snooze(fixture.coordinator.alerts.single);
+      final until = fixture.coordinator.alerts.single.snoozedUntil!;
+      final saved = {for (final key in prefs.getKeys()) key: prefs.get(key)!};
+      fixture.dispose();
+      SharedPreferences.setMockInitialValues(saved);
+      prefs = await SharedPreferences.getInstance();
+      fixture = HealthAlertsFixture(prefs);
+      expect(fixture.coordinator.alerts.single.lastKnown, isTrue);
+      expect(
+        fixture.coordinator.alerts.single.snoozedUntil!.isAtSameMomentAs(until),
+        isTrue,
+      );
+      expect(fixture.coordinator.alerts.single.remindsAt(until), isTrue);
+      expect(fixture.coordinator.attentionAlerts, isEmpty);
+      await fixture.owner.hostResources().refresh();
+      await fixture.critical();
+      expect(
+        fixture.coordinator.alerts.single.snoozedUntil!.isAtSameMomentAs(until),
+        isTrue,
+      );
+      final restored = fixture.coordinator.alerts.single;
+      await fixture.coordinator.unsnooze(restored);
+      expect(
+        fixture.coordinator.attentionAlerts.single.occurrence,
+        restored.occurrence,
+      );
+      expect(
+        HealthAlertIncidentStore(
+          prefs,
+        ).read(restored.connectionIdentity).single.snoozedUntil,
+        isNull,
+      );
+      fixture.dispose();
+    },
+  );
 
   test(
     'saved profile choices isolate connections/profiles and reset on recovery or escalation',
@@ -404,7 +431,9 @@ void main() {
       );
       finding(evaluator, 'pace', 0);
       final original = evaluator.alerts.single;
-      evaluator.acknowledge(original.id, original.occurrence);
+      evaluator.applySilencing(
+        original.copyWith(silencing: (acknowledged: true, snoozedUntil: null)),
+      );
       await store.write('exact-endpoint', evaluator.alerts);
       expect(store.read('other-endpoint'), isEmpty);
       evaluator = HealthAlertEvaluator(
@@ -420,9 +449,13 @@ void main() {
       final escalated = evaluator.alerts.first;
       expect(escalated.acknowledged, isFalse);
       expect(escalated.occurrence, greaterThan(original.occurrence));
-      evaluator.acknowledge(original.id, original.occurrence);
+      evaluator.applySilencing(
+        original.copyWith(silencing: (acknowledged: true, snoozedUntil: null)),
+      );
       expect(evaluator.alerts.first.acknowledged, isFalse);
-      evaluator.acknowledge(escalated.id, escalated.occurrence);
+      evaluator.applySilencing(
+        escalated.copyWith(silencing: (acknowledged: true, snoozedUntil: null)),
+      );
       finding(evaluator, 'pace', 45, failed: false);
       await store.write('exact-endpoint', evaluator.alerts);
       evaluator = HealthAlertEvaluator(
@@ -537,9 +570,17 @@ void main() {
         final warning = evaluator.alerts.single;
         final until = start.add(const Duration(minutes: 30));
         if (acknowledge) {
-          evaluator.acknowledge(warning.id, warning.occurrence);
+          evaluator.applySilencing(
+            warning.copyWith(
+              silencing: (acknowledged: true, snoozedUntil: null),
+            ),
+          );
         } else {
-          evaluator.snooze(warning.id, warning.occurrence, until);
+          evaluator.applySilencing(
+            warning.copyWith(
+              silencing: (acknowledged: false, snoozedUntil: until),
+            ),
+          );
         }
         sample(135, 94);
         evaluator.pause();
@@ -557,10 +598,20 @@ void main() {
         expect(critical.acknowledged, isFalse);
         expect(critical.snoozedUntil, isNull);
         // A command captured before escalation cannot silence the new occurrence.
-        evaluator.acknowledge(warning.id, warning.occurrence);
-        evaluator.snooze(warning.id, warning.occurrence, until);
+        evaluator.applySilencing(
+          warning.copyWith(silencing: (acknowledged: true, snoozedUntil: null)),
+        );
+        evaluator.applySilencing(
+          warning.copyWith(
+            silencing: (acknowledged: false, snoozedUntil: until),
+          ),
+        );
         expect(evaluator.alerts.single.remindsAt(start), isTrue);
-        evaluator.acknowledge(critical.id, critical.occurrence);
+        evaluator.applySilencing(
+          critical.copyWith(
+            silencing: (acknowledged: true, snoozedUntil: null),
+          ),
+        );
         sample(165, 80);
         sample(285, 80);
         expect(evaluator.alerts, isEmpty);
@@ -588,14 +639,19 @@ void main() {
     );
     finding(0);
     final alert = evaluator.alerts.single;
-    evaluator.snooze(
-      alert.id,
-      alert.occurrence,
-      start.add(const Duration(minutes: 30)),
+    evaluator.applySilencing(
+      alert.copyWith(
+        silencing: (
+          acknowledged: false,
+          snoozedUntil: start.add(const Duration(minutes: 30)),
+        ),
+      ),
     );
     finding(15);
     expect(evaluator.alerts.single.remindsAt(start), isFalse);
-    evaluator.acknowledge(alert.id, alert.occurrence);
+    evaluator.applySilencing(
+      alert.copyWith(silencing: (acknowledged: true, snoozedUntil: null)),
+    );
     finding(30);
     expect(evaluator.alerts.single.acknowledged, isTrue);
     expect(evaluator.alerts.single.destination, 'MCP connectors');

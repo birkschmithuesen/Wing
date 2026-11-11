@@ -12,10 +12,9 @@ Feature ID: `host-resources`.
 
 ## How to get to it (user POV)
 
-Choose Hermes health and open Host or its machine row. Inspect CPU, memory, disk and uptime, refresh, or leave and return to the retained observations.
+Choose Hermes health and open Host or its machine row. Inspect CPU, memory, disk and uptime, refresh, or leave and return to the retained observations. Current memory and disk pressure appears beside its meter, including with health monitoring off.
 
-If a resource or pressure read fails, review the issue from the main menu's
-[Alerts](health-alerts.md). The issue opens Hermes health for recovery. A fresh
+If a resource or pressure read fails, review the issue in [Alerts in Hermes health](health-alerts.md). The issue opens Hermes health for recovery. A fresh
 success clears the issue for that reading.
 
 ## Driving it with Wing harnesses

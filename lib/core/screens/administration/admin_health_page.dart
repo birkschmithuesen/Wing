@@ -1,6 +1,5 @@
 import '../../widgets/studio_error.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
-import '../../widgets/health_alerts/health_alert_settings_entry.dart';
 import '../../models/profile_session_key.dart';
 import '../../models/health_finding.dart';
 import 'package:flutter/material.dart';
@@ -11,6 +10,7 @@ import '../../theme/wing_theme.dart';
 import '../../widgets/profile_diagnostics_panel.dart';
 import '../../services/profile_diagnostics_controller.dart';
 import 'admin_widgets.dart';
+import 'admin_health_alerts.dart';
 import 'admin_runtime_health.dart';
 import 'admin_host_health.dart';
 import '../../services/host_resources_session.dart';
@@ -90,8 +90,7 @@ class AdminHealthContent extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
           if (persistenceError case final message?) AdminNotice.error(message),
-          const HealthAlertSettingsEntry(),
-          const HealthAlertsEntry(),
+          const AdminHealthAlerts(),
           AdminHostHealth(resources: hostResources),
           const SizedBox(height: 16),
           AdminRuntimeHealth(
