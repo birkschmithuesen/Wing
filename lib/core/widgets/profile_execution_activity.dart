@@ -17,7 +17,6 @@ import '../theme/wing_theme.dart';
 import 'profile_transcript_disclosure.dart';
 import 'compact_activity_row.dart';
 import 'activity_time.dart';
-import 'activity/activity_detail_actions.dart';
 import 'anchored_expansion_tile.dart';
 import 'chat_model_controls.dart';
 
@@ -190,6 +189,7 @@ class _TodoDisclosureState extends State<_TodoDisclosure> {
   Widget build(BuildContext context) {
     final todo = widget.todo;
     final colors = WingTokens.of(context);
+    final actionLabel = _expanded ? 'Collapse task' : 'Expand task';
     final status =
         '${todo.parent == null ? '' : 'Subtask · '}${switch (todo.status) {
           GatewayTodoStatus.pending => 'Pending',
@@ -201,55 +201,71 @@ class _TodoDisclosureState extends State<_TodoDisclosure> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Container(
-            decoration: BoxDecoration(
-              border: Border(top: BorderSide(color: colors.border)),
-            ),
-            padding: const EdgeInsets.only(left: WingSpacing.sm),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: WingSpacing.sm,
+          Semantics(
+            button: true,
+            expanded: _expanded,
+            label: actionLabel,
+            child: Tooltip(
+              message: actionLabel,
+              excludeFromSemantics: true,
+              child: StudioButtonPress(
+                child: InkWell(
+                  onTap: _toggle,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      border: Border(top: BorderSide(color: colors.border)),
                     ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                    padding: const EdgeInsets.only(left: WingSpacing.sm),
+                    child: Row(
                       children: [
-                        Row(
-                          children: [
-                            _TodoStatusIcon(status: todo.status),
-                            const SizedBox(width: WingSpacing.sm),
-                            Expanded(
-                              child: Text(
-                                status,
-                                style: colors.typography.label,
-                              ),
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              vertical: WingSpacing.sm,
                             ),
-                          ],
-                        ),
-                        if (!_expanded) ...[
-                          const SizedBox(height: WingSpacing.xs),
-                          Text(
-                            todo.content,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: colors.typography.body,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    _TodoStatusIcon(status: todo.status),
+                                    const SizedBox(width: WingSpacing.sm),
+                                    Expanded(
+                                      child: Text(
+                                        status,
+                                        style: colors.typography.label,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                if (!_expanded) ...[
+                                  const SizedBox(height: WingSpacing.xs),
+                                  Text(
+                                    todo.content,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: colors.typography.body,
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
-                        ],
+                        ),
+                        SizedBox.square(
+                          dimension: 32,
+                          child: Icon(
+                            _expanded ? Icons.expand_more : Icons.chevron_right,
+                            size: 16,
+                            color: Theme.of(
+                              context,
+                            ).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       ],
                     ),
                   ),
                 ),
-                Semantics(
-                  expanded: _expanded,
-                  child: ActivityDetailAction(
-                    label: _expanded ? 'Collapse task' : 'Expand task',
-                    onPressed: _toggle,
-                    icon: _expanded ? Icons.expand_more : Icons.chevron_right,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
           if (_expanded)

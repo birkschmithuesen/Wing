@@ -13,7 +13,7 @@ Feature ID: `chat-activity`.
 - `chat-activity.respond` — Answer the current question or approval. Live approvals in normal, bot and group chats share command-review content with notification review. The exact command starts visible; completed request receipts remain under collapsed Activity. Native prompts stay bound to their turn, while server-request prompts retain their own reply identity. Reopening keeps all waiting native questions in order and a settled request cannot close a newer one.
 - `chat-activity.delegate` — Follow a child and retain its saved result. Child and nested-child traces bind images, tool file previews, skill documents and message attachments to the child chat. Preview, share and download use the same viewers and file-delivery flows as the main trace.
 - `chat-activity.processes` — Discover and follow background terminal commands in the optional Background tab above the composer. Read recent output, stop a running command or dismiss an exited row during its active response. Exited rows leave the dock when that response ends and do not return on later turns; running processes remain visible until they exit. Discovery happens on entering or returning to a visible connected chat; relevant tool receipts and a five-second running-work refresh keep it current. Hidden/offline chats and settled lists do not poll. Failed reads retain the last rows; reopen Background to retry.
-- `chat-activity.tasks` — Follow the current task batch above the composer. Once every task is completed or cancelled and its response ends, read the batch in that response's Activity Tasks tab. Later rounds and replayed updates do not restore it to the composer.
+- `chat-activity.tasks` — Follow the current task batch above the composer. Tap anywhere on a task row's header, including its text, status, padding or chevron, to expand or collapse it. The expanded body remains selectable and scrollable. Once every task is completed or cancelled and its response ends, read the batch in that response's Activity Tasks tab. Later rounds and replayed updates do not restore it to the composer.
 
 ## How to get to it (user POV)
 
@@ -47,6 +47,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Child trace resources:** `flutter test --no-pub test/profile_subagent_panel_test.dart test/remote_files_client_test.dart test/resource_preview_owner_test.dart` opens the production child sheet, holds and retries source-image reads, opens full file content, saves a nested child's message attachment and closes during a pending share. Requests must retain the child's profile/session and exact path. Image states run in both themes at ordinary and enlarged text. These are host fixtures; native export behavior is covered by the [output viewer recipes](outputs-and-viewers.md).
 
 - **Task handoff across chat surfaces:** the production conversation route checks four completed tasks through streaming, held history, the original saved Activity Tasks tab, draft retention and three later rounds in both themes at normal/enlarged text. The owner suites also cover child completion, cancelled tasks, hydration and unfinished work retained after a response.
+
+  `flutter test --no-pub test/profile_todo_icons_test.dart` checks whole-row task
+  toggles, keyboard activation, scroll gesture admission, independent status
+  semantics, selection and ID-bound expansion in both themes at ordinary and
+  enlarged text. Its dock case checks selection without moving the composer.
 
   ```sh
   flutter test --no-pub test/profile_live_work_route_test.dart test/profile_execution_activity_test.dart test/subagent_timeline_session_test.dart test/saved_activity_test.dart
