@@ -195,15 +195,17 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
           for (var i = 0; i < 8; i++) {
             await tester.pump(const Duration(milliseconds: 100));
           }
-          expect(find.byIcon(WingIcons.queue), findsNWidgets(2));
+          expect(find.text('2 queued'), findsOneWidget);
           expect(chat.composer.observation.queue, hasLength(2));
           controller.connectionStatus.liveChanged('b', false);
           await tester.pump();
-          expect(find.byIcon(WingIcons.queue), findsNWidgets(2));
+          expect(find.text('2 queued'), findsOneWidget);
           controller.connectionStatus.liveChanged('a', false);
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
-          expect(find.byIcon(WingIcons.queue), findsNWidgets(2));
+          expect(find.text('2 queued'), findsOneWidget);
+          await tester.tap(find.text('2 queued'));
+          await tester.pump(const Duration(milliseconds: 400));
           expect(find.text('First waiting message'), findsOneWidget);
           await renderStatus(
             tester,
@@ -212,7 +214,7 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
           controller.connectionStatus.liveChanged('a', true);
           await tester.pump();
           await tester.pump(const Duration(milliseconds: 300));
-          expect(find.byIcon(WingIcons.queue), findsNWidgets(2));
+          expect(find.text('2 queued'), findsOneWidget);
           expect(chat.composer.observation.queue, hasLength(2));
           await renderStatus(
             tester,

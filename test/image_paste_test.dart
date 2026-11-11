@@ -434,6 +434,8 @@ void main() {
             host.calls.where((call) => call.$2 == 'prompt.submit'),
             isEmpty,
           );
+          await tester.tap(find.text('1 queued'));
+          await pumpFrames(tester);
           expect(
             find
                 .descendant(

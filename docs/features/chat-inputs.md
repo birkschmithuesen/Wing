@@ -102,6 +102,15 @@ server admission identity and cancellation/steering. Run:
 flutter test --no-pub test/profile_composer_actions_test.dart test/composer_steering_delivery_test.dart test/profile_composer_queue_test.dart
 ```
 
+`profile_activity_status_test.dart`, `image_paste_test.dart` and
+`conversation_outbox_screen_test.dart` open the compact count before inspecting
+queued rows. They cover connection changes, queued image retention, durable
+offline FIFO and editing a newer draft while delivery remains unconfirmed:
+
+```sh
+flutter test --no-pub test/profile_activity_status_test.dart test/image_paste_test.dart test/conversation_outbox_screen_test.dart
+```
+
 The pending API has no reliable internal-message discriminator. Keep unclassified
 entries inspectable without guessing from their text or missing controls. Typed
 process updates already use [Activity](chat-activity.md); its existing receipt
