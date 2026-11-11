@@ -49,6 +49,27 @@ final class ComposerQueueObservation {
   final bool serverOwned, unknownOutcome, pendingSteering;
 }
 
+/// Server support is separate from temporary admission. Views omit unsupported
+/// actions and explain restrictions on supported actions without guessing origin.
+final class ComposerQueueActions {
+  const ComposerQueueActions({
+    required this.supportsEdit,
+    required this.supportsSteer,
+    required this.supportsDelete,
+    required this.editUnavailableReason,
+    required this.steerUnavailableReason,
+    required this.deleteUnavailableReason,
+  });
+
+  final bool supportsEdit, supportsSteer, supportsDelete;
+  final String? editUnavailableReason,
+      steerUnavailableReason,
+      deleteUnavailableReason;
+  bool get canDelete => supportsDelete && deleteUnavailableReason == null;
+  bool get canEdit => supportsEdit && editUnavailableReason == null;
+  bool get canSteer => supportsSteer && steerUnavailableReason == null;
+}
+
 enum ComposerUnavailableReason {
   dictation,
   reconnect,

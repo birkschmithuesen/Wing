@@ -7,17 +7,25 @@ local unsent entries on the phone; once Hermes accepts a queued message, Hermes
 owns when it runs. Accepted messages can run after Wing disconnects. The separate
 composer draft remains available.
 
-Tap a queued row for its supported Edit, Steer and Delete actions. Steer needs a
-connected active turn and a text-only message. For a message with attachments,
-the dimmed Steer action explains why it is unavailable. A local paused queue also
-offers Resume.
+A compact count above the composer shows waiting work. Expand it to see message
+previews, then tap or hold a row to open its full selectable text and supported
+actions. Copy preserves the exact text. Unknown execution outcomes, unconfirmed
+delivery and failed steering stay visible for review even when the queue is
+collapsed. A local paused queue offers Resume.
 
-Edit, or hold the row, to change the message in the composer. Saving a local
+Choose Edit in that sheet to change the message in the composer. Saving a local
 unsent entry keeps its position. Editing a still-queued message already accepted
 by Hermes replaces it at the tail; steering transfers that exact accepted entry
-into the current turn. Unavailable server controls stay disabled.
+into the current turn. Unsupported actions are omitted. Supported actions that
+are temporarily unavailable explain the current restriction when tapped. Steer
+requires a connected active turn and a text-only message.
 
-Cancel restores your separate draft; deletion requires confirmation. Back hides
+Hermes can queue internal background notifications alongside your messages.
+Their exact text is available in the queue details. Wing does not infer their
+origin from wording or unavailable actions. Once Hermes identifies a process
+update in the conversation, its existing Activity row holds the report.
+
+Cancel editing restores your separate draft. Deletion requires confirmation; for a server-accepted message it cancels delivery, rather than just hiding the row. Back hides
 the keyboard first, then cancels editing. Local submission pauses while an edit
 is open; this does not pause work already accepted by Hermes.
 

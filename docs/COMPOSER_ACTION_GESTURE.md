@@ -18,15 +18,15 @@ Screen readers provide named actions on the button. With a hardware keyboard, Ta
 
 Accepted steering appears as a compact steering row until Hermes adds it to saved conversation history. It then becomes a normal user bubble with formatted text and Copy. Saved steering also opens as a normal bubble when you return to a chat. Rejected steering or a connection failure keeps the draft. Text typed while a request is pending remains separate.
 
-The outbox appears above the composer whenever it contains messages, whether
-connected or offline. Messages added through Send or Queue appear in the same
-list, with their text and attachment names. A message remains there until Hermes
-acknowledges it or you delete it. Tap an entry for its Edit, Steer and Delete
-actions, or hold it to edit. These actions apply to the selected queued message
-and preserve your separate draft. The outbox disappears when empty. Connected
-queues send after the current turn; a failed save restores the draft, and
-uncertain delivery pauses the queue
-for review. See
+The queue appears above the composer as a compact count, whether connected or
+offline. Expand it to see message previews and attachment names. Entries with
+unknown outcomes, unconfirmed delivery or steering failures stay visible when
+collapsed. Tap or hold an entry to open the same full-text detail sheet with
+selection, exact Copy and supported actions. Temporarily unavailable actions
+explain their restriction. Actions apply to the selected message and preserve
+your separate draft. The queue disappears when empty. Connected queues send
+after the current turn; a failed save restores the draft, and uncertain delivery
+pauses the queue for review. See
 [Queues and pending input](SUPERVISION_AND_QUEUES.md) and
 [Drafts and outgoing messages](DRAFTS_OUTBOX.md).
 

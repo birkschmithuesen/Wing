@@ -1,3 +1,4 @@
+import 'package:wing/core/widgets/profile_queued_messages.dart';
 import 'package:wing/core/models/transcript_message.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'support/canonical_gateway_fixture.dart';
@@ -132,6 +133,17 @@ void main() {
     }
   }
 
+  Future<void> expandQueue(WidgetTester tester) async {
+    final header = find.textContaining(RegExp(r'^\d+ queued$'));
+    if (header.evaluate().isEmpty) return;
+    if (!ExpansibleController.of(tester.element(header)).isExpanded) {
+      await tester.ensureVisible(header);
+      await pumpFrames(tester, count: 2);
+      await tester.tap(header);
+      await pumpFrames(tester, count: 4);
+    }
+  }
+
   Future<void> choose(WidgetTester tester, String action) async {
     final gesture = await tester.startGesture(
       tester.getCenter(find.byType(ComposerActionButton)),
@@ -143,6 +155,7 @@ void main() {
     await tester.pump();
     await gesture.up();
     await pumpFrames(tester, count: 4);
+    if (action == 'queue') await expandQueue(tester);
   }
 
   Future<ProfileChat> show(
@@ -231,6 +244,7 @@ void main() {
       );
       await pumpFrames(tester, count: 4);
     }
+    if (queued.isNotEmpty) await expandQueue(tester);
     return chat;
   }
 
@@ -266,6 +280,216 @@ void main() {
       debugDisableShadows = previousShadows;
       repaintShadows();
       await tester.pump();
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('queue starts compact and opens exact message details '
+          '${brightness.name} $scale', (tester) async {
+        final text =
+            '[IMPORTANT: Background process matched watch pattern READY.]\n'
+            'Command: python3 worker.py\nOutput: \n  exact trailing spaces  \n'
+            '${List.generate(40, (i) => 'Detail line $i\n').join()}';
+        final chat = await show(
+          tester,
+          brightness: brightness,
+          scale: scale,
+          status: ChatExecution.running,
+          draft: 'Separate draft',
+        );
+        tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 800);
+        await pumpFrames(tester, count: 2);
+        final gateway = controller.current!.gateway;
+        gateway.onEvent!(
+          StreamEvent(
+            type: 'session.info',
+            sessionId: chat.runtime.runtimeId,
+            data: stockChatReply(gateway, 'session.info', {
+              'pending': [
+                {
+                  ...canonicalReceipt(
+                    {
+                      'session_id': chat.runtime.runtimeId,
+                      'submission_id': 'process-notice',
+                      'text': text,
+                    },
+                    admissionId: 'process-notice',
+                    status: 'queued',
+                  ),
+                  'controls': [],
+                },
+              ],
+            }),
+            envelope: {'replay_epoch': 'fixture-epoch', 'seq': 1},
+          ),
+        );
+        await pumpFrames(tester);
+        expect(find.text('1 queued'), findsOneWidget);
+        expect(find.text(text), findsNothing);
+        await capture(tester, 'queue-compact-${brightness.name}-$scale');
+        await tester.tap(find.text('1 queued'));
+        await pumpFrames(tester);
+        await capture(tester, 'queue-expanded-${brightness.name}-$scale');
+        await tester.tap(find.text(text));
+        await pumpFrames(tester);
+        expect(find.text('Queued message'), findsOneWidget);
+        expect(find.byTooltip('Edit queued message'), findsNothing);
+        expect(find.byTooltip('Steer queued message'), findsNothing);
+        expect(find.byType(SelectableText), findsOneWidget);
+        expect(
+          tester.widget<SelectableText>(find.byType(SelectableText)).data,
+          text,
+        );
+        expect(
+          find.byTooltip('Delete queued message').hitTestable(),
+          findsOneWidget,
+        );
+        await capture(tester, 'queue-details-${brightness.name}-$scale');
+        String? copied;
+        final copyReceipt = Completer<void>();
+        tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          (call) async {
+            if (call.method == 'Clipboard.setData') {
+              copied = (call.arguments as Map)['text'] as String;
+              await copyReceipt.future;
+            }
+            return null;
+          },
+        );
+        addTearDown(
+          () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+            SystemChannels.platform,
+            null,
+          ),
+        );
+        await tester.tap(find.byTooltip('Copy queued message'));
+        await pumpFrames(tester, count: 2);
+        expect(find.byTooltip('Copy queued message: copying'), findsOneWidget);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        copyReceipt.complete();
+        await pumpFrames(tester, count: 2);
+        expect(find.byTooltip('Copy queued message: copied'), findsOneWidget);
+        expect(copied, text);
+        expect(chat.composer.observation.text, 'Separate draft');
+        expect(tester.takeException(), isNull);
+      });
+
+      testWidgets(
+        'collapsed queue keeps unknown and uncertain outcomes visible '
+        '${brightness.name} $scale',
+        (tester) async {
+          final chat = await show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            status: ChatExecution.running,
+            draft: 'Keep my draft',
+          );
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 800);
+          await pumpFrames(tester, count: 2);
+          final gateway = controller.current!.gateway;
+          var sequence = 0;
+          Map<String, dynamic> receipt(String id, String text, String status) =>
+              {
+                ...canonicalReceipt(
+                  {
+                    'session_id': chat.runtime.runtimeId,
+                    'submission_id': id,
+                    'text': text,
+                  },
+                  admissionId: id,
+                  status: status,
+                ),
+                'controls': <String>[],
+              };
+          void pending(List<Map<String, dynamic>> rows) {
+            gateway.onEvent!(
+              StreamEvent(
+                type: 'session.info',
+                sessionId: chat.runtime.runtimeId,
+                data: stockChatReply(gateway, 'session.info', {
+                  'pending': rows,
+                }),
+                envelope: {'replay_epoch': 'fixture-epoch', 'seq': ++sequence},
+              ),
+            );
+          }
+
+          pending([
+            receipt('unknown', 'Check what happened', 'unknown'),
+            receipt('ordinary', 'Wait until later', 'queued'),
+          ]);
+          await pumpFrames(tester);
+          expect(find.text('2 queued'), findsOneWidget);
+          expect(find.text('1 to review'), findsOneWidget);
+          expect(
+            find.text('Outcome unknown · Check what happened'),
+            findsOneWidget,
+          );
+          expect(find.text('Wait until later'), findsNothing);
+          await capture(tester, 'queue-review-${brightness.name}-$scale');
+          await tester.tap(find.text('Outcome unknown · Check what happened'));
+          await pumpFrames(tester);
+          expect(find.byTooltip('Acknowledge unknown outcome'), findsOneWidget);
+          expect(find.byTooltip('Edit queued message'), findsNothing);
+          expect(find.byTooltip('Steer queued message'), findsNothing);
+          await capture(
+            tester,
+            'queue-unknown-details-${brightness.name}-$scale',
+          );
+          await tester.tap(find.byTooltip('Close queued message actions'));
+          await pumpFrames(tester);
+          await expandQueue(tester);
+          await tester.scrollUntilVisible(
+            find.text('Wait until later'),
+            48,
+            scrollable: find
+                .descendant(
+                  of: find.byType(ProfileQueuedMessages),
+                  matching: find.byType(Scrollable),
+                )
+                .last,
+          );
+          await pumpFrames(tester, count: 2);
+          expect(find.text('Wait until later'), findsOneWidget);
+          await tester.ensureVisible(find.text('2 queued'));
+          await pumpFrames(tester, count: 2);
+          await tester.tap(find.text('2 queued'));
+          await pumpFrames(tester);
+          pending([receipt('unknown', 'Check what happened', 'queued')]);
+          await pumpFrames(tester);
+          expect(find.text('1 to review'), findsNothing);
+          expect(find.text('Check what happened'), findsNothing);
+          pending([]);
+          await pumpFrames(tester);
+          expect(find.text('1 queued'), findsNothing);
+          await tester.runAsync(
+            () => restoreComposerFixture(
+              chat: chat,
+              preferences: controller.preferences,
+              text: 'Keep my draft',
+              paused: true,
+              queuedPrompts: [
+                QueuedPromptDraft(
+                  text: 'Receipt was lost',
+                  submissionUncertain: true,
+                ),
+              ],
+            ),
+          );
+          await pumpFrames(tester);
+          expect(
+            find.text('Delivery unconfirmed · Receipt was lost'),
+            findsOneWidget,
+          );
+          expect(find.text('Paused · 1 to review'), findsOneWidget);
+          expect(chat.composer.observation.text, 'Keep my draft');
+          await capture(tester, 'queue-uncertain-${brightness.name}-$scale');
+          expect(tester.takeException(), isNull);
+        },
+      );
     }
   }
 
@@ -357,8 +581,8 @@ void main() {
         final reply = fixture.submitReply = Completer<Map<String, dynamic>>();
         await tester.tap(find.byTooltip('Send'));
         await tester.pump();
-        expect(find.text(text), findsOneWidget);
-        expect(find.text('Queue paused'), findsNothing);
+        expect(find.text('1 queued'), findsOneWidget);
+        expect(find.text('Paused'), findsNothing);
         await tester.runAsync(() async {
           await chat.composer.admittedWrites;
           await Future<void>.delayed(const Duration(milliseconds: 100));
@@ -756,7 +980,117 @@ void main() {
     );
   }
 
-  testWidgets('long press edits in the composer and reveals delete', (
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('queued edit refusal is consistent across gestures '
+          '${brightness.name} $scale', (tester) async {
+        const text =
+            '[IMPORTANT: Background process matched watch pattern READY.]';
+        final chat = await show(
+          tester,
+          brightness: brightness,
+          scale: scale,
+          status: ChatExecution.running,
+          draft: 'Separate draft',
+        );
+        final gateway = controller.current!.gateway;
+        final receipt = canonicalReceipt(
+          {
+            'session_id': chat.runtime.runtimeId,
+            'submission_id': 'process-notice',
+            'text': text,
+          },
+          admissionId: 'process-notice',
+          status: 'queued',
+        );
+        var sequence = 0;
+        void pending(List<String> controls) {
+          gateway.onEvent!(
+            StreamEvent(
+              type: 'session.info',
+              sessionId: chat.runtime.runtimeId,
+              data: stockChatReply(gateway, 'session.info', {
+                'pending': [
+                  {...receipt, 'controls': controls},
+                ],
+              }),
+              envelope: {'replay_epoch': 'fixture-epoch', 'seq': ++sequence},
+            ),
+          );
+        }
+
+        pending([]);
+        await pumpFrames(tester);
+        await expandQueue(tester);
+        for (final longPress in [false, true]) {
+          if (longPress) {
+            await tester.longPress(find.text(text));
+          } else {
+            await tester.tap(find.text(text));
+          }
+          await pumpFrames(tester);
+          expect(find.text('Queued message'), findsOneWidget);
+          expect(chat.composer.observation.editing, isNull);
+          expect(find.byTooltip('Edit queued message'), findsNothing);
+          expect(find.byTooltip('Steer queued message'), findsNothing);
+          expect(find.textContaining('Refresh the queue'), findsNothing);
+          expect(chat.composer.observation.text, 'Separate draft');
+          await capture(
+            tester,
+            'queue-refusal-${brightness.name}-$scale-$longPress',
+          );
+          await tester.tap(find.byTooltip('Close queued message actions'));
+          await pumpFrames(tester);
+        }
+        pending(['replace', 'steer']);
+        await pumpFrames(tester);
+        await tester.tap(find.text(text));
+        await pumpFrames(tester);
+        final edit = find.widgetWithIcon(IconButton, Icons.edit_outlined);
+        expect(tester.widget<IconButton>(edit).onPressed, isNotNull);
+        pending([]);
+        await pumpFrames(tester);
+        expect(edit, findsNothing);
+        expect(find.byTooltip('Steer queued message'), findsNothing);
+        expect(chat.composer.observation.editing, isNull);
+        expect(
+          fixture.calls.any((call) => call.$2 == 'prompt.replace_queued'),
+          isFalse,
+        );
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('supported queued Steer explains its temporary restriction', (
+    tester,
+  ) async {
+    final chat = await show(
+      tester,
+      queued: ['Later'],
+      draft: 'Separate draft',
+      paused: true,
+    );
+    await tester.tap(find.text('Later'));
+    await pumpFrames(tester);
+    final steer = find.widgetWithIcon(IconButton, WingIcons.steer);
+    expect(steer, findsOneWidget);
+    expect(tester.widget<IconButton>(steer).onPressed, isNull);
+    await tester.tap(steer);
+    await tester.pump(const Duration(milliseconds: 200));
+    await tester.pump(const Duration(milliseconds: 200));
+    expect(
+      find.text(
+        'There is no active turn to steer. This message will wait in the queue.',
+      ),
+      findsOneWidget,
+    );
+    expect(fixture.steerRequests, isEmpty);
+    expect(chat.composer.observation.text, 'Separate draft');
+    await capture(tester, 'queue-temporary-restriction');
+  });
+
+  testWidgets('long press opens the same queued actions before editing', (
     tester,
   ) async {
     final chat = await show(
@@ -769,12 +1103,16 @@ void main() {
     expect(find.byTooltip('Message actions'), findsNothing);
     await tester.longPress(find.text('Keep this queued'));
     await pumpFrames(tester, count: 4);
+    expect(find.text('Queued message'), findsOneWidget);
+    expect(chat.composer.observation.editing, isNull);
+    await tester.tap(find.byTooltip('Edit queued message'));
+    await pumpFrames(tester, count: 4);
     expect(chat.composer.observation.queue.single.text, 'Keep this queued');
     expect(chat.composer.observation.text, 'My draft');
     expect(chat.composer.observation.displayedText, 'Keep this queued');
     expect(find.byType(AlertDialog), findsNothing);
     expect(find.byTooltip('Save queued message'), findsOneWidget);
-    expect(find.byTooltip('Steer queued message'), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, WingIcons.steer), findsOneWidget);
     expect(find.byTooltip('Delete queued message'), findsOneWidget);
     expect(find.byTooltip('Message actions'), findsNothing);
     expect(
@@ -807,7 +1145,10 @@ void main() {
           await tester.tap(find.text('Second queued'));
           await pumpFrames(tester);
           expect(find.byTooltip('Edit queued message'), findsOneWidget);
-          expect(find.byTooltip('Steer queued message'), findsOneWidget);
+          expect(
+            find.widgetWithIcon(IconButton, WingIcons.steer),
+            findsOneWidget,
+          );
           expect(find.byTooltip('Delete queued message'), findsOneWidget);
           expect(find.text('Steer this turn'), findsNothing);
           await capture(tester, 'queued-actions-${brightness.name}-$scale');
@@ -874,7 +1215,7 @@ void main() {
       await pumpFrames(tester, count: 4);
       expect(fixture.steerRequests.single['text'], 'Second queued');
       expect(find.text('Queued message'), findsNothing);
-      expect(find.text('Second queued'), findsOneWidget);
+      expect(find.textContaining('Second queued'), findsOneWidget);
       final loading = find.descendant(
         of: find.byKey(const ValueKey('studio-loading-slot')),
         matching: find.byTooltip('Steering message'),
@@ -889,6 +1230,10 @@ void main() {
         findsOneWidget,
       );
       expect(chat.composer.observation.queue, hasLength(2));
+      await tester.tap(find.text('2 queued'));
+      await pumpFrames(tester);
+      expect(find.textContaining('1 to review'), findsOneWidget);
+      expect(find.text('Second queued'), findsOneWidget);
       expect(chat.composer.observation.text, 'Separate draft');
       fixture.steerReply = null;
       await tester.tap(find.text('Second queued'));
@@ -965,6 +1310,8 @@ void main() {
     await pumpFrames(tester);
     expect(chat.composer.observation.queue.single.text, 'Later');
     expect(chat.composer.observation.text, isEmpty);
+    expect(find.text('1 queued'), findsOneWidget);
+    await expandQueue(tester);
     expect(find.text('Later').hitTestable(), findsOneWidget);
     expect(
       controller.preferences.getString(
@@ -1085,21 +1432,18 @@ void main() {
     await pumpFrames(tester, count: 4);
     expect(find.text('Queued message'), findsOneWidget);
     expect(find.text('report.pdf'), findsNWidgets(2));
+    expect(find.byTooltip('Steer queued message'), findsNothing);
     expect(
-      tester
-          .widget<IconButton>(find.widgetWithIcon(IconButton, WingIcons.steer))
-          .onPressed,
-      isNull,
+      find.widgetWithIcon(IconButton, Icons.edit_outlined).hitTestable(),
+      findsOneWidget,
     );
-    expect(find.byTooltip('Edit queued message').hitTestable(), findsOneWidget);
   });
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
-      testWidgets('image queue explains disabled Steer $brightness $scale', (
+      testWidgets('image queue omits unsupported Steer $brightness $scale', (
         tester,
       ) async {
-        const reason = 'Hermes only supports steering text-only messages.';
         final bytes = raster.encodePng(
           raster.Image(width: 3, height: 2)
             ..clear(raster.ColorRgb8(39, 127, 137)),
@@ -1141,60 +1485,27 @@ void main() {
         await pumpFrames(tester, count: 2);
         await tester.tap(row);
         await pumpFrames(tester);
-        final steer = find.widgetWithIcon(IconButton, WingIcons.steer).last;
-        expect(tester.widget<IconButton>(steer).onPressed, isNull);
-        expect(find.text(reason), findsNothing);
-        await tester.tap(steer);
-        await tester.pump(const Duration(milliseconds: 200));
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(find.text(reason), findsOneWidget);
-        expect(
-          tester.getBottomLeft(find.text(reason)).dy,
-          lessThan(tester.getTopLeft(steer).dy),
-        );
-        await capture(
-          tester,
-          'queued-image-hint-menu-${brightness.name}-$scale',
-        );
+        expect(find.byTooltip('Steer queued message'), findsNothing);
         expect(fixture.steerRequests, isEmpty);
         expect(chat.composer.observation.queue.single.id, same(selected));
         expect(chat.composer.observation.text, 'Separate draft');
-        expect(find.text('Queued message'), findsOneWidget);
-        await tester.pump(const Duration(seconds: 4));
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(find.text(reason), findsNothing);
-        await tester.tap(steer);
-        await tester.pump(const Duration(milliseconds: 200));
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(find.text(reason), findsOneWidget);
+        await capture(tester, 'queued-image-menu-${brightness.name}-$scale');
         await tester.tap(find.byTooltip('Edit queued message'));
         await pumpFrames(tester);
-        expect(find.text(reason), findsNothing);
         expect(chat.composer.observation.editing, same(selected));
-        await tester.ensureVisible(steer);
-        await pumpFrames(tester, count: 2);
-        expect(tester.widget<IconButton>(steer).onPressed, isNull);
-        await tester.tap(steer);
-        await tester.pump(const Duration(milliseconds: 200));
-        await tester.pump(const Duration(milliseconds: 200));
-        expect(find.text(reason), findsOneWidget);
-        expect(
-          tester.getBottomLeft(find.text(reason)).dy,
-          lessThan(tester.getTopLeft(steer).dy),
-        );
-        await capture(
-          tester,
-          'queued-image-hint-edit-${brightness.name}-$scale',
-        );
-        expect(fixture.steerRequests, isEmpty);
+        expect(find.byTooltip('Steer queued message'), findsNothing);
+        await capture(tester, 'queued-image-edit-${brightness.name}-$scale');
         expect(
           chat.composer.observation.queue.single.attachments.single.id,
           image.id,
         );
-        expect(chat.composer.observation.text, 'Separate draft');
+        expect(fixture.steerRequests, isEmpty);
+        await tester.ensureVisible(
+          find.byTooltip('Cancel queued message editing'),
+        );
+        await pumpFrames(tester, count: 2);
         await tester.tap(find.byTooltip('Cancel queued message editing'));
         await pumpFrames(tester);
-        expect(find.text(reason), findsNothing);
         expect(chat.composer.observation.displayedText, 'Separate draft');
         expect(tester.takeException(), isNull);
       });
@@ -1212,6 +1523,8 @@ void main() {
       disconnected: true,
     );
     await tester.longPress(find.text('Delete this'));
+    await pumpFrames(tester, count: 4);
+    await tester.tap(find.byTooltip('Edit queued message'));
     await pumpFrames(tester, count: 4);
     await tester.tap(find.byTooltip('Delete queued message'));
     await pumpFrames(tester, count: 4);
@@ -1255,12 +1568,16 @@ void main() {
     final editor = find.byKey(const Key('profile-message-composer'));
     await tester.longPress(find.text('Original'));
     await pumpFrames(tester, count: 4);
+    await tester.tap(find.byTooltip('Edit queued message'));
+    await pumpFrames(tester, count: 4);
     await tester.enterText(editor, 'Discarded edit');
     await tester.tap(find.byTooltip('Cancel queued message editing'));
     await pumpFrames(tester, count: 4);
     expect(chat.composer.observation.queue.first.text, 'Original');
     expect(chat.composer.observation.displayedText, 'Separate draft');
     await tester.longPress(find.text('Original'));
+    await pumpFrames(tester, count: 4);
+    await tester.tap(find.byTooltip('Edit queued message'));
     await pumpFrames(tester, count: 4);
     await tester.enterText(editor, '');
     await tester.pump();
@@ -1296,14 +1613,12 @@ void main() {
       status: ChatExecution.running,
       queued: ['Original', 'Second'],
       draft: 'Separate draft',
-      disconnected: true,
+      paused: true,
     );
     await tester.longPress(find.text('Original'));
     await pumpFrames(tester, count: 4);
-    controller.connectionStatus.liveChanged(
-      chat.key.workspace.profileName,
-      true,
-    );
+    await tester.tap(find.byTooltip('Edit queued message'));
+    await pumpFrames(tester, count: 4);
     await tester.enterText(
       find.byKey(const Key('profile-message-composer')),
       'Changed direction',
@@ -1328,14 +1643,12 @@ void main() {
       status: ChatExecution.running,
       queued: ['Original'],
       draft: 'Separate draft',
-      disconnected: true,
+      paused: true,
     );
     await tester.longPress(find.text('Original'));
     await pumpFrames(tester, count: 4);
-    controller.connectionStatus.liveChanged(
-      chat.key.workspace.profileName,
-      true,
-    );
+    await tester.tap(find.byTooltip('Edit queued message'));
+    await pumpFrames(tester, count: 4);
     await tester.enterText(
       find.byKey(const Key('profile-message-composer')),
       'Try this',
@@ -1369,10 +1682,12 @@ void main() {
     );
     await tester.longPress(find.text('Original'));
     await pumpFrames(tester, count: 4);
+    await tester.tap(find.byTooltip('Edit queued message'));
+    await pumpFrames(tester, count: 4);
     tester.view.viewInsets = const FakeViewPadding(bottom: 280);
     await pumpFrames(tester, count: 4);
     expect(find.byTooltip('Save queued message'), findsOneWidget);
-    expect(find.byTooltip('Steer queued message'), findsOneWidget);
+    expect(find.widgetWithIcon(IconButton, WingIcons.steer), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -1537,7 +1852,7 @@ void main() {
         false,
       );
       await pumpFrames(tester, count: 4);
-      expect(find.text('Queue paused'), findsOneWidget);
+      expect(find.text('Paused'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('First follow-up'));
       await pumpFrames(tester, count: 4);

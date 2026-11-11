@@ -1,3 +1,4 @@
+import '../widgets/activity/activity_detail_actions.dart';
 import '../widgets/tool_activity_details.dart';
 import '../widgets/email_draft_card.dart';
 import '../widgets/live_voice_scope.dart';
@@ -3207,9 +3208,6 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                       : null;
                 },
                 onOpenActions: (prompt) => _showQueuedActions(chat, prompt),
-                onEdit: !chat.composer.actions().canEditQueue
-                    ? null
-                    : (prompt) => _beginQueuedEdit(chat, prompt),
                 onDelete: !chat.composer.actions().canEditQueue
                     ? null
                     : (prompt) => _deleteQueuedPrompt(chat, prompt),
@@ -3639,23 +3637,25 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
   }
 
-  Widget _queuedSteerButton({
-    required bool hasAttachments,
+  Widget _queuedActionButton({
+    required String label,
+    required IconData icon,
     required VoidCallback? onPressed,
+    String? unavailableReason,
   }) {
     final button = StudioButtonPress(
       child: IconButton(
-        tooltip: hasAttachments ? null : 'Steer queued message',
+        tooltip: unavailableReason == null ? label : null,
         onPressed: onPressed,
-        icon: const Icon(WingIcons.steer),
+        icon: Icon(icon),
       ),
     );
-    if (!hasAttachments) return button;
+    if (unavailableReason == null) return button;
     return Semantics(
-      label: 'Steer queued message',
+      label: label,
       enabled: false,
       child: Tooltip(
-        message: 'Hermes only supports steering text-only messages.',
+        message: unavailableReason,
         triggerMode: TooltipTriggerMode.tap,
         preferBelow: false,
         showDuration: const Duration(seconds: 3),
@@ -3670,7 +3670,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final saving = chat.composer.actions().editingBusy;
     final actions = chat.composer.actions();
     final valid = actions.canSaveQueueEdit;
-    final canSteer = actions.canSteerQueueEdit;
+    final queuedActions = chat.composer.queueActions(prompt.id);
     return Padding(
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
       child: Column(
@@ -3698,22 +3698,25 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             confirmLabel: 'Save queued message',
             progressLabel: 'Saving queued message',
             leadingActions: [
-              _queuedSteerButton(
-                hasAttachments: prompt.attachments.isNotEmpty,
-                onPressed: saving || !canSteer
-                    ? null
-                    : () => _runQueuedEdit(chat, () async {
-                        final accepted = await controller.steerQueuedPromptEdit(
-                          chat,
-                        );
-                        if (!accepted) {
-                          throw StateError(
-                            'Hermes rejected the steering message.',
-                          );
-                        }
-                      }),
-              ),
-              const SizedBox(width: WingSpacing.sm),
+              if (queuedActions.supportsSteer)
+                _queuedActionButton(
+                  label: 'Steer queued message',
+                  icon: WingIcons.steer,
+                  unavailableReason: queuedActions.steerUnavailableReason,
+                  onPressed: saving || !queuedActions.canSteer
+                      ? null
+                      : () => _runQueuedEdit(chat, () async {
+                          final accepted = await controller
+                              .steerQueuedPromptEdit(chat);
+                          if (!accepted) {
+                            throw StateError(
+                              'Hermes rejected the steering message.',
+                            );
+                          }
+                        }),
+                ),
+              if (queuedActions.supportsSteer)
+                const SizedBox(width: WingSpacing.sm),
             ],
           ),
         ],
@@ -3738,7 +3741,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           [
             prompt.unknownOutcome
                 ? 'Hermes cannot determine whether this ran. Acknowledging it releases the queue without running it again.'
-                : 'Are you sure you want to delete this instruction?',
+                : prompt.serverOwned
+                ? 'Cancel delivery of this message to Hermes? It will be removed from the queue.'
+                : 'Remove this unsent message from the queue?',
             prompt.text,
             ...prompt.attachments.map((attachment) => attachment.name),
           ].where((part) => part.isNotEmpty).join('\n\n'),
@@ -3773,6 +3778,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         listenable: controller,
         builder: (context, _) {
           final actions = chat.composer.queueActions(prompt.id);
+          final current = chat.composer.observation.queue
+              .where((row) => identical(row.id, prompt.id))
+              .firstOrNull;
+          final selected = current ?? prompt;
           final media = MediaQuery.of(context);
           return Padding(
             padding: EdgeInsets.only(bottom: media.viewInsets.bottom),
@@ -3783,7 +3792,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   maxHeight: (media.size.height - media.viewInsets.bottom - 24)
                       .clamp(0.0, media.size.height),
                 ),
-                child: SingleChildScrollView(
+                child: Padding(
                   padding: const EdgeInsets.all(16),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -3797,6 +3806,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                               style: Theme.of(context).textTheme.titleMedium,
                             ),
                           ),
+                          if (selected.text.isNotEmpty)
+                            ToolDetailCopyButton(
+                              label: 'Copy queued message',
+                              text: selected.text,
+                            ),
                           StudioButtonPress(
                             child: IconButton(
                               tooltip: 'Close queued message actions',
@@ -3806,48 +3820,71 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                           ),
                         ],
                       ),
-                      if (prompt.text.isNotEmpty)
-                        Text(
-                          prompt.text,
-                          maxLines: 4,
-                          overflow: TextOverflow.ellipsis,
+                      Flexible(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              if (current == null)
+                                const Text(
+                                  'This message is no longer in the queue.',
+                                ),
+                              if (selected.unknownOutcome)
+                                const Text(
+                                  'Hermes cannot determine whether this message ran. Acknowledge the outcome to release the queue without running it again.',
+                                ),
+                              if (selected.submissionUncertain)
+                                const Text(
+                                  'Delivery is unconfirmed. Check conversation history before retrying.',
+                                ),
+                              if (selected.text.isNotEmpty)
+                                SelectableText(selected.text),
+                              if (selected.attachments.isNotEmpty)
+                                Text(
+                                  selected.attachments
+                                      .map((file) => file.name)
+                                      .join(', '),
+                                ),
+                            ],
+                          ),
                         ),
-                      if (prompt.attachments.isNotEmpty)
-                        Text(
-                          prompt.attachments
-                              .map((file) => file.name)
-                              .join(', '),
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                        ),
+                      ),
                       const SizedBox(height: 8),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
                         children: [
-                          StudioButtonPress(
-                            child: IconButton(
-                              tooltip: 'Edit queued message',
+                          if (actions.supportsEdit)
+                            _queuedActionButton(
+                              label: 'Edit queued message',
+                              icon: Icons.edit_outlined,
+                              unavailableReason: actions.editUnavailableReason,
                               onPressed: actions.canEdit
                                   ? () => Navigator.pop(sheetContext, 'edit')
                                   : null,
-                              icon: const Icon(Icons.edit_outlined),
                             ),
-                          ),
-                          _queuedSteerButton(
-                            hasAttachments: prompt.attachments.isNotEmpty,
-                            onPressed: actions.canSteer
-                                ? () => Navigator.pop(sheetContext, 'steer')
-                                : null,
-                          ),
-                          StudioButtonPress(
-                            child: IconButton(
-                              tooltip: 'Delete queued message',
+                          if (actions.supportsSteer)
+                            _queuedActionButton(
+                              label: 'Steer queued message',
+                              icon: WingIcons.steer,
+                              unavailableReason: actions.steerUnavailableReason,
+                              onPressed: actions.canSteer
+                                  ? () => Navigator.pop(sheetContext, 'steer')
+                                  : null,
+                            ),
+                          if (actions.supportsDelete)
+                            _queuedActionButton(
+                              label: selected.unknownOutcome
+                                  ? 'Acknowledge unknown outcome'
+                                  : 'Delete queued message',
+                              icon: selected.unknownOutcome
+                                  ? Icons.check
+                                  : Icons.delete_outline,
+                              unavailableReason:
+                                  actions.deleteUnavailableReason,
                               onPressed: actions.canDelete
                                   ? () => Navigator.pop(sheetContext, 'delete')
                                   : null,
-                              icon: const Icon(Icons.delete_outline),
                             ),
-                          ),
                           if (chat.composer.observation.paused)
                             StudioButtonPress(
                               child: IconButton(

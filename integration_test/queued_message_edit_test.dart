@@ -1,3 +1,4 @@
+import 'package:wing/core/theme/wing_icons.dart';
 import '../test/support/composer_fixture.dart';
 import '../test/helpers/journey_controls.dart' show tapJourneyControl;
 import '../test/support/canonical_gateway_fixture.dart';
@@ -262,6 +263,12 @@ void main() {
       ),
     );
     await frames(tester);
+    final header = find.textContaining(RegExp(r'^\d+ queued$'));
+    if (header.evaluate().isNotEmpty &&
+        !ExpansibleController.of(tester.element(header)).isExpanded) {
+      await tester.tap(header);
+      await frames(tester);
+    }
   }
 
   Future<void> edit(WidgetTester tester, String original) async {
@@ -270,6 +277,9 @@ void main() {
     await frames(tester);
     expect(row.hitTestable(), findsOneWidget);
     await tester.longPress(row);
+    await frames(tester);
+    expect(find.text('Queued message'), findsOneWidget);
+    await tester.tap(find.byTooltip('Edit queued message'));
     await frames(tester);
     expect(chat.composer.observation.displayedText, original);
     expect(find.byType(AlertDialog), findsNothing);
@@ -466,7 +476,7 @@ void main() {
       expect(chat.composer.observation.saving, isTrue);
       expect(find.byTooltip('Saving message'), findsOneWidget);
       await capture(tester, 'queue-04-steer-pending');
-      await tester.tap(find.byTooltip('Steer queued message'));
+      await tester.tap(find.widgetWithIcon(IconButton, WingIcons.steer));
       await frames(tester);
       expect(fixture.steers, hasLength(1));
       expect(fixture.submissions, hasLength(2));
@@ -587,6 +597,8 @@ void main() {
       expect(row.hitTestable(), findsOneWidget);
       await tester.longPress(row);
       await frames(tester);
+      await tester.tap(find.byTooltip('Edit queued message'));
+      await frames(tester);
       await tester.enterText(composer, 'Check the attached notes');
       await frames(tester);
       final keyboardDeadline = DateTime.now().add(const Duration(seconds: 10));
@@ -606,17 +618,8 @@ void main() {
       );
       await capture(tester, 'queue-06-large-text-attachment', keyboard: true);
       expect(
-        tester
-            .widget<IconButton>(
-              find.descendant(
-                of: find.byTooltip(
-                  'Hermes only supports steering text-only messages.',
-                ),
-                matching: find.byType(IconButton),
-              ),
-            )
-            .onPressed,
-        isNull,
+        find.widgetWithIcon(IconButton, WingIcons.steer),
+        findsNothing,
       );
       await tester.tap(find.byTooltip('Save queued message'));
       await frames(tester);

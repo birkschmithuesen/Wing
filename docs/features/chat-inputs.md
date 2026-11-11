@@ -10,7 +10,7 @@ Feature ID: `chat-inputs`.
 - `chat-inputs.landscape` — Normal chats, Bot Chats and group discussions use the same responsive composer. Read with a one-row composer on landscape phones. Send/Stop stays visible; expand the controls to reach attachments, context and model options. With the keyboard open, the field and Send/Stop stay on one row; expanding dismisses the keyboard.
 - `chat-inputs.identity` — Every writable conversation and its Recents preview uses the same message field and toolbar arrangement. Attachment controls start at the left and Send/Stop stays at the right, even when a discussion has fewer controls. Dictation stays inside the field. Attach file opens the same Camera/Photos/Files bottom sheet in normal chats, Bot Chats and discussions; Camera is disabled when capture is unavailable. Attached image thumbnails open the same viewer with visible loading and failure feedback.
 - Dismissing the Android keyboard restores the composer to the bottom, including interrupted keyboard animations and returning from another app. Drafts stay intact; a still-visible keyboard retains its space.
-- `chat-inputs.queue` — Hermes owns the accepted FIFO; edits retain authored text and selected references and replace a still-queued message at the tail, steering transfers that exact admission to the current turn, and cancellation names its admission. Unsupported controls remain unavailable. Notes and continuation requests from the remote screen are queued independently and preserve the main draft, references and attachments, even when the text matches.
+- `chat-inputs.queue` — Hermes owns the accepted FIFO; edits retain authored text and selected references and replace a still-queued message at the tail, steering transfers that exact admission to the current turn, and cancellation names its admission. The queue starts as a compact expandable count. Unknown outcomes, unconfirmed delivery and steering failures remain visible while collapsed. Details retain complete selectable text and exact Copy. Unsupported actions are omitted; supported actions explain temporary restrictions when tapped. Notes and continuation requests from the remote screen are queued independently and preserve the main draft, references and attachments, even when the text matches.
 - `chat-inputs.revise` — Edit, restore or regenerate using revision-fenced saved row targets. Deep revision explains the number of later user turns removed; harmless last-turn regeneration remains immediate. Fork requires an idle source and a saved active answer. After context compression it copies the active context, including the hidden summary, through that answer; archived turns remain in the original chat.
 - `chat-inputs.clarify` — Use the explicit icon in a waiting question to answer with plain composer text. Slash commands, references and attachments retain their own submission semantics. A newer draft is never consumed by an earlier answer.
 
@@ -18,7 +18,7 @@ Group message Reply selects an existing discussion thread and mentions its membe
 
 ## How to get to it (user POV)
 
-Write in the chat composer and Send. The GPT-Live waveform sits beside the dictation microphone; the + attachment action stays in the toolbar. Hold the action button for steer or queue choices. Open queued work to edit it; use saved-message actions to edit or Restore and saved-answer actions to regenerate or fork.
+Write in the chat composer and Send. The GPT-Live waveform sits beside the dictation microphone; the + attachment action stays in the toolbar. Hold the action button for steer or queue choices. Expand the queued count, then tap or long-press a message to open the same detail/action sheet and choose Edit; use saved-message actions to edit or Restore and saved-answer actions to regenerate or fork.
 
 ## Driving it with Wing harnesses
 
@@ -76,6 +76,26 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 The waveform action starts live voice using the saved subscription/API choice. New queued voice work carries Hermes’s native voice surface and recent spoken context through the durable outbox. Voice work is independently queued or steered without consuming the typed draft; dictation is unavailable during a call. See [voice](voice.md).
 
 ## Gotchas
+
+Tap and long-press share the queued-message detail/action sheet. Support,
+current eligibility and rejection wording come from the queue owner and update
+while the sheet is open. `profile_composer_actions_test.dart` covers the compact
+count, bounded expansion, full text and exact copy with held feedback, visible
+unknown/uncertain outcomes while collapsed, capability changes, temporary
+restriction explanations, attachment-action omission and draft preservation.
+The render matrix uses both themes at 390 dp/normal text and 320 dp/200% text.
+`composer_steering_delivery_test.dart` distinguishes unsupported edits, unknown
+outcomes and removed entries; `profile_composer_queue_test.dart` covers exact
+server admission identity and cancellation/steering. Run:
+
+```sh
+flutter test --no-pub test/profile_composer_actions_test.dart test/composer_steering_delivery_test.dart test/profile_composer_queue_test.dart
+```
+
+The pending API has no reliable internal-message discriminator. Keep unclassified
+entries inspectable without guessing from their text or missing controls. Typed
+process updates already use [Activity](chat-activity.md); its existing receipt
+rendering remains the destination when those facts arrive.
 
 A clarification set appears in one form. Stage every answer, including explicit
 per-question skips, then use the single confirmation action. Hermes locks answers

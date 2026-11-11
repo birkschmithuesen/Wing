@@ -59,9 +59,10 @@ Failed image reads offer Retry.
 
 While Hermes is working, the composer can **Steer**, **Queue** or **Stop**. The default action is your choice in App settings; hold and slide the arrow for a one-time alternative. Hermes runs accepted queued follow-ups in order, even after Wing disconnects. Work still stored only on the phone needs Wing to reconnect before it can be submitted.
 
-The outbox above the composer appears whenever it contains queued messages.
-Tap a message for Edit, Steer and Delete; hold it to edit directly. Steer accepts
-text only and needs a connected active turn. Your separate draft stays in place.
+The queue above the composer starts as a compact count. Expand it, then tap or
+hold a message to open its full text and supported actions. Entries needing
+review stay visible when collapsed. Steer accepts text only and needs a connected
+active turn. Your separate draft stays in place.
 
 ## Models, context and code review
 

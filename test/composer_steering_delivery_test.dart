@@ -115,6 +115,45 @@ void main() {
     controls: controls,
   );
 
+  test('queued edit rejection reports the observed cause', () async {
+    composer.observePending([admission('one', controls: [])]);
+    final id = composer.observation.queue.single.id;
+    await expectLater(
+      composer.beginEdit(id),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Hermes does not allow editing this queued message.',
+        ),
+      ),
+    );
+    composer.observePending([
+      admission('one', status: 'unknown', controls: []),
+    ]);
+    await expectLater(
+      composer.beginEdit(id),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'Hermes cannot determine whether this message ran. It cannot be changed.',
+        ),
+      ),
+    );
+    composer.observePending([]);
+    await expectLater(
+      composer.beginEdit(id),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'This message is no longer in the queue.',
+        ),
+      ),
+    );
+  });
+
   test(
     'accepted identical rows retain separate identity and server controls',
     () async {
@@ -148,11 +187,14 @@ void main() {
       ]);
       final row = composer.observation.queue.single;
       expect(row.unknownOutcome, isTrue);
-      expect(composer.queueActions(row.id), (
-        canEdit: false,
-        canSteer: false,
-        canDelete: true,
-      ));
+      expect(
+        (
+          canEdit: composer.queueActions(row.id).canEdit,
+          canSteer: composer.queueActions(row.id).canSteer,
+          canDelete: composer.queueActions(row.id).canDelete,
+        ),
+        (canEdit: false, canSteer: false, canDelete: true),
+      );
     },
   );
 
@@ -175,11 +217,14 @@ void main() {
       composer.observePending([transferred]);
       expect(composer.observation.queue.single.id, same(id));
       expect(composer.observation.queue.single.pendingSteering, isTrue);
-      expect(composer.queueActions(id), (
-        canEdit: false,
-        canSteer: false,
-        canDelete: false,
-      ));
+      expect(
+        (
+          canEdit: composer.queueActions(id).canEdit,
+          canSteer: composer.queueActions(id).canSteer,
+          canDelete: composer.queueActions(id).canDelete,
+        ),
+        (canEdit: false, canSteer: false, canDelete: false),
+      );
       composer.observePending([admission('one')]);
       expect(composer.observation.queue.single.id, same(id));
       expect(composer.queueActions(id).canEdit, isTrue);

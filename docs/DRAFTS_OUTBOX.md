@@ -11,11 +11,13 @@ outbox records are not migrated; finish or export unsent work before upgrading.
 
 Typing or adding attachments creates a draft. Clearing both removes it. Send saves the current text and attachments into the outbox before contacting Hermes, then clears the composer so you can start another draft. Sending waits for an attachment still being prepared; a failed initial save keeps the editable work and prevents submission.
 
-The outbox is visible above the composer whenever it contains messages, both
-online and offline. Send and Queue add to the same list, including images and
+The outbox shows a compact count above the composer whenever it contains messages,
+both online and offline. Expand it to inspect the ordered previews; unknown
+outcomes, unconfirmed delivery and steering failures remain visible for review
+while collapsed. Send and Queue add to the same list, including images and
 captions waiting for an active turn to finish. Local submissions remain visible
 until Hermes acknowledges them or you delete them. Accepted queued messages then
-use Hermes' reported queue state. Tap an entry for queue actions or hold it to edit. An empty outbox is hidden.
+use Hermes' reported queue state. Tap or hold an entry to open the same full-text detail sheet and supported actions, then choose Edit. An empty outbox is hidden.
 
 Offline Send keeps the message on this device. After reconnecting and checking the conversation, messages known to be waiting are sent in order when the chat is idle. Acknowledgement retires the local submission; it does not clear newer composer text or other outgoing messages. A message accepted into Hermes' queue remains visible as server-owned queued work until it runs or is cancelled. Hermes can drain that accepted queue after Wing disconnects. Acceptance does not mean the answer is finished.
 

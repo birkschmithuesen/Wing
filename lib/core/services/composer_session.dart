@@ -470,46 +470,88 @@ class ComposerSession {
   List<DeletedDraftFile> deletionFiles() =>
       List.unmodifiable(_allFiles.map(DeletedDraftFile.capture));
 
-  bool get _queueAvailable =>
-      !_saving && !_draining && !_steering && !_runtime().switching;
+  String? get _queueUnavailableReason {
+    if (_saving) return 'Wait for the queued message to finish saving.';
+    if (_draining) return 'Wait for the queued message to finish sending.';
+    if (_steering) return 'Wait for the steering request to finish.';
+    if (_runtime().switching) {
+      return 'Wait for the conversation to finish switching.';
+    }
+    return null;
+  }
 
-  ({bool canEdit, bool canSteer, bool canDelete}) queueActions(
-    ComposerQueueId id,
-  ) {
-    final item = [
-      ..._serverQueue,
-      ..._queue,
-    ].where((entry) => identical(entry.id, id)).firstOrNull;
-    final available =
+  bool get _queueAvailable => _queueUnavailableReason == null;
+
+  _QueueEntry? _findEntry(ComposerQueueId id) => [
+    ..._serverQueue,
+    ..._queue,
+  ].where((entry) => identical(entry.id, id)).firstOrNull;
+
+  String? _queueEntryUnavailableReason(_QueueEntry? item) {
+    if (item == null) return 'This message is no longer in the queue.';
+    if (_queueUnavailableReason case final reason?) return reason;
+    if (item.value.submissionUncertain) {
+      return 'Delivery of this message is unconfirmed. Review its status before changing it.';
+    }
+    final admission = item.admission;
+    if (admission?.unknown == true) {
+      return 'Hermes cannot determine whether this message ran. It cannot be changed.';
+    }
+    if (admission != null && !admission.queued) {
+      return 'Hermes has already started this message. It cannot be changed in the queue.';
+    }
+    if (_editing != null && !identical(_editing, item)) {
+      return 'Save or cancel your current queued-message edit first.';
+    }
+    return null;
+  }
+
+  ComposerQueueActions queueActions(ComposerQueueId id) {
+    final item = _findEntry(id);
+    final admission = item?.admission;
+    final supportsEdit =
         item != null &&
-        _queueAvailable &&
-        !item.value.submissionUncertain &&
-        (item.admission == null ||
-            item.admission!.queued ||
-            item.admission!.unknown);
-    final selected = _editing == null || identical(_editing, item);
+        (admission == null || admission.controls.contains('replace'));
+    final supportsSteer =
+        item != null &&
+        item.value.attachments.isEmpty &&
+        (admission == null || admission.controls.contains('steer'));
+    final unavailable = _queueEntryUnavailableReason(item);
     final text =
         (identical(_editing, item) ? _editText : item?.value.text ?? '').trim();
     final runtime = _runtime();
-    return (
-      canEdit:
-          available &&
-          selected &&
-          (item.admission == null ||
-              item.admission!.controls.contains('replace')),
-      canDelete: available,
-      canSteer:
-          available &&
-          selected &&
-          runtime.connected &&
-          runtime.canSteer &&
-          (item.admission == null ||
-              item.admission!.controls.contains('steer') &&
-                  text == item.value.text.trim()) &&
-          item.value.attachments.isEmpty &&
-          text.isNotEmpty &&
-          !text.startsWith('/') &&
-          !(item.value.submissionUncertain && text == item.value.text.trim()),
+    final steerReason =
+        unavailable ??
+        (!supportsSteer
+            ? 'Hermes does not support steering this queued message.'
+            : !runtime.connected
+            ? 'Reconnect to Hermes before steering this message.'
+            : !runtime.canSteer
+            ? 'There is no active turn to steer. This message will wait in the queue.'
+            : admission != null && text != item.value.text.trim()
+            ? 'Save your changes before steering this queued message.'
+            : text.isEmpty
+            ? 'Enter text before steering this message.'
+            : text.startsWith('/')
+            ? 'Slash commands cannot be used to steer a turn.'
+            : null);
+    return ComposerQueueActions(
+      supportsEdit: supportsEdit,
+      supportsSteer: supportsSteer,
+      editUnavailableReason:
+          unavailable ??
+          (supportsEdit
+              ? null
+              : 'Hermes does not allow editing this queued message.'),
+      steerUnavailableReason: steerReason,
+      supportsDelete:
+          item != null &&
+          (admission == null || admission.queued || admission.unknown),
+      deleteUnavailableReason:
+          _queueUnavailableReason ??
+          (item?.value.submissionUncertain == true
+              ? 'Delivery of this message is unconfirmed. Check conversation history before removing it.'
+              : null),
     );
   }
 
@@ -1270,27 +1312,16 @@ class ComposerSession {
   }
 
   _QueueEntry _entry(ComposerQueueId id) =>
-      [
-        ..._serverQueue,
-        ..._queue,
-      ].where((v) => identical(v.id, id)).firstOrNull ??
-      (throw StateError('This queued message has changed. Reopen the queue.'));
+      _findEntry(id) ??
+      (throw StateError('This message is no longer in the queue.'));
 
   Future<void> beginEdit(ComposerQueueId id) async {
     _ensure();
-    if (_saving || _draining || _steering) {
-      throw StateError('This queued message is currently being sent or saved.');
+    if (queueActions(id).editUnavailableReason case final reason?) {
+      throw StateError(reason);
     }
     final item = _entry(id);
     if (identical(_editing, item)) return;
-    if (!queueActions(id).canEdit) {
-      throw StateError(
-        'This accepted message can no longer be edited. Refresh the queue.',
-      );
-    }
-    if (_editing != null) {
-      throw StateError('Queue or cancel your current edit first.');
-    }
     _editing = item;
     _editText = item.value.text;
     _editReferences = item.value.references;

@@ -473,11 +473,14 @@ void main() {
       expect(queuedTexts(), ['Same']);
       final transfer = chat.composer.observation.queue.single;
       expect(transfer.pendingSteering, true);
-      expect(chat.composer.queueActions(transfer.id), (
-        canEdit: false,
-        canDelete: false,
-        canSteer: false,
-      ));
+      expect(
+        (
+          canEdit: chat.composer.queueActions(transfer.id).canEdit,
+          canSteer: chat.composer.queueActions(transfer.id).canSteer,
+          canDelete: chat.composer.queueActions(transfer.id).canDelete,
+        ),
+        (canEdit: false, canDelete: false, canSteer: false),
+      );
       host.event('a', 'turn.end');
       expect(queuedTexts(), isEmpty);
       expect(
