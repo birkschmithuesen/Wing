@@ -37,6 +37,9 @@ typedef ScopedRpc =
       Map<String, dynamic> params,
     );
 
+typedef ScopedServerResponse =
+    Future<void> Function(String requestId, Map<String, dynamic> result);
+
 typedef ScopedPost =
     Future<Map<String, dynamic>> Function(
       String endpoint,
@@ -187,15 +190,22 @@ class ProfileGateway {
   );
   final ScopedGet _getRequest;
   final ScopedRpc _rpcRequest;
+  final ScopedServerResponse? _serverResponse;
   Future<Map<String, dynamic>> _rpc(
     String method,
     Map<String, dynamic> params,
+  ) => _observeRequest(method, params, () => _rpcRequest(method, params));
+
+  Future<T> _observeRequest<T>(
+    String method,
+    Map<String, dynamic> params,
+    Future<T> Function() send,
   ) async {
     final generation = _connectionGeneration;
     final command = const {'command.dispatch', 'slash.exec'}.contains(method);
     final elapsed = Stopwatch()..start();
     try {
-      final request = _rpcRequest(method, params);
+      final request = send();
       return await (command ? request.timeout(commandTimeout) : request);
     } catch (failure, stack) {
       logConnectionDiagnostic(
@@ -304,6 +314,7 @@ class ProfileGateway {
     required this.scope,
     required ScopedGet get,
     required ScopedRpc rpc,
+    ScopedServerResponse? serverResponse,
     ScopedOwnedPost? ownedPatch,
     ScopedOwnedPost? ownedDelete,
     ScopedPost? post,
@@ -317,6 +328,7 @@ class ProfileGateway {
        _getRequest = get,
        _discover = discover,
        _rpcRequest = rpc,
+       _serverResponse = serverResponse,
        _ownedPatch = ownedPatch,
        _ownedDelete = ownedDelete,
        _post = post,
@@ -577,6 +589,17 @@ class ProfileGateway {
           dispatchAllowed = false;
         }
       },
+      serverResponse: (requestId, result) {
+        final current = socket;
+        if (current == null) {
+          throw JsonRpcError(
+            'server.response',
+            'Connection unavailable',
+            reason: 'connection_closed',
+          );
+        }
+        return current.respondToRequest(requestId, result);
+      },
       rpc: (method, params) async {
         final current = socket;
         if (current == null) {
@@ -703,6 +726,20 @@ class ProfileGateway {
     String endpoint, [
     Map<String, String> query = const {},
   ]) => _get(endpoint, {...query, 'profile': scope.profileName});
+
+  /// Sends a correlated JSON-RPC response, never an RPC into another registry.
+  Future<void> respondToRequest(String requestId, Map<String, dynamic> result) {
+    if (_closed) throw StateError('Connection is closed');
+    final respond = _serverResponse;
+    if (respond == null) {
+      throw StateError('This gateway has no server-response transport');
+    }
+    return _observeRequest(
+      'server.response',
+      const {},
+      () => respond(requestId, result),
+    );
+  }
 
   Future<Map<String, dynamic>> call(
     String method, [

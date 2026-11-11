@@ -33,13 +33,15 @@ class SensitivePromptHost extends Host {
       },
       close: base.close,
       get: base.read,
+      serverResponse: (id, result) async {
+        final response = base.respondToRequest(id, result);
+        await responseDelay?.future;
+        final error = responseError;
+        if (error != null) throw error;
+        await response;
+      },
       rpc: (method, params) async {
         final response = base.call(method, params);
-        if (method == 'request.answer') {
-          await responseDelay?.future;
-          final error = responseError;
-          if (error != null) throw error;
-        }
         final result = await response;
         if (method == 'session.resume' && resumedRuntime != null) {
           return {
@@ -106,13 +108,13 @@ void main() {
         (
           event: 'sudo',
           id: 'sudo-1',
-          method: 'request.answer',
+          method: 'server.response',
           field: 'password',
         ),
         (
           event: 'secret',
           id: 'secret-1',
-          method: 'request.answer',
+          method: 'server.response',
           field: 'value',
         ),
       ];
@@ -135,7 +137,6 @@ void main() {
         expect(host.calls.last.$3, {
           'id': value.id,
           'result': {'value': 'synthetic-secret'},
-          'profile': 'a',
         });
         expect(chat.runtime.secureInput, isNull);
       }
@@ -167,7 +168,6 @@ void main() {
     expect(host.calls.last.$3, {
       'id': 'secret-cancel',
       'result': {'value': ''},
-      'profile': 'a',
     });
   });
 
@@ -186,7 +186,7 @@ void main() {
             'backend': 'onepassword',
             'display_name': '1Password',
           },
-          method: 'request.answer',
+          method: 'server.response',
           field: 'password',
           input: 'synthetic-password',
           output: 'synthetic-password',
@@ -198,7 +198,7 @@ void main() {
             'site': 'Example',
             'hint': 'Authenticator code',
           },
-          method: 'request.answer',
+          method: 'server.response',
           field: 'code',
           input: '123 456-78',
           output: '12345678',
@@ -210,7 +210,7 @@ void main() {
             'origin': 'https://example.test',
             'site': 'Example',
           },
-          method: 'request.answer',
+          method: 'server.response',
           field: 'login',
           input: login,
           output: login,
@@ -231,7 +231,6 @@ void main() {
         expect(host.calls.last.$3, {
           'id': value.data['request_id'],
           'result': {'value': value.output},
-          'profile': 'a',
         });
       }
 
@@ -252,11 +251,11 @@ void main() {
     const cases = [
       (
         event: 'vault.unlock_prompt',
-        method: 'request.answer',
+        method: 'server.response',
         field: 'password',
       ),
-      (event: 'vault.code', method: 'request.answer', field: 'code'),
-      (event: 'vault.save_login', method: 'request.answer', field: 'login'),
+      (event: 'vault.code', method: 'server.response', field: 'code'),
+      (event: 'vault.save_login', method: 'server.response', field: 'login'),
     ];
 
     for (final value in cases) {
@@ -436,6 +435,10 @@ void main() {
       host.responseDelay!.complete();
       await answering;
       expect(chat.runtime.secureResponding, isFalse);
+      expect(
+        chat.reading.questionHistory!.questions.last.status.name,
+        'answered',
+      );
     },
   );
 
@@ -455,7 +458,7 @@ void main() {
     expect(chat.runtime.execution, ChatExecution.completed);
     expect(chat.runtime.blocksTurnAdmission, isFalse);
     expect(
-      host.calls.where((call) => call.$2 == 'request.answer'),
+      host.calls.where((call) => call.$2 == 'server.response'),
       hasLength(1),
     );
     expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
@@ -486,23 +489,32 @@ void main() {
   );
 
   test(
-    'an expired server request clears the secure form without retrying',
+    'a timeout during submission expires without claiming acceptance',
     () async {
-      host.clarifyResult = {'status': 'expired'};
+      host.responseDelay = Completer<void>();
       host.event('a', 'secret', {
         'request_id': 'expired',
         'env_var': 'FIXTURE_TOKEN',
       });
-      final request = chat.runtime.secureInput!;
-
-      await controller.respondSensitivePrompt(
+      final answering = controller.respondSensitivePrompt(
         chat,
         'synthetic-secret',
-        expectedRequest: request,
+        expectedRequest: chat.runtime.secureInput!,
       );
-
+      host.event('a', 'request.cancel', {
+        'id': 'expired',
+        'method': 'secret',
+        'reason': 'timeout',
+      });
       expect(chat.runtime.secureInput, isNull);
       expect(chat.runtime.secureResponding, isFalse);
+      host.responseError = StateError('request expired');
+      host.responseDelay!.complete();
+      await expectLater(answering, throwsStateError);
+      expect(
+        chat.reading.questionHistory!.questions.last.status.name,
+        'expired',
+      );
     },
   );
 

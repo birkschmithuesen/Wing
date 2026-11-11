@@ -106,6 +106,11 @@ and verifies the saved final answer. The process case checks discovery,
   python3 scripts/test_nightly_native.py journeys --output build/feature-verification/chat-activity
   ```
 
+Secure-input Activity records contain prompt metadata only. A matching timeout
+shows Expired; a submitted response shows Answered only after the canonical owner
+resolves it. The [secure-input transport recipe](chat-inputs.md#driving-it-with-wing-harnesses)
+covers this handoff and keeps credential values out of Activity.
+
 ## Gotchas
 
 Progress with no supplied total or percentage stays a received value/message;

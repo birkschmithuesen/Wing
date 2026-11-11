@@ -290,6 +290,14 @@ class Host {
     final name = scope.profileName;
     late final ProfileGateway gateway;
     gateway = ProfileGateway(
+      serverResponse: (requestId, result) async {
+        calls.add((
+          name,
+          'server.response',
+          {'id': requestId, 'result': result},
+        ));
+        await onClarifyResponse?.call();
+      },
       ownedPatch: ownedPatch,
       ownedPost: (endpoint, body, canDispatch, onDispatched) async {
         if (!canDispatch()) {

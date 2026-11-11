@@ -14,14 +14,34 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_workspace_controller_test.dart' show Host;
 
 void main() {
-  for (final kind in ['single', 'batch', 'secret', 'approval']) {
+  for (final kind in [
+    'single',
+    'batch',
+    'sudo',
+    'secret',
+    'vault.unlock_prompt',
+    'vault.save_login',
+    'vault.code',
+    'approval',
+  ]) {
     test(
       '$kind reply passes strict validation over the real gateway socket',
       () async {
+        final isSecure = !{'single', 'batch', 'approval'}.contains(kind);
+        final inputValue = kind == 'vault.save_login'
+            ? jsonEncode({
+                'identifier': 'fixture@example.test',
+                'password': 'dummy-fixture-value',
+              })
+            : kind == 'vault.code'
+            ? '123 456-78'
+            : 'dummy-fixture-value';
+        final replyValue = kind == 'vault.code' ? '12345678' : inputValue;
         final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
         final connected = Completer<WebSocket>();
         final advertised = Completer<void>();
         final replies = <Map<String, dynamic>>[];
+        final secretReply = Completer<void>();
         final subscription = server.listen((request) async {
           if (!WebSocketTransformer.isUpgradeRequest(request)) {
             request.response.write(
@@ -45,6 +65,11 @@ void main() {
           socket.listen((raw) {
             final frame = jsonDecode(raw as String) as Map<String, dynamic>;
             final method = frame['method'];
+            if (method == null) {
+              replies.add(frame);
+              secretReply.complete();
+              return;
+            }
             final params = frame['params'] as Map;
             if (method == 'client.capabilities') {
               expect(params, {'server_requests': true});
@@ -70,6 +95,17 @@ void main() {
               return;
             }
             replies.add(frame);
+            if (isSecure && method == 'request.answer') {
+              socket.add(
+                jsonEncode({
+                  'jsonrpc': '2.0',
+                  'id': frame['id'],
+                  'result': {'status': 'expired'},
+                }),
+              );
+              secretReply.complete();
+              return;
+            }
             // Upstream contracts/prompt_voice.py: neither reply is session-scoped.
             final allowed = method == 'clarify.lock'
                 ? {'request_id', 'question_id', 'answer', 'profile'}
@@ -133,6 +169,7 @@ void main() {
               get: base.read,
               connect: wire.connect,
               close: wire.close,
+              serverResponse: wire.respondToRequest,
               rpc: (method, params) =>
                   {'clarify.lock', 'request.answer'}.contains(method)
                   ? wire.call(method, params)
@@ -160,8 +197,8 @@ void main() {
             'id': 'srq-fixture',
             'method': kind == 'approval'
                 ? 'approval'
-                : kind == 'secret'
-                ? 'secret'
+                : isSecure
+                ? kind
                 : 'clarify',
             'params': {
               'session_id': chat.runtime.runtimeId,
@@ -218,12 +255,36 @@ void main() {
           );
           await controller.approve(chat, 'deny', requestId: 'queue-second');
           expect(chat.runtime.approval, isNull);
-        } else if (kind == 'secret') {
-          await controller.respondSensitivePrompt(
+        } else if (isSecure) {
+          final answering = controller.respondSensitivePrompt(
             chat,
-            'dummy-fixture-value',
+            inputValue,
             expectedRequest: chat.runtime.secureInput!,
           );
+          await secretReply.future.timeout(const Duration(seconds: 2));
+          expect(replies.single, {
+            'jsonrpc': '2.0',
+            'id': 'srq-fixture',
+            'result': {'value': replyValue},
+          });
+          expect(chat.runtime.secureInput, isNotNull);
+          expect(chat.runtime.secureResponding, isTrue);
+          socket.add(
+            jsonEncode({
+              'jsonrpc': '2.0',
+              'method': 'event',
+              'params': {
+                'type': 'request.cancel',
+                'sid': chat.runtime.runtimeId,
+                'payload': {
+                  'id': 'srq-fixture',
+                  'method': 'secret',
+                  'reason': 'resolved',
+                },
+              },
+            }),
+          );
+          await answering;
           expect(chat.runtime.secureInput, isNull);
         } else {
           await controller.clarify(
@@ -241,6 +302,7 @@ void main() {
             'result': {'choice': 'deny'},
           });
         }
+        if (isSecure) return;
         expect(
           replies.first['method'],
           kind == 'batch' ? 'clarify.lock' : 'request.answer',
@@ -255,8 +317,8 @@ void main() {
             'id': 'srq-fixture',
             'result': kind == 'approval'
                 ? {'choice': 'once'}
-                : kind == 'secret'
-                ? {'value': 'dummy-fixture-value'}
+                : isSecure
+                ? {'value': replyValue}
                 : {'answer': 'Bedroom'},
           },
         });

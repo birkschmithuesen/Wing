@@ -9196,16 +9196,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
     var accepted = false;
     try {
       _commandOwner(chat);
-      final result = await resource.gateway.call('request.answer', {
-        'id': expectedRequest.requestId,
-        'result': {'value': responseValue},
+      await resource.gateway.respondToRequest(expectedRequest.requestId, {
+        'value': responseValue,
       });
-      accepted = result['status'] == 'ok';
-      if (result['status'] == 'expired' && capture.current) {
-        chat._runtime.closeQuestion(expectedRequest.requestId);
-        accepted =
-            true; // A missing request retires this exact local input surface.
-      }
+      accepted = true;
     } finally {
       chat._runtime.finishSecureAnswer(capture, accepted: accepted);
       _changed();

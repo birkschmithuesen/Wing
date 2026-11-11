@@ -1412,14 +1412,16 @@ class ChatRuntime {
         continuation._revoked = true;
       }
     }
+    if (accepted) {
+      final request = capture._request as GatewaySensitivePromptRequest;
+      _settleQuestion(
+        'secure/${request.kind.name}/${request.requestId}',
+        HermesQuestionStatus.answered,
+      );
+    }
     if (!identical(_secure, capture._request)) return;
     _secureResponding = false;
     if (accepted) {
-      final request = capture._request as GatewaySensitivePromptRequest;
-      final id = 'secure/${request.kind.name}/${request.requestId}';
-      if (_questionHistory[id]?.status == HermesQuestionStatus.pending) {
-        _settleQuestion(id, HermesQuestionStatus.answered);
-      }
       if (_recovery == ChatRecovery.reconnecting) {
         _recovery = ChatRecovery.ready;
       }

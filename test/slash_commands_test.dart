@@ -109,13 +109,14 @@ class CommandHost extends Host {
           'pagination': {...result['pagination'] as Map, 'returned': 0},
         };
       },
+      serverResponse: (id, result) async {
+        commandCalls.add(('server.response', {'id': id, 'result': result}));
+        await sensitiveResponseDelay?.future;
+        final error = sensitiveResponseError;
+        if (error != null) throw error;
+      },
       rpc: (method, params) async {
         commandCalls.add((method, params));
-        if (method == 'request.answer') {
-          await sensitiveResponseDelay?.future;
-          final error = sensitiveResponseError;
-          if (error != null) throw error;
-        }
         if (method == 'commands.catalog') {
           return await readCatalog?.call(scope.profileName) ??
               catalog(scope.profileName);

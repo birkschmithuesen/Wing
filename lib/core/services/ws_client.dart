@@ -120,6 +120,8 @@ class WsClient {
 
   /// Pending requests: id -> (completer, timer).
   final Map<int, _Pending> _pending = {};
+  // Only correlation and completion live here; never retain a response value.
+  final Map<String, _Pending> _serverResponses = {};
 
   Completer<Map<String, dynamic>>? _gatewayReadyCompleter;
   Map<String, dynamic>? _gatewayReadyFrame;
@@ -270,7 +272,7 @@ class WsClient {
     _connected = false;
     _channel = null;
     // Reject all pending request-response calls.
-    for (var entry in _pending.values) {
+    for (final entry in [..._pending.values, ..._serverResponses.values]) {
       entry.timer?.cancel();
       if (!entry.completer.isCompleted) {
         entry.completer.completeError(
@@ -283,6 +285,7 @@ class WsClient {
       }
     }
     _pending.clear();
+    _serverResponses.clear();
     final closeError =
         _gatewayReadyFailure ??
         JsonRpcError(
@@ -394,7 +397,26 @@ class WsClient {
           return;
         }
         final event = parseGatewayEvent(params);
-        if (event != null) _dispatchEvent(event);
+        if (event != null) {
+          if (event.type == 'request.cancel') {
+            final pending = _serverResponses.remove(event.data['id']);
+            if (pending != null) {
+              pending.timer?.cancel();
+              if (event.data['reason'] == 'resolved') {
+                pending.completer.complete({});
+              } else {
+                pending.completer.completeError(
+                  JsonRpcError(
+                    'server.response',
+                    'The secure request ended before the response was confirmed',
+                    reason: 'request_ended',
+                  ),
+                );
+              }
+            }
+          }
+          _dispatchEvent(event);
+        }
         return;
       }
 
@@ -551,6 +573,48 @@ class WsClient {
       }),
     );
     return completer.future;
+  }
+
+  /// Answer the original server request on this subscribed socket. A response
+  /// frame has no RPC acknowledgement; the canonical owner confirms settlement
+  /// with request.cancel reason=resolved. Never replay a secret after reconnect.
+  Future<void> respondToRequest(
+    String requestId,
+    Map<String, dynamic> result, {
+    Duration timeout = const Duration(seconds: 30),
+  }) async {
+    final channel = _channel;
+    if (!_connected || channel == null) {
+      throw JsonRpcError(
+        'server.response',
+        'Connection unavailable',
+        reason: 'connection_closed',
+      );
+    }
+    if (_serverResponses.containsKey(requestId)) {
+      throw StateError('A response is already being submitted.');
+    }
+    final completer = Completer<Map<String, dynamic>>();
+    final timer = Timer(timeout, () {
+      _serverResponses.remove(requestId);
+      completer.completeError(
+        JsonRpcError(
+          'server.response',
+          'Hermes did not confirm the response',
+          reason: 'request_timeout',
+        ),
+      );
+    });
+    _serverResponses[requestId] = _Pending('server.response', completer, timer);
+    try {
+      channel.sink.add(
+        jsonEncode({'jsonrpc': '2.0', 'id': requestId, 'result': result}),
+      );
+      await completer.future;
+    } finally {
+      timer.cancel();
+      _serverResponses.remove(requestId);
+    }
   }
 
   static const validReasoningEfforts = <String>{

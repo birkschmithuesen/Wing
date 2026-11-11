@@ -38,7 +38,7 @@ class GatewaySensitivePromptRequest {
         _ => value.isNotEmpty,
       };
 
-  /// The stock request.answer value. Password and ordinary secret bytes are exact.
+  /// The stock server-response value. Password and ordinary secret bytes are exact.
   String responseValue({required String value, required String password}) =>
       switch (kind) {
         GatewaySensitivePromptKind.vaultSaveLogin => jsonEncode({

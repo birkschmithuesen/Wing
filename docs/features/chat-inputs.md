@@ -75,6 +75,14 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 The waveform action starts live voice using the saved subscription/API choice. New queued voice work carries Hermes’s native voice surface and recent spoken context through the durable outbox. Voice work is independently queued or steered without consuming the typed draft; dictation is unavailable during a call. See [voice](voice.md).
 
+Secure-input replies are covered by
+`flutter test --no-pub test/profile_prompt_reply_transport_test.dart test/sensitive_server_request_test.dart test/profile_sensitive_prompt_delivery_test.dart test/profile_vault_server_request_test.dart test/gateway_sensitive_prompt_panel_test.dart`.
+Enter a requested secret in its dedicated masked form and use its icon-only
+confirmation. The form shows submitting feedback until Hermes confirms the
+original request resolved. Cancel sends an empty response. Timeout, interruption
+and connection loss never imply that the password was accepted; passwords stay
+outside drafts and saved history and are never replayed after reconnect.
+
 ## Gotchas
 
 Tap and long-press share the queued-message detail/action sheet. Support,
