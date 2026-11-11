@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/voice_offline/vad_voice_device.dart';
-import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 
 void main() {
   test('start cue follows cues unless set; playback is stopped by default', () {

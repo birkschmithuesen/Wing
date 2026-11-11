@@ -1,7 +1,7 @@
 import 'dart:async';
 import '../core/services/android_voice.dart';
 import '../core/services/vad_endpoint.dart';
-import '../core/services/voice_preferences.dart';
+import 'voice_offline_prefs.dart';
 
 /// The vad, switch and mic-link operations of a voice device. Every production
 /// and test [VoiceDevice] also implements this.

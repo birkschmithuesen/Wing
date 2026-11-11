@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
 import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/voice_fixture.dart';
 
 List<double> _p(double value, int count) => List.filled(count, value);
@@ -13,8 +14,8 @@ void main() {
   late VoiceDeviceFixture device;
   late VoiceInputController recorder;
   TextEditingValue? result;
-  const settings = VoicePreferences(
-    input: VoiceInputRoute.vad,
+  const settings = VoicePreferences(input: VoiceInputRoute.vad);
+  const offline = VoiceOfflinePrefs(
     cues: false,
     debugRecordings: true,
     audioSource: VadAudioSource.recognition,
@@ -39,6 +40,7 @@ void main() {
 
   Future<void> start() => recorder.start(
     settings,
+    offline,
     const TextEditingValue(text: ''),
     (value) => result = value,
   );
@@ -64,11 +66,8 @@ void main() {
         createRemote: () => throw StateError('vad never uses Hermes'),
       );
       await recorder.start(
-        VoicePreferences(
-          input: VoiceInputRoute.vad,
-          micRoute: route,
-          vad: settings.vad,
-        ),
+        settings,
+        VoiceOfflinePrefs(micRoute: route, vad: offline.vad),
         const TextEditingValue(text: ''),
         (value) => result = value,
       );
@@ -79,8 +78,8 @@ void main() {
   test('a chosen device that is not connected falls back to automatic and hints once', () async {
     device.micFallback = true;
     await recorder.start(
-      const VoicePreferences(
-        input: VoiceInputRoute.vad,
+      settings,
+      const VoiceOfflinePrefs(
         micRoute: VoiceMicRoute.bluetooth,
         vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
       ),
@@ -96,8 +95,8 @@ void main() {
   test('the hint is a one-shot: a later round without a fallback clears it', () async {
     device.micFallback = true;
     await recorder.start(
-      const VoicePreferences(
-        input: VoiceInputRoute.vad,
+      settings,
+      const VoiceOfflinePrefs(
         micRoute: VoiceMicRoute.wired,
         vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
       ),
@@ -234,11 +233,8 @@ void main() {
 
   test('a long round sends the chunk plan with the finish call', () async {
     await recorder.start(
-      const VoicePreferences(
-        input: VoiceInputRoute.vad,
-        cues: false,
-        vad: VadEndpointConfig(),
-      ),
+      settings,
+      const VoiceOfflinePrefs(cues: false, vad: VadEndpointConfig()),
       const TextEditingValue(text: ''),
       (value) => result = value,
     );

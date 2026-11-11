@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/android_voice.dart';
-import '../services/voice_preferences.dart';
 import 'anchored_expansion_tile.dart';
 import 'compact_switch.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
 import '../../voice_offline/vad_voice_device.dart';
+import '../../voice_offline/voice_offline_prefs.dart';
 
 /// Settings that exist only for the vad input route: the on-phone speech
 /// model, cue tones, pause detection and debug recordings. There is no
@@ -19,7 +19,7 @@ class VadSettingsSection extends StatefulWidget {
     required this.saving,
     required this.onSave,
   });
-  final VoicePreferences settings;
+  final VoiceOfflinePrefs settings;
   final VoiceDevice device;
   final bool saving;
   final Future<void> Function(String key, String value) onSave;
@@ -201,7 +201,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
           onChanged: widget.saving
               ? null
               : (value) => unawaited(
-                  widget.onSave(VoicePreferences.vadCuesKey, value ? 'on' : 'off'),
+                  widget.onSave(VoiceOfflinePrefs.vadCuesKey, value ? 'on' : 'off'),
                 ),
         ),
         AnchoredExpansionTile(
@@ -211,41 +211,41 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
           children: [
             _choice(
               'Pause before sending',
-              VoicePreferences.vadPauseKey,
+              VoiceOfflinePrefs.vadPauseKey,
               s.vad.pause.inMilliseconds.toString(),
-              _seconds(VoicePreferences.vadPauseChoices),
+              _seconds(VoiceOfflinePrefs.vadPauseChoices),
             ),
             const SizedBox(height: 12),
             _choice(
               'Wait for speech',
-              VoicePreferences.vadNoSpeechKey,
+              VoiceOfflinePrefs.vadNoSpeechKey,
               s.vad.noSpeechTimeout.inSeconds.toString(),
               [
-                for (final value in VoicePreferences.vadNoSpeechChoices)
+                for (final value in VoiceOfflinePrefs.vadNoSpeechChoices)
                   (value: value, label: '$value s'),
               ],
             ),
             const SizedBox(height: 12),
             _choice(
               'Minimum speech',
-              VoicePreferences.vadMinSpeechKey,
+              VoiceOfflinePrefs.vadMinSpeechKey,
               s.vad.minSpeech.inMilliseconds.toString(),
-              _seconds(VoicePreferences.vadMinSpeechChoices),
+              _seconds(VoiceOfflinePrefs.vadMinSpeechChoices),
             ),
             const SizedBox(height: 12),
             _choice(
               'Lead-in kept',
-              VoicePreferences.vadPreRollKey,
+              VoiceOfflinePrefs.vadPreRollKey,
               s.vad.preRoll.inMilliseconds.toString(),
-              _seconds(VoicePreferences.vadPreRollChoices),
+              _seconds(VoiceOfflinePrefs.vadPreRollChoices),
             ),
             const SizedBox(height: 12),
             _choice(
               'Longest recording',
-              VoicePreferences.vadMaxKey,
+              VoiceOfflinePrefs.vadMaxKey,
               s.vad.maxDuration.inSeconds.toString(),
               [
-                for (final value in VoicePreferences.vadMaxChoices)
+                for (final value in VoiceOfflinePrefs.vadMaxChoices)
                   (value: value, label: '${int.parse(value) ~/ 60} min'),
               ],
             ),
@@ -260,11 +260,11 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
               onChanged: widget.saving
                   ? null
                   : (value) => unawaited(
-                      widget.onSave(VoicePreferences.vadDebugKey, value ? 'on' : 'off'),
+                      widget.onSave(VoiceOfflinePrefs.vadDebugKey, value ? 'on' : 'off'),
                     ),
             ),
             if (s.debugRecordings) ...[
-              _choice('Audio source', VoicePreferences.vadSourceKey, s.audioSource.name, const [
+              _choice('Audio source', VoiceOfflinePrefs.vadSourceKey, s.audioSource.name, const [
                 (value: 'communication', label: 'Call processing'),
                 (value: 'recognition', label: 'Recognition'),
               ]),

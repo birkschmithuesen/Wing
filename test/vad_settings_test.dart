@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/voice_offline/vad_voice_device.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
@@ -163,7 +164,7 @@ void main() {
     await tester.pumpAndSettle();
     select(tester, 'Longest recording').onChanged!('900');
     await tester.pumpAndSettle();
-    final saved = VoicePreferences.read(prefs);
+    final saved = VoiceOfflinePrefs.read(prefs);
     expect(saved.cues, isFalse);
     expect(saved.vad.pause, const Duration(milliseconds: 2400));
     expect(saved.vad.noSpeechTimeout, const Duration(seconds: 12));
@@ -181,11 +182,11 @@ void main() {
     await tester.ensureVisible(find.byKey(const ValueKey('vad-debug')));
     await tester.tap(find.byKey(const ValueKey('vad-debug')));
     await tester.pumpAndSettle();
-    expect(VoicePreferences.read(prefs).debugRecordings, isTrue);
+    expect(VoiceOfflinePrefs.read(prefs).debugRecordings, isTrue);
     expect(find.text('Audio source'), findsOneWidget);
     select(tester, 'Audio source').onChanged!('recognition');
     await tester.pumpAndSettle();
-    expect(VoicePreferences.read(prefs).audioSource, VadAudioSource.recognition);
+    expect(VoiceOfflinePrefs.read(prefs).audioSource, VadAudioSource.recognition);
     await tester.ensureVisible(find.byKey(const ValueKey('vad-debug-delete')));
     await tester.tap(find.byKey(const ValueKey('vad-debug-delete')));
     await tester.pumpAndSettle();
@@ -216,7 +217,7 @@ void main() {
       );
       SharedPreferences.setMockInitialValues({
         VoicePreferences.inputKey: 'vad',
-        VoicePreferences.vadDebugKey: 'on',
+        VoiceOfflinePrefs.vadDebugKey: 'on',
       });
       prefs = await SharedPreferences.getInstance();
       await show(tester, brightness: brightness, scale: 2);

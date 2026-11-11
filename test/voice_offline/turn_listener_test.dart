@@ -3,17 +3,16 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/car_mic_session.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/voice_fixture.dart';
 
 // pause is shortened from the 1800 ms default: at maxDuration = 2 s
 // (62 windows) a 20-window speech leaves only 42 windows of silence budget
 // before the round hits maxDuration, which is less than the default 57
 // pause windows and would starve the pause decision this file exercises.
-const settings = VoicePreferences(
-  input: VoiceInputRoute.vad,
+const settings = VoiceOfflinePrefs(
   conversation: true,
   vad: VadEndpointConfig(
     pause: Duration(milliseconds: 960),

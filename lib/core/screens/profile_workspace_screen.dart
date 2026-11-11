@@ -81,6 +81,7 @@ import '../../voice_offline/headphone_route.dart';
 import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
 import '../../voice_offline/vad_voice_device.dart';
+import '../../voice_offline/voice_offline_prefs.dart';
 
 enum _AttachmentChoice { camera, photos, files }
 
@@ -338,10 +339,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       return;
     }
     final settings = VoicePreferences.read(controller.preferences);
+    final offline = VoiceOfflinePrefs.read(controller.preferences);
     // Car mode's own loop switch overrides the saved setting while active.
-    final conversationLoopOn = _car.active ? _car.loopOn : settings.conversation;
+    final conversationLoopOn = _car.active ? _car.loopOn : offline.conversation;
     if (!conversationLoopOn) _conversation = null;
-    if (!(settings.autoSpeak || settings.conversation || _car.active) ||
+    if (!(offline.autoSpeak || offline.conversation || _car.active) ||
         _voiceInput.active) {
       return;
     }
@@ -356,7 +358,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       // the utterance becomes the next prompt.
       return;
     }
-    if (_playbackBargeIn(chat, settings)) {
+    if (_playbackBargeIn(chat, offline)) {
       _openListen(chat, playback: true);
     } else {
       unawaited(_bargeIn.close('turnEnd').catchError((Object _) {}));
@@ -422,7 +424,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         _autoSpeakQueue.isEmpty &&
         (_car.active
             ? _car.loopOn
-            : VoicePreferences.read(controller.preferences).conversation);
+            : VoiceOfflinePrefs.read(controller.preferences).conversation);
     if (!ok) _conversation = null;
     return ok;
   }
@@ -557,11 +559,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     } on FormatException {
       return;
     }
+    final offline = VoiceOfflinePrefs.read(controller.preferences);
     if (!mounted ||
         _conversation != chat.key ||
         settings.input != VoiceInputRoute.vad ||
-        !settings.conversation ||
-        !(settings.listenTurn || playback)) {
+        !offline.conversation ||
+        !(offline.listenTurn || playback)) {
       return;
     }
     unawaited(
@@ -569,7 +572,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
           .open(
             chat.key,
             _listenTarget(chat),
-            settings,
+            offline,
             playback: playback,
             onBarge: () {
               _autoSpeakQueue.clear();
@@ -586,9 +589,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// Bluetooth (owner lifted the Bluetooth lock 2026-10-20 without an echo
   /// measurement, t_fabcb273) — or the car mode screen's "Interrupt by
   /// speaking" switch lifted the carMode lock for this session.
-  bool _playbackBargeIn(ProfileChat chat, VoicePreferences settings) =>
+  bool _playbackBargeIn(ProfileChat chat, VoiceOfflinePrefs offline) =>
       bargeInPlaybackAvailable &&
-      settings.bargeInPlayback &&
+      offline.bargeInPlayback &&
       _conversation == chat.key &&
       (_headphones.headphones || _headphones.carModeOverridden);
 
@@ -614,13 +617,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       }
       return;
     }
-    final VoicePreferences settings;
     try {
-      settings = VoicePreferences.read(controller.preferences);
+      VoicePreferences.read(controller.preferences);
     } on FormatException {
       return;
     }
-    if (!_bargeIn.listening && _playbackBargeIn(chat, settings)) {
+    final offline = VoiceOfflinePrefs.read(controller.preferences);
+    if (!_bargeIn.listening && _playbackBargeIn(chat, offline)) {
       _openListen(chat, playback: true);
     }
   }
@@ -709,15 +712,16 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       if (resume) _conversation = null;
       return;
     }
-    final settings = _car.roundSettings(
-      VoicePreferences.read(controller.preferences),
+    final settings = VoicePreferences.read(controller.preferences);
+    final offline = _car.roundSettings(
+      VoiceOfflinePrefs.read(controller.preferences),
     );
-    _conversation = settings.conversation || _car.active ? chat.key : null;
+    _conversation = offline.conversation || _car.active ? chat.key : null;
     _conversationAwaitingReply = false;
     _voiceOwner = chat.key;
     final original = _composer.value;
     _composerFocus.unfocus();
-    await _voiceInput.start(settings, original, (result) {
+    await _voiceInput.start(settings, offline, original, (result) {
       final current = controller.notificationChat ?? controller.current?.chat;
       // Only a dictation the recognizer ended itself continues the loop;
       // Stop, the recording limit or a server transcription do not.

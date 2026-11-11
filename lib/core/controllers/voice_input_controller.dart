@@ -8,6 +8,7 @@ import '../services/vad_endpoint.dart';
 import '../services/voice_preferences.dart';
 import '../../voice_offline/car_mic_session.dart';
 import '../../voice_offline/vad_voice_device.dart';
+import '../../voice_offline/voice_offline_prefs.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
 
@@ -47,7 +48,7 @@ class VoiceInputController extends ChangeNotifier {
   String? error;
   int seconds = 0;
 
-  /// Set once, right after [start], when a manual [VoicePreferences.micRoute]
+  /// Set once, right after [start], when a manual [VoiceOfflinePrefs.micRoute]
   /// choice was not available and this round fell back to Automatic. The
   /// caller shows it once (e.g. a snackbar) and clears it.
   String? micFallbackHint;
@@ -90,6 +91,7 @@ class VoiceInputController extends ChangeNotifier {
 
   Future<void> start(
     VoicePreferences settings,
+    VoiceOfflinePrefs offline,
     TextEditingValue draft,
     void Function(TextEditingValue) onResult,
   ) async {
@@ -108,19 +110,19 @@ class VoiceInputController extends ChangeNotifier {
     _notify();
     try {
       if (settings.input == VoiceInputRoute.vad) {
-        _endpointer = VadEndpointer(settings.vad);
-        maxSeconds = settings.vad.maxDuration.inSeconds;
+        _endpointer = VadEndpointer(offline.vad);
+        maxSeconds = offline.vad.maxDuration.inSeconds;
         // Spec Birk decision 2026-10-19: the first dictation of a hands-free
         // conversation (or any dictation while Wing's own car mode is on,
         // with a car connected) opens the car kit's SCO link for the whole
         // conversation instead of just this round. A manual phone/wired mic
         // choice is left alone - it already skips the Bluetooth path.
-        var mic = settings.micRoute;
+        var mic = offline.micRoute;
         var holdMic = false;
         final session = carMicSession;
         if (session != null &&
             _carKitConnected() &&
-            (settings.conversation || _carModeActive()) &&
+            (offline.conversation || _carModeActive()) &&
             (mic == VoiceMicRoute.auto || mic == VoiceMicRoute.bluetooth)) {
           holdMic = await session.beginRound('conversation');
           if (holdMic) mic = VoiceMicRoute.bluetooth;
@@ -129,15 +131,15 @@ class VoiceInputController extends ChangeNotifier {
         final fellBack = await VadVoiceDevice.of(device).startVad(
           id,
           VadCaptureOptions(
-            cues: settings.cues,
-            debug: settings.debugRecordings,
-            source: settings.audioSource,
-            maxDuration: settings.vad.maxDuration,
+            cues: offline.cues,
+            debug: offline.debugRecordings,
+            source: offline.audioSource,
+            maxDuration: offline.vad.maxDuration,
             mic: mic,
             holdMic: holdMic,
           ),
         );
-        if (fellBack) micFallbackHint = micFallbackMessage(settings.micRoute);
+        if (fellBack) micFallbackHint = micFallbackMessage(offline.micRoute);
       } else {
         maxSeconds = maxRecordingSeconds;
         if (settings.input == VoiceInputRoute.hermes) _remote = createRemote();

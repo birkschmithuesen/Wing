@@ -20,6 +20,7 @@ import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
 import 'package:wing/voice_offline/barge_in_policy.dart';
 import 'package:wing/voice_offline/headphone_route.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/background_voice_fixture.dart';
 import 'support/headphone_route_fixture.dart';
 import 'support/profile_browser_fixture.dart';
@@ -264,7 +265,7 @@ void main() {
   }
 
   Future<void> conversationMode(bool on) => controller.preferences.setString(
-    VoicePreferences.conversationKey,
+    VoiceOfflinePrefs.conversationKey,
     on ? 'on' : 'off',
   );
 
@@ -660,7 +661,7 @@ void main() {
     'vad',
   );
   Future<void> listenTurn(bool on) => controller.preferences.setString(
-    VoicePreferences.listenTurnKey,
+    VoiceOfflinePrefs.listenTurnKey,
     on ? 'on' : 'off',
   );
   Future<void> windows(WidgetTester tester, double p, int count) async {
@@ -774,7 +775,7 @@ void main() {
   });
 
   Future<void> bargeInPlayback(bool on) => controller.preferences.setString(
-    VoicePreferences.bargeInPlaybackKey,
+    VoiceOfflinePrefs.bargeInPlaybackKey,
     on ? 'on' : 'off',
   );
   int playbackStops() => device.calls.where((c) => c == 'stopPlayback').length;
@@ -1204,7 +1205,7 @@ void main() {
     tester,
   ) async {
     await vadRoute();
-    await controller.preferences.setString(VoicePreferences.vadMaxKey, '900');
+    await controller.preferences.setString(VoiceOfflinePrefs.vadMaxKey, '900');
     await show(tester);
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
@@ -1484,8 +1485,8 @@ void main() {
       expect(vadStarts(), round); // the microphone stays closed
       expect(find.text('Tap to talk'), findsOneWidget);
     }
-    expect(controller.preferences.getString(VoicePreferences.conversationKey), 'off');
-    expect(controller.preferences.getString(VoicePreferences.autoSpeakKey), isNot('on'));
+    expect(controller.preferences.getString(VoiceOfflinePrefs.conversationKey), 'off');
+    expect(controller.preferences.getString(VoiceOfflinePrefs.autoSpeakKey), isNot('on'));
     await swipeOut(tester);
     expect(find.byType(CarModeScreen), findsNothing);
     expect(device.keepScreenOnCalls.last, isFalse);

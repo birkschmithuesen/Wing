@@ -5,10 +5,10 @@ import 'package:uuid/uuid.dart';
 
 import '../core/services/android_voice.dart';
 import '../core/services/vad_endpoint.dart';
-import '../core/services/voice_preferences.dart';
 import 'barge_in_policy.dart';
 import 'car_mic_session.dart';
 import 'vad_voice_device.dart';
+import 'voice_offline_prefs.dart';
 
 enum ListenPhase { idle, listening, transcribing }
 
@@ -49,7 +49,7 @@ class TurnListener extends ChangeNotifier {
   /// the playback gate (a voice barge-in into read-aloud).
   bool utteranceBarged = false;
 
-  VoicePreferences? _settings;
+  VoiceOfflinePrefs? _settings;
   String? _id;
   VadEndpointer? _endpointer;
   PlaybackGate? _gate;
@@ -73,7 +73,7 @@ class TurnListener extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
-  Future<void> open(VoicePreferences settings, {bool playback = false}) async {
+  Future<void> open(VoiceOfflinePrefs settings, {bool playback = false}) async {
     if (_disposed) return;
     _settings = settings;
     if (isOpen) {
@@ -281,7 +281,7 @@ class TurnListener extends ChangeNotifier {
   /// Debug: records speech probabilities while [play] runs (nobody speaking)
   /// and logs one `probe` line. No recognition, no utterances.
   Future<EchoStats> probe(
-    VoicePreferences settings,
+    VoiceOfflinePrefs settings,
     Future<void> Function() play,
   ) async {
     await _close('probe');

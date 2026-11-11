@@ -11,6 +11,7 @@ import 'studio_error.dart';
 import 'studio_select.dart';
 import 'vad_settings_section.dart';
 import '../../voice_offline/vad_voice_device.dart';
+import '../../voice_offline/voice_offline_prefs.dart';
 
 class VoicePreferencesPage extends StatelessWidget {
   const VoicePreferencesPage({
@@ -62,6 +63,7 @@ class VoicePreferencesCard extends StatefulWidget {
 class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     with WidgetsBindingObserver {
   late VoicePreferences _preferences;
+  late VoiceOfflinePrefs _offline;
   late final _language = TextEditingController();
   late final _preview = VoiceOutputController(
     widget.device ?? AndroidVoice.instance,
@@ -75,6 +77,7 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _preferences = VoicePreferences.read(widget.preferences);
+    _offline = VoiceOfflinePrefs.read(widget.preferences);
     _language.text = _preferences.language;
     _preview.addListener(_changed);
     _load();
@@ -110,9 +113,10 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
       await _preview.stop();
       await saveDevicePreference(widget.preferences, key, value);
       if (mounted) {
-        setState(
-          () => _preferences = VoicePreferences.read(widget.preferences),
-        );
+        setState(() {
+          _preferences = VoicePreferences.read(widget.preferences);
+          _offline = VoiceOfflinePrefs.read(widget.preferences);
+        });
       }
     } catch (_) {
       if (mounted) {
@@ -280,9 +284,9 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
         if (_preferences.input == VoiceInputRoute.vad) ...[
           const SizedBox(height: 12),
           StudioSelect<String>(
-            key: ValueKey('voice-mic-route-${_preferences.micRoute.name}'),
+            key: ValueKey('voice-mic-route-${_offline.micRoute.name}'),
             label: 'Microphone',
-            value: _preferences.micRoute.name,
+            value: _offline.micRoute.name,
             options: const [
               (value: 'auto', label: 'Automatic'),
               (value: 'phone', label: 'Phone mic'),
@@ -293,19 +297,19 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
                 ? null
                 : (value) {
                     if (value != null) {
-                      _save(VoicePreferences.micRouteKey, value);
+                      _save(VoiceOfflinePrefs.micRouteKey, value);
                     }
                   },
           ),
           const SizedBox(height: 12),
           Text(
-            _preferences.micRoute == VoiceMicRoute.auto
+            _offline.micRoute == VoiceMicRoute.auto
                 ? 'Prefers a connected Bluetooth or wired headset mic, otherwise the phone.'
                 : 'If this microphone is not connected when recording starts, Wing uses Automatic instead.',
           ),
           const SizedBox(height: 12),
           VadSettingsSection(
-            settings: _preferences,
+            settings: _offline,
             device: widget.device ?? AndroidVoice.instance,
             saving: _saving,
             onSave: _save,
@@ -339,11 +343,11 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           subtitle: const Text(
             'Read each finished reply aloud automatically while the chat is open.',
           ),
-          value: _preferences.autoSpeak,
+          value: _offline.autoSpeak,
           onChanged: _saving
               ? null
               : (value) =>
-                    _save(VoicePreferences.autoSpeakKey, value ? 'on' : 'off'),
+                    _save(VoiceOfflinePrefs.autoSpeakKey, value ? 'on' : 'off'),
         ),
         SwitchListTile(
           key: const ValueKey('voice-conversation'),
@@ -353,16 +357,17 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
             'Send dictation when you stop speaking, read the reply aloud and '
             'listen again. Stop, Cancel or silence ends the conversation.',
           ),
-          value: _preferences.conversation,
+          value: _offline.conversation,
           onChanged: _saving
               ? null
               : (value) => _save(
-                  VoicePreferences.conversationKey,
+                  VoiceOfflinePrefs.conversationKey,
                   value ? 'on' : 'off',
                 ),
         ),
         BargeInSettings(
           settings: _preferences,
+          offline: _offline,
           device: widget.device ?? AndroidVoice.instance,
           saving: _saving,
           onSave: _save,

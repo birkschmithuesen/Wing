@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/barge_in_coordinator.dart';
 import 'package:wing/voice_offline/barge_in_policy.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/voice_fixture.dart';
 
 class _Target implements ListenTarget {
@@ -26,7 +26,7 @@ class _Target implements ListenTarget {
   Future<void> send(String text) async => log.add('send:$text');
 }
 
-const settings = VoicePreferences(input: VoiceInputRoute.vad, conversation: true);
+const settings = VoiceOfflinePrefs(conversation: true);
 
 void main() {
   late VoiceDeviceFixture device;
