@@ -481,12 +481,21 @@ void main() {
           );
           await pumpFrames(tester);
           expect(
-            find.text('Delivery unconfirmed · Receipt was lost'),
+            find.text('Delivery unconfirmed · Receipt was lost').hitTestable(),
             findsOneWidget,
           );
           expect(find.text('Paused · 1 to review'), findsOneWidget);
           expect(chat.composer.observation.text, 'Keep my draft');
           await capture(tester, 'queue-uncertain-${brightness.name}-$scale');
+          await tester.tap(
+            find.text('Delivery unconfirmed · Receipt was lost'),
+          );
+          await pumpFrames(tester);
+          expect(find.byType(SelectableText), findsOneWidget);
+          expect(
+            tester.widget<SelectableText>(find.byType(SelectableText)).data,
+            'Receipt was lost',
+          );
           expect(tester.takeException(), isNull);
         },
       );

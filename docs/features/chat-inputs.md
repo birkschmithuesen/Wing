@@ -94,6 +94,8 @@ count, bounded expansion, full text and exact copy with held feedback, visible
 unknown/uncertain outcomes while collapsed, capability changes, temporary
 restriction explanations, attachment-action omission and draft preservation.
 The render matrix uses both themes at 390 dp/normal text and 320 dp/200% text.
+The queue heading wraps independently of the bounded message list, so paused
+and review status cannot consume the rows' viewport at enlarged text sizes.
 `composer_steering_delivery_test.dart` distinguishes unsupported edits, unknown
 outcomes and removed entries; `profile_composer_queue_test.dart` covers exact
 server admission identity and cancellation/steering. Run:
