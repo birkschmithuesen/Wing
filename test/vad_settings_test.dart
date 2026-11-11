@@ -5,7 +5,7 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/voice_offline/vad_voice_device.dart';
 import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';

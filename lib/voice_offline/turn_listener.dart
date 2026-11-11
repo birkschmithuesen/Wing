@@ -8,6 +8,7 @@ import '../core/services/vad_endpoint.dart';
 import '../core/services/voice_preferences.dart';
 import 'barge_in_policy.dart';
 import 'car_mic_session.dart';
+import 'vad_voice_device.dart';
 
 enum ListenPhase { idle, listening, transcribing }
 
@@ -115,7 +116,7 @@ class TurnListener extends ChangeNotifier {
     }
     if (_id != id || _disposed) return;
     try {
-      await device.startVad(
+      await VadVoiceDevice.of(device).startVad(
         id,
         VadCaptureOptions(
           cues: cues && settings.cues,
@@ -216,7 +217,7 @@ class TurnListener extends ChangeNotifier {
         decision.startWindow,
         decision.endWindow,
       );
-      text = await device
+      text = await VadVoiceDevice.of(device)
           .finishVad(id, decision, endpointer.config, chunks: chunks)
           .timeout(
             vadRecognitionBudget(decision.segment, chunks: chunks.length),

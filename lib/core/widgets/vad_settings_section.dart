@@ -6,6 +6,7 @@ import 'anchored_expansion_tile.dart';
 import 'compact_switch.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
+import '../../voice_offline/vad_voice_device.dart';
 
 /// Settings that exist only for the vad input route: the on-phone speech
 /// model, cue tones, pause detection and debug recordings. There is no
@@ -45,7 +46,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
 
   Future<void> _refresh() async {
     try {
-      final status = await widget.device.vadModelStatus();
+      final status = await VadVoiceDevice.of(widget.device).vadModelStatus();
       if (mounted) setState(() => _status = status);
     } catch (_) {
       if (mounted) {
@@ -85,7 +86,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
       ),
     );
     if (remove == true) {
-      await widget.device.removeVadModel();
+      await VadVoiceDevice.of(widget.device).removeVadModel();
       await _refresh();
     }
   }
@@ -105,7 +106,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
         'Speech model · $_archiveMb MB download',
         TextButton(
           key: const ValueKey('vad-model-download'),
-          onPressed: () => unawaited(widget.device.installVadModel()),
+          onPressed: () => unawaited(VadVoiceDevice.of(widget.device).installVadModel()),
           child: const Text('Download'),
         ),
       ),
@@ -116,7 +117,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
             '${mb(status.bytes)} / ${mb(status.total == 0 ? 487170055 : status.total)} MB',
             TextButton(
               key: const ValueKey('vad-model-cancel'),
-              onPressed: () => unawaited(widget.device.cancelVadModelInstall()),
+              onPressed: () => unawaited(VadVoiceDevice.of(widget.device).cancelVadModelInstall()),
               child: const Text('Cancel'),
             ),
           ),
@@ -148,7 +149,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
             alignment: Alignment.centerLeft,
             child: TextButton(
               key: const ValueKey('vad-model-retry'),
-              onPressed: () => unawaited(widget.device.installVadModel()),
+              onPressed: () => unawaited(VadVoiceDevice.of(widget.device).installVadModel()),
               child: const Text('Retry'),
             ),
           ),
@@ -271,7 +272,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
                 alignment: Alignment.centerLeft,
                 child: TextButton(
                   key: const ValueKey('vad-debug-delete'),
-                  onPressed: () => unawaited(widget.device.deleteVadDebugRecordings()),
+                  onPressed: () => unawaited(VadVoiceDevice.of(widget.device).deleteVadDebugRecordings()),
                   child: const Text('Delete debug recordings'),
                 ),
               ),

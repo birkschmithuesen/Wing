@@ -10,6 +10,7 @@ import '../../voice_offline/barge_in_settings.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
 import 'vad_settings_section.dart';
+import '../../voice_offline/vad_voice_device.dart';
 
 class VoicePreferencesPage extends StatelessWidget {
   const VoicePreferencesPage({
@@ -153,7 +154,7 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     final isVad = _preferences.input == VoiceInputRoute.vad;
     if (isVad == wasVad) return;
     try {
-      await (isVad ? device.prepareVad() : device.releaseVad());
+      await (isVad ? VadVoiceDevice.of(device).prepareVad() : VadVoiceDevice.of(device).releaseVad());
     } catch (_) {
       // The workspace owns media keys and retries on resume; settings stay saved.
     }

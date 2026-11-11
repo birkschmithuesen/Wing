@@ -80,6 +80,7 @@ import '../../voice_offline/car_mic_session.dart';
 import '../../voice_offline/headphone_route.dart';
 import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
+import '../../voice_offline/vad_voice_device.dart';
 
 enum _AttachmentChoice { camera, photos, files }
 
@@ -630,7 +631,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     final vad = _vadRoute();
     if (vad == null) return;
     _syncMediaKeys();
-    if (vad) unawaited(_voiceDevice.prepareVad().catchError((Object _) {}));
+    if (vad) unawaited(VadVoiceDevice.of(_voiceDevice).prepareVad().catchError((Object _) {}));
   }
 
   bool? _vadRoute() {
@@ -1028,7 +1029,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     // A replacement workspace may already hold the model; release it only
     // when the last workspace goes away.
     if (--_liveWorkspaces <= 0 && _vadRoute() == true) {
-      unawaited(_voiceDevice.releaseVad().catchError((Object _) {}));
+      unawaited(VadVoiceDevice.of(_voiceDevice).releaseVad().catchError((Object _) {}));
     }
     WidgetsBinding.instance.removeObserver(this);
     _profileNavigation.dispose();

@@ -9,6 +9,7 @@ import '../core/services/voice_preferences.dart';
 import 'car_mode_bridge.dart';
 import 'car_mode_screen.dart';
 import 'car_mode_state.dart';
+import '../voice_offline/vad_voice_device.dart';
 
 /// One car-mode visit over one chat. Owns the route, the screen-on holder, the
 /// held recording and the text-free log (spec §4, §7).

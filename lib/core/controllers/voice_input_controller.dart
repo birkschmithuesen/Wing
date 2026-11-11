@@ -7,6 +7,7 @@ import '../services/hermes_voice.dart';
 import '../services/vad_endpoint.dart';
 import '../services/voice_preferences.dart';
 import '../../voice_offline/car_mic_session.dart';
+import '../../voice_offline/vad_voice_device.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
 
@@ -125,7 +126,7 @@ class VoiceInputController extends ChangeNotifier {
           if (holdMic) mic = VoiceMicRoute.bluetooth;
         }
         if (_id != id || _disposed) return;
-        final fellBack = await device.startVad(
+        final fellBack = await VadVoiceDevice.of(device).startVad(
           id,
           VadCaptureOptions(
             cues: settings.cues,
@@ -246,7 +247,7 @@ class VoiceInputController extends ChangeNotifier {
       // skips recognition for it), then end the round. Channel calls keep their
       // order, so the following cancel finds no round left.
       unawaited(
-        device
+        VadVoiceDevice.of(device)
             .finishVad(id, decision, endpointer.config)
             .then((_) {}, onError: (Object _) {}),
       );
@@ -264,7 +265,7 @@ class VoiceInputController extends ChangeNotifier {
         decision.startWindow,
         decision.endWindow,
       );
-      final text = await device
+      final text = await VadVoiceDevice.of(device)
           .finishVad(id, decision, endpointer.config, chunks: chunks)
           .timeout(vadRecognitionBudget(decision.segment, chunks: chunks.length));
       if (_id == id && !_disposed) _finish(text);
