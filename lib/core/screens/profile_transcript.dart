@@ -366,6 +366,8 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
     final presentation = widget.presentation;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _olderLoadScheduled = false;
+      // A bookmark centers the list at zero; newer content can extend below it
+      // into negative offsets. Only the actual minimum denotes Latest.
       if (!mounted ||
           !identical(
             widget.presentation.readingIdentity,
@@ -373,7 +375,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
           ) ||
           !_scroll.hasClients ||
           _scroll.position.extentAfter >= 180 ||
-          _scroll.position.pixels <= 0 ||
+          _scroll.position.pixels <= _scroll.position.minScrollExtent ||
           widget.presentation.history.loading ||
           widget.presentation.history.error != null) {
         return;
@@ -1084,7 +1086,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
             if ((event is ScrollUpdateNotification ||
                     event is ScrollEndNotification) &&
                 event.metrics.extentAfter < 180 &&
-                event.metrics.pixels > 0 &&
+                event.metrics.pixels > event.metrics.minScrollExtent &&
                 !presentation.history.loading &&
                 presentation.history.error == null) {
               _scheduleLoadOlder();

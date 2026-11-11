@@ -166,6 +166,93 @@ void main() {
   Finder message(Object id) => find.byKey(ValueKey<Object>(('message', id)));
   final viewport = find.byKey(const ValueKey('profile-transcript'));
 
+  for (final reachOrigin in [false, true]) {
+    testWidgets(
+      'older paging works around restored origin: reached=$reachOrigin',
+      (tester) async {
+        final paged = _PagedReading();
+        addTearDown(paged.dispose);
+        paged.messages = [
+          {'id': 39, 'role': 'user', 'content': 'Saved prompt'},
+          {'id': 40, 'role': 'assistant', 'content': 'Long saved answer'},
+        ];
+        paged.recordReading(const TranscriptBookmark(messageId: 39));
+        var loads = 0;
+        final gate = Completer<void>();
+        addTearDown(() async {
+          if (!gate.isCompleted) gate.complete();
+          await tester.pump();
+        });
+        Future<void> load() async {
+          loads++;
+          paged.historyLoading = true;
+          paged.publish();
+          await gate.future;
+          paged.messages = [
+            for (var id = 30; id < 39; id++)
+              {'id': id, 'role': 'assistant', 'content': 'Older reply $id'},
+            ...paged.messages,
+          ];
+          paged.historyLoading = false;
+          paged.nextHistoryOffset = null;
+          paged.publish();
+        }
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ListenableBuilder(
+                listenable: paged,
+                builder: (_, _) => ProfileTranscript(
+                  presentation: TranscriptPresentation.capture(
+                    identity: 'paged',
+                    reader: paged,
+                    timeline: TranscriptTimeline.project(
+                      paged.messages,
+                      presentationId: paged.messagePresentationId,
+                    ),
+                    needsInput: false,
+                    turnAdmissionBlocked: false,
+                  ),
+                  onRefreshHistory: load,
+                  onLoadOlder: load,
+                  tail: const [],
+                  messageBuilder: (entry) => SizedBox(
+                    height: entry.id == 40 ? 1500 : 100,
+                    child: Text(entry.message.text),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final scroll = tester.widget<ScrollView>(viewport).controller!;
+        expect(scroll.position.minScrollExtent, lessThan(0));
+        expect(scroll.position.maxScrollExtent, 0);
+        expect(loads, 0);
+        final olderDistance = scroll.position.maxScrollExtent - scroll.offset;
+        await tester.drag(
+          viewport,
+          Offset(0, olderDistance + (reachOrigin ? 100 : -80)),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          loads,
+          1,
+          reason: 'Reaching older history at zero must request its next page',
+        );
+        gate.complete();
+        await tester.pumpAndSettle();
+        expect(find.text('Older reply 38').hitTestable(), findsOneWidget);
+        await tester.drag(viewport, const Offset(0, 250));
+        await tester.pumpAndSettle();
+        expect(find.text('Older reply 36').hitTestable(), findsOneWidget);
+        expect(loads, 1);
+      },
+    );
+  }
+
   testWidgets('opening latest does not read; actively reaching its end does', (
     tester,
   ) async {

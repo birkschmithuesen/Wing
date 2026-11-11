@@ -65,7 +65,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   `message_timestamp_test.dart` also covers notification layout in Bot Chats.
 
   The reading-position suite covers thread departure, covered conversations,
-  app return and local prompts becoming saved history. For the real Send control
+  app return and local prompts becoming saved history. Reopened chats also
+  load older pages when a swipe reaches the start of a short loaded page;
+  later replies stay available below the remembered reading position. The
+  paging cases hold the read, complete it and continue scrolling into the
+  newly loaded replies. For the real Send control
   and rendered reply beginning in both themes at normal and enlarged text:
 
   ```sh
