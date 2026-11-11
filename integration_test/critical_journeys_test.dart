@@ -115,7 +115,7 @@ void main() {
     final editor = find.byKey(const Key('profile-message-composer'));
     Finder queued(String text) => find.descendant(
       of: find.byType(ProfileQueuedMessages),
-      matching: find.text(text),
+      matching: find.textContaining(text),
     );
     await tester.enterText(editor, 'Do not send this twice');
     await tester.pump();
@@ -131,7 +131,7 @@ void main() {
       'A lost acknowledgement must retain the outgoing message for review',
     );
     expect(queued('Do not send this twice').hitTestable(), findsOneWidget);
-    expect(find.text('Queue paused'), findsOneWidget);
+    expect(find.text('Paused · 1 to review'), findsOneWidget);
     // The server accepted this input before the fixture lost its ACK. Capture
     // that authority before destroying the phone owner, not after recovery.
     expect(host.canonicalAdmissions, hasLength(1));
@@ -220,7 +220,7 @@ void main() {
             .toList(),
         'editor': surface(editor),
         'queuedPreview': surface(queued('Do not send this twice')),
-        'pausedLabel': surface(find.text('Queue paused')),
+        'pausedLabel': surface(find.text('Paused · 1 to review')),
         'browserRow': surface(find.text('a chat')),
         'physicalSize': tester.view.physicalSize.toString(),
         'pixelRatio': tester.view.devicePixelRatio,
@@ -244,7 +244,7 @@ void main() {
     );
     expect(tester.widget<TextField>(editor).controller!.text, 'My newer draft');
     expect(queued('Do not send this twice'), findsNothing);
-    expect(find.text('Queue paused'), findsNothing);
+    expect(find.text('Paused · 1 to review'), findsNothing);
     // Accepted, already-started work belongs to Hermes. Keeping a paused local
     // copy here would falsely offer a second submission after successful recovery.
     final cleanupDeadline = DateTime.now().add(const Duration(seconds: 10));
@@ -288,7 +288,7 @@ void main() {
     );
     expect(tester.widget<TextField>(editor).controller!.text, 'My newer draft');
     expect(queued('Do not send this twice'), findsNothing);
-    expect(find.text('Queue paused'), findsNothing);
+    expect(find.text('Paused · 1 to review'), findsNothing);
     expect(
       host.calls
           .where((call) => call.$2 == 'prompt.submit')

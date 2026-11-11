@@ -225,7 +225,7 @@ void main() {
       expect(tester.widget<TextField>(editor).controller!.text, _draft);
       Finder queued() => find.descendant(
         of: find.byType(ProfileQueuedMessages),
-        matching: find.text('$_text · recovery.txt'),
+        matching: find.textContaining('$_text · recovery.txt'),
       );
       await until(
         () =>
@@ -234,7 +234,7 @@ void main() {
         'Restored draft and uncertain outgoing message become visible',
       );
       expect(queued().hitTestable(), findsOneWidget);
-      expect(find.text('Queue paused'), findsOneWidget);
+      expect(find.text('Paused · 1 to review'), findsOneWidget);
       expect(
         chat.composer.observation.queue.single.submissionUncertain,
         isTrue,
@@ -258,7 +258,7 @@ void main() {
       );
       expect(tester.widget<TextField>(editor).controller!.text, _draft);
       expect(queued().hitTestable(), findsOneWidget);
-      expect(find.text('Queue paused'), findsOneWidget);
+      expect(find.text('Paused · 1 to review'), findsOneWidget);
       final replay = host.calls
           .where((call) => call.$2 == 'prompt.submit')
           .toList();
