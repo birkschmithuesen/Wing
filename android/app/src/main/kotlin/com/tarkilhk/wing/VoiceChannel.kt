@@ -3,29 +3,17 @@ package com.tarkilhk.wing
 import android.Manifest
 import android.app.Activity
 import android.content.pm.PackageManager
-import android.view.WindowManager
-import com.tarkilhk.wing.voicebackground.BackgroundVoiceChannel
-import com.tarkilhk.wing.voicebackground.BackgroundVoiceService
-import com.tarkilhk.wing.voiceoffline.HeadphoneRouteChannel
-import com.tarkilhk.wing.voiceoffline.HeadsetMicRoute
+import com.tarkilhk.wing.voiceoffline.VoiceOfflineHandler
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
-import java.util.concurrent.CancellationException
 
 class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
     companion object { const val PERMISSION_REQUEST = 7314 }
     private val channel = MethodChannel(messenger, "com.tarkilhk.wing/voice")
     private val capture = VoiceCapture(activity, ::emit)
     private val playback = VoicePlayback(activity, ::emit)
-    private val models = SpeechModelStore(activity, ::emit)
-    private val speech = OfflineSpeech(models)
-    private val debugStore = VoiceDebugStore(activity)
-    private val micRoute = HeadsetMicRoute(activity)
-    private val vad = VadCapture(activity, models, speech, debugStore, micRoute, ::emit)
-    private val mediaKeys = VoiceMediaKeys(activity, ::emit)
-    private val background = BackgroundVoiceChannel(activity, messenger)
-    private val route = HeadphoneRouteChannel(activity, messenger)
+    private val offline = VoiceOfflineHandler(activity, messenger, ::emit)
     private var pending: Pair<MethodCall, MethodChannel.Result>? = null
     init {
         // A previous process may have died before its normal cleanup.
@@ -49,7 +37,7 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                     result.success(mapOf("recognitionAvailable" to capture.available(), "languages" to languages,
                         "voices" to if (ready) playback.voiceChoices() else emptyList<Map<String, String>>()))
                 } }
-                "start" -> {
+                "start", "startVad" -> {
                     check(id.isNotEmpty()) { "Missing capture ID." }
                     if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
                         check(pending == null) { "Wait for microphone permission." }
@@ -57,45 +45,19 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
                         activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST)
                     } else start(call, result)
                 }
-                "startVad" -> {
-                    check(id.isNotEmpty()) { "Missing capture ID." }
-                    if (activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-                        check(pending == null) { "Wait for microphone permission." }
-                        pending = call to result
-                        activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), PERMISSION_REQUEST)
-                    } else start(call, result)
-                }
-                "finishVad" -> vad.finish(id, call.argument<Int>("startWindow") ?: 0, call.argument<Int>("endWindow") ?: 0,
-                    call.argument<Int>("atWindow") ?: 0, call.argument<String>("reason").orEmpty(),
-                    call.argument<Map<String, Any?>>("config") ?: emptyMap(), call.argument<List<List<Int>>>("chunks"), result)
-                "deleteVadDebugRecordings" -> result.success(debugStore.deleteAll())
                 "stop" -> result.success(capture.stop(id, call.argument<Number>("timeoutMs")?.toLong() ?: 5000L))
                 "cancel" -> {
                     if (pending?.first?.argument<String>("id") == id) {
                         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
                     }
-                    vad.cancel(id); capture.cancel(id); result.success(null)
+                    offline.cancel(id); capture.cancel(id); result.success(null)
                 }
                 "speak" -> playback.speak(id, call.argument<String>("text").orEmpty(),
                     call.argument<String>("voice").orEmpty(), call.argument<Number>("rate")?.toFloat() ?: 1f,
                     call.argument<List<Map<String, String>>>("segments"), result)
                 "play" -> playback.play(id, call.argument<ByteArray>("bytes") ?: error("Missing audio."), result)
                 "stopPlayback" -> { playback.stop(id); result.success(null) }
-                "vadModelStatus" -> result.success(models.status())
-                "installVadModel" -> { models.install(); result.success(null) }
-                "cancelVadModelInstall" -> { models.cancel(); result.success(null) }
-                "removeVadModel" -> { speech.release(); models.remove(); result.success(null) }
-                "prepareVad" -> { if (models.verifyManifest() == null) speech.prepare(); result.success(null) }
-                "releaseVad" -> { speech.release(); result.success(null) }
-                "openMicLink" -> micRoute.openLink { ready -> result.success(ready) }
-                "closeMicLink" -> { micRoute.closeLink(); result.success(null) }
-                "setMediaKeys" -> { mediaKeys.enable(call.argument<Boolean>("on") == true); result.success(null) }
-                "keepScreenOn" -> {
-                    if (call.argument<Boolean>("on") == true) activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    else activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                    result.success(null)
-                }
-                else -> result.notImplemented()
+                else -> if (!offline.handle(call, result)) result.notImplemented()
             }
         } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
     }
@@ -103,41 +65,13 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         // Barge-in listen rounds record while Wing reads aloud.
         if (call.argument<Boolean>("keepPlayback") != true) playback.stop()
         val id = call.argument<String>("id")!!
-        if (call.method != "startVad") {
-            vad.cancel(id)
-            capture.start(id, call.argument<Boolean>("local") == true, call.argument<String>("language").orEmpty())
-            result.success(null)
-            return
-        }
-        capture.cancel(id)
-        val cues = call.argument<Boolean>("cues") != false
-        val options = VadCapture.Options(
-            cues = cues,
-            debug = call.argument<Boolean>("debug") == true,
-            source = call.argument<String>("source") ?: "communication",
-            maxMs = call.argument<Int>("maxMs") ?: 600_000,
-            startCue = call.argument<Boolean>("startCue") ?: cues,
-            mic = call.argument<String>("mic") ?: "auto",
-            holdMic = call.argument<Boolean>("holdMic") == true,
-        )
-        val begin = {
-            try {
-                vad.start(id, options) { failure, fallback ->
-                    when (failure) {
-                        null -> result.success(fallback)
-                        is CancellationException -> result.error("cancelled", "Recording cancelled.", null)
-                        else -> result.error("voice_unavailable", failure.message ?: "Voice is unavailable.", null)
-                    }
-                }
-            } catch (error: Exception) { result.error("voice_unavailable", error.message ?: "Voice is unavailable.", null) }
-        }
-        // Spec §3 F1: the first explicit recording with Bluetooth audio asks for Nearby devices once.
-        // "bluetooth" is a manual preference for that same link, so it asks too; "phone" and "wired" never need it.
-        if ((options.mic == "auto" || options.mic == "bluetooth") && micRoute.needsPermission()) micRoute.requestOnce(begin) else begin()
+        if (call.method == "startVad") { capture.cancel(id); offline.startVad(id, call, result); return }
+        offline.cancel(id)
+        capture.start(id, call.argument<Boolean>("local") == true, call.argument<String>("language").orEmpty())
+        result.success(null)
     }
     fun permissionResult(requestCode: Int, grants: IntArray): Boolean {
-        if (requestCode == HeadsetMicRoute.PERMISSION_REQUEST) { micRoute.permissionResult(grants); route.refresh(); return true }
-        if (requestCode == HeadphoneRouteChannel.PERMISSION_REQUEST) { route.permissionResult(grants); return true }
+        if (offline.permissionResult(requestCode, grants)) return true
         if (requestCode != PERMISSION_REQUEST) return false
         val request = pending; pending = null
         if (request != null) {
@@ -152,13 +86,12 @@ class VoiceChannel(private val activity: Activity, messenger: BinaryMessenger) {
         }
         return true
     }
-    fun pause() { if (BackgroundVoiceService.keepsVoice()) { capture.pause(); mediaKeys.pause(); return }; capture.pause(); vad.pause(); playback.stop(); mediaKeys.pause() }
-    fun resume() { mediaKeys.resume() }
+    fun pause() { if (offline.keepsVoice()) { capture.pause(); offline.pauseMediaKeys(); return }; capture.pause(); offline.pauseVad(); playback.stop(); offline.pauseMediaKeys() }
+    fun resume() { offline.resume() }
     fun close() {
-        background.close()
-        route.close()
+        offline.closeRoutes()
         pending?.second?.error("cancelled", "Recording cancelled.", null); pending = null
-        mediaKeys.close(); activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        capture.close(); playback.close(); vad.close(); micRoute.close(); debugStore.close(); speech.close(); models.close(); channel.setMethodCallHandler(null)
+        offline.closeKeys()
+        capture.close(); playback.close(); offline.close(); channel.setMethodCallHandler(null)
     }
 }

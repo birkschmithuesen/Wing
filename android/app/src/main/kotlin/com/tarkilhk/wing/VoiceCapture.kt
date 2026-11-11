@@ -12,6 +12,10 @@ import android.speech.RecognitionSupport
 import android.speech.RecognitionSupportCallback
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
+import com.tarkilhk.wing.voiceoffline.cleanTranscript
+import com.tarkilhk.wing.voiceoffline.createRecognizer
+import com.tarkilhk.wing.voiceoffline.onDeviceRecognition
+import com.tarkilhk.wing.voiceoffline.recognitionAvailable
 import java.io.File
 import java.util.Locale
 
@@ -32,10 +36,7 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
     private var probe: SpeechRecognizer? = null
     private var finishProbe: (() -> Unit)? = null
 
-    private fun onDevice() = Build.VERSION.SDK_INT >= 31 && SpeechRecognizer.isOnDeviceRecognitionAvailable(activity)
-    fun available() = onDevice() || SpeechRecognizer.isRecognitionAvailable(activity)
-    private fun recognizer() = if (onDevice()) SpeechRecognizer.createOnDeviceSpeechRecognizer(activity)
-        else SpeechRecognizer.createSpeechRecognizer(activity)
+    fun available() = recognitionAvailable(activity)
 
     private fun intent(language: String) = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
         putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
@@ -44,7 +45,7 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
     }
 
     fun languages(callback: (List<String>?) -> Unit) {
-        if (Build.VERSION.SDK_INT < 33 || !onDevice()) { callback(null); return }
+        if (Build.VERSION.SDK_INT < 33 || !onDeviceRecognition(activity)) { callback(null); return }
         finishProbe?.invoke()
         var complete = false
         var timeout: Runnable? = null
@@ -74,7 +75,7 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
         try {
             if (local) {
                 check(available()) { "On-device recognition is unavailable. Android 12 or later and a supported speech service are required. Choose Hermes in App settings or install a local recognition service." }
-                recognizer = recognizer().also { speech ->
+                recognizer = createRecognizer(activity).also { speech ->
                     speech.setRecognitionListener(object : RecognitionListener {
                         override fun onReadyForSpeech(params: Bundle?) {}
                         override fun onBeginningOfSpeech() {}
@@ -164,13 +165,6 @@ class VoiceCapture(private val activity: Activity, private val emit: (Map<String
         file?.delete(); file = null
     }
     fun close() { clear(); finishProbe?.invoke() }
-}
-
-/** Drops heartbeat placeholders ("…"/"...") some offline recognizers emit as partial results. */
-internal fun cleanTranscript(raw: String): String {
-    val trimmed = raw.trim()
-    if (trimmed.all { it == '…' || it == '.' || it.isWhitespace() }) return ""
-    return trimmed.removePrefix("…").removePrefix("...").trim()
 }
 
 internal fun voiceDirectory(activity: Activity) = File(activity.cacheDir, "voice").apply { mkdirs() }
