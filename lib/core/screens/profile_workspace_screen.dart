@@ -3838,7 +3838,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                                   'Delivery is unconfirmed. Check conversation history before retrying.',
                                 ),
                               if (selected.text.isNotEmpty)
-                                SelectableText(selected.text),
+                                viewportSelection(SelectableText(selected.text)),
                               if (selected.attachments.isNotEmpty)
                                 Text(
                                   selected.attachments
