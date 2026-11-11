@@ -18,6 +18,7 @@ import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/workspace_overview_content.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -300,6 +301,23 @@ void main() {
         expect(find.text('Room discussion excerpt'), findsOneWidget);
         expect(find.text('New answer'), findsWidgets);
         expect(find.text('Sync'), findsOneWidget);
+        expect(find.byIcon(ProjectIconGlyphs.of('repo')), findsOneWidget);
+        controller.current!.gateway.onEvent!(
+          StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+        );
+        controller.showList();
+        await tester.pumpAndSettle();
+        final assignedRow = find.byKey(
+          const ValueKey('activity-main-needs-input'),
+        );
+        expect(
+          find.descendant(of: assignedRow, matching: find.text('Sync')),
+          findsOneWidget,
+        );
+        expect(
+          find.descendant(of: assignedRow, matching: find.text('No project')),
+          findsNothing,
+        );
         expect(find.byIcon(ProjectIconGlyphs.of('repo')), findsOneWidget);
         await tester.runAsync(() => Future<void>.delayed(Duration.zero));
         await tester.pumpAndSettle();

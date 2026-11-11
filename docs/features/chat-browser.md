@@ -17,6 +17,9 @@ Feature ID: `chat-browser`.
   Recents suspends its display work while Wing is paused and catches up previews
   and unread state on resume. Repeated connection updates reuse unchanged saved
   message summaries; edits still replace them.
+  Project names and icons stay visible while invalidated metadata refreshes or
+  a project read fails. A successful refresh applies reassignment or removal to
+  both opened and unopened chats.
   Once the workspace is ready, Wing prepares Recents quietly in the background.
   Opening it reuses the shared catalog or joins preparation already underway;
   an early visit retains loading feedback until the initial read settles.
@@ -82,6 +85,12 @@ Run `test/profile_recents_test.dart` with
 `--dart-define=WING_PERF_INSTRUMENTATION=true` to enforce the unchanged-history
 summary work budget. Its lifecycle checks also verify that paused connection
 updates do not rebuild the catalog and background replies appear on resume.
+Its project regression delivers a session-change event, holds and fails the
+refresh, then confirms reassignment and removal; opening a chat must still
+request fresh membership. The activity suite verifies that the rendered project
+name/icon survives invalidation in both themes at normal and doubled text size.
+The row-action suite checks that confirmed moves and removals update Recents
+immediately, including chats that have never been opened.
 The visibility suite starts on Chats and opens Recents through the drawer with
 startup preparation held or completed. It checks cached cards, visible pending
 feedback, no duplicate chat/group reads, deferred foreground admission, failure

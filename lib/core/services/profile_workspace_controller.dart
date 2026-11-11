@@ -2440,6 +2440,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
                     ? project['id'] as String
                     : null,
         };
+        for (final chat in resource._chats.values) {
+          if (resource._projectMembership!.containsKey(chat.key.sessionId)) {
+            chat._projectId = resource._projectMembership![chat.key.sessionId];
+            chat._projectLookupFailed = false;
+          }
+        }
       }
       return projects.where(ProfileGateway.isSavedProject).toList();
     } finally {
@@ -2449,7 +2455,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   void _invalidateProjectMembership(ProfileWorkspaceData resource) {
     resource._projectMembershipGeneration++;
-    resource._projectMembership = null;
+    // Stale membership is still the last confirmed display observation.
+    // Retain it through pending/failed reads; resetting coverage forces a read.
     resource._projectMembershipLabels = {};
     resource._projectMembershipRead = null;
     resource._projectMembershipLimit = 0;
@@ -2810,7 +2817,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         visibility: _requiredSessionVisibility(),
         archivedOnly: archivedOnly,
       );
-      List<Map<String, dynamic>> projects = [];
+      List<Map<String, dynamic>>? projects;
       String? projectError;
       try {
         projects = await target.gateway.projects();
@@ -2823,7 +2830,9 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       target._archivedOnly = archivedOnly;
       _replaceSessions(target, sessions);
-      target._projects = _readonlyWorkspaceRows(projects);
+      if (projects != null) {
+        target._projects = _readonlyWorkspaceRows(projects);
+      }
       _invalidateProjectMembership(target);
       target._projectsError = projectError;
       if (resetNavigation) {
@@ -5290,14 +5299,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (resource._projectsError != null) {
         throw StateError('Projects unavailable');
       }
-      if (resource._projectMembership?.containsKey(chat._key.sessionId) !=
-          true) {
+      if (resource._projectMembershipLimit == 0 ||
+          resource._projectMembership?.containsKey(chat._key.sessionId) !=
+              true) {
         await _readProjectMembership(resource);
       }
       if (_closed) return;
       final membership = resource._projectMembership;
       if (membership == null || !membership.containsKey(chat._key.sessionId)) {
-        chat._projectId = null;
         chat._projectLookupFailed = true;
       } else {
         chat._projectId = membership[chat._key.sessionId];
@@ -5703,6 +5712,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         moved(resource._projectSessions),
       );
       _invalidateProjectMembership(resource);
+      (resource._projectMembership ??= {})[id] = project?['id'] as String?;
       resource._chats[id]?._projectId = project?['id'] as String?;
       // Do not leave a moved row in its old folder while the tree reloads.
       if (project == null ||

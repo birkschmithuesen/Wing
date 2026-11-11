@@ -1580,12 +1580,13 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                   style: scopeStyle,
                 );
                 if (bot != null) return server;
-                final projectLabel =
-                    chat.runtime.opening || chat.runtime.offline
+                final unknownOpeningProject =
+                    chat.projectId == null &&
+                    (chat.runtime.opening || chat.runtime.offline);
+                final projectLabel = unknownOpeningProject
                     ? chat.key.workspace.profileName
                     : controller.chatProjectLabel(chat);
-                final projectAppearance =
-                    chat.runtime.opening || chat.runtime.offline
+                final projectAppearance = unknownOpeningProject
                     ? null
                     : controller.chatProject(chat);
                 final project = Tooltip(

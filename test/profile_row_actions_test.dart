@@ -1489,6 +1489,50 @@ void main() {
       );
     },
   );
+  for (final opened in [false, true]) {
+    test(
+      'confirmed moves replace retained Recents membership ($opened)',
+      () async {
+        host.titleHistory = [
+          {
+            'id': 1,
+            'role': 'assistant',
+            'content': 'Recent answer',
+            'timestamp': host.now,
+          },
+        ];
+        final owner = key();
+        final project = controller.current!.projects.first;
+        await controller.moveSessionToProject(
+          owner,
+          project,
+          canDispatch: () => true,
+        );
+        await controller.refreshRecents();
+        if (opened) await controller.openSession(owner);
+        String? recentProject() => controller
+            .recentChats()
+            .singleWhere((chat) => chat.key == owner)
+            .project
+            ?.id;
+        expect(recentProject(), project['id']);
+        await controller.moveSessionToProject(
+          owner,
+          null,
+          canDispatch: () => true,
+        );
+        expect(recentProject(), isNull);
+        final destination = controller.current!.projects[1];
+        await controller.moveSessionToProject(
+          owner,
+          destination,
+          canDispatch: () => true,
+        );
+        expect(recentProject(), destination['id']);
+      },
+    );
+  }
+
   test('failed moves and busy runtimes do not change local rows', () async {
     final project = controller.current!.projects.first;
     final before = Map<String, dynamic>.from(

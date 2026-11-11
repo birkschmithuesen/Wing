@@ -91,6 +91,21 @@ void main() {
     );
   }
 
+  Future<void> settleWorkspaceRefresh(WidgetTester tester) async {
+    for (
+      var attempt = 0;
+      attempt < 100 && controller.refreshingWorkspace;
+      attempt++
+    ) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 10)),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+    }
+    expect(controller.refreshingWorkspace, isFalse);
+    await tester.pumpAndSettle();
+  }
+
   Future<BrowserMutationsFixture> useMutationHost() async {
     controller.dispose();
     appPreferences.dispose();
@@ -1457,6 +1472,57 @@ void main() {
     expect(controller.current!.chat!.projectId, 'p2');
   });
 
+  testWidgets(
+    'conversation keeps known project after workspace refresh fails',
+    (tester) async {
+      final chat = (await controller.openSession(
+        ProfileSessionKey(controller.current!.scope, 'project-only'),
+      ))!;
+      await show(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Mobile app'), findsOneWidget);
+      fixture.failProjects = true;
+      await tester.runAsync(controller.refresh);
+      await tester.pumpAndSettle();
+      expect(controller.current!.chat, same(chat));
+      expect(find.text('Mobile app'), findsOneWidget);
+      expect(find.byIcon(ProjectIconGlyphs.of('rocket')), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
+  testWidgets(
+    'conversation keeps known project while reopening saved reading',
+    (tester) async {
+      fixture.recoveryHistory = [
+        {'id': 1, 'role': 'assistant', 'content': 'Saved project answer'},
+      ];
+      final key = ProfileSessionKey(controller.current!.scope, 'project-only');
+      await controller.openSession(key);
+      await show(tester);
+      await tester.pumpAndSettle();
+      expect(find.text('Mobile app'), findsOneWidget);
+      fixture.resumeGate = Completer<void>();
+      addTearDown(() {
+        if (!fixture.resumeGate!.isCompleted) fixture.resumeGate!.complete();
+      });
+      final opening = controller.openSessionForReading(
+        key,
+        isCurrentRequest: () => true,
+        onReadingAvailable: (_) {},
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(controller.current!.chat!.runtime.opening, isTrue);
+      expect(find.text('Mobile app'), findsOneWidget);
+      expect(find.byIcon(ProjectIconGlyphs.of('rocket')), findsOneWidget);
+      fixture.resumeGate!.complete();
+      await tester.runAsync(() => opening);
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
+
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets('chat project appearance ${brightness.name} at $scale text', (
@@ -1501,6 +1567,33 @@ void main() {
         expect(pickerRect.contains(iconRect.center), isTrue);
         expect(pickerRect.contains(labelRect.center), isTrue);
         expect(tester.takeException(), isNull);
+
+        final gate = Completer<void>();
+        fixture.projectGate = gate;
+        fixture.failProjects = true;
+        addTearDown(() {
+          if (!gate.isCompleted) gate.complete();
+        });
+        await tester.tap(find.byTooltip('Chat actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Refresh workspace'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 100));
+        expect(find.text('Mobile app'), findsOneWidget);
+        expect(icon, findsOneWidget);
+        expect(tester.getRect(picker), pickerRect);
+        expect(
+          tester.widget<StudioLoading>(find.byType(StudioLoading)).label,
+          'Refreshing workspace',
+        );
+        final refresh = controller.refresh();
+        gate.complete();
+        await settleWorkspaceRefresh(tester);
+        await refresh;
+        expect(controller.current!.projectsError, isNotNull);
+        expect(find.text('Mobile app'), findsOneWidget);
+        expect(icon, findsOneWidget);
+        expect(find.byType(StudioLoading), findsNothing);
         if (capture) {
           final boundary = tester.renderObject<RenderRepaintBoundary>(
             find.byKey(captureKey),
@@ -1521,6 +1614,16 @@ void main() {
             }
           });
         }
+
+        fixture.projectGate = null;
+        fixture.failProjects = false;
+        await tester.tap(find.byTooltip('Chat actions'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Refresh workspace'));
+        await settleWorkspaceRefresh(tester);
+        expect(controller.current!.projectsError, isNull);
+        expect(find.text('Mobile app'), findsOneWidget);
+        expect(icon, findsOneWidget);
         await tester.tap(icon);
         await tester.pumpAndSettle();
         expect(find.text('Move to project'), findsOneWidget);
@@ -1593,6 +1696,8 @@ void main() {
 }
 
 class _ProjectFilterFixture extends ProfileBrowserFixture {
+  Completer<void>? resumeGate;
+  Completer<void>? projectGate;
   Completer<void>? heldListRead;
   bool heldListEntered = false;
   bool backgroundBlocked = false;
@@ -1635,7 +1740,11 @@ class _ProjectFilterFixture extends ProfileBrowserFixture {
         }
         return base.read(path, query);
       },
-      rpc: base.call,
+      rpc: (method, params) async {
+        if (method == 'session.resume') await resumeGate?.future;
+        if (method == 'projects.tree') await projectGate?.future;
+        return base.call(method, params);
+      },
       connect: () async {
         if (connectUnavailable) {
           throw const SocketException('Temporary connection failure');

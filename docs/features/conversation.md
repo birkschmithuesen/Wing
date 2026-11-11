@@ -7,6 +7,10 @@ Feature ID: `conversation`.
 ## Sub-features
 
 - `conversation.read` — Reconcile live and saved messages. Steering becomes a normal user bubble when it appears in saved history, including on reopen and cached reading; see the [steering recipe](chat-inputs.md#gotchas). Saved history opens independently of runtime attachment; an attachment refusal keeps messages and drafts visible, with Retry to enable sending.
+  A known project's name and icon remain in the conversation header during
+  reopening, offline reading and failed workspace refreshes. An incomplete
+  membership read retains that project; confirmed reassignment or removal
+  replaces it.
 - Normal chats, canonical Bot Chats and group discussions share the conversation frame and reading layout. Passive Recents cards use the same frame and composer presentation.
 - Automated updates stored by Hermes as `user` + `internal_notification` appear as assistant messages, including formatted content, Copy and the assistant identity in Find. Their stored role stays unchanged; these updates are not editable human prompts or regeneratable answers.
 - `conversation.reading-mode` — Use a table’s full-screen icon to hide the composer and portrait context row without leaving the conversation. The same icon or Android Back restores it; drafts remain intact. Landscape puts title and scope in one header row.
@@ -34,6 +38,18 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```sh
   flutter test --no-pub test/profile_history_search_test.dart test/conversation_routes_test.dart test/conversation_reading_position_test.dart test/conversation_assembly_test.dart test/profile_row_actions_test.dart test/connection_diagnostics_test.dart
   ```
+
+  Conversation project retention and recovery use:
+
+  ```sh
+  flutter test --no-pub test/profile_workspace_browser_test.dart --name 'conversation keeps known project|chat project appearance'
+  flutter test --no-pub test/profile_recents_test.dart --plain-name 'incomplete project membership keeps the known conversation project'
+  ```
+
+  The header tests hold reopening and drive Refresh workspace through held
+  project reads, failure and retry in both themes at normal and doubled text.
+  The membership test also verifies that a later confirmed removal clears the
+  earlier lookup failure and displays Unassigned.
 
   Internal-message visibility, saved-history refresh, Find and unchanged raw
   history identities are covered by:

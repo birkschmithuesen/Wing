@@ -27,6 +27,16 @@ import 'support/bots_fixture.dart';
 
 class _RecentsFixture extends ProfileBrowserFixture {
   final messageRows = <(String, String), List<Map<String, dynamic>>>{};
+  String? recentProject;
+  Completer<void>? heldProjects;
+  Completer<void>? projectsStarted;
+  @override
+  List<Map<String, dynamic>> projectSessions(String profile, String id) =>
+      profile == 'personal' && id == recentProject
+      ? sessions(
+          profile,
+        ).where((row) => ['shared-id', 'recent-0'].contains(row['id'])).toList()
+      : super.projectSessions(profile, id);
   Completer<void>? heldResume;
   Completer<void>? resumeStarted;
   bool unread = false;
@@ -54,6 +64,12 @@ class _RecentsFixture extends ProfileBrowserFixture {
         return delegate.read(path, query);
       },
       rpc: (method, params) async {
+        if (method == 'projects.tree' && heldProjects != null) {
+          if (projectsStarted?.isCompleted == false) {
+            projectsStarted!.complete();
+          }
+          await heldProjects!.future;
+        }
         if (method == 'session.resume' && heldResume != null) {
           if (resumeStarted?.isCompleted == false) resumeStarted!.complete();
           await heldResume!.future;
@@ -203,6 +219,123 @@ void main() {
     controller.dispose();
     appPreferences.dispose();
   });
+
+  test('Recents retains project identity across session invalidation', () async {
+    fixture.recentProject = 'p2';
+    await controller.refreshRecents();
+    final scope = controller.current!.scope;
+    await controller.openSession(ProfileSessionKey(scope, 'shared-id'));
+    final recents = emptyRecents();
+    await recents.refresh();
+    String? projectFor(String id) => recents
+        .items()
+        .singleWhere((item) => item.chat?.key == ProfileSessionKey(scope, id))
+        .chat!
+        .project
+        ?.name;
+    expect(projectFor('shared-id'), 'Mobile app');
+    expect(projectFor('recent-0'), 'Mobile app');
+    final projectReads = fixture.calls
+        .where((call) => call.$2 == 'projects.tree')
+        .length;
+
+    controller.current!.gateway.onEvent!(
+      StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+    );
+    // An unrelated publication must not turn invalidated metadata into absence.
+    controller.showList();
+    await Future<void>.delayed(Duration.zero);
+    expect(projectFor('shared-id'), 'Mobile app');
+    expect(projectFor('recent-0'), 'Mobile app');
+    expect(
+      fixture.calls.where((call) => call.$2 == 'projects.tree').length,
+      projectReads,
+      reason: 'Publishing stale project identity must not start a server read',
+    );
+
+    fixture.heldProjects = Completer<void>();
+    fixture.projectsStarted = Completer<void>();
+    final refresh = recents.refresh(force: true);
+    await fixture.projectsStarted!.future;
+    expect(projectFor('shared-id'), 'Mobile app');
+    expect(projectFor('recent-0'), 'Mobile app');
+    fixture.failProjects = true;
+    fixture.heldProjects!.complete();
+    await refresh;
+    fixture.heldProjects = null;
+    expect(projectFor('shared-id'), 'Mobile app');
+    expect(projectFor('recent-0'), 'Mobile app');
+
+    fixture.failProjects = false;
+    fixture.recentProject = 'p3';
+    await recents.refresh(force: true);
+    expect(projectFor('shared-id'), 'Home lab');
+    expect(projectFor('recent-0'), 'Home lab');
+
+    fixture.recentProject = null;
+    await recents.refresh(force: true);
+    expect(projectFor('shared-id'), isNull);
+    expect(projectFor('recent-0'), isNull);
+  });
+
+  test('opening a chat rereads invalidated project membership', () async {
+    fixture.recentProject = 'p2';
+    await controller.refreshRecents();
+    final scope = controller.current!.scope;
+    int projectReads() =>
+        fixture.calls.where((call) => call.$2 == 'projects.tree').length;
+    final cachedReads = projectReads();
+    final key = ProfileSessionKey(scope, 'shared-id');
+    await controller.openSession(key);
+    await controller.openSession(key);
+    expect(
+      projectReads(),
+      cachedReads,
+      reason: 'Reopening with valid membership reuses the profile cache',
+    );
+    controller.current!.gateway.onEvent!(
+      StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+    );
+    fixture.recentProject = 'p3';
+    final chat = (await controller.openSession(
+      ProfileSessionKey(scope, 'shared-id'),
+    ))!;
+    await Future<void>.delayed(Duration.zero);
+    expect(chat.projectId, 'p3');
+    expect(controller.chatProjectLabel(chat), 'Home lab');
+    expect(
+      projectReads(),
+      cachedReads + 1,
+      reason:
+          'An invalidated profile needs one fresh project tree, not per-card reads',
+    );
+  });
+
+  test(
+    'incomplete project membership keeps the known conversation project',
+    () async {
+      fixture.recentProject = 'p2';
+      await controller.refreshRecents();
+      final key = ProfileSessionKey(controller.current!.scope, 'shared-id');
+      final chat = (await controller.openSession(key))!;
+      expect(controller.chatProjectLabel(chat), 'Mobile app');
+      // The stock project tree omits some sessions; absence is not unassignment.
+      fixture.hiddenChat = true;
+      controller.current!.gateway.onEvent!(
+        StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+      );
+      await controller.openSession(key);
+      await Future<void>.delayed(Duration.zero);
+      expect(chat.projectLookupFailed, isTrue);
+      expect(controller.chatProjectLabel(chat), 'Mobile app');
+      expect(controller.chatProject(chat)?.id, 'p2');
+      fixture.hiddenChat = false;
+      fixture.recentProject = null;
+      await controller.refreshRecents();
+      expect(controller.chatProjectLabel(chat), 'Unassigned');
+      expect(chat.projectLookupFailed, isFalse);
+    },
+  );
 
   for (final hidden in [false, true]) {
     test(
