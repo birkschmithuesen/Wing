@@ -40,10 +40,16 @@ items) before starting.
   line `dispatch-check: voice-apk.yml run <id> conclusion=success …`. Only at **[NATIVE]** checkpoints.
 - Metrics: `bash tools/factory/upstream-diff-metrics.sh` (Task 1). Run it after each task group and note
   the two TOTAL lines in the task's commit message body.
-- Commit after every task on `voice-offline` (local). No push except what the two factory scripts do
-  themselves. No merge except the `voice-offline` refresh in Task 0 and Task 18.
+- **Branch:** implementation card `t_09ff7726` works in its own worktree on branch `wt/t_09ff7726`, created
+  from local `voice-offline`. Commit after every task on `wt/t_09ff7726`. **Never commit to, merge into or
+  push `voice-offline`** (a push there triggers `voice-apk.yml`, which publishes an APK); a separate [Merge]
+  card merges the work branch into `voice-offline` (FACTORY.yaml `merge_target: voice-offline`). No push
+  except what the two factory scripts do themselves (throwaway `ci/…` / `ci-voice-apk/…` refs). The only
+  merge is the `voice-offline` refresh **into** `wt/t_09ff7726` in Task 18.
 - Other wing cards may merge into `voice-offline` while this runs (e.g. `wt/t_256dcf56`, 2026-11-11). Task 18
-  merges the latest `voice-offline` before the final measurement.
+  merges the latest `voice-offline` into the work branch before the final measurement.
+- `decideDelivery` in `lib/voice_offline/barge_in_policy.dart` is live code (barge-in coordinator) and stays
+  untouched. Its mentions in comments are kept too (spec §6).
 - Phone tests are Birk's (manual). The implementer never installs or drives the phone.
 - **Changelog:** refactor commits are not feat/fix; Task 18 adds one internal `CHANGELOG.fork.md` entry for
   the whole card. No README feature line (nothing user-visible).
@@ -83,19 +89,25 @@ items) before starting.
 
 **Files:** none.
 
-- [ ] **Step 1: Refresh refs**
+- [ ] **Step 1: Refresh upstream ref**
 
 Run: `git fetch upstream`
-Run: `git fetch origin`
+
+- [ ] **Step 2: Verify the work branch**
+
+Run: `git branch --show-current`
+Expected: `wt/t_09ff7726`. If the worktree is on any other branch (in particular `voice-offline`), stop and
+ask (`FRAGE:`); do not create or switch branches yourself.
 Run: `git status --short`
-Expected: on `voice-offline`, no tracked changes (untracked `.worktrees/` and `.suite-cache-before.out` are fine).
+Expected: no tracked changes.
 
-- [ ] **Step 2: Take the latest `voice-offline`**
+- [ ] **Step 3: Verify it is based on the latest `voice-offline`**
 
-Run: `git merge --ff-only origin/voice-offline`
-Expected: fast-forward or "Already up to date". If it is not a fast-forward, stop and ask (`FRAGE:`).
+Run: `git merge-base --is-ancestor voice-offline HEAD`
+Expected: exit 0 (local `voice-offline` is contained in the work branch). If it fails, refresh with
+`git merge voice-offline` (into `wt/t_09ff7726`; never the other direction) and, on conflicts, stop and ask.
 
-- [ ] **Step 3: Note the start commit**
+- [ ] **Step 4: Note the start commit**
 
 Run: `git rev-parse --short=8 HEAD`
 Keep the value; Task 18 quotes it.
@@ -1117,7 +1129,10 @@ Every `_conversation = null` in the screen becomes `_voice.endLoop();` (spec §6
 The three `try { VoicePreferences.read … } on FormatException` sites (screen ~L556, ~L619, ~L640) become
 `tryReadVoicePreferences(controller.preferences)` with the same null handling (fork fields then come
 from `VoiceOfflinePrefs.read`, which never throws).
-Delete the stale `decideDelivery` comment (spec §6; `grep -rn decideDelivery lib` must print nothing).
+The comment "Barge-in (t_7e81e040) replaces this block with its decideDelivery hook; keep the
+_car.logDelivery call when it does." above the car-mode steer/queue block moves **verbatim with that
+block** into the driver (spec §6: the block is still the live car-mode path; the comment is kept). Do not
+touch `decideDelivery` in `lib/voice_offline/barge_in_policy.dart` or its callers.
 
 - [ ] **Step 2: Hooks**
 
@@ -1187,8 +1202,13 @@ change would only move lines around.
 
 Run: `git diff 151ee281 --stat -- lib/core/screens/profile_workspace_screen.dart`
 Expected: ≤ ~70 added lines (target ~60, spec §4.1).
-Run: `grep -nE "_conversation = null|on FormatException|decideDelivery" lib/core/screens/profile_workspace_screen.dart`
+Run: `grep -nE "_conversation = null|on FormatException" lib/core/screens/profile_workspace_screen.dart`
 Expected: no output.
+Run: `grep -rn "decideDelivery" lib`
+Expected: the definition in `lib/voice_offline/barge_in_policy.dart`, its two calls in
+`lib/voice_offline/barge_in_coordinator.dart`, the kept comment in `lib/car_mode/car_mode_state.dart`, and
+the kept comment (moved verbatim with the car-mode block) in `lib/voice_offline/workspace_voice_driver.dart`
+— not in `profile_workspace_screen.dart`. These hits are expected; remove nothing.
 
 - [ ] **Step 4: Commit and suite [SUITE F]**
 
@@ -1217,10 +1237,13 @@ remove unused ones. `flutter analyze` in the next suite run is the final check.
 
 - [ ] **Step 3: Verify the removal list (spec §6)**
 
-Run: `grep -rn "decideDelivery" lib`
-Run: `grep -rnc "_conversation = null" lib`
-Expected: no hits for both. Every "Kept, open" item still exists (spot-check `VoiceDebugStore.kt`,
-`bargeInPlaybackAvailable`, the `pr-quality.yml` annotation block).
+Run: `grep -c "_conversation = null" lib/core/screens/profile_workspace_screen.dart`
+Expected: `0` (the assignment survives only inside `WorkspaceVoiceDriver.endLoop()`).
+Run: `grep -n "decideDelivery" lib/core/screens/profile_workspace_screen.dart`
+Expected: no output (the comment moved with its block). `decideDelivery` in `lib/voice_offline/` and the
+comment in `lib/car_mode/car_mode_state.dart` **stay**; they are live code / kept comments (spec §6).
+Every "Kept, open" item still exists (spot-check `VoiceDebugStore.kt`, `bargeInPlaybackAvailable`,
+`decideDelivery` in `barge_in_policy.dart`, the `pr-quality.yml` annotation block).
 
 - [ ] **Step 4: Commit**
 
@@ -1235,11 +1258,13 @@ Run: `git commit -m "refactor: sweep leftover fork hunks in upstream files (t_ba
 - Modify: `CHANGELOG.fork.md`
 - Modify (outside the repo, not committed here): `/home/birk/hermes-shared/hermes-entities/tools/technik/wing-fork-upstream-strategie.md`
 
-- [ ] **Step 1: Take the latest `voice-offline`**
+- [ ] **Step 1: Refresh the work branch from the latest `voice-offline`**
 
-Run: `git fetch origin`
-Run: `git merge origin/voice-offline`
-If another card merged in meanwhile and touched upstream files (check with the metrics script), move its
+Run: `git branch --show-current`
+Expected: `wt/t_09ff7726`.
+Run: `git merge voice-offline`
+This merges local `voice-offline` **into** `wt/t_09ff7726`. Never merge in the other direction, never commit
+to or push `voice-offline`; the [Merge] card does that. If another card merged in meanwhile and touched upstream files (check with the metrics script), move its
 new hunks the same way (one extra commit) before measuring. Merge conflicts in own files: resolve keeping
 both changes; stop and ask (`FRAGE:`) if a conflict touches behaviour.
 
@@ -1308,4 +1333,4 @@ The implementer cannot run these; the card stays open for Birk's result.
   VoiceCapture → 4; VoicePlayback, manifest, MainActivity → unchanged (spec); tests → 5, 9, 10, 11, 12;
   docs/.gitignore → 2; pr-quality/AGENTS/README → unchanged (spec).
 - Spec §5 → Task 1; §6 removals → Tasks 4 (duplicate permission block), 5 (integration tests), 13
-  (`endLoop`, `tryReadVoicePreferences`, comment), 17 (verification); §8 → Tasks 5/8/10/12/14/16/18.
+  (`endLoop`, `tryReadVoicePreferences`; `decideDelivery` comment kept and moved), 17 (verification); §8 → Tasks 5/8/10/12/14/16/18.

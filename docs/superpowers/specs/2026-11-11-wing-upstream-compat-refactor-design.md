@@ -1,6 +1,7 @@
 # Wing fork: refactor for maximum upstream compatibility — design
 
-Card `t_ba3601fa` (board `wing`, size L). Branch `voice-offline`. Follow-up card: upstream merge `t_d1d49ff1`
+Card `t_ba3601fa` (board `wing`, size L). Implementation card `t_09ff7726` works on branch `wt/t_09ff7726`
+(from local `voice-offline`); a separate [Merge] card merges it into `voice-offline`. Follow-up card: upstream merge `t_d1d49ff1`
 (runs **after** this refactor; this card does not merge upstream).
 
 ## 1. Goal and non-goals
@@ -161,7 +162,6 @@ this script.
 |---|---|
 | Repeated `_conversation = null` assignments (20 in the screen, measured 2026-11-11) | each becomes a call to one `WorkspaceVoiceDriver.endLoop()` at the same position; the method does exactly the assignment, so no behaviour difference. Sites that also do other work keep that work |
 | 3 copies of `VoicePreferences.read` inside `try { … } on FormatException` (screen L556, L619, L640) | collapse into `tryReadVoicePreferences()` returning `null` on `FormatException`; call sites without a catch keep throwing semantics via `VoicePreferences.read()` |
-| Stale comment in `_sendConversationTurn` referring to a `decideDelivery` hook | `grep -rn decideDelivery lib` finds nothing; the hook never landed. Comment only |
 | `timeout:` argument edits in the two integration tests | made unnecessary by the `stop` default (native default is also 5000 ms) |
 | Duplicated mic-permission block in `VoiceChannel.kt` (`"start"` and `"startVad"` branches) | identical bodies; one `"start", "startVad" ->` branch, `start()` dispatches on `call.method` as today |
 
@@ -169,6 +169,9 @@ this script.
 | Item | Why kept |
 |---|---|
 | VAD debug recordings (`VoiceDebugStore.kt`, `voice.vad_debug`, `deleteVadDebugRecordings`) | user-reachable switch in VAD settings |
+| `decideDelivery` (`lib/voice_offline/barge_in_policy.dart:139`) | **live**: called by `barge_in_coordinator.dart:107,115`, tested in `test/voice_offline/barge_in_policy_test.dart`. Never removed or renamed by this card |
+| Comment "Barge-in (t_7e81e040) replaces this block with its decideDelivery hook; keep the _car.logDelivery call when it does." (`profile_workspace_screen.dart:441-442`, in `_sendConversationTurn`) | not provably stale: the car-mode steer/queue block under it is still the live path for dictation sends in car mode (`_sendConversationTurn` called at L258, L546, L745; `carDeliveryFor` at L450). The coordinator's `decideDelivery` only handles listen rounds; the announced replacement never happened but may still be wanted. Comment moves verbatim with the block into `WorkspaceVoiceDriver` (Task 13) |
+| Comment "barge-in's decideDelivery replaces this" (`lib/car_mode/car_mode_state.dart:182`, on `carDeliveryFor`) | same reason: `carDeliveryFor` is live; file is fork-owned and untouched |
 | `bargeInPlaybackAvailable = true` (`barge_in_policy.dart`) | constant flag, read in 3 places; removing changes code paths only formally, but it is the switch for the echo gate (Task 7 of the barge-in plan) |
 | `reason` argument of `openMicLink`/`closeMicLink` (ignored in Kotlin) | harmless, part of the channel contract |
 | Temporary annotation block in `pr-quality.yml` | needed while the step summary is unreachable through the vServer egress firewall |
@@ -203,4 +206,5 @@ this script.
 - Phone self-test (Birk, manual, not doable by the implementer): dictation ends by itself, long dictation
   arrives complete, conversation mode runs several rounds.
 - Other wing cards may merge into `voice-offline` during the work (e.g. `wt/t_256dcf56`). Before the final
-  measurement merge the latest `voice-offline` and re-run the suite and the metrics.
+  measurement merge the latest `voice-offline` **into** `wt/t_09ff7726` and re-run the suite and the metrics.
+  Never commit to or push `voice-offline` (a push there triggers `voice-apk.yml` APK publishing).
