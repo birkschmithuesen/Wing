@@ -2,6 +2,23 @@
 
 Design: `docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md`.
 
+**On this phone · Parakeet** records with Wing's own capture from the input Android currently routes (normally the
+phone's built-in microphone), detects the end of each message with Silero VAD and recognizes the speech on the phone
+with Parakeet TDT 0.6B v3 (sherpa-onnx). No audio leaves the phone. The speech model (487 MB download, about 670 MB
+installed) is downloaded once in App settings → Voice and checked against its published SHA256. "Pause detection"
+sets how long a pause ends a message (default 1.8 s), how long Wing waits for you to start speaking (default 8 s),
+the minimum speech, the lead-in kept before speech and the longest recording (10, 15, 20 or 30 minutes, default 10;
+long dictations are recognized in pieces of up to 30 seconds, cut at pauses). On this route the steering-wheel or
+headset play/pause key ends the current message or starts a new one, and short cue tones mark "listening" and
+"got it". During Conversation mode the screen stays on. On the VAD input you can also switch the screen off or
+pocket the phone: the conversation continues, and a "Conversation mode" notification with Stop shows
+it. With "Listen while Hermes works" on, the microphone also stays open while Hermes works with the
+screen off, so you can steer from your pocket; the notification then reads "Microphone is listening."
+Switch that setting off to keep the microphone closed until the reply has been read. Interrupting the
+read-aloud by speaking still needs headphones. Staying silent after a reply (the "Wait for speech"
+time) ends the conversation, as do a phone call, Stop and swiping the notification away. Car mode
+always keeps the screen on.
+
 ## sherpa-onnx dependency (checked 2026-10-13)
 
 - AAR `sherpa-onnx-1.13.8.aar`, SHA256 `633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96` (matches the published release digest), checked with `tools/voice/check_sherpa_aar.py`.
@@ -231,3 +248,10 @@ a consistently better mic. Headphones keep the old per-round behaviour unchanged
   actually active (`btfm_bt_sco… rate` in logcat) could not be measured in this run: there is no car kit and no
   device logcat available here, and the codec is negotiated by the Bluetooth stack, not read anywhere in Wing's
   own code or logs. This needs an on-device check during Birk's manual acceptance pass, not a guess.
+
+## Testing
+
+The vad route's maximum duration is 10-30 min (default 10 min). Its end-of-utterance logic is pure Dart (`test/vad_endpoint_test.dart`) and mirrored in Python
+(`scripts/tests/test_vad_endpoint_parity.py`, same golden cases). Offline tuning against recordings runs with
+`tools/voice/vad_offline_check.py` (see `docs/VAD_INPUT.md`); recordings stay outside the repository. Renders:
+`bash tools/factory/dispatch-check.sh voice-review.yml`, then clone branch `voice-review-bin` into `build/`.
