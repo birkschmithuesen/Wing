@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/car_mode/car_mode_screen.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/voice_workspace_fixture.dart';
@@ -130,7 +129,7 @@ void main() {
     await h.swipeOut(tester);
     expect(find.byType(CarModeScreen), findsNothing);
     expect(h.device.cancelled, contains(id));
-    expect(chat.draft, 'Typed before');
+    expect(chat.composer.observation.text, 'Typed before');
     expect(h.prompts(), 0);
   });
 
@@ -244,7 +243,7 @@ void main() {
     h.device.stream.add({'id': id, 'text': 'Plan the trip', 'final': true});
     await h.settle(tester);
     expect(h.prompts(), 1);
-    h.controller.current!.chat!.status = ProfileTurnStatus.running;
+    h.gatewayEvent('message.start');
     await h.tapCar(tester); // thinking → microphone (tap while working, option A)
     id = h.device.recording;
     expect(id, isNotNull);

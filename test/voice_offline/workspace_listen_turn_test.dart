@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wing/voice_offline/chat_voice_view.dart';
 import '../support/voice_workspace_fixture.dart';
 
 void main() {
@@ -15,7 +16,7 @@ void main() {
     h.fixture.steerResult = {'status': 'queued', 'text': 'Testsatz eins'};
     await h.vadConversationTurn(tester);
     final chat = h.controller.current!.chat!;
-    expect(chat.busy, isTrue);
+    expect(chat.voiceBusy, isTrue);
     expect(h.vadStarts(), 2);
     expect(h.device.vadOptions!.keepPlayback, isTrue);
     expect(find.text('Listening'), findsOneWidget);
@@ -27,7 +28,7 @@ void main() {
       'Testsatz eins',
     );
     expect(h.prompts(), 1);
-    expect(chat.messages.last['display_kind'], 'steer');
+    expect(chat.reading.messages.last['display_kind'], 'steer');
     expect(h.vadStarts(), 3);
     await h.completeReply(tester, 'Fertig.');
     expect(find.text('Listening'), findsNothing);

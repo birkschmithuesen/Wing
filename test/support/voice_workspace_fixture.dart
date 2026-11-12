@@ -6,16 +6,19 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/models/profile_session_key.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
-import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'background_voice_fixture.dart';
+import 'composer_fixture.dart';
 import 'headphone_route_fixture.dart';
 import 'profile_browser_fixture.dart';
 import 'voice_fixture.dart';
@@ -60,6 +63,7 @@ class VoiceWorkspaceHarness {
 
   final VoiceWorkspaceFixture fixture;
   late final ProfileWorkspaceController controller;
+  late final AppPreferences appPreferences;
   final VoiceDeviceFixture device;
   final BackgroundVoiceFixture background;
   final HeadphoneRouteFixture route;
@@ -86,16 +90,22 @@ class VoiceWorkspaceHarness {
 
   Future<void> setUp() async {
     SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'voice-fixture',
-        label: 'Voice test server',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'voice-fixture',
+          label: 'Voice test server',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'voice-fixture',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
     );
     await controller.initialize();
@@ -106,6 +116,7 @@ class VoiceWorkspaceHarness {
 
   Future<void> tearDown() async {
     controller.dispose();
+    appPreferences.dispose();
     await device.stream.close();
     await background.close();
     await route.close();
@@ -164,10 +175,7 @@ class VoiceWorkspaceHarness {
   int starts() => device.calls.where((c) => c == 'start').length;
   int prompts() => fixture.calls.where((c) => c.$2 == 'prompt.submit').length;
   void gatewayEvent(String type, [Map<String, dynamic> data = const {}]) {
-    final chat = controller.current!.chat!;
-    fixture.gateways[chat.key.workspace.profileName]!.onEvent!(
-      StreamEvent(type: type, data: data, sessionId: chat.runtimeId),
-    );
+    emitChatEvent(controller, controller.current!.chat!, type, data);
   }
 
   Future<void> conversationMode(bool on) => controller.preferences.setString(

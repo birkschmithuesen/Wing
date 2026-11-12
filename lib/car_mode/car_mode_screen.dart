@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_preferences_rendering.dart';
 import '../core/theme/profile_workspace_theme.dart';
 import '../core/theme/wing_theme.dart';
 import 'car_mode_palette.dart';
@@ -44,9 +45,9 @@ class _CarModeScreenState extends State<CarModeScreen> {
     // The pushed route sits outside the workspace's accent theme.
     final theme = profileWorkspaceTheme(
       Theme.of(context),
-      accent: WorkspaceAccent.fromName(
-        widget.session.bridge.preferences.getString(WorkspaceAccent.preferenceKey),
-      ),
+      accent:
+          widget.session.bridge.appPreferences.current.values.accent?.appearance ??
+          WorkspaceAccent.teal,
     );
     return Theme(
       data: theme,

@@ -3,12 +3,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/controllers/voice_input_controller.dart';
 import '../core/controllers/voice_output_controller.dart';
+import '../core/models/chat_runtime.dart';
 import '../core/models/gateway_activity.dart';
 import '../core/services/app_preferences.dart';
 import '../core/services/profile_workspace_controller.dart';
 import '../core/services/server_connection_status.dart';
 import '../core/services/vad_endpoint.dart';
 import '../voice_offline/barge_in_coordinator.dart';
+import '../voice_offline/chat_voice_view.dart';
 import '../voice_offline/voice_offline_prefs.dart';
 import 'car_mode_state.dart';
 
@@ -98,20 +100,23 @@ CarSnapshot carSnapshotOf(
     title: chat?.title,
     input: input.phase,
     speaking: output.owner != null,
-    working: chat?.busy ?? false,
+    working: chat?.voiceBusy ?? false,
     activity: chat == null ? null : carActivityOf(chat),
-    needsInput:
-        chat != null &&
-        (chat.approval != null || chat.clarification != null || chat.sensitivePrompt != null),
+    needsInput: chat?.needsUserInput ?? false,
     connection: carConnectionOf(
       controller.connectionStatus.phase,
       sendBlocked:
-          controller.recovering || (chat?.opening ?? false) || (chat?.offlineSnapshot ?? false),
+          controller.recovering ||
+          (chat?.voiceOpening ?? false) ||
+          (chat?.voiceOffline ?? false) ||
+          (controller.current?.offlineSnapshot ?? false),
     ),
     error:
         input.error ??
         output.error ??
-        (chat?.status == ProfileTurnStatus.failed ? 'Hermes could not finish this reply.' : null),
+        (chat?.runtime.execution == ChatExecution.failed
+            ? 'Hermes could not finish this reply.'
+            : null),
     listenOpen: listenOpen,
     speechInProgress: listenOpen && bargeIn.listener.speechInProgress,
   );
@@ -120,19 +125,20 @@ CarSnapshot carSnapshotOf(
 /// Status line (spec §4.6): the kind of work or the tool's display name.
 /// Never `detail`, arguments, commands or output.
 String? carActivityOf(ProfileChat chat) {
-  if (chat.commandRunning) return 'Command';
-  return switch (chat.status) {
-    ProfileTurnStatus.submitting => 'Sending',
-    ProfileTurnStatus.running => switch (chat.mainActivity) {
-      ProfileMainActivity.working => carWorking,
-      ProfileMainActivity.thinking => 'Thinking',
-      ProfileMainActivity.writing => 'Writing',
-      ProfileMainActivity.tool =>
-        chat.mainToolActivity?.displayName ??
-            (chat.tool == null
+  final runtime = chat.runtime;
+  if (runtime.commandRunning) return 'Command';
+  return switch (runtime.execution) {
+    ChatExecution.submitting => 'Sending',
+    ChatExecution.running => switch (runtime.mainActivity) {
+      ChatMainActivity.working => carWorking,
+      ChatMainActivity.thinking => 'Thinking',
+      ChatMainActivity.writing => 'Writing',
+      ChatMainActivity.tool =>
+        runtime.mainToolActivity?.displayName ??
+            (runtime.tool == null
                 ? carWorking
                 : GatewayToolActivity(
-                    name: chat.tool!,
+                    name: runtime.tool!,
                     phase: GatewayToolActivityPhase.running,
                   ).displayName),
     },

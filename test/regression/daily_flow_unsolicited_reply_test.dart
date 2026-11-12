@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 import '../support/voice_workspace_fixture.dart';
 
 void main() {
@@ -31,7 +30,7 @@ void main() {
         // is recording their next utterance; it is unsolicited (the
         // conversation's own awaiting-reply flag was already consumed by the
         // first reply) and must not cut the recording off or break the loop.
-        h.controller.current!.chat!.status = ProfileTurnStatus.running;
+        h.gatewayEvent('message.start');
         await h.completeReply(tester, 'Unsolicited answer.');
         expect(
           h.device.spoken,
@@ -78,7 +77,7 @@ void main() {
         // job's own turn now completes for the same chat; it is unsolicited
         // (the conversation's own awaiting-reply flag was already consumed by
         // the first reply).
-        h.controller.current!.chat!.status = ProfileTurnStatus.running;
+        h.gatewayEvent('message.start');
         h.gatewayEvent('message.complete', {'text': 'Unsolicited answer.'});
         await tester.pump();
         await tester.pump();
@@ -126,7 +125,7 @@ void main() {
         expect(h.device.calls.where((c) => c == 'speak').length, 1);
         // A follow-up reply for this chat arrives while the first is still
         // playing (e.g. the gateway ran a steer as a follow-up turn).
-        h.controller.current!.chat!.status = ProfileTurnStatus.running;
+        h.gatewayEvent('message.start');
         h.gatewayEvent('message.complete', {'text': 'Answer two.'});
         await tester.pump();
         await tester.pump();

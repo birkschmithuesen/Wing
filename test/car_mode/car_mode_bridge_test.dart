@@ -4,6 +4,9 @@ import 'package:wing/car_mode/car_mode_bridge.dart';
 import 'package:wing/car_mode/car_mode_state.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/controllers/voice_output_controller.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
@@ -81,16 +84,22 @@ void main() {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final fixture = ProfileBrowserFixture();
+      final appPreferences = AppPreferences(prefs);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
-        connection: SavedConnection(
-          id: 'bridge-test',
-          label: 'Bridge test',
-          host: 'localhost',
-          port: 1,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'bridge-test',
+            label: 'Bridge test',
+            host: 'localhost',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
         connectionIdentity: 'bridge-test',
         preferences: prefs,
+        appPreferences: appPreferences,
         gatewayFactory: fixture.gateway,
       );
       await controller.initialize();
@@ -100,10 +109,7 @@ void main() {
       addTearDown(controller.dispose);
       final device = VoiceDeviceFixture();
       addTearDown(() => device.stream.close());
-      final input = VoiceInputController(
-        device: device,
-        createRemote: () => throw UnimplementedError(),
-      );
+      final input = VoiceInputController(device: device);
       final output = VoiceOutputController(device);
       addTearDown(input.dispose);
       addTearDown(output.dispose);

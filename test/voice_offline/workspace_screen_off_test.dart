@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 import '../support/voice_workspace_fixture.dart';
 
 void main() {
@@ -132,7 +131,7 @@ void main() {
       expect(h.device.cancelled, contains(id));
       expect(h.background.holds, [true]);
       expect(h.device.keepScreenOnCalls.last, isFalse);
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       await h.completeReply(tester, 'Late reply.');
       expect(h.vadStarts(), 1);
       screenOn(tester);

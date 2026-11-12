@@ -496,7 +496,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Listenable get retentionChanges => _retentionChanges;
 
   final _completedReplies = CompletedReplies();
-  Stream<({ProfileChat chat, String text})> get completedReplies =>
+  Stream<({Object chat, String text})> get completedReplies =>
       _completedReplies.stream;
 
   // Runtime events invalidate one browser row. A null chat means saved lists,
