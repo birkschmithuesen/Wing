@@ -10,17 +10,25 @@ that settles them. No Flutter/Dart SDK exists on the vServer; nothing here was c
 
 ## 0. Decision rules used in this spec
 
+**Governing rule (Birk, 2026-11-12): "As a Wing user he must notice NOTHING from the merge except
+improvements."** Every decision, task and test below serves this rule. Concretely: (a) Birk's current daily
+flow is pinned by an automated regression suite R1-R8 (§14) that is green before the merge and must be green
+again after it with unchanged expectations, and is re-run on the phone; (b) every other user-visible difference
+is listed in the ledger (§15) and goes to Birk as one question before the merge into `voice-offline`;
+(c) the 10-minute dictation limit is a hard requirement with its own tests (§6 S1/S9, R4).
+
+0. Birk decided Q1-Q11 on 2026-11-12 (§13); those answers replace the defaults below.
 1. MERGE, no rebase (`git merge upstream/main` into a branch from `voice-offline`).
 2. Per conflict: keep upstream behaviour and re-hang our function as a thin hook. Where upstream already
    solves the same thing, drop our variant and say so in the merge commit text.
 3. Dropping one of our functions with a **user-visible behaviour change** is Birk's decision: such blocks
-   are marked `OPEN Q<n>` and listed in §13. Every OPEN question names the **default** the implementer uses
-   if Birk does not decide otherwise. Default rule: an existing fork behaviour is preserved; a new upstream
-   feature is taken as upstream ships it. Exceptions are stated per question.
+   were marked `OPEN Q<n>` and listed in §13; Birk answered all of them on 2026-11-12 (§13, DECIDED).
 4. Things that were already in the merge base and that upstream itself changed (for example the base
    recognizer message "No speech detected. Try again." in `VoiceCapture.kt`/`voice_input_controller.dart`,
    the base reconnect attempt cap `_maxRecoveryRetries`, the base `minSdk = 24`, the base inline recording
-   rows) are upstream behaviour, not fork functions. They are not OPEN.
+   rows) are upstream behaviour, not fork functions, so they were not OPEN questions. Under the governing
+   rule every such change that a user can see is still listed in the ledger (§15) and goes to Birk as one
+   question before the merge into `voice-offline`.
 5. Stock Hermes only (AGENTS.md): no backend patch, plugin or custom endpoint is introduced by this merge.
 
 Block IDs used everywhere (spec, plan, commit text): `<FILE-ID>-B<n>`, n = block number in file order in the
@@ -175,7 +183,7 @@ implementer writes; "take upstream" means the `>>>>>>> upstream/main` side.
 | VCH-B1 | L21-35 | `private val offline = VoiceOfflineHandler(activity, messenger, ::emit)`; `pending: Pair<MethodCall, Result>?` | `closed`, `replies`, `Permission`, inner `Reply` | re-hang our function | Take upstream (drop `pending`). Insert `private val offline = VoiceOfflineHandler(activity, messenger, ::emit)` after `private val playback = …`. |
 | VCH-B2 | L77-80 | old sync `"stop" -> result.success(capture.stop(id, timeoutMs))` | (empty; upstream `"stop"` case sits above) | re-hang our function | Delete the block. Edit upstream's `"stop"` line: `capture.stop(id, call.argument<Number>("timeoutMs")?.toLong() ?: 5000L) { bytes, error -> … }` (Dart sends `timeoutMs`, `android_voice.dart`). |
 | VCH-B3 | L109-125 | `start()`: `keepPlayback` (barge-in), `startVad` routing to `offline.startVad`, `offline.cancel(id)` | `if (closed) error`, `playback.stop()`, async `capture.start(…, completed)` | re-hang our function | `if (closed) { result.error("cancelled","Voice channel closed.",null); return }` / `if (call.argument<Boolean>("keepPlayback") != true) playback.stop(force = true)` (see §6 S6) / `val id = call.argument<String>("id")!!` / `if (call.method == "startVad") { capture.cancel(id); offline.startVad(id, call, result); return }` / `offline.cancel(id)` / upstream's async `capture.start(…) { error -> … }`. No `result.success(null)` after `capture.start`. |
-| VCH-B4 | L145-175 | `pause()` with `offline.keepsVoice()` early return, `pauseVad`, `pauseMediaKeys`; `resume()`; `close()` closing routes/keys | `pause()` = `if (closed) return; capture.pause(); playback.stop()`, `leaveForeground()`, `close()` with `closed` + `replies` | re-hang our function | Upstream `pause()` body stays **literal** (the native `VoicePermissionLifecycleGuard` in CI allows only `capture.pause()` and `playback.stop()` there). Add `fun pauseOffline() { if (closed) return; if (!offline.keepsVoice()) offline.pauseVad(); offline.pauseMediaKeys() }` and `fun resume() { if (!closed) offline.resume() }` (MainActivity calls it; without it MainActivity does not compile). Keep-voice-in-background for TTS: §6 S6. `close()`: upstream body, plus `offline.closeRoutes()` before the replies cancel, `offline.closeKeys()` before `capture.close()`, `offline.close()` before `channel.setMethodCallHandler(null)`. If the guard still rejects the result: OPEN Q11. |
+| VCH-B4 | L145-175 | `pause()` with `offline.keepsVoice()` early return, `pauseVad`, `pauseMediaKeys`; `resume()`; `close()` closing routes/keys | `pause()` = `if (closed) return; capture.pause(); playback.stop()`, `leaveForeground()`, `close()` with `closed` + `replies` | re-hang our function | Upstream `pause()` body stays **literal** (the native `VoicePermissionLifecycleGuard` in CI allows only `capture.pause()` and `playback.stop()` there). Add `fun pauseOffline() { if (closed) return; if (!offline.keepsVoice()) offline.pauseVad(); offline.pauseMediaKeys() }` and `fun resume() { if (!closed) offline.resume() }` (MainActivity calls it; without it MainActivity does not compile). Keep-voice-in-background for TTS: §6 S6. `close()`: upstream body, plus `offline.closeRoutes()` before the replies cancel, `offline.closeKeys()` before `capture.close()`, `offline.close()` before `channel.setMethodCallHandler(null)`. If the guard still rejects the result: Q11=A (decided) — fork edit of upstream's guard. |
 | VPB-B1 | L120-126 | `speak(…, segments: List<Map<String,String>>?, response)` (language segments) | `speak(…, response)` with `val attempt = claim(owner, response)` | re-hang our function | `fun speak(owner: String, text: String, voiceName: String, rate: Float, segments: List<Map<String, String>>?, response: MethodChannel.Result) {` + `val attempt = claim(owner, response)`. |
 | VPB-B2 | L139-149 | `LanguageSpeech.enqueue(tts!!, owner, text, segments, voice)`; `finishPlayback(owner, …)` | chunk loop with utterance tags `"${attempt.generation}:…"`; `finishPlayback(attempt, …)` | re-hang our function | `LanguageSpeech.enqueue(tts!!, attempt.generation.toString(), text, segments, voice)` and `finishPlayback(attempt, error.message ?: "Could not generate speech.")`. **Mandatory**: upstream's `UtteranceProgressListener` matches the generation prefix; passing `owner` would leave playback hanging until the 600 s timeout. |
 
@@ -193,11 +201,11 @@ implementer writes; "take upstream" means the `>>>>>>> upstream/main` side.
 | VIC-B8 | L297-309 | `stop()`: vad → `vadRound!.forceEnd`, `_stopRequested = true` | guard `_phase != recording` | re-hang our function | Upstream guard, then `if (vad) { return vadRound!.forceEnd(transcribing: _vadTranscribing, finish: _finish, fail: _fail); }` and `_stopRequested = true;`. Outside the block: `stopHandsFree`/`_vadTranscribing` must assign `_phase` (getter-only `phase`). VAD no-speech per Q5. |
 | VOC-B1 | L150-175 | inline `speak` returning `Future<bool>` (true only if played to the end) | `speak(...) => _play(message, (id) async { switch (settings) … })` | re-hang our function | Take upstream shape, keep `Future<bool> speak(` and our doc comment; in the Hermes branch the non-conflicting `return false;` becomes `return;` (closure returns void). |
 | VOC-B2 | L181-219 | `device.speak(... voice: settings.voice, rate: settings.rate)`; `finished = _id == id && !_disposed` | `case LocalVoiceOutputSettings(:final voice, :final rate): …rate.multiplier`, `playAudio`, `_play` | re-hang our function | Take upstream; `Future<bool> _play(...)`: `if (_disposed) return false;`, `var finished = false;`, after `await play(id);` `finished = _id == id && !_disposed;`, `return finished;`. `playAudio` stays `Future<void>`. The MEDIA-line filter in `spokenReplyText` is outside the block and stays (`mediaReferencePattern` exists upstream, `lib/core/models/media_reference.dart:13`). |
-| VPF (modify/delete) | whole file | +27/−6: `enum VoiceInputRoute {local,hermes,vad}`, accepts `vad`, `keys`/`accepts` include `VoiceOfflinePrefs` keys (fork keys in config backup), `read` maps `vad` | deleted in b491c30e; successors `AppPreferenceField`/`AppPreferencesSchema`/`AppVoiceProcessing` (`lib/core/models/app_preferences.dart`), `VoiceInputSettings`/`VoiceOutputSettings` (`lib/core/models/voice_processing_settings.dart`), `AppPreferences` (`lib/core/services/app_preferences.dart`), `VoicePreferencesSession` | keep upstream behaviour (delete the file) + re-hang our function (OPEN Q1, Q9) | `git rm lib/core/services/voice_preferences.dart`. Our prefs re-hang in `lib/voice_offline/voice_offline_prefs.dart` (`VoiceOfflinePrefs`, already owns all `voice.vad_*`, `voice.auto_speak`, `voice.conversation`, `voice.listen_*`, `voice.barge_in_playback`, `voice.mic_route` keys). Add `voice.local_engine` (`system`\|`parakeet`) + one-time migration `voice.input=vad → voice.input=local, voice.local_engine=parakeet` and `VadVoiceInputSettings`; details §9.1 and Q1. Remove `tryReadVoicePreferences`; "repair needed" is `appPreferences.current.voiceInputSettings == null`. |
+| VPF (modify/delete) | whole file | +27/−6: `enum VoiceInputRoute {local,hermes,vad}`, accepts `vad`, `keys`/`accepts` include `VoiceOfflinePrefs` keys (fork keys in config backup), `read` maps `vad` | deleted in b491c30e; successors `AppPreferenceField`/`AppPreferencesSchema`/`AppVoiceProcessing` (`lib/core/models/app_preferences.dart`), `VoiceInputSettings`/`VoiceOutputSettings` (`lib/core/models/voice_processing_settings.dart`), `AppPreferences` (`lib/core/services/app_preferences.dart`), `VoicePreferencesSession` | keep upstream behaviour (delete the file) + re-hang our function (Q1=A, Q9=A decided) | `git rm lib/core/services/voice_preferences.dart`. Our prefs re-hang in `lib/voice_offline/voice_offline_prefs.dart` (`VoiceOfflinePrefs`, already owns all `voice.vad_*`, `voice.auto_speak`, `voice.conversation`, `voice.listen_*`, `voice.barge_in_playback`, `voice.mic_route` keys). Add `voice.local_engine` (`system`\|`parakeet`) + one-time migration `voice.input=vad → voice.input=local, voice.local_engine=parakeet` and `VadVoiceInputSettings`; details §9.1 and Q1. Remove `tryReadVoicePreferences`; "repair needed" is `appPreferences.current.voiceInputSettings == null`. |
 | VPC-B1 | L1-22 | imports for the SharedPreferences-based card | imports for the session-based card | keep upstream behaviour | Upstream imports + `import '../../voice_offline/voice_offline_settings.dart';`. |
 | VPC-B2 | L79-127 | `_load`, `_save`, `_setSaving` | (empty; session owns load/save) | keep upstream behaviour | Delete ours. |
 | VPC-B3 | L141-229 | `_saveInput` (prepares/releases Parakeet model on route change), `_engine`, `_languageChoice` | `_select<T>` over `AppPreferenceControl`, `_engines`, `_languageChoice(state)` | keep upstream behaviour | Take upstream. The prepare/release logic moves into the fork engine row (VPC-B4). |
-| VPC-B4 | L273-447 | whole `build` incl. `vadInputChoice`, `VoiceOfflineSettings(vadRoute)`, `VoiceOfflineSettings(replies)`, local preview | `build` on `_session.current` | re-hang our function (OPEN Q1 for the placement) | Take upstream `build`. Insert 2 hooks: after the input description `if (state.input.selected == AppVoiceProcessing.local) VoiceOfflineInputRows(session: _session),` (engine select "Android system recognizer / Parakeet on this phone"; when Parakeet: mic route + `VadSettingsSection`), and after the output description `VoiceOfflineSettings(part: VoiceOfflineSettingsPart.replies, session: _session)`. Both thin widgets live in `lib/voice_offline/voice_offline_settings.dart`, read `SharedPreferences` themselves, take the device from a new one-line getter `VoiceDevice get device => _device;` in `lib/core/services/voice_preferences_session.dart`. Each fork row has its own `_saving`. |
+| VPC-B4 | L273-447 | whole `build` incl. `vadInputChoice`, `VoiceOfflineSettings(vadRoute)`, `VoiceOfflineSettings(replies)`, local preview | `build` on `_session.current` | re-hang our function (Q1=A decided) | Take upstream `build`. Insert 2 hooks: after the input description `if (state.input.selected == AppVoiceProcessing.local) VoiceOfflineInputRows(session: _session),` (engine select "Android system recognizer / Parakeet on this phone"; when Parakeet: mic route + `VadSettingsSection`), and after the output description `VoiceOfflineSettings(part: VoiceOfflineSettingsPart.replies, session: _session)`. Both thin widgets live in `lib/voice_offline/voice_offline_settings.dart`, read `SharedPreferences` themselves, take the device from a new one-line getter `VoiceDevice get device => _device;` in `lib/core/services/voice_preferences_session.dart`. Each fork row has its own `_saving`. |
 | TVF-B1 | L57-61 | `lastStopTimeout = timeout;` | `if (recording != id) return null;` | re-hang our function | Keep both, ours first. |
 | TVP-B1 | L111-135 | `VoicePreferences.read`, `saveDevicePreference` | `AppPreferences` owner API | keep upstream behaviour | Take upstream. |
 | TVP-B2 | L417-431 | `show(tester, prefs, …)` + `StudioSelect<String>` | `show(tester, owner, …)` + `selectHermes` | keep upstream behaviour | Take upstream. |
@@ -239,7 +247,7 @@ read-aloud via `_voiceOutput.readAloud(...)`, recording chrome `VoiceInputActivi
 | SCR-B14 | L1518-1522 | `Listenable.merge([controller, _voiceInput, _voiceOutput, _voice.bargeIn])` | adds `?_recentVisit` | re-hang our function | `[controller, _voiceInput, _voiceOutput, _voice.bargeIn, ?_recentVisit]`. |
 | SCR-B15 | L1939-2023 | AppBar actions: menu IconButton + PopupMenuButton (parent/goal/background/find/**car**/refresh) | `StudioButtonPress(child: PopupMenuButton(...))` (screen/outputs/find/git/parent/refresh); menu button moved | re-hang our function | Take upstream (B15+B16 interleave). Re-add car mode: `onSelected` `} else if (action == 'car') { unawaited(_voice.enterCarMode(context)); }` and item `const StudioPopupMenuItem(value: 'car', child: Text('Car mode')),` after `'git'`. |
 | SCR-B16 | L2026-2054 | popup items goal/background/find/car/refresh | popup tail + `screen` item | re-hang our function | See SCR-B15. |
-| SCR-B17 | L2455-2492 | old `_answer` head with fork `onLoadRemoteImage:` | timeline-based `_answer` | keep upstream behaviour (image part: Q4) | Take upstream. Inline-image plumbing per Q4: default (keep ours) re-hangs inside `deliverable_attachment.dart` using upstream's `loadImage`, so no screen argument is needed; with Q4=A nothing is added. |
+| SCR-B17 | L2455-2492 | old `_answer` head with fork `onLoadRemoteImage:` | timeline-based `_answer` | keep upstream behaviour (image part: Q4=A) | Take upstream. Q4=A (decided): upstream's `loadAttachmentImage` plumbing feeds `ChatInlineImage`; nothing of ours is added. |
 | SCR-B18 | L2532-2628 | old message Column with `_readAloud`, `onLoadRemoteImage` | `final body = ProfileMessage(…, loadAttachmentImage, …)` | keep upstream behaviour | Take upstream; no screen-side image argument (see SCR-B17). |
 | SCR-B19 | L3739-3985 | old composer toolbar Row incl. `IconButton 'Dictate message'` → `dictate(chat)` and its enable condition | `ConversationComposer(beforeField, field, primaryAction, onAttach, controls)`, mic inside the field gated by `_voiceInput.canDictate(controller.canDictate(chat))` | drop our variant, upstream already solves it | Take upstream. Our only content (mic entry + its enable condition) is upstream's `_dictationButton → _requestDictation → dictate` (SCR-B6). One hook outside the block, in the live-call button's `prepare:` closure (`_composerTextField`, merged ~L3096): `_voice.cancel();` first (Q3). |
 | SCR-B20 | L4103-4295 | `_canForkDraft`, host `composerActions` (hand-built reasons incl. "Reconnecting"), `_composerActionButton`, `performComposerAction` header | `_changeModelControls`, `_composerActionLabels(chat)`, `_dictationButton`, `_composerActionButton`, `_performComposerAction` header | re-hang our function | Take upstream; drop our hand-built availability (upstream computes it; `fork` action removed upstream). Host contract: `@override Map<ComposerAction, String?> composerActions(ProfileChat chat) => _composerActionLabels(chat);`. Rename upstream's `_performComposerAction` to `@override Future<void> performComposerAction(` (our `{bool conversation = false}` param and `if (!conversation) _voice.endLoop();` are already merged below the block); update its two callers. |
@@ -271,10 +279,10 @@ read-aloud via `_voiceOutput.readAloud(...)`, recording chrome `VoiceInputActivi
 
 | ID | lines | ours does | upstream does | decision | reason + recipe |
 |---|---|---|---|---|---|
-| DLA-B1 | L19-23 | `this.onLoadImage` | `this.loadImage` | keep upstream behaviour (Q4) | Take upstream. |
-| DLA-B2 | L29-33 | `Future<Uint8List> Function(ChatOutput)? onLoadImage` | `Future<Uint8List> Function(String path)? loadImage` | keep upstream behaviour (Q4) | Take upstream. |
-| DLA-B3 | L114-175 | `actions`/`card` locals for the thumbnail hook | `if (output.kind == ChatOutputKind.image) return … ChatInlineImage(...)`, card with icon buttons | OPEN Q4 | Default (Q4=B, keep ours): take upstream, then in the image branch return `InlineMediaThumbnail(...)` fed by upstream's `widget.loadImage` instead of `ChatInlineImage` (~12 lines, `lib/fork/inline_media_thumbnail.dart` adapted to a `(String path)` loader). With Q4=A: take upstream file as is. |
-| DLA-B4 | L202-245 | closes `card` with `actions`; tail returns `InlineMediaThumbnail` | inline icon buttons, `return Container(...)` | keep upstream behaviour (Q4) | Take upstream; delete our tail after the block and `import '../../fork/inline_media_thumbnail.dart'` unless Q4=B re-adds it in DLA-B3. |
+| DLA-B1 | L19-23 | `this.onLoadImage` | `this.loadImage` | drop our variant, upstream already solves it (Q4=A) | Take upstream. |
+| DLA-B2 | L29-33 | `Future<Uint8List> Function(ChatOutput)? onLoadImage` | `Future<Uint8List> Function(String path)? loadImage` | drop our variant, upstream already solves it (Q4=A) | Take upstream. |
+| DLA-B3 | L114-175 | `actions`/`card` locals for the thumbnail hook | `if (output.kind == ChatOutputKind.image) return … ChatInlineImage(...)`, card with icon buttons | drop our variant, upstream already solves it (Q4=A, Birk 2026-11-12) | Take upstream. Images stay inline and open the preview on tap (R3 proves it before and after). |
+| DLA-B4 | L202-245 | closes `card` with `actions`; tail returns `InlineMediaThumbnail` | inline icon buttons, `return Container(...)` | drop our variant, upstream already solves it (Q4=A) | Take upstream; delete our tail after the block and `import '../../fork/inline_media_thumbnail.dart'`. Delete `lib/fork/inline_media_thumbnail.dart` and `test/fork/inline_media_thumbnail_test.dart` (its tap-opens-preview assertion lives on in R3). The three widget files equal upstream after resolution. |
 | MMC-B1 | L1-4 | — | `import 'package:flutter/foundation.dart' show mapEquals;` | keep upstream behaviour | Take upstream. |
 | MMC-B2 | L53-57 | field `onLoadRemoteImage` | field `loadImage` | drop our variant, upstream already solves it | Take upstream (plumbing only; upstream passes `loadImage` through). |
 | MMC-B3 | L70-74 | ctor `this.onLoadRemoteImage` | `this.loadImage` | drop our variant, upstream already solves it | Take upstream. |
@@ -284,8 +292,7 @@ read-aloud via `_voiceOutput.readAloud(...)`, recording chrome `VoiceInputActivi
 | PMS-B1 | L626-630 | `onLoadRemoteImage: onLoadRemoteImage` | `loadImage: loadAttachmentImage` | drop our variant, upstream already solves it | Take upstream. |
 | PMS-B2 | L774-819 | old copy-header layout with `MarkdownMessageContent(... onLoadRemoteImage ...)` | `Expanded(child: answer)` + copy action | keep upstream behaviour | Take upstream; remove our `onLoadRemoteImage` field/param and any surviving uses (`git grep -n onLoadRemoteImage -- lib` empty). |
 
-The three widget files' fork diff is only the image plumbing; after resolution they equal upstream except
-for the Q4=B hook in `deliverable_attachment.dart`.
+The three widget files' fork diff is only the image plumbing; after resolution they equal upstream (Q4=A).
 
 ## 6. Silent merge losses and semantic breaks without conflict markers
 
@@ -294,15 +301,15 @@ after it (plan Tasks 3-8, 10).
 
 | # | file | what happens | fix |
 |---|---|---|---|
-| S1 | `VoiceCapture.kt` | merged `started()` has `arm(attempt, 125000, …)` and the file branch `capture.setMaxDuration(120000)`: our 600 s dictation limit silently drops to 2 min (`MAX_RECORDING_MS` stays declared but unused) | `arm(attempt, (MAX_RECORDING_MS + RECORDING_DEADLINE_BUFFER_MS).toLong(), "Recording reached its time limit. Please try a shorter recording.")`, `capture.setMaxDuration(MAX_RECORDING_MS)`. 600 s ≈ 7.2 MB, below `MAX_VOICE_BYTES` 25 MiB. |
+| S1 | `VoiceCapture.kt` | merged `started()` has `arm(attempt, 125000, …)` and the file branch `capture.setMaxDuration(120000)`: our 600 s dictation limit silently drops to 2 min (`MAX_RECORDING_MS` stays declared but unused) | `arm(attempt, (MAX_RECORDING_MS + RECORDING_DEADLINE_BUFFER_MS).toLong(), "Recording reached its time limit. Please try a shorter recording.")`, `capture.setMaxDuration(MAX_RECORDING_MS)`. 600 s ≈ 7.2 MB, below `MAX_VOICE_BYTES` 25 MiB. **Hard requirement (Birk).** Tests: R4-native (`test/regression/daily_flow_dictation_limit_test.dart`, static guard over `VoiceCapture.kt`: `MAX_RECORDING_MS = 600_000`, `setMaxDuration(MAX_RECORDING_MS)`, `MAX_RECORDING_MS + RECORDING_DEADLINE_BUFFER_MS` present, no literal `120000`/`125000`/`120_000`/`125_000`; runs in the CI host-test step) and R4-dart (§14). A static guard is used instead of a Kotlin unit test because `VoiceCapture` needs an `Activity` and a `SpeechRecognizer`; the guard proves the constant is what both call sites use. |
 | S2 | `VoiceChannel.kt` | upstream guard `if (LiveVoiceRuntime.audioOwned && call.method in listOf("start","speak","play"))` does not cover fork mic entries | `listOf("start", "startVad", "openMicLink", "speak", "play")` |
 | S3 | `AndroidManifest.xml` | duplicate `<uses-permission>` for `MODIFY_AUDIO_SETTINGS`, `FOREGROUND_SERVICE_MICROPHONE`, `BLUETOOTH_CONNECT` (both sides added them) | remove our three lines; keep upstream's block |
 | S4 | `test/session_visibility_test.dart` | both sides changed `hasLength(159)` → `160`; merged data has 161 rows (upstream `room-worker` + our `wing`) | the all-sources assertion → `hasLength(161)` |
 | S5 | `test/profile_workspace_controller_test.dart` | our `promptSubmitFailures` injection in `Host.rpc` sits after upstream's new `prompt.submit` branch and never fires | move our block to the top of the upstream `prompt.submit` branch; same check in `test/support/profile_browser_fixture.dart` |
-| S6 | `VoicePlayback.kt` / `VoiceChannel.kt` | with upstream's literal `pause()` (VCH-B4) TTS would stop on every Activity pause, breaking screen-off conversation | `VoicePlayback.stop(owner: String? = null, force: Boolean = false)` returns early when `owner == null && !force && keepsVoice()` (lambda passed in the constructor: `VoicePlayback(activity, ::emit, keepsVoice = { offline.keepsVoice() })` with a new last constructor parameter `keepsVoice: () -> Boolean = { false }` is still a literal construction; the lambda reads `offline` lazily, so field order does not matter); every non-pause caller passes `force = true`; `MainActivity.onPause` gets `voiceChannel?.pauseOffline()` after the literal `voiceChannel?.pause()`. ANNAHME: `VoicePermissionLifecycleGuard` accepts constructor args and the extra statement; CI step "permission lifecycle" decides (else Q11). |
+| S6 | `VoicePlayback.kt` / `VoiceChannel.kt` | with upstream's literal `pause()` (VCH-B4) TTS would stop on every Activity pause, breaking screen-off conversation | `VoicePlayback.stop(owner: String? = null, force: Boolean = false)` returns early when `owner == null && !force && keepsVoice()` (lambda passed in the constructor: `VoicePlayback(activity, ::emit, keepsVoice = { offline.keepsVoice() })` with a new last constructor parameter `keepsVoice: () -> Boolean = { false }` is still a literal construction; the lambda reads `offline` lazily, so field order does not matter); every non-pause caller passes `force = true`; `MainActivity.onPause` gets `voiceChannel?.pauseOffline()` after the literal `voiceChannel?.pause()`. ANNAHME: `VoicePermissionLifecycleGuard` accepts constructor args and the extra statement; CI step "permission lifecycle" decides; if it rejects, Q11=A (decided): maintain a fork edit of upstream's guard. |
 | S7 | `pr-quality.yml` triggers | `push: ['**']` makes `tools/factory/ci-suite.sh` (push + `gh workflow run` on the same ref, same concurrency group) cancel its own first run → false red; `dispatch-check.sh` lists runs without `--workflow` and may pick the pr-quality run | ci-suite: drop `gh workflow run`, list with `--event push --workflow pr-quality.yml`; dispatch-check: add `--workflow "$workflow"` to `gh run list` |
 | S8 | `voice-apk.yml`, `voice-review.yml` | pin Flutter `3.44.0`; upstream `pubspec.yaml` needs `>=3.47.9` and `ime-cache-fix.gradle.kts` pins the 3.47.9 embedding jar | set `flutter-version: '3.47.9'` in both |
-| S9 | `voice_input_activity.dart` (upstream file) | shows `/ 120s` | `/ ${controller.maxSeconds}s` (SCR-B8) |
+| S9 | `voice_input_activity.dart` (upstream file) | shows `/ 120s` | `/ ${controller.maxSeconds}s` (SCR-B8). Tests: R4-dart (§14): the recording row shows `Recording · 0s / 600s` on the Parakeet route with default settings and `/ 600s` on the Android-recognizer route, `120s` never appears; the controller does not stop at 121 s and stops at `maxRecordingSeconds` = 600. |
 | S10 | `profile_workspace_controller.dart` `resumeConnection` | upstream tests that call `networkUnavailable()` then `resumeConnection(networkChanged: true)` keep the sticky NetworkGate lost | one hook line at the top of `resumeConnection`: `if (networkChanged) connectionStatus.networkRestored();` |
 
 ## 7. Table C — API-surface breaks in non-conflicting code
@@ -466,7 +473,7 @@ Attachment to upstream:
 | drain on reconnect | `_performReconnect` drains `resumedChats` after recovery ends | none |
 | steer during a running turn | `steer(chat, text)` (`runtime.canSteer` = running && ready; returns false when refused) | drop `preserveComposer`; keep `if (accepted) openListen(chat)`; refused → existing `actions[steer] != null` path ends the loop |
 | conversation mode stays active | driver state (`conversation`, `awaitingReply`) | unchanged; the reply arrives through CTL-B6 `_completedReplies.offer` |
-| no hard error + no sticky pause on a transient pre-submit failure (t_8c76c35a) | upstream: `settle(definitelyUnsent)` → `drain` sets `_paused = true` until the user taps Resume | OPEN Q6. Default (keep ours): fork `lib/fork/transient_send.dart` with `Expando<bool>`; one hook line in `_sendPrompt`'s catch (`!submitted && isTemporaryWorkspaceFailure(error)` → mark), one hook line in `_performReconnect` before draining resumed chats (marked && `!submissionUncertain` → `await chat.composer.resume(...)`, clear mark). ANNAHME: `ComposerSession.resume` is callable while not draining; verify by reading `composer_session.dart`. |
+| no hard error + no sticky pause on a transient pre-submit failure (t_8c76c35a) | upstream: `settle(definitelyUnsent)` → `drain` sets `_paused = true` until the user taps Resume | Q6=B DECIDED (Birk 2026-11-12, keep ours): fork `lib/fork/transient_send.dart` with `Expando<bool>`; one hook line in `_sendPrompt`'s catch (`!submitted && isTemporaryWorkspaceFailure(error)` → mark), one hook line in `_performReconnect` before draining resumed chats (`TransientSend.take(chat)` → `await resumeQueue(chat)`; `ProfileWorkspaceController.resumeQueue(ProfileChat)` exists upstream, controller:8697). Pinned by R5. |
 | uncertain head after reconnect is not sent twice | upstream idempotent replay by `submission_id` | ours dropped (CTL-B8) |
 
 Upstream does queue offline and drain on reconnect for never-submitted messages
@@ -491,14 +498,14 @@ Tests that prove the behaviour after the merge:
 
 | # | item | resolution |
 |---|---|---|
-| 1 | Route key `voice.input=vad` vs upstream's new input configuration | Upstream's strict schema rejects `vad` (dictation would be blocked). Re-hang as `voice.local_engine=parakeet` + one-time migration + `VadVoiceInputSettings` (§9.1). Settings placement: OPEN Q1. |
-| 2 | Inline image: `inline_media_thumbnail.dart` vs upstream `ChatInlineImage` | Upstream renders image deliverables inline (`lib/core/widgets/chat_inline_image.dart:14`, boxed max 420×320, overlay download, tap → preview). Ours: full width, button row with "Open preview". Look differs → OPEN Q4 (default keep ours via one hook in `deliverable_attachment.dart`; recommendation take upstream's). |
+| 1 | Route key `voice.input=vad` vs upstream's new input configuration | Upstream's strict schema rejects `vad` (dictation would be blocked). Re-hang as `voice.local_engine=parakeet` + one-time migration + `VadVoiceInputSettings` (§9.1). Settings placement: Q1=A decided (engine row, values migrated, behaviour identical). |
+| 2 | Inline image: `inline_media_thumbnail.dart` vs upstream `ChatInlineImage` | Upstream renders image deliverables inline (`lib/core/widgets/chat_inline_image.dart:14`, boxed max 420×320, overlay download, tap → preview). Ours: full width, button row with "Open preview". DECIDED Q4=A (Birk 2026-11-12): take upstream's `ChatInlineImage`, delete `inline_media_thumbnail.dart` and its test and hooks. Regression R3 checks "images show inline and open the preview on tap". |
 | 3 | Duplicate manifest permissions | Present again after the merge (3 duplicates, §6 S3): remove ours. |
 | 4 | `BackgroundVoiceService` vs `LiveVoiceService` | Keep separate; mutual exclusion (§8, Q3). No id, channel or manifest clash. |
 | 5 | Native guards in `VoiceChannel`/`VoiceCapture` | VCH-B1..B4, VCA-B1..B6; `audioOwned` guard extended (S2); `pause()` literal for `VoicePermissionLifecycleGuard` with `pauseOffline()` + `VoicePlayback.stop` keep-voice hook (VCH-B4, S6); `requestLivePermissions` case kept; every Dart method name routes (`start`, `stop`(timeoutMs), `cancel`, `speak`(segments), `startVad`, 12 VAD/model/media-key names via `offline.handle`). |
 | 6 | `roots.json`/`roles.json` entries | Both are enforced in CI now (§11): census entries for every fork file, role inventory for every fork `lib` file, 3 cycles to break, 1 dialog rule. |
-| 7 | `NetworkGate` semantics vs upstream connection status | Upstream has no OS-network flag ("a device-network event is a reason to retry, never proof of server access", `network_availability.dart:5`) and shows "Reconnecting" while a recovery is scheduled; ours shows "disconnected" at once and stops retry timers until the OS reports network. Keep (adapt with 5 hooks: CTL-B1, CTL-B7, `_composerRuntime`, REG-B1, S10). User-visible difference if dropped → OPEN Q7 (default keep). Known risk unchanged from today: a missed OS "available" event leaves the app offline until the next one. |
-| 8 | Offline queue → upstream `ComposerSession` | `lib/fork/offline_queue.dart` deleted (upstream solves the uncertain head); auto-send attaches to `queuePrompt`/`steer`/`automaticDrainAvailable` (§9.3); transient-failure stickiness OPEN Q6. |
+| 7 | `NetworkGate` semantics vs upstream connection status | Upstream has no OS-network flag ("a device-network event is a reason to retry, never proof of server access", `network_availability.dart:5`) and shows "Reconnecting" while a recovery is scheduled; ours shows "disconnected" at once and stops retry timers until the OS reports network. Keep (adapt with 5 hooks: CTL-B1, CTL-B7, `_composerRuntime`, REG-B1, S10). Q7=A decided: keep. Pinned by R6. Known risk unchanged from today: a missed OS "available" event leaves the app offline until the next one. |
+| 8 | Offline queue → upstream `ComposerSession` | `lib/fork/offline_queue.dart` deleted (upstream solves the uncertain head); auto-send attaches to `queuePrompt`/`steer`/`automaticDrainAvailable` (§9.3); transient-failure stickiness: Q6=B decided (keep our auto-resume), pinned by R5. |
 
 ## 11. Upstream CI gates our fork must pass (new since the base)
 
@@ -509,7 +516,7 @@ guards and `scripts/test.py`. Findings by reading:
 - **Census** (`tools/architecture/roots.json`): every git-visible file needs a `files[]` entry
   `{"path": …, "area": <first path segment or "root">, "provenance": "tracked"}`, sorted, no duplicates, no
   stale entries. All fork-added files (`git diff --name-status --diff-filter=A 151ee281 HEAD`) must be added;
-  deleted fork files (`lib/fork/offline_queue.dart`, maybe `inline_media_thumbnail*`) must not appear. Must be
+  deleted fork files (`lib/fork/offline_queue.dart`, `lib/fork/inline_media_thumbnail.dart`, `test/fork/inline_media_thumbnail_test.dart`) must not appear. Must be
   regenerated after every later commit that adds/removes files.
 - **Role inventory** (`tools/architecture/roles.json`, `"files": {"<lib path>": {"role", "feature",
   "library"}}`), required for every fork `lib/**.dart`. Proposed: `domain` (voice) for `vad_endpoint`,
@@ -521,7 +528,7 @@ guards and `scripts/test.py`. Findings by reading:
   `lib/core/services/profile_gateway.dart`) for `wing_session_source` (part); `presentation` (voice) for
   `car_mode_bridge`, `car_mode_state`, `car_mode_session`, `workspace_voice_driver`, `barge_in_settings`,
   `voice_offline_settings`; `view` (voice) for `car_mode_screen`, `car_mode_palette`,
-  `vad_settings_section`, `inline_media_thumbnail` (Q4=B). ANNAHME: role constraints as read from the rules;
+  `vad_settings_section`. ANNAHME: role constraints as read from the rules;
   the CI run is authoritative.
 - **Library cycles** (`ARCH_LIBRARY_CYCLE`): C1 `android_voice.dart` ↔ `vad_voice_device.dart` (fix: drop the
   `android_voice` import in `vad_voice_device.dart`; cast `Object`; own `MethodChannel('com.tarkilhk.wing/voice')`);
@@ -536,7 +543,7 @@ guards and `scripts/test.py`. Findings by reading:
 - **Native guards**: `VoiceFileApiGuard` (no `java.io` in `VoiceChannel/VoiceCapture/VoicePlayback`, VCA-B1),
   `VoicePermissionLifecycleGuard` (VCH-B4, S6), `native_retired_resources.py` (clean: no fork res files).
 - **Workflows**: Flutter 3.47.9 (S8); `push: ['**']` cannot be narrowed (the gate rule requires it) → every
-  push runs the emulator job (OPEN Q10); NDK `28.2.13676358` via `wing.ndkVersion` (ANNAHME: hosted runner
+  push runs the emulator job (Q10=A decided: accepted); NDK `28.2.13676358` via `wing.ndkVersion` (ANNAHME: hosted runner
   installs it; else copy upstream's "Install pinned Android SDK" step into `voice-apk.yml`).
 - `minSdk` moves 24 → 29 with upstream (`build.gradle.kts:84`); base was 24, so this is upstream behaviour.
   ANNAHME: Birk's phone runs Android ≥ 10 (Xperia 5 IV, Android 14 per the voice docs); `aapt dump badging`
@@ -561,99 +568,97 @@ string stays orphaned. **Unsent work is lost silently on update.** Sent conversa
 voice settings survive (§9.1; `vad` via the migration). The update installs over the existing app (same
 `applicationId com.tarkilhk.wing.voice`, same sideload key `~/.android/wing-voice.keystore`, versionCode 2518 >
 2356; ANNAHME until `aapt dump badging` shows it). Older configuration backup files (v1) can no longer be
-imported. → OPEN Q8.
+imported (ledger L14). → Q8 DECIDED A: a one-time step before install; afterwards behaviour is identical. The
+coder card only builds and signs the APK; a separate installer/device card pings Birk via ntfy, waits for his
+"ok" (he has sent his open drafts), then installs and runs R1-R8 on the phone (plan section "Installer/device
+card").
 
-## 13. Open questions for Birk
+## 13. Questions to Birk — all DECIDED (Birk 2026-11-12)
 
-Each question names the default the implementer uses if Birk does not decide otherwise (plan tasks name the
-same default). "Recommendation" is the architect's advice; it may differ from the default.
+Source: card t_dcfc9770 comment thread, Birk 2026-11-12 16:54 plus his correction later that day (the
+correction wins). These answers replace every "default" written earlier; plan tasks implement them.
 
-**Q1 — Where the "Parakeet on this phone" choice lives (settings layout).**
-Upstream's schema accepts only `local|hermes` for `voice.input`; a stored `vad` blocks dictation.
-- A. Engine row under "Voice input → Local" ("Android system recognizer / Parakeet on this phone"), stored in
-  `voice.local_engine`; one-time silent migration of `vad`. Users on Parakeet stay on Parakeet. Settings layout
-  changes by one row; zero edits to upstream preference code beyond one sealed subclass.
-- B. Third entry in the input select as today: widen upstream's `AppVoiceProcessing`/schema (vad would also be
-  accepted for output and backups; ~2-15 hunks in 5 upstream files that conflict on every future merge).
-- C. Drop the Parakeet/VAD route. Not acceptable (core fork feature); listed for completeness.
-Default: A. Recommendation: A.
+| Q | topic | decision | consequence for the implementation |
+|---|---|---|---|
+| Q1 | Parakeet choice / `voice.input=vad` | **DECIDED A** (Birk 2026-11-12) + condition | Engine row "Recognition engine" under Local input, stored in `voice.local_engine`. Condition: stored values migrate so behaviour is identical — a Parakeet user stays on Parakeet with the same VAD/pause/max/mic/conversation settings. Test (plan Task 9): `voice.input=vad` → `voice.local_engine=parakeet` + `voice.input=local`, idempotent, every other fork key byte-identical before/after. |
+| Q2 | upstream live-call button | **DECIDED A** | Kept as upstream ships it. Ledger L5. |
+| Q3 | live call vs conversation mode | **DECIDED A** | Starting a live call ends our loop (`_voice.cancel()` in `prepare:`, `liveVoiceActive` gates). |
+| Q4 | inline chat images | **DECIDED A** (final, after Birk's correction) | Take upstream's `ChatInlineImage`; delete `lib/fork/inline_media_thumbnail.dart`, `test/fork/inline_media_thumbnail_test.dart`, hooks; README line updated. R3 checks "inline + opens preview on tap". |
+| Q5 | VAD no-speech | **DECIDED A** | Upstream notice chip on all routes; conversation still ends on silence. |
+| Q6 | transient send failure | **DECIDED B** | Keep our automatic queue resume (`lib/fork/transient_send.dart` + 2 hooks). R5 pins it. |
+| Q7 | offline indicator | **DECIDED A** | Keep NetworkGate (instant "Disconnected"). R6 pins it. |
+| Q8 | unsent drafts/queues not imported | **DECIDED A** | One-time step before install. The coder card builds/signs only; the installer/device card pings Birk via ntfy (`robo-push.py --kind decision "Wing-Update bereit" "Bitte vorher offene Entwürfe abschicken, dann 'ok'."`), blocks `needs_input` until his "ok", then installs. |
+| Q9 | fork voice keys out of config backup | **DECIDED A** | Accepted. Ledger L9. |
+| Q10 | Actions cost | **DECIDED A** | Accepted; no repo-setting change by the implementer. |
+| Q11 | screen-off conversation vs lifecycle guard | **DECIDED A** | If CI's `VoicePermissionLifecycleGuard` rejects the S6/VCH-B4 recipe, maintain a fork edit of upstream's guard (`tools/architecture/native_voice/VoicePermissionLifecycleGuard.kt` + its fixtures) that additionally allows the `keepsVoice` construction / `pauseOffline()` statement. No stop-and-ask any more. |
 
-**Q2 — Upstream's live-call button ("Start voice conversation", waveform icon) next to the mic.**
-Needs the Wing Hermes plugin on the server plus an OpenAI/ChatGPT account; on a stock server tapping it shows
-"The Wing plugin is not installed or enabled".
-- A. Keep as upstream ships it. No divergence; a button that does not work on a stock server.
-- B. Hide it unless `GET plugins/wing/voice/v2/status` succeeds (one fork hook + a probe request).
-- C. Remove live voice from the fork (revert upstream files, `flutter_webrtc`): smaller APK, permanent large
-  divergence.
-Default: A (new upstream feature taken). Recommendation: A now, B as a follow-up card if the dead button bothers.
+Original options (for the record): Q1 B = widen upstream's schema with a third select entry, C = drop the route;
+Q2 B = hide the button unless the plugin status probe succeeds, C = remove live voice; Q3 B = refuse the call,
+C = run both; Q4 B = keep our full-width thumbnail via a hook; Q5 B = keep the red error on the VAD route;
+Q6 A = upstream pause until Resume, C = auto-resume every paused queue; Q7 B = upstream "Reconnecting";
+Q8 B = one-shot importer of `composer_drafts_v1_<identity>`, C = A + delete the orphaned key; Q9 B = extend
+upstream's backup schema; Q10 B = disable nightly in repo settings, C = run CI less often; Q11 B = drop TTS
+continuation with the screen off.
 
-**Q3 — Starting a live call while conversation mode, background voice or car mode runs.**
-- A. The call start ends our loop (conversation, barge-in listen round, background hold, car mic). Conversation
-  mode stops when the waveform is tapped.
-- B. Refuse the call while a conversation runs (button disabled until conversation mode is stopped).
-- C. Let both run (two mic owners, `voice_busy` errors). Not safe.
-Default: A. Recommendation: A.
+## 14. Regression suite of Birk's daily flow (R1-R8)
 
-**Q4 — Inline chat images: keep our full-width thumbnail or take upstream's `ChatInlineImage`?**
-- A. Take upstream: images boxed (max 420×320), download as overlay icon, no "Open preview" button (tap opens
-  the preview), spinner while loading, retry on error. Fork hooks in 3 widget files disappear; README line
-  "Inline, tap-to-zoom chat images" and a CHANGELOG.fork.md note "superseded by upstream".
-- B. Keep ours: one ~12-line hook in `deliverable_attachment.dart` using upstream's `loadImage`; images in tool
-  details and markdown stay upstream-boxed (inconsistent look); future merges touch the hook.
-Default: B (existing behaviour preserved). Recommendation: A.
+Birk requires an automated regression suite of his **current** daily flow, green **before** the merge (on the
+pre-merge base of `wt/t_d1d49ff1`) and green again **after** it, plus a device run. Files:
+`test/regression/daily_flow_<item>_test.dart`, one file per item. Each file duplicates (copies verbatim, with
+its fixtures) the existing test bodies named below, so the regression set stays intact even when the original
+test files are rewritten during the merge. Rule after the merge: **only API adaptation** in these files
+(constructors, renamed getters per Table C, fixture setup, the image loader parameter name); `expect(...)`
+lines and `reason:` texts must not change. Exception: R3's image assertion is already written against
+"inline + opens on tap", which holds for both widgets.
 
-**Q5 — Parakeet/VAD "no speech": red error vs upstream's notice.**
-Upstream shows empty recognition as a per-attempt notice chip ("No speech detected") instead of an error.
-- A. Take upstream's notice for the VAD route too (`VadInputRound` gets a `noSpeech` callback); the
-  conversation loop still ends on silence (driver treats `notice` like `error`).
-- B. Keep our red error "No speech detected. Try again." on the VAD route only (other routes show the notice).
-Default: A (exception to the default rule: one consistent empty-result UX; no function lost). Recommendation: A.
+| ID | item (Birk) | regression file | copied from (origin/voice-offline) | asserted behaviour |
+|---|---|---|---|---|
+| R1 | conversation mode loop — mic reopens after a reply | `daily_flow_conversation_loop_test.dart` | `test/voice_offline/workspace_conversation_test.dart` "conversation mode sends a dictation that ended on its own" (l.15), "conversation reopens the microphone after the reply was spoken" (l.159); `test/voice_offline/workspace_vad_media_keys_test.dart` "vad conversation sends after the pause" (l.44) | a self-ended dictation is sent; the reply is spoken; a new recording starts after it |
+| R2 | background/unsolicited replies don't break the mode (t_0179b15f; fix 2aea5f3f, merge ff3f0be7) | `daily_flow_unsolicited_reply_test.dart` | `workspace_conversation_test.dart` "an unsolicited reply while recording queues instead of cutting the recording off or ending the loop" (l.284), "an unsolicited reply while idle is spoken and the loop stays on" (l.332), "a reply that arrives while one plays queues instead of cutting it off" (l.189) | recording not cut; unsolicited reply queued then spoken; loop stays on |
+| R3 | MEDIA lines not read aloud; images inline and open on tap | `daily_flow_media_test.dart` | `test/voice_processing_test.dart` "MEDIA reference lines are not read aloud" (l.318); `test/fork/inline_media_thumbnail_test.dart` "image deliverable renders an inline thumbnail and tap opens the zoom preview" (l.66) — rewritten neutrally: within `DeliverableAttachment` find exactly one `Image`, tap it, expect `ChatImagePreview` | `spokenReplyText` drops `MEDIA:` lines; an image deliverable shows an `Image` inline and a tap opens `ChatImagePreview` (pre-merge: our thumbnail; post-merge: upstream `ChatInlineImage`; loader parameter `onLoadRemoteImage:` → `loadAttachmentImage:` is the allowed setup change) |
+| R4 | 10-min dictation (hard requirement) | `daily_flow_dictation_limit_test.dart` | `test/voice_processing_test.dart` "recording is bounded at the new maximum duration and native errors leave the draft untouched" (l.269: no stop at 121 s, stop at `maxRecordingSeconds`; only the duration part is copied); `test/voice_offline/workspace_vad_media_keys_test.dart` "recording status shows the default vad limit of 10 minutes" (l.233, `Recording · 0s / 600s`) | R4-dart: `VoiceInputController.maxRecordingSeconds == 600`; Android-recognizer route not stopped at 121 s, stopped at 600 s; Parakeet default limit row `Recording · 0s / 600s`; `find.textContaining('120s')` finds nothing. R4-native: static guard over `VoiceCapture.kt` (§6 S1) |
+| R5 | automatic queue resume after a send error (Q6=B) | `daily_flow_queue_resume_test.dart` | `test/fork/offline_queue_test.dart` test 2 "a flaky send right after reconnect resolves on the next reconnect instead of sticking forever" (l.79) and `workspace_conversation_test.dart` "a flaky send right after reconnect does not end the conversation; the mic reopens once it drains" (l.92) | after a transient pre-submit failure and the next reconnect the queue is not paused and every queued prompt reaches `prompt.submit` exactly once, in order; the conversation mic reopens |
+| R6 | offline indicator (instant offline, Q7=A) | `daily_flow_offline_indicator_test.dart` | `test/fork/network_gate_test.dart` (l.5) and `offline_queue_test.dart` test 1 (l.36) "a message queued during a real network outage shows offline at once and sends exactly once on reconnect" | right after `networkUnavailable()` the phase is `disconnected` (label "Disconnected"), no reconnect timer runs, and the queued text is sent exactly once after `networkRestored()` |
+| R7 | read-aloud with the screen off | `daily_flow_screen_off_test.dart` | `test/voice_offline/workspace_screen_off_test.dart` "a vad conversation holds while it runs" (l.41), "reading continues and the microphone reopens" (l.65), "a reply that arrives with the screen off is spoken" (l.93) | background hold on; reading continues after `paused`; mic reopens. Native part (TTS not stopped on Activity pause, S6) is proven on the device only |
+| R8 | Wing hint after an interrupted read-aloud (barge-in hint, 8d9e629a / c53b69aa) | `daily_flow_barge_in_hint_test.dart` | `test/voice_offline/workspace_barge_in_test.dart` "the message after a barge-in carries the interrupted-reply hint" (l.228); `test/voice_offline/barge_in_policy_test.dart` "the interrupted-reply hint follows the words after a blank line" (l.147); `test/voice_offline/barge_in_coordinator_test.dart` "words that cut off read-aloud carry the hint when sent or queued" (l.114) | the message sent after a barge-in ends with `\n\n[Hinweis von Wing: Die vorige Antwort wurde beim Vorlesen abgebrochen und nicht zu Ende gehört.]` |
 
-**Q6 — Transient send failure before submission (flaky reconnect) in conversation/car mode.**
-Upstream marks the item definitely-unsent and pauses the whole queue until the user taps Resume; in
-hands-free use no Resume is reachable, so the conversation stalls.
-- A. Accept upstream: the item waits paused; user taps Resume.
-- B. Keep ours: fork marks transient pre-submit failures and resumes those queues automatically on the next
-  reconnect (~15 lines in `lib/fork/transient_send.dart` + 2 hook lines); uncertain deliveries stay upstream's.
-- C. Auto-resume every paused queue on reconnect (also overrides upstream's review pause after failed turns).
-Default: B. Recommendation: B.
+Verification of "only setup changed": `git diff <pre-merge-regression-commit> HEAD -- test/regression` is
+reviewed; additionally `git diff <pre> HEAD -- test/regression` filtered to lines containing `expect(` or
+`reason:` must be empty (plan Task 15 has the command).
 
-**Q7 — Offline indicator: instant "disconnected" (ours, NetworkGate) vs upstream's "Reconnecting".**
-- A. Keep the gate: offline shows at once when Android reports no network; reconnect timers pause until the
-  network returns. 5 thin hooks.
-- B. Drop it: upstream wording ("Reconnecting" during backoff), fewer hooks, fork tests `network_gate_test`,
-  `registry_network_test` removed.
-Default: A. Recommendation: A.
+Device run (installer/device card, plan last section): the same 8 items on Birk's phone via `hadb`, with
+logcat tags `WingBgVoice` ("hold on", "pause kept", "listening on"), `WingTtsLang` ("segment i/n … status=…"),
+`WingMic`, `WingVad`, `dumpsys audio` `rec start/stop` lines, and uiautomator dumps.
 
-**Q8 — Unsent drafts and queued prompts are not carried over by the update.**
-- A. Before installing the merged APK, Birk sends or copies out every unsent draft and queued message in the
-  current Wing Voice (incl. offline-queued dictations). No code.
-- B. One-shot fork importer `composer_drafts_v1_<identity>` → upstream v3 records (needs Birk's explicit
-  approval per AGENTS.md "Backward compatibility requires the user's explicit approval"; attachments only if
-  their cache files still exist; code to maintain against upstream's draft format).
-- C. A plus deleting the orphaned key after the update.
-Default: A — the plan blocks the phone install until Birk confirms queues/drafts are flushed.
-Recommendation: A (single user, one device).
+## 15. User-visible differences ledger (merged app vs today's fork app)
 
-**Q9 — Fork voice settings drop out of the portable configuration backup.**
-Our `VoicePreferences.keys` put `voice.vad_*`, `voice.auto_speak`, `voice.conversation`, … into the backup.
-Upstream's backup covers only `AppPreferenceField`s.
-- A. Accept: these settings are device-specific (mic route, model, cues) and are not exported any more.
-- B. Extend upstream's `AppPreferenceField`/schema/snapshot with our keys (large upstream surface, guard tests).
-Default: A. Recommendation: A.
+Every user-visible difference NOT covered by R1-R8 and listed with its decision state. "Decided" = Birk's
+answer in §13. Undecided entries go to Birk as ONE question before the merge into `voice-offline` (plan
+Task 18); the architect's recommendation is given.
 
-**Q10 — GitHub Actions cost: every push to any branch now runs the full upstream job incl. the Android
-emulator journeys (up to 60-90 min), and the upstream nightly schedule also runs in the fork.**
-YAML cannot narrow it (upstream's required-gates rule). Options: A. accept; B. disable the nightly workflow in
-the fork repo's Actions settings (repo setting, not code); C. run `ci-suite.sh`/`dispatch-check.sh` less often.
-Default: A (the implementer changes no repo settings). Recommendation: A + B if minutes matter.
-ANNAHME: the fork repo can run KVM jobs on `ubuntu-24.04`; the first CI run shows it.
+| L | difference | old (fork today) | new (merged) | state | recommendation |
+|---|---|---|---|---|---|
+| L1 | Parakeet choice location | 3rd entry "On this phone · Parakeet" in the Voice input select | Voice input "Local" + row "Recognition engine: Parakeet on this phone"; stored value migrated | decided Q1=A | — |
+| L2 | empty dictation | red error "No speech detected. Try again." | notice chip "No speech detected" (all routes) | decided Q5=A | — |
+| L3 | inline images | full message width, button row Download / Open preview, file card while loading | box max 420×320, download overlay icon, tap opens preview, spinner while loading, retry on error | decided Q4=A | — |
+| L4 | offline indicator, queue resume | — | unchanged (R5, R6) | decided Q6=B, Q7=A | — |
+| L5 | live-call button (waveform) beside the mic; needs the Wing plugin, else an error message | none | new button | decided Q2=A, Q3=A | — |
+| L6 | unsent drafts/queues from before the update | kept on the phone | not imported (one-time) | decided Q8=A | — |
+| L7 | mic button position | separate "Dictate message" icon in the composer toolbar row | mic inside the text field (`VoiceInputButton`); toolbar row replaced by upstream `ConversationComposer` (attach, model, primary action) | **undecided** | accept (upstream layout; same function, fewer rows) |
+| L8 | recording chrome | inline text rows "Recording · 12s / 600s" with TextButtons Stop/Cancel | upstream `VoiceInputActivity`: same text with `/ 600s` (S9), icon buttons Stop/Cancel, error in a scroll box | **undecided** | accept |
+| L9 | fork voice settings in the config backup | exported | not exported; old v1 backup files cannot be imported | decided Q9=A (backup v1 part: undecided, see L14) | — |
+| L10 | Parakeet model removal confirmation | Material `AlertDialog` with "Cancel" | `StudioDialog` + `StudioFormActions` (forced by upstream CI rule) | **undecided** | accept (forced; look matches the rest of the app) |
+| L11 | drafts and queue UI | one draft per chat, simple queue sheet | per-conversation drafts persisted in an outbox; queue sheet per message (edit / steer / delete / resume); "Resume" after a failed/cancelled turn's review pause | **undecided** | accept (upstream improvement; hands-free path keeps auto-resume, Q6) |
+| L12 | app bar menu | menu button + items parent/goal/background/find/car/refresh | upstream menu (screen/outputs/find/git/parent/refresh) + "Car mode"; goal/background entries live where upstream put them | **undecided** | accept |
+| L13 | reconnect after long outages | gave up after a capped number of attempts with a failure message (base code) | retries forever with capped delay | **undecided** | accept (improvement; NetworkGate still pauses retries while Android reports no network) |
+| L14 | old configuration backup files | importable | v1 backups rejected (upstream 1.2.0) | **undecided** | accept; make a fresh backup after the update |
+| L15 | session source label on the server for new chats | `desktop` (or `wing` if advertised) | `gui` (or `wing` if advertised) for gateway-created sessions; local record `desktop` | **undecided** (visible only in Hermes session lists) | accept |
+| L16 | Android version floor | minSdk 24 | minSdk 29 (Android 10) | **undecided** (no effect on Birk's Xperia; ANNAHME Android ≥ 10) | accept |
+| L17 | server requirement | works with the current server | upstream 1.4.0 "Before updating": needs the current Hermes gateway Webapp; a standalone dashboard is not sufficient | **undecided — must be checked before install** | installer card checks the connection right after install (R-device step 4); if the server is too old, report and stop — no server upgrade without Birk (AGENTS.md) |
+| L18 | everything else upstream added in 806 commits (bots, recents, notification destinations, analytics, admin pages, …) | absent | present | improvements by definition; listed in the upstream CHANGELOG 1.2.0-1.4.1 | accept |
 
-**Q11 (conditional) — Screen-off conversation vs upstream's native permission-lifecycle guard.**
-Only if the S6/VCH-B4 recipe fails CI's `VoicePermissionLifecycleGuard`: A. maintain a fork edit of upstream's
-guard (`tools/architecture/native_voice/VoicePermissionLifecycleGuard.kt` + fixtures); B. drop TTS
-continuation while the screen is off (conversation mode then pauses when the screen turns off).
-Default: none — the plan stops and asks. Recommendation: A.
+The plan's ledger task re-checks this table against the built branch (new differences found during
+implementation are appended) before asking Birk.
 
 ## Appendix B — PRQ-B2 annotation snippet
 
