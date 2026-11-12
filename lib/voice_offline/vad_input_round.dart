@@ -109,6 +109,9 @@ class VadInputRound {
         holdMic: holdMic,
       ),
     );
+    // A superseded round must not touch the current round's state; the
+    // controller cancels its device capture right after this returns.
+    if (!isCurrent()) return true;
     if (fellBack) _micFallbackHint = micFallbackMessage(prefs.micRoute);
     // The controller moves to recording right after this returns, before any
     // further device event can be delivered.
@@ -204,6 +207,8 @@ class VadInputRound {
       final text = await device
           .finishVad(id, decision, endpointer.config, chunks: chunks)
           .timeout(vadRecognitionBudget(decision.segment, chunks: chunks.length));
+      // dispose -> cancel -> clear() nulls _id, which replaces the old
+      // `!_disposed` check.
       if (_id == id) finish(text);
     } catch (failure) {
       if (_id == id) fail(failure);
