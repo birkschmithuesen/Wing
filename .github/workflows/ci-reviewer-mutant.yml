@@ -27,12 +27,23 @@ jobs:
         with:
           gradle-version: '9.7.1'
       - name: Run voice-background unit tests
+        id: test
         working-directory: android
+        continue-on-error: true
         run: |
-          set -euo pipefail
           gradle testDebugUnitTest \
             --tests "com.tarkilhk.wing.voicebackground.HoldIdleTimerTest" \
             --tests "com.tarkilhk.wing.voicebackground.StopReasonTest" \
             --info 2>&1 | tee /tmp/test.log
-          echo "---- summary ----"
-          grep -E "PASSED|FAILED|BUILD " /tmp/test.log || true
+          exit ${PIPESTATUS[0]}
+
+      - name: Surface result as annotations
+        working-directory: android
+        run: |
+          grep -E "Test .* (PASSED|FAILED)|BUILD (SUCCESSFUL|FAILED)" /tmp/test.log > /tmp/hits.txt || true
+          if [ -s /tmp/hits.txt ]; then
+            while IFS= read -r line; do printf '::error::RESULT: %s\n' "$line"; done < /tmp/hits.txt
+          else
+            tail -n 40 /tmp/test.log | while IFS= read -r line; do printf '::error::TAIL: %s\n' "$line"; done
+          fi
+          test "${{ steps.test.outcome }}" = "success"
