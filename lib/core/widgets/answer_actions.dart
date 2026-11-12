@@ -30,10 +30,10 @@ class AnswerActions extends StatelessWidget {
       alignment: WrapAlignment.end,
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
-        StudioButtonPress(
-          child: Builder(
-            builder: (anchor) => Semantics(
-              hint: branchUnavailableReason,
+        Builder(
+          builder: (anchor) => Semantics(
+            hint: branchUnavailableReason,
+            child: StudioButtonPress(
               child: IconButton(
                 tooltip: 'Branch in new session',
                 color: branchUnavailableReason == null
