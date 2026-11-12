@@ -142,6 +142,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     endLoop();
     host.voiceOwner = null;
     autoSpeakQueue.clear();
+    queuedUnsolicitedReplies.clear();
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
   }
@@ -170,7 +171,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// initState part.
   void attach() {
-    bargeIn.addListener(() => background.listening(bargeIn.listening));
+    bargeIn.addListener(_bargeInChanged);
     _liveWorkspaces++;
     _autoSpeak = _controller.completedReplies.listen(_speakCompletedReply);
     _voiceInput.addListener(_voiceInputChanged);
@@ -321,6 +322,11 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     if (!_voiceInput.active && _voiceInput.error != null) conversation = null;
   }
 
+  void _bargeInChanged() {
+    background.listening(bargeIn.listening);
+    if (!bargeIn.listening) _flushQueuedReplies();
+  }
+
   StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
 
   /// Serializes auto-spoken replies: a newer one waits for the one already
@@ -328,6 +334,14 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   /// actions (mic tap, stop, manual read-aloud, barge-in) clear it instead of
   /// going through it.
   final autoSpeakQueue = SpeechQueue();
+
+  /// Unsolicited replies (e.g. a background job's own turn) that arrived
+  /// while the mic or [autoSpeakQueue] was busy: an unsolicited reply never
+  /// speaks over an open mic, and never shares [autoSpeakQueue] with another
+  /// reply still playing (spec t_0179b15f), so it waits here one at a time
+  /// until recording, the barge-in listen round and the speech queue are
+  /// all clear.
+  final queuedUnsolicitedReplies = <({ProfileChat chat, String text})>[];
 
   /// Hands-free voice chat: read a finished reply aloud when the user enabled
   /// "Spoken replies" or "Conversation mode", the chat is on screen and nobody
@@ -343,15 +357,27 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     // Car mode's own loop switch overrides the saved setting while active.
     final conversationLoopOn = car.active ? car.loopOn : offline.conversation;
     if (!conversationLoopOn) conversation = null;
-    if (!(offline.autoSpeak || offline.conversation || car.active) ||
-        _voiceInput.active) {
+    if (!(offline.autoSpeak || offline.conversation || car.active)) {
       return;
     }
     final chat = reply.chat;
     if (host.currentChat != chat) {
       return;
     }
-    if (!awaitingReply) conversation = null;
+    // An unsolicited reply (e.g. a background job's own turn) must never end
+    // a conversation loop it did not start, and it never speaks over an open
+    // mic. It also never shares autoSpeakQueue with another reply still
+    // playing - two entries resident there at once make the first one's own
+    // settle null the conversation via the isEmpty check below - so it waits
+    // in this side queue, flushed one at a time once the mic and the speech
+    // queue are both clear (spec t_0179b15f).
+    final unsolicited = !awaitingReply;
+    if (unsolicited &&
+        (_voiceInput.active || bargeIn.listening || !autoSpeakQueue.isEmpty)) {
+      queuedUnsolicitedReplies.add(reply);
+      return;
+    }
+    if (_voiceInput.active) return;
     awaitingReply = false;
     if (bargeIn.chat == chat.key && bargeIn.listener.speechInProgress) {
       // D3: the user is already talking; the reply stays in the chat and
@@ -402,11 +428,31 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     );
   }
 
+  /// Speaks the oldest reply a background turn pushed while the mic or the
+  /// speech queue was busy, now that both have cleared; a no-op otherwise or
+  /// with nothing queued (spec t_0179b15f: never speak over an open mic, and
+  /// never alongside another reply in autoSpeakQueue).
+  void _flushQueuedReplies() {
+    if (queuedUnsolicitedReplies.isEmpty ||
+        _voiceInput.active ||
+        bargeIn.listening ||
+        !autoSpeakQueue.isEmpty) {
+      return;
+    }
+    _speakCompletedReply(queuedUnsolicitedReplies.removeAt(0));
+  }
+
   /// The microphone never reopens unasked: only for the conversation's own
   /// chat, on screen, idle, with nothing waiting for the user's input, and
   /// with the auto-speak queue (spec 2026-10-15) fully drained — a reply
-  /// still waiting its turn must finish before the mic opens.
+  /// still waiting its turn must finish before the mic opens. A queued
+  /// unsolicited reply (spec t_0179b15f) takes that turn first instead,
+  /// without ending the loop.
   bool canContinueConversation(ProfileChat chat) {
+    if (queuedUnsolicitedReplies.isNotEmpty) {
+      _flushQueuedReplies();
+      return false;
+    }
     final ok =
         host.mounted &&
         conversation == chat.key &&
@@ -556,6 +602,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
             playback: playback,
             onBarge: () {
               autoSpeakQueue.clear();
+              queuedUnsolicitedReplies.clear();
               bargeLog(headphones.logLine);
               return _voiceOutput.stop();
             },

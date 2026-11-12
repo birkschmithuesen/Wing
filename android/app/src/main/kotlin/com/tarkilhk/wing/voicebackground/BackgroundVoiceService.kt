@@ -10,7 +10,9 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.media.AudioManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
@@ -27,8 +29,11 @@ import com.tarkilhk.wing.R
 class BackgroundVoiceService : Service() {
     private var wakeLock: PowerManager.WakeLock? = null
     private var modeListener: Any? = null
-    private var stopReason: String? = null
+    private val stopReason = StopReason()
     private var heldAt = 0L
+    private val idleHandler = Handler(Looper.getMainLooper())
+    private val idleTimer = HoldIdleTimer(IDLE_TIMEOUT_MS)
+    private val idleCheck: Runnable = Runnable { checkIdle() }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -49,7 +54,7 @@ class BackgroundVoiceService : Service() {
             }
             if (reply == null) {
                 // The caller gave up waiting: never hold a microphone nobody owns.
-                stopReason = "released"
+                stopReason.resolve("released")
                 stopSelf()
                 return START_NOT_STICKY
             }
@@ -60,12 +65,13 @@ class BackgroundVoiceService : Service() {
             running = true
             instance = this
             heldAt = SystemClock.elapsedRealtime()
+            startIdleTimeout()
             Log.i(TAG, "hold on")
             reply(true)
         } catch (_: Exception) {
             Log.i(TAG, "hold refused reason=startFailed")
             reply?.invoke(false)
-            stopReason = "startFailed"
+            stopReason.resolve("startFailed")
             stopSelf()
         }
         // Reopening Wing starts a new conversation; never resurrect a microphone.
@@ -73,11 +79,35 @@ class BackgroundVoiceService : Service() {
     }
 
     private fun finish(reason: String) {
-        if (stopReason != null) return
-        stopReason = reason
-        Log.i(TAG, "stop reason=$reason")
-        onStopped?.invoke(reason)
+        val resolved = stopReason.resolve(reason) ?: return
+        Log.i(TAG, "stop reason=$resolved")
+        onStopped?.invoke(resolved)
         stopSelf()
+    }
+
+    private fun startIdleTimeout() {
+        idleTimer.start(SystemClock.elapsedRealtime())
+        idleHandler.postDelayed(idleCheck, IDLE_CHECK_INTERVAL_MS)
+    }
+
+    private fun cancelIdleTimeout() {
+        idleTimer.stop()
+        idleHandler.removeCallbacks(idleCheck)
+    }
+
+    private fun checkIdle() {
+        val now = SystemClock.elapsedRealtime()
+        if (idleTimer.expired(now)) {
+            finish("idleTimeout")
+            return
+        }
+        idleHandler.postDelayed(idleCheck, IDLE_CHECK_INTERVAL_MS)
+    }
+
+    /** A barge-in listen round opening or closing counts as a live conversation,
+     * pushing the idle-timeout deadline out. */
+    private fun touchIdleTimeout() {
+        idleTimer.touch(SystemClock.elapsedRealtime())
     }
 
     private fun watchCalls() {
@@ -130,7 +160,8 @@ class BackgroundVoiceService : Service() {
     override fun onDestroy() {
         running = false
         instance = null
-        if (stopReason == null) Log.i(TAG, "stop reason=released")
+        if (stopReason.reason == null) Log.i(TAG, "stop reason=released")
+        cancelIdleTimeout()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             (modeListener as? AudioManager.OnModeChangedListener)?.let {
                 getSystemService(AudioManager::class.java).removeOnModeChangedListener(it)
@@ -150,6 +181,14 @@ class BackgroundVoiceService : Service() {
         private const val EXTRA_REASON = "reason"
         private const val CHANNEL_ID = "voice_conversation"
         private const val NOTIFICATION_ID = 214611
+
+        /** Safety backstop (t_8f6a3d26): no `listening()` activity for this long
+         * force-stops the hold even if the conversation loop never told it to.
+         * A vad round or a single spoken reply normally finishes in seconds;
+         * ten minutes gives generous margin above any plausible turn while
+         * bounding the worst-case wakelock/foreground-service drain. */
+        private const val IDLE_TIMEOUT_MS = 10 * 60 * 1000L
+        private const val IDLE_CHECK_INTERVAL_MS = 60 * 1000L
         private val callModes = setOf(
             AudioManager.MODE_RINGTONE, AudioManager.MODE_IN_CALL,
             AudioManager.MODE_IN_COMMUNICATION, AudioManager.MODE_CALL_SCREENING,
@@ -166,9 +205,12 @@ class BackgroundVoiceService : Service() {
 
         private var instance: BackgroundVoiceService? = null
 
-        /** Barge-in listen round open or closed: updates the notification text only. */
+        /** Barge-in listen round open or closed: live conversation activity,
+         * so it pushes the idle-timeout deadline out, and updates the
+         * notification text. */
         fun listening(on: Boolean) {
             val service = instance ?: return
+            service.touchIdleTimeout()
             if (!notificationsAllowed(service)) return
             Log.i(TAG, if (on) "listening on" else "listening off")
             service.getSystemService(NotificationManager::class.java)

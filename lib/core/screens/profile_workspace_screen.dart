@@ -271,6 +271,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Future<void> dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
     _voice.autoSpeakQueue.clear();
+    _voice.queuedUnsolicitedReplies.clear();
     await _voice.bargeIn.close('dictate');
     _voice.carSend = false;
     if (!mounted ||
@@ -334,6 +335,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   ) async {
     _voice.endLoop();
     _voice.autoSpeakQueue.clear();
+    _voice.queuedUnsolicitedReplies.clear();
     final owner = (chat.key, answerMessageId(message) ?? message);
     if (_voiceOutput.owner == owner) {
       await _voiceOutput.stop();

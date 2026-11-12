@@ -11,6 +11,49 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-12
+
+### An unsolicited reply no longer breaks conversation mode or cuts the recording
+- **What:** A reply that arrives while the conversation loop is not awaiting one (e.g. a background job's own
+  turn finishing) no longer ends Conversation mode. While the user is recording or a barge-in listen round is
+  open, the reply is queued instead of being spoken over the open mic or silently dropped; it plays once the
+  mic closes and, if a regular reply is also queued, after that one. While idle it speaks normally and the
+  loop still reopens the mic afterwards, exactly as after any other reply. A solicited reply (the loop's own
+  turn) is unaffected.
+- **Why:** Birk, t_0179b15f, 2026-11-12: `_speakCompletedReply` treated "no awaited reply" as reason enough to
+  unconditionally null the conversation key, so any reply the loop had not itself requested tore the loop down
+  — or, while the mic was open for it, got silently dropped instead of queued.
+- **Merge:** `57ebb941` · **Card:** t_0179b15f (review t_3d97be71 APPROVED, merge t_ac33d45c)
+
+## 2026-11-11
+
+### BackgroundVoiceService now releases its wakelock when the conversation loop ends
+- **What:** `BackgroundVoiceService` stops itself and releases its `PARTIAL_WAKE_LOCK` on every
+  path that ends the background conversation loop (stop command from the notification, silence
+  or a recognizer error ending the Dart hold, a phone call starting, the notification being
+  dismissed, the hosting activity closing, a failed start) instead of only on some of them. A new
+  10-minute safety idle timeout force-stops the hold if no `listening()` round activity happens
+  for that long, so a hold can no longer dangle for hours even if some other end-of-loop signal
+  never arrives. The "first reason wins" stop bookkeeping and the idle-timeout deadline math were
+  pulled into plain `StopReason`/`HoldIdleTimer` Kotlin classes with JUnit tests (no Android
+  framework dependency); the Service itself still needs instrumentation to verify, since
+  `PowerManager`/`Service` lifecycle calls are not unit-testable without it, and this repo's CI
+  (`pr-quality.yml`) only runs `flutter test`, not a Gradle/Kotlin test task.
+- **Why:** Birk's phone, 2026-11-11: last `rec stop` 20:42:49, wakelock `$packageName:voice-conversation`
+  acquired ~20:37 and still held at 23:26 (2h49m); `batterystats` since charge showed Wing as the
+  top consumer (435 mAh) with `wakelock:fgs` held 3h05m and ~100 mAh/h screen-off drain. Fixed
+  manually on the day by `am force-stop`; this card makes the service self-terminate instead.
+- **Merge:** `852642d5` · **Card:** t_8f6a3d26 (review t_fbb61043 APPROVED, merge t_26c3971a)
+
+### Read-aloud no longer speaks MEDIA reference lines
+- **What:** Voice read-aloud (`spokenReplyText`) now strips `MEDIA:/path` reference lines — quoted and
+  backticked variants included — before building the spoken text, reusing the same `mediaReferencePattern`
+  the chat display already parses. The image/file card or thumbnail still renders; only the path is no
+  longer read aloud. A sentence that merely mentions the word "media" is unaffected.
+- **Why:** Wing's voice/conversation mode read the full reply text including `MEDIA:/home/.../file.png`
+  lines verbatim, which is noise for a listener who only hears the card's presence, not its path.
+- **Merge:** `1b7d5295` · **Card:** t_256dcf56
+
 ## 2026-11-08
 
 ### Car kit stays on the voice channel for the whole conversation

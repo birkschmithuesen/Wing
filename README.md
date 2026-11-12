@@ -13,6 +13,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Inline, tap-to-zoom chat images](CHANGELOG.fork.md#chat-images-now-show-inline-with-a-tap-to-zoom-thumbnail)
 - [Car kit stays on the voice channel for the whole conversation](docs/VAD_INPUT.md#car-kit-sco-hold-conversation-wide-birk-decision-2026-10-19)
 - [Offline behaviour](docs/CAR_MODE.md)
+- [Conversation mode releases its microphone wakelock when the loop ends](CHANGELOG.fork.md#backgroundvoiceservice-now-releases-its-wakelock-when-the-conversation-loop-ends)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 
