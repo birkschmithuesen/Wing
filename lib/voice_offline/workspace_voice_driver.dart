@@ -18,8 +18,8 @@ import 'barge_in_policy.dart';
 import 'car_mic_session.dart';
 import 'chat_voice_view.dart';
 import 'headphone_route.dart';
-import 'turn_listener.dart';
 import 'speech_queue.dart';
+import 'turn_listener.dart';
 import 'vad_voice_device.dart';
 import 'voice_offline_prefs.dart';
 
@@ -604,8 +604,6 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
   }
 
-  /// The voice status under the chat: listening row, recording and
-  /// read-aloud controls, and voice errors.
   /// The "Listening" row for barge-in capture, spread into the screen's
   /// voice activity column.
   List<Widget> listeningRows() => [

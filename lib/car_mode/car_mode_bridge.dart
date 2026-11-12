@@ -49,7 +49,8 @@ class CarModeBridge {
 }
 
 /// Case 2 (spec §4.2): the vad pause can never end the round before the
-/// limit, so only a tap (or the media key) does. Copies every field.
+/// limit, so only a tap (or the media key) does. Copies the fields listed below and sets
+/// `pause` to the maximum duration; all other fields keep their defaults.
 VoiceOfflinePrefs carTapOnlySettings(VoiceOfflinePrefs s) =>
     VoiceOfflinePrefs(
       autoSpeak: s.autoSpeak,
