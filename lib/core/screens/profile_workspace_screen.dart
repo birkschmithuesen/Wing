@@ -2208,6 +2208,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       onReadAloud: () => _run(() => _requestReadAloud(chat, message)),
       readingAloud:
           _voiceOutput.owner == controller.voiceReplyKey(chat, message),
+      branchUnavailableReason:
+          controller.branchAnswerRestriction(chat, message: message) ??
+          (chat.runtime.commandRunning
+              ? 'Wait for the current command to finish before branching.'
+              : null),
       onBranch: controller.canBranchAnswer(chat) && !chat.runtime.commandRunning
           ? () => _openConversationDestination(
               (current) async => (await controller.branchAnswer(

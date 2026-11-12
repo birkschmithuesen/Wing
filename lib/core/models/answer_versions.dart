@@ -200,6 +200,14 @@ int? answerMessageId(Map<String, dynamic> message) {
   return id is int ? id : null;
 }
 
+/// Archived display history is readable but cannot bound a canonical branch.
+/// Stock REST exposes numeric storage flags; absence does not prove archival.
+String? answerBranchRestriction(Map<String, dynamic> message) =>
+    message['active'] == 0 && message['compacted'] == 1
+    ? 'This answer was archived when the chat was compressed. '
+          'Branch from a more recent answer.'
+    : null;
+
 List<Map<String, dynamic>> answerHistoryRows(
   List<Map<String, dynamic>> messages,
 ) => messages

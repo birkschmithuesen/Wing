@@ -1,10 +1,12 @@
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:flutter/material.dart';
 import '../theme/wing_icons.dart';
 
 class AnswerActions extends StatelessWidget {
   final VoidCallback? onBranch;
+  final String? branchUnavailableReason;
   final VoidCallback? onRegenerate;
   final bool busy;
   final VoidCallback? onReadAloud;
@@ -13,6 +15,7 @@ class AnswerActions extends StatelessWidget {
   const AnswerActions({
     super.key,
     this.onBranch,
+    this.branchUnavailableReason,
     this.onRegenerate,
     this.busy = false,
     this.onReadAloud,
@@ -28,10 +31,34 @@ class AnswerActions extends StatelessWidget {
       crossAxisAlignment: WrapCrossAlignment.center,
       children: [
         StudioButtonPress(
-          child: IconButton(
-            tooltip: 'Branch in new session',
-            onPressed: onBranch,
-            icon: const Icon(WingIcons.fork, size: 18),
+          child: Builder(
+            builder: (anchor) => Semantics(
+              hint: branchUnavailableReason,
+              child: IconButton(
+                tooltip: 'Branch in new session',
+                color: branchUnavailableReason == null
+                    ? null
+                    : WingTokens.of(context).muted,
+                onPressed: onBranch == null && branchUnavailableReason == null
+                    ? null
+                    : () {
+                        const errorKey = 'branch-answer-unavailable';
+                        dismissTransientError(anchor, errorKey: errorKey);
+                        if (branchUnavailableReason case final reason?) {
+                          showTransientError(
+                            anchor,
+                            reason,
+                            errorKey: errorKey,
+                            icon: WingIcons.fork,
+                            severity: StudioErrorSeverity.noResult,
+                          );
+                        } else {
+                          onBranch?.call();
+                        }
+                      },
+                icon: const Icon(WingIcons.fork, size: 18),
+              ),
+            ),
           ),
         ),
         if (onReadAloud != null)

@@ -22,6 +22,7 @@ import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/profile_message.dart';
 import 'package:wing/core/widgets/profile_tool_activity.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'answer_versions_test.dart' show AnswerHost;
@@ -30,7 +31,13 @@ import 'helpers/pump_markdown_widget.dart';
 const _capture = bool.fromEnvironment('STUDIO_REVIEW');
 const _reviewFrame = ValueKey('saved-edit-review-frame');
 
+class _CaptureBinding extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get disableShadows => false;
+}
+
 void main() {
+  if (_capture) _CaptureBinding();
   late AnswerHost host;
   late ProfileWorkspaceController controller;
   late AppPreferences appPreferences;
@@ -103,6 +110,144 @@ void main() {
     controller.dispose();
     appPreferences.dispose();
   });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      for (final compacted in [false, true]) {
+        testWidgets(
+          '${compacted ? 'compacted' : 'blocked'} branch explains why ${brightness.name} $scale',
+          (tester) async {
+            if (compacted) {
+              host.addCompressedContext();
+              await controller.refreshHistory(original);
+            }
+            await tester.binding.setSurfaceSize(const Size(390, 844));
+            addTearDown(() => tester.binding.setSurfaceSize(null));
+            await tester.pumpWidget(
+              RepaintBoundary(
+                key: _reviewFrame,
+                child: MaterialApp(
+                  debugShowCheckedModeBanner: false,
+                  theme: wingTheme(brightness),
+                  builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(context).copyWith(
+                      textScaler: TextScaler.linear(scale),
+                      disableAnimations: scale == 2,
+                    ),
+                    child: child!,
+                  ),
+                  home: ProfileWorkspaceScreen(
+                    controller: controller,
+                    createBotsSession: () => BotsSession((_) async => const []),
+                  ),
+                ),
+              ),
+            );
+            await tester.pumpAndSettle();
+            await tester.settleMarkdown();
+            emitChatEvent(controller, original, 'message.start');
+            await tester.pump();
+            final fork = find.descendant(
+              of: find.byKey(ValueKey('answer-actions-${compacted ? 2 : 3}')),
+              matching: find.byTooltip('Branch in new session'),
+            );
+            await tester.scrollUntilVisible(
+              fork,
+              200,
+              scrollable: find
+                  .descendant(
+                    of: find.byType(ProfileTranscript),
+                    matching: find.byType(Scrollable),
+                  )
+                  .first,
+            );
+            await tester.ensureVisible(fork);
+            await tester.pump(const Duration(milliseconds: 300));
+            final before = tester.getRect(fork);
+            await tester.tap(fork);
+            await tester.pump();
+            await tester.pump();
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 200));
+            await tester.pump(const Duration(milliseconds: 200));
+            final reason = compacted
+                ? 'This answer was archived when the chat was compressed. Branch from a more recent answer.'
+                : 'Wait for this turn to finish, or stop it, before branching.';
+            expect(find.text(reason), findsOneWidget);
+            expect(find.text('New chat'), findsNothing);
+            expect(
+              host.calls.where((call) => call.$1 == 'session.mutate'),
+              isEmpty,
+            );
+            expect(
+              host.calls.where((call) => call.$1 == 'session.interrupt'),
+              isEmpty,
+            );
+            expect(tester.getRect(fork), before);
+            final notice = tester.getRect(
+              find.widgetWithText(StudioError, reason),
+            );
+            expect(notice.overlaps(before), isFalse);
+            expect(notice.left, greaterThanOrEqualTo(0));
+            expect(notice.right, lessThanOrEqualTo(390));
+            expect(notice.top, greaterThanOrEqualTo(0));
+            expect(tester.takeException(), isNull);
+            await capture(
+              tester,
+              'branch-${compacted ? 'compacted' : 'blocked'}-${brightness.name}-$scale',
+            );
+
+            await tester.pump(const Duration(seconds: 5));
+            await tester.pump();
+            expect(find.text(reason), findsNothing);
+            await tester.tap(fork);
+            await tester.pump();
+            await tester.pump(const Duration(milliseconds: 200));
+            expect(find.text(reason), findsOneWidget);
+
+            emitChatEvent(controller, original, 'message.complete');
+            await tester.pump();
+            if (compacted) {
+              await tester.tap(fork);
+              await tester.pumpAndSettle();
+              expect(find.text(reason), findsOneWidget);
+              expect(host.parents, isEmpty);
+              await tester.drag(
+                find.widgetWithText(StudioError, reason),
+                const Offset(400, 0),
+              );
+              await tester.pumpAndSettle();
+              expect(find.text(reason), findsNothing);
+              final newerFork = find.descendant(
+                of: find.byKey(const ValueKey('answer-actions-103')),
+                matching: find.byTooltip('Branch in new session'),
+              );
+              await tester.scrollUntilVisible(
+                newerFork,
+                -200,
+                scrollable: find
+                    .descendant(
+                      of: find.byType(ProfileTranscript),
+                      matching: find.byType(Scrollable),
+                    )
+                    .first,
+              );
+              await tester.ensureVisible(newerFork);
+              await tester.pump(const Duration(milliseconds: 300));
+              await tester.tap(newerFork);
+            } else {
+              await tester.tap(fork);
+            }
+            await tester.pumpAndSettle();
+            expect(find.text(reason), findsNothing);
+            expect(host.parents, hasLength(1));
+            expect(controller.current!.chat, isNot(same(original)));
+            expect(tester.takeException(), isNull);
+          },
+        );
+      }
+    }
+  }
 
   testWidgets('edit stays on sent messages and out of Fork and Find', (
     tester,

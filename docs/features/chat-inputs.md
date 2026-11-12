@@ -11,7 +11,7 @@ Feature ID: `chat-inputs`.
 - `chat-inputs.identity` — Every writable conversation and its Recents preview uses the same message field and toolbar arrangement. Attachment controls start at the left and Send/Stop stays at the right, even when a discussion has fewer controls. Dictation stays inside the field. Attach file opens the same Camera/Photos/Files bottom sheet in normal chats, Bot Chats and discussions; Camera is disabled when capture is unavailable. Attached image thumbnails open the same viewer with visible loading and failure feedback.
 - Dismissing the Android keyboard restores the composer to the bottom, including interrupted keyboard animations and returning from another app. Drafts stay intact; a still-visible keyboard retains its space.
 - `chat-inputs.queue` — Hermes owns the accepted FIFO; edits retain authored text and selected references and replace a still-queued message at the tail, steering transfers that exact admission to the current turn, and cancellation names its admission. The queue starts as a compact expandable count. Unknown outcomes, unconfirmed delivery and steering failures remain visible while collapsed. Details retain complete selectable text and exact Copy. Unsupported actions are omitted; supported actions explain temporary restrictions when tapped. Notes and continuation requests from the remote screen are queued independently and preserve the main draft, references and attachments, even when the text matches.
-- `chat-inputs.revise` — Edit, restore or regenerate using revision-fenced saved row targets. Deep revision explains the number of later user turns removed; harmless last-turn regeneration remains immediate. Fork requires an idle source and a saved active answer. After context compression it copies the active context, including the hidden summary, through that answer; archived turns remain in the original chat.
+- `chat-inputs.revise` — Edit, restore or regenerate using revision-fenced saved row targets. Deep revision explains the number of later user turns removed; harmless last-turn regeneration remains immediate. Fork requires an idle source and a saved active answer. Tapping Branch while unavailable explains the restriction in an anchored toast and stays in the conversation. An answer archived by compression explains that a more recent answer is needed; waiting or reloading cannot make that archived answer branchable. After context compression a valid fork copies the active context, including the hidden summary, through the selected answer; archived turns remain in the original chat.
 - `chat-inputs.clarify` — Use the explicit icon in a waiting question to answer with plain composer text. Slash commands, references and attachments retain their own submission semantics. A newer draft is never consumed by an earlier answer.
 
 Group message Reply selects an existing discussion thread and mentions its member author. Cancel reply clears that selection. The room draft retains reply context across reopening and uncertain-send retry; see [Bots](bots.md).
@@ -60,6 +60,18 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   verify reopen with new saved row IDs, numeric archive flags, retained tool rows,
   differing RPC display text, and compressed histories across the 500-row page
   boundary. Corrupting the hidden summary also fails validation.
+
+  Blocked and known-compacted answer taps use the production Branch control in
+  both themes and at normal and doubled text size, including toast expiry,
+  repeated taps and a later successful branch:
+
+  ```sh
+  flutter test --no-pub test/saved_message_actions_test.dart --plain-name 'branch explains why'
+  ```
+
+  If compression happens after the displayed history was loaded, fresh reads
+  distinguish that archived answer from a genuinely missing saved identity.
+  Neither failure creates a child or substitutes another answer.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

@@ -1187,7 +1187,17 @@ void main() {}
 
   test('fork refuses an archived answer before creating a child', () async {
     host.history('a', 'original')[2].addAll({'active': 0, 'compacted': 1});
-    await expectLater(controller.branchAnswer(original, 2), throwsStateError);
+    await expectLater(
+      controller.branchAnswer(original, 2),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'This answer was archived when the chat was compressed. '
+              'Branch from a more recent answer.',
+        ),
+      ),
+    );
     expect(host.parents, isEmpty);
     expect(controller.current!.chat, same(original));
     expect(
@@ -1197,6 +1207,51 @@ void main() {}
       ),
       isEmpty,
     );
+  });
+
+  test('missing answer is not reported as archived by compression', () async {
+    host.history('a', 'original').removeAt(2);
+    host.history('a', 'original').first.addAll({'active': 0, 'compacted': 1});
+    await expectLater(
+      controller.branchAnswer(original, 2),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'The selected answer is no longer saved. Reload before branching.',
+        ),
+      ),
+    );
+    expect(host.parents, isEmpty);
+    expect(host.calls.where((call) => call.$1 == 'session.mutate'), isEmpty);
+  });
+
+  test('archived answer diagnosis follows paged saved history', () async {
+    final rows = host.history('a', 'original');
+    rows[2].addAll({'active': 0, 'compacted': 1});
+    rows.insertAll(0, [
+      for (var index = 0; index < 501; index++)
+        {
+          'row_id': 1000 + index,
+          'role': 'assistant',
+          'content': 'Older archived answer $index',
+          'active': 0,
+          'compacted': 1,
+        },
+    ]);
+    await expectLater(
+      controller.branchAnswer(original, 2),
+      throwsA(
+        isA<StateError>().having(
+          (error) => error.message,
+          'message',
+          'This answer was archived when the chat was compressed. '
+              'Branch from a more recent answer.',
+        ),
+      ),
+    );
+    expect(host.parents, isEmpty);
+    expect(host.calls.where((call) => call.$1 == 'session.mutate'), isEmpty);
   });
 
   test(

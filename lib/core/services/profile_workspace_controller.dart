@@ -6369,17 +6369,43 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   /// Canonical branch preparation and commit both require an idle source.
   bool canBranchAnswer(ProfileChat chat) =>
-      !_closed &&
-      !chat.runtime.blocksTurnAdmission &&
-      chat.readOnlyReason == null &&
-      !chat.runtime.opening &&
-      !chat.runtime.offline &&
-      !recovering &&
-      !chat.runtime.reconnecting &&
-      !chat.runtime.changingAnswer &&
-      !chat.branchingAnswer &&
-      !chat.changingIntelligence &&
-      !switching;
+      branchAnswerRestriction(chat) == null;
+
+  /// The same admission decision supplies the saved-answer control's feedback.
+  String? branchAnswerRestriction(
+    ProfileChat chat, {
+    Map<String, dynamic>? message,
+  }) {
+    if (message != null) {
+      final reason = answerBranchRestriction(message);
+      if (reason != null) return reason;
+    }
+    if (_closed || switching) {
+      return 'Wait for this chat to finish opening before branching.';
+    }
+    if (chat.readOnlyReason != null) {
+      return 'This chat is read-only. Branching is unavailable.';
+    }
+    if (chat.runtime.opening) {
+      return 'Wait for this chat to finish opening before branching.';
+    }
+    if (recovering || chat.runtime.reconnecting) {
+      return 'Wait for this chat to reconnect before branching.';
+    }
+    if (chat.runtime.offline) {
+      return 'Reconnect before branching this chat.';
+    }
+    if (chat.runtime.blocksTurnAdmission) {
+      return 'Wait for this turn to finish, or stop it, before branching.';
+    }
+    if (chat.runtime.changingAnswer || chat.branchingAnswer) {
+      return 'Wait for the current answer action to finish before branching.';
+    }
+    if (chat.changingIntelligence) {
+      return 'Wait for the model settings to finish changing before branching.';
+    }
+    return null;
+  }
 
   /// Branches an answer, or regenerates it in place to match Desktop rewind.
   Future<ProfileChat?> branchAnswer(
@@ -6403,6 +6429,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
       throw ArgumentError('Unknown answer');
     }
     final selected = source.reading.messages[messageIndex];
+    final restriction = regenerate ? null : answerBranchRestriction(selected);
+    if (restriction != null) throw StateError(restriction);
     final selectedId = answerMessageId(selected);
     if (selectedId == null) {
       throw StateError('Wait for this answer to be saved');

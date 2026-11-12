@@ -1326,22 +1326,29 @@ class ProfileGateway {
     String durableId, {
     int? throughRowId,
   }) async {
-    var offset = 0;
-    final messages = <Map<String, dynamic>>[];
-    while (true) {
+    Future<List<Map<String, dynamic>>> page(
+      int offset, {
+      bool includeCompacted = false,
+    }) async {
       final result =
           await read('sessions/${Uri.encodeComponent(durableId)}/messages', {
             'limit': '500',
             'offset': '$offset',
             'order': 'oldest',
-            'include_compacted': 'false',
+            'include_compacted': '$includeCompacted',
           });
       if (result['session_id'] != durableId) {
         throw StateError(
           'History changed. Reload the conversation before branching.',
         );
       }
-      final rows = records(result['messages']);
+      return records(result['messages']);
+    }
+
+    var offset = 0;
+    final messages = <Map<String, dynamic>>[];
+    while (true) {
+      final rows = await page(offset);
       for (final row in rows) {
         if (isBranchMessage(row)) messages.add(row);
         if (throughRowId != null && row['id'] == throughRowId) {
@@ -1353,6 +1360,23 @@ class ProfileGateway {
       offset += rows.length;
     }
     if (throughRowId == null) return messages;
+    // Compaction keeps answers readable but removes them from the active
+    // context the canonical branch operation can copy. Diagnose that exact
+    // saved identity only after the ordinary active-context read missed it.
+    offset = 0;
+    while (true) {
+      final rows = await page(offset, includeCompacted: true);
+      for (final row in rows) {
+        if (row['id'] != throughRowId) continue;
+        final restriction = answerBranchRestriction(row);
+        if (restriction != null) throw StateError(restriction);
+        throw StateError(
+          'History changed. Reload the conversation before branching.',
+        );
+      }
+      if (rows.length < 500) break;
+      offset += rows.length;
+    }
     throw StateError(
       'The selected answer is no longer saved. Reload before branching.',
     );
