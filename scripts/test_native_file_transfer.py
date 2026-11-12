@@ -7,28 +7,58 @@ Never targets a physical device or connects to a Hermes server.
 """
 
 import argparse
+import json
+import os
 import pathlib
 import re
+import shlex
+import signal
 import struct
 import subprocess
 import time
+import uuid
 import xml.etree.ElementTree as ET
 import zlib
+
+REPO = pathlib.Path(__file__).resolve().parents[1]
+STEPS = {'backup-select', 'backup-cancel', 'document-select',
+         'photo-select', 'document-cancel', 'share-cancel'}
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--device', required=True)
     parser.add_argument('--output', type=pathlib.Path, default=pathlib.Path('/tmp/wing-file-transfer'))
+    parser.add_argument('--timeout', type=int, default=900,
+                        help='Maximum seconds for the Flutter suite, including its build')
+    parser.add_argument('--verbose', action='store_true',
+                        help='Include Flutter VM discovery and integration-runner diagnostics')
     args = parser.parse_args()
     if not re.fullmatch(r'emulator-\d+', args.device):
         parser.error('Use a disposable Android emulator, not a physical device.')
+    if args.timeout <= 0:
+        parser.error('--timeout must be positive')
     args.output.mkdir(parents=True, exist_ok=True)
+    suite_deadline = None
+    process = None
+    dump_path = '/sdcard/wing-file-transfer-' + uuid.uuid4().hex + '.xml'
+
+    def remaining(maximum=30):
+        if suite_deadline is None:
+            return maximum
+        duration = suite_deadline - time.monotonic()
+        if duration <= 0:
+            raise TimeoutError('Flutter/native file transfer exceeded its bounded timeout')
+        return min(maximum, duration)
 
     def adb(*command, binary=False):
         return subprocess.check_output(
-            ['adb', '-s', args.device, *command], text=not binary, timeout=30
+            ['adb', '-s', args.device, *command], text=not binary, timeout=remaining()
         )
+
+    def exists(path):
+        script = 'if [ -e ' + shlex.quote(path) + ' ]; then echo yes; fi'
+        return adb('shell', shlex.join(['sh', '-c', script])).strip() == 'yes'
 
     def tap(node):
         left, top, right, bottom = map(int, re.findall(r'\d+', node.get('bounds')))
@@ -39,13 +69,22 @@ def main():
 
     def drive(marker):
         filename = 'wing-native-probe.png' if marker == 'photo-select' else 'wing-native-probe.json'
-        deadline = time.monotonic() + 50
+        deadline = time.monotonic() + remaining(50)
         while time.monotonic() < deadline:
-            adb('shell', 'uiautomator', 'dump', '/sdcard/wing-file-transfer.xml')
-            xml = adb('shell', 'cat', '/sdcard/wing-file-transfer.xml')
+            if process.poll() is not None:
+                raise RuntimeError('Flutter exited while waiting for native dialog: ' + marker)
+            # Android can return success with no hierarchy while its native
+            # picker is opening. Wait within this step's existing deadline and
+            # remove the previous capture so it cannot be mistaken for readiness.
+            adb('shell', 'rm', '-f', dump_path)
+            adb('shell', 'uiautomator', 'dump', dump_path)
+            if not exists(dump_path):
+                time.sleep(0.5)
+                continue
+            xml = adb('shell', 'cat', dump_path)
             (args.output / f'{marker}.xml').write_text(xml)
             nodes = list(ET.fromstring(xml).iter('node'))
-            if any(n.get('resource-id') == 'android:id/aerr_close' for n in nodes):
+            if any(n.get('resource-id') in {'android:id/aerr_close', 'android:id/aerr_wait'} for n in nodes):
                 capture(f'{marker}-anr')
                 raise RuntimeError('Android reported an ANR; inspect the captured dialog before retrying.')
             external = [n for n in nodes if n.get('package') in {
@@ -100,42 +139,101 @@ def main():
 
     png.write_bytes(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('!2I5B', 32, 32, 8, 2, 0, 0, 0))
                    + chunk(b'IDAT', zlib.compress((b'\x00' + b'\x20\x90\xc0' * 32) * 32)) + chunk(b'IEND', b''))
-    for path in [probe, png]:
-        adb('push', str(path), f'/sdcard/Download/{path.name}')
-        adb('shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
-            '-d', f'file:///sdcard/Download/{path.name}')
-
+    if adb('shell', 'getprop', 'ro.kernel.qemu').strip() != '1':
+        raise RuntimeError('Target is not an emulator; refusing fixture writes')
+    remote_paths = ['/sdcard/Download/' + path.name for path in (probe, png)]
+    # The Dart assertions require these exact names. Refuse to overwrite existing
+    # documents, then track every attempted write, including partial adb pushes.
+    for remote in remote_paths:
+        if exists(remote):
+            raise RuntimeError('Native probe already exists; refusing to overwrite: ' + remote)
+    owned_paths = []
     command = ['flutter', 'test', 'integration_test/file_transfer_native_test.dart',
-               '-d', args.device, '--reporter', 'expanded', '--no-uninstall']
-    # Clear activities left by an interrupted run, only on the requested AVD.
-    for package in ['com.tarkilhk.wing.dev', 'com.google.android.documentsui',
-                    'com.android.documentsui', 'com.google.android.photopicker']:
-        adb('shell', 'am', 'force-stop', package)
-    process = subprocess.Popen(
-        command,
-        stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True,
-    )
+               '-d', args.device, '--reporter', 'expanded', '--no-uninstall', '--no-pub']
+    if args.verbose:
+        command.append('--verbose')
     completed = set()
     try:
-        with (args.output / 'flutter.log').open('w') as log:
-            for line in process.stdout:
-                log.write(line)
-                log.flush()
-                print(line, end='', flush=True)
-                match = re.search(r'FILE_TRANSFER:([a-z-]+)', line)
-                if match and match[1] not in completed:
-                    drive(match[1])
-                    completed.add(match[1])
-        result = process.wait()
-        if result or len(completed) != 6:
-            raise SystemExit(result or 1)
+        for path, remote in zip((probe, png), remote_paths):
+            owned_paths.append(remote)
+            adb('push', str(path), remote)
+            adb('shell', 'am', 'broadcast', '-a', 'android.intent.action.MEDIA_SCANNER_SCAN_FILE',
+                '-d', 'file://' + remote)
+        # Clear activities left by an interrupted run, only on the requested AVD.
+        for package in ['com.tarkilhk.wing.dev', 'com.google.android.documentsui',
+                        'com.android.documentsui', 'com.google.android.photopicker']:
+            adb('shell', 'am', 'force-stop', package)
+        suite_deadline = time.monotonic() + args.timeout
+        transcript = ''
+        log_path = args.output / 'flutter.log'
+        # Read a regular log file rather than a blocking stdout pipe so silence
+        # during a stalled build or native plugin cannot defeat the deadline.
+        with log_path.open('w') as log, log_path.open() as reader:
+            process = subprocess.Popen(command, cwd=REPO, stdout=log,
+                                       stderr=subprocess.STDOUT, start_new_session=True)
+            while True:
+                remaining()
+                exited = process.poll() is not None
+                chunk_text = reader.read()
+                if chunk_text:
+                    print(chunk_text, end='', flush=True)
+                    transcript += chunk_text
+                    for marker in re.findall(r'FILE_TRANSFER:([a-z-]+)(?=[\r\n])', transcript):
+                        if marker not in STEPS:
+                            raise RuntimeError('Unexpected native file transfer stage: ' + marker)
+                        if marker not in completed:
+                            drive(marker)
+                            completed.add(marker)
+                if exited:
+                    break
+                time.sleep(.15)
+        result = process.wait(timeout=5)
+        if result:
+            raise RuntimeError('Flutter file transfer assertions failed; inspect ' + str(log_path))
+        if completed != STEPS:
+            raise RuntimeError('Missing native stages: ' + str(sorted(STEPS - completed)))
+        if 'All tests passed!' not in transcript:
+            raise RuntimeError('Flutter did not report successful file transfer assertions')
     finally:
-        if process.poll() is None:
-            process.terminate()
-            process.wait(timeout=30)
-        for path in [probe, png]:
-            adb('shell', 'rm', '-f', f'/sdcard/Download/{path.name}')
-        adb('shell', 'rm', '-f', '/sdcard/wing-file-transfer.xml')
+        suite_deadline = None
+        if process is not None:
+            # Kill the group even if Flutter exited: Gradle or a native-test
+            # subprocess may outlive the original process after a failed run.
+            try:
+                os.killpg(process.pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            try:
+                process.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait(timeout=10)
+            # An already exited parent cannot be waited on to observe surviving
+            # descendants. Ensure none in its owned process group remain.
+            try:
+                os.killpg(process.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+        cleanup_errors = []
+        for remote in [*owned_paths, dump_path]:
+            try:
+                adb('shell', 'rm', '-f', remote)
+                if exists(remote):
+                    raise RuntimeError('Owned native fixture remained: ' + remote)
+            except Exception as error:
+                cleanup_errors.append(str(error))
+        if cleanup_errors:
+            raise RuntimeError('Native fixture cleanup failed: ' + '; '.join(cleanup_errors))
+    (args.output / 'acceptance.json').write_text(json.dumps({
+        'device': args.device, 'package': 'com.tarkilhk.wing.dev',
+        'backend': 'none; offline fixtures', 'status': 'passed',
+        'native_steps': sorted(completed), 'flutter_exit': result,
+        'owned_device_files_removed': True,
+    }, indent=2) + '\n')
+    print('PASS: native file/photo selection, cancellation and share sheet; owned probe files removed')
 
 
 if __name__ == '__main__':

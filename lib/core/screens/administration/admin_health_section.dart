@@ -1,3 +1,5 @@
+import 'package:wing/core/widgets/studio_form_actions.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:flutter/material.dart';
 
 /// A section has one check time; row colors describe the individual results.
@@ -32,9 +34,7 @@ class AdminHealthSectionHeading extends StatelessWidget {
             if (!sameDay) MaterialLocalizations.of(context).formatShortDate(at),
             TimeOfDay.fromDateTime(at).format(context),
           ].join(', ');
-    final label = checking
-        ? 'Checking…'
-        : at == null && !attempted
+    final label = at == null && !attempted
         ? 'Not checked'
         : incomplete
         ? 'Check incomplete${time == null ? '' : ' · $time'}'
@@ -48,7 +48,8 @@ class AdminHealthSectionHeading extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(title, style: Theme.of(context).textTheme.titleMedium),
-                Text(label, style: Theme.of(context).textTheme.bodySmall),
+                if (!checking)
+                  Text(label, style: Theme.of(context).textTheme.bodySmall),
               ],
             ),
           ),
@@ -63,7 +64,7 @@ Future<void> showHealthCheckExplanation(
   BuildContext context,
 ) => showDialog<void>(
   context: context,
-  builder: (context) => AlertDialog(
+  builder: (context) => StudioDialog(
     title: const Text('What’s checked?'),
     scrollable: true,
     content: Column(
@@ -99,9 +100,12 @@ Future<void> showHealthCheckExplanation(
       ],
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('Close'),
+      StudioButtonPress(
+        child: IconButton(
+          tooltip: 'Close',
+          onPressed: () => Navigator.of(context).pop(),
+          icon: const Icon(Icons.close),
+        ),
       ),
     ],
   ),

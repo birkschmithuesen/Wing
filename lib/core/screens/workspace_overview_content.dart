@@ -1,408 +1,200 @@
-import 'dart:async';
-import '../widgets/studio_error.dart';
 import 'package:flutter/material.dart';
-
-import '../models/profile_live_activity.dart';
-import '../theme/profile_colors.dart';
-import '../theme/wing_theme.dart';
-import '../utils/relative_time.dart';
+import '../widgets/studio_loading.dart';
+import '../models/bots.dart';
+import '../services/bots_session.dart';
 import '../services/profile_workspace_controller.dart';
+import '../services/workspace_recents_session.dart';
+import '../widgets/recent_identity_card.dart';
+import '../widgets/studio_error.dart';
+import '../theme/wing_theme.dart';
 export 'administration/administration_content.dart';
-
-enum WorkspaceActivityFilter { all, running, needsInput }
-
-List<ProfileRecentChat> _filterWorkspaceActivity(
-  List<ProfileRecentChat> activity,
-  WorkspaceActivityFilter filter,
-) => switch (filter) {
-  WorkspaceActivityFilter.all => activity,
-  WorkspaceActivityFilter.running =>
-    activity
-        .where(
-          (item) =>
-              item.state == ProfileLiveActivityState.running ||
-              item.sideTasksRunning > 0,
-        )
-        .toList(growable: false),
-  WorkspaceActivityFilter.needsInput =>
-    activity
-        .where((item) => item.state == ProfileLiveActivityState.needsInput)
-        .toList(growable: false),
-};
 
 class WorkspaceActivityContent extends StatefulWidget {
   const WorkspaceActivityContent({
     super.key,
-    required this.controller,
+    required this.recents,
     required this.onOpen,
-    this.filter = WorkspaceActivityFilter.all,
-    this.onFilterChanged,
+    required this.onOpenGroup,
+    required this.visible,
   });
-
-  final ProfileWorkspaceController controller;
-  final WorkspaceActivityFilter filter;
-  final ValueChanged<WorkspaceActivityFilter>? onFilterChanged;
-  final ValueChanged<ProfileRecentChat> onOpen;
-
+  final WorkspaceRecentsSession recents;
+  ProfileWorkspaceController get controller => recents.controller;
+  BotsSession get bots => recents.bots;
+  final bool visible;
+  final void Function(ProfileRecentChat, List<WorkspaceRecentItem>) onOpen;
+  final Future<void> Function(BotGroup) onOpenGroup;
   @override
   State<WorkspaceActivityContent> createState() =>
       _WorkspaceActivityContentState();
 }
 
 class _WorkspaceActivityContentState extends State<WorkspaceActivityContent> {
-  late WorkspaceActivityFilter _filter = widget.filter;
-  Timer? _expiryTimer;
+  late WorkspaceRecentsSession _session;
+  bool _opening = false;
+  bool _refreshing = false;
+  void _attach() {
+    _session = widget.recents;
+    _session.addListener(_changed);
+    _syncVisibility();
+    final session = _session;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(_session, session)) {
+        session.prepareAppearances();
+      }
+    });
+  }
+
+  void _syncVisibility() {
+    final session = _session;
+    // Hiding cancels polling immediately and cannot publish a refresh.
+    if (!widget.visible) {
+      session.setVisible(this, false);
+      return;
+    }
+    // Both attachment and widget updates can run during route composition.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && identical(_session, session)) {
+        session.setVisible(this, widget.visible);
+      }
+    });
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void initState() {
     super.initState();
-    _expiryTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => setState(() {}),
-    );
+    _attach();
+  }
+
+  @override
+  void didUpdateWidget(WorkspaceActivityContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.recents != widget.recents) {
+      _refreshing = false;
+      _session.removeListener(_changed);
+      _session.setVisible(this, false);
+      _attach();
+    } else {
+      _syncVisibility();
+    }
   }
 
   @override
   void dispose() {
-    _expiryTimer?.cancel();
+    _session.removeListener(_changed);
+    _session.setVisible(this, false);
     super.dispose();
+  }
+
+  Future<void> _openGroup(BotGroup group) async {
+    if (_opening) return;
+    setState(() => _opening = true);
+    _session.setVisible(this, false);
+    try {
+      await widget.onOpenGroup(group);
+    } finally {
+      if (mounted) {
+        _session.setVisible(this, widget.visible);
+        setState(() => _opening = false);
+      }
+    }
+  }
+
+  Future<void> _refresh() async {
+    final session = _session;
+    setState(() => _refreshing = true);
+    try {
+      await session.refresh(force: true, retryFailures: true);
+    } finally {
+      if (mounted && identical(_session, session)) {
+        setState(() => _refreshing = false);
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final controller = widget.controller;
-    final allActivity = controller.recentChats();
-    final activity = _filterWorkspaceActivity(allActivity, _filter);
-    final filtered = _filter != WorkspaceActivityFilter.all;
-    final ongoing = activity.where((item) => item.activity != null).toList();
-    final history = activity.where((item) => item.activity == null).toList();
-    final tokens = WingTokens.of(context);
+    final items = _session.items();
     final now = DateTime.now();
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
+    final colors = controller.appPreferences.profileColorsFor(
+      controller.connectionIdentity,
+    );
+    return ValueListenableBuilder(
+      valueListenable: colors,
+      builder: (context, choices, _) => StudioPageLoading(
+        active: _session.contentLoading || _refreshing,
+        label: _refreshing ? 'Refreshing recent chats' : 'Loading recent chats',
+        child: StudioRefresh(
+          available: true,
+          onRefresh: _refresh,
+          child: ListView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(16),
             children: [
-              _filterChip(WorkspaceActivityFilter.all, 'All', allActivity),
-              _filterChip(
-                WorkspaceActivityFilter.running,
-                'Running',
-                allActivity,
-              ),
-              _filterChip(
-                WorkspaceActivityFilter.needsInput,
-                'Needs input',
-                allActivity,
-              ),
-            ],
-          ),
-        ),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 0, 4, 4),
-          child: Row(
-            children: [
-              Icon(Icons.history, size: 16, color: tokens.muted),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Last 24 hours + ongoing work',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-              ),
-            ],
-          ),
-        ),
-        if (controller.recentsLoading) const LinearProgressIndicator(),
-        if (controller.recentsLoaded &&
-            allActivity.isEmpty &&
-            controller.recentsAvailableProfiles == 0 &&
-            controller.recentsProfileErrors.isNotEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(vertical: 32),
-            child: StudioError('Recents unavailable.'),
-          )
-        else
-          for (final message in controller.recentsProfileErrors.values)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: StudioError(message),
-            ),
-        if (activity.isEmpty && controller.recentsLoaded)
-          if (controller.recentsAvailableProfiles > 0)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Column(
-                children: [
-                  const Icon(Icons.pending_actions_outlined, size: 40),
-                  const SizedBox(height: 16),
-                  Text(
-                    filtered
-                        ? (controller.recentsProfileErrors.isNotEmpty
-                              ? 'No ${_filterLabel(_filter).toLowerCase()} sessions found in available profiles'
-                              : allActivity.isEmpty
-                              ? 'No recent chats'
-                              : _filterEmptyLabel(_filter))
-                        : (controller.recentsProfileErrors.isEmpty
-                              ? 'No recent chats'
-                              : 'No recent chats found in available profiles'),
-                  ),
-                ],
-              ),
-            ),
-        if (ongoing.isNotEmpty) ...[
-          _sectionHeading('Ongoing', ongoing.length),
-          Material(
-            key: const ValueKey('recents-ongoing'),
-            color: tokens.raised,
-            shape: RoundedRectangleBorder(
-              borderRadius: WingRadius.card,
-              side: BorderSide(color: tokens.border),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: Column(
-              children: [
-                for (var i = 0; i < ongoing.length; i++) ...[
-                  if (i > 0) Divider(height: 1, color: tokens.border),
-                  _chatRow(ongoing[i], now, ongoing: true),
-                ],
-              ],
-            ),
-          ),
-        ],
-        if (history.isNotEmpty) ...[
-          _sectionHeading('Last 24 hours', history.length),
-          for (var i = 0; i < history.length; i++) ...[
-            if (i > 0) Divider(height: 1, color: tokens.border),
-            _chatRow(history[i], now, ongoing: false),
-          ],
-        ],
-        if (activity.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 24),
-            child: Text(
-              'Older chats are in Chats',
-              textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _sectionHeading(String title, int count) => Padding(
-    padding: const EdgeInsets.fromLTRB(4, 20, 4, 10),
-    child: Semantics(
-      header: true,
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(title, style: Theme.of(context).textTheme.bodySmall),
-          ),
-          Text('$count', style: Theme.of(context).textTheme.bodySmall),
-        ],
-      ),
-    ),
-  );
-
-  Widget _chatRow(
-    ProfileRecentChat item,
-    DateTime now, {
-    required bool ongoing,
-  }) => _RecentChatRow(
-    key: ValueKey(
-      'activity-${item.key.workspace.profileName}-${item.key.sessionId}',
-    ),
-    item: item,
-    now: now,
-    ongoing: ongoing,
-    isDefault:
-        widget.controller.discovery
-            ?.named(item.key.workspace.profileName)
-            ?.isDefault ==
-        true,
-    onTap: widget.controller.switching ? null : () => widget.onOpen(item),
-  );
-
-  FilterChip _filterChip(
-    WorkspaceActivityFilter filter,
-    String label,
-    List<ProfileRecentChat> items,
-  ) => FilterChip(
-    showCheckmark: false,
-    label: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Flexible(child: Text(label)),
-        const SizedBox(width: 8),
-        Text(
-          '${_filterWorkspaceActivity(items, filter).length}',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
-      ],
-    ),
-    selected: _filter == filter,
-    onSelected: (selected) {
-      if (selected) {
-        setState(() => _filter = filter);
-        widget.onFilterChanged?.call(filter);
-      }
-    },
-  );
-
-  String _filterLabel(WorkspaceActivityFilter filter) => switch (filter) {
-    WorkspaceActivityFilter.all => 'All',
-    WorkspaceActivityFilter.running => 'Running',
-    WorkspaceActivityFilter.needsInput => 'Needs input',
-  };
-
-  String _filterEmptyLabel(WorkspaceActivityFilter filter) => switch (filter) {
-    WorkspaceActivityFilter.all => 'No recent chats',
-    WorkspaceActivityFilter.running => 'No running sessions',
-    WorkspaceActivityFilter.needsInput => 'No sessions need input',
-  };
-}
-
-class _RecentChatRow extends StatelessWidget {
-  const _RecentChatRow({
-    super.key,
-    required this.item,
-    required this.now,
-    required this.ongoing,
-    required this.isDefault,
-    required this.onTap,
-  });
-
-  final ProfileRecentChat item;
-  final DateTime now;
-  final bool ongoing;
-  final bool isDefault;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final tokens = WingTokens.of(context);
-    final needsInput = item.state == ProfileLiveActivityState.needsInput;
-    final statusColor = needsInput ? tokens.blocked : tokens.running;
-    final status = needsInput
-        ? 'Needs input'
-        : item.sideTasksRunning > 0
-        ? item.sideTasksRunning == 1
-              ? 'Background work running'
-              : '${item.sideTasksRunning} background tasks running'
-        : 'Running';
-    final largeText = MediaQuery.textScalerOf(context).scale(16) >= 24;
-    final profileName = item.key.workspace.profileName;
-    final profileColor = desktopProfileColor(profileName) ?? tokens.muted;
-    final profileIcon = ExcludeSemantics(
-      child: Container(
-        width: 16,
-        height: 16,
-        decoration: BoxDecoration(
-          color: profileColor.withValues(alpha: .12),
-          borderRadius: BorderRadius.circular(3),
-        ),
-        alignment: Alignment.center,
-        child: isDefault
-            ? Icon(Icons.home_outlined, size: 12, color: profileColor)
-            : Text(
-                profileName.characters.first.toUpperCase(),
-                textScaler: TextScaler.noScaling,
-                style: TextStyle(fontSize: 10, color: profileColor),
-              ),
-      ),
-    );
-    final title = Text(
-      item.title,
-      style: theme.textTheme.bodyMedium,
-      maxLines: largeText ? null : 2,
-      overflow: largeText ? TextOverflow.visible : TextOverflow.ellipsis,
-    );
-    final age = formatRelativeTime(now, item.lastActive);
-    final timestamp = Semantics(
-      label: age == 'now' ? 'Updated now' : 'Updated $age ago',
-      child: ExcludeSemantics(
-        child: Text(
-          age,
-          style: theme.textTheme.bodySmall?.copyWith(
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-      ),
-    );
-    return InkWell(
-      onTap: onTap,
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: ongoing ? 12 : 4,
-          vertical: 14,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (ongoing) ...[
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: profileIcon,
-              ),
-              const SizedBox(width: 12),
-            ],
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (largeText) ...[
-                    title,
-                    const SizedBox(height: 6),
-                    timestamp,
-                  ] else
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(child: title),
-                        const SizedBox(width: 12),
-                        timestamp,
-                      ],
-                    ),
-                  const SizedBox(height: 6),
-                  Wrap(
-                    spacing: 6,
-                    runSpacing: 4,
-                    children: [
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
+              if (_session.catalog.error case final error?)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: StudioErrorFrame(
+                    child: Padding(
+                      padding: const EdgeInsets.all(WingSpacing.md),
+                      child: Row(
                         children: [
-                          if (!ongoing) ...[
-                            profileIcon,
-                            const SizedBox(width: 6),
-                          ],
-                          Flexible(
-                            child: Text(
-                              profileName,
-                              style: theme.textTheme.bodySmall,
+                          Expanded(child: StudioError(error, framed: false)),
+                          const SizedBox(width: WingSpacing.sm),
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Retry loading recent chats',
+                              onPressed: _refreshing ? null : _refresh,
+                              icon: const Icon(Icons.refresh),
                             ),
                           ),
                         ],
                       ),
-                      if (ongoing) ...[
-                        Text('·', style: theme.textTheme.bodySmall),
-                        Text(
-                          status,
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            color: statusColor,
-                          ),
-                        ),
-                      ],
+                    ),
+                  ),
+                ),
+              if (items.isEmpty &&
+                  _session.contentAvailable &&
+                  _session.catalog.error == null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 48),
+                  child: Column(
+                    children: [
+                      const Icon(Icons.history, size: 40),
+                      const SizedBox(height: 16),
+                      const Text('No recent chats'),
                     ],
                   ),
-                ],
-              ),
-            ),
-          ],
+                ),
+              for (final item in items)
+                RecentIdentityCard(
+                  item: item,
+                  bots: widget.bots.state.bots,
+                  now: now,
+                  profileChoice: choices
+                      .profiles[item.chat?.key.workspace.profileName]
+                      ?.displayChoice,
+                  isDefault:
+                      controller.discovery
+                          ?.named(item.chat?.key.workspace.profileName ?? '')
+                          ?.isDefault ==
+                      true,
+                  onTap: controller.switching || _opening
+                      ? null
+                      : () {
+                          if (item.group case final group?) {
+                            _openGroup(group);
+                          } else {
+                            widget.onOpen(item.chat!, items);
+                          }
+                        },
+                ),
+            ],
+          ),
         ),
       ),
     );

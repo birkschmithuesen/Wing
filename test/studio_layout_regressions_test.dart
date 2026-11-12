@@ -1,3 +1,11 @@
+import 'package:wing/core/models/config_backup_operation.dart';
+import 'package:wing/core/services/administration_logs_session.dart';
+import 'package:wing/core/services/profile_skills_session.dart';
+import 'package:wing/core/services/profile_capabilities_session.dart';
+import 'package:wing/core/models/provider_inventory.dart';
+import 'package:wing/core/screens/administration/admin_provider_credentials.dart';
+import 'package:wing/core/widgets/admin_model_picker.dart';
+import 'package:wing/core/models/model_choice.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -6,19 +14,15 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
-import 'package:wing/core/screens/administration/admin_operations_page.dart';
+import 'package:wing/core/screens/administration/admin_logs_page.dart';
 import 'package:wing/core/screens/administration/admin_widgets.dart';
 import 'package:wing/core/screens/profile_capabilities_screen.dart';
-import 'package:wing/core/services/administration_repository.dart';
-import 'package:wing/core/screens/administration/admin_defaults_page.dart';
 import 'package:wing/core/screens/analytics_content.dart';
 import 'package:wing/core/screens/administration/admin_skills_page.dart';
-import 'package:wing/core/screens/administration/admin_providers_page.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/config_backup_card.dart';
 import 'package:wing/core/widgets/profile_default_model_sheet.dart';
-import 'package:wing/core/widgets/model_chooser.dart';
 import 'support/administration_fixture.dart';
 
 const export = bool.fromEnvironment('STUDIO_AUDIT_REVIEW');
@@ -103,7 +107,7 @@ void main() {
       final group = find.byKey(const ValueKey('usage-breakdown-group'));
       await tester.scrollUntilVisible(
         group,
-        120,
+        300,
         scrollable: find
             .descendant(
               of: find.byType(ListView),
@@ -114,7 +118,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.scrollUntilVisible(
         find.text('example/long-production-model'),
-        120,
+        300,
         scrollable: find
             .descendant(
               of: find.byType(ListView),
@@ -123,8 +127,13 @@ void main() {
             .first,
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('example/long-production-model'));
+      final model = find.text('example/long-production-model');
+      await Scrollable.ensureVisible(tester.element(model), alignment: .5);
       await tester.pumpAndSettle();
+      expect(model.hitTestable(), findsOneWidget);
+      await tester.tap(model);
+      await tester.pumpAndSettle();
+      expect(find.byType(AnalyticsPage), findsOneWidget);
       expect(find.byType(BottomSheet), findsNothing);
       expect(
         find.byWidgetPredicate(
@@ -144,13 +153,36 @@ void main() {
       (tester) async {
         narrow(tester);
         final fixture = AdministrationFixture();
+        fixture.override = (_, path, _, _) async => switch (path) {
+          'skills' => {
+            'data': [
+              {
+                'name': 'Research',
+                'description': '',
+                'provenance': 'agent',
+                'locked': false,
+                'usage': 0,
+                'enabled': true,
+              },
+            ],
+          },
+          'skills/content' => {
+            'name': 'Research',
+            'content': 'Read the project context before editing.',
+          },
+          _ => throw StateError('Unexpected skill layout read $path'),
+        };
+        final session = ProfileSkillsSession.library(
+          fixture.server.profile('personal'),
+        );
+        addTearDown(session.dispose);
+        await session.refresh();
+        final detail = session.openSkill(session.state.installed.single);
+        await session.loadDetail(detail);
+        final editor = session.openEditor(detail);
         await tester.pumpWidget(
           app(
-            AdminSkillEditor(
-              profile: fixture.server.profile('personal'),
-              name: 'Research',
-              initial: 'Read the project context before editing.',
-            ),
+            AdminSkillEditor(session: session, route: editor, detail: detail),
             brightness,
           ),
         );
@@ -158,10 +190,7 @@ void main() {
         await tester.enterText(find.byType(TextField), 'Updated instruction');
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        expect(
-          tester.getRect(find.byType(FilledButton)).right,
-          lessThanOrEqualTo(304),
-        );
+        expect(find.byTooltip('Save skill').hitTestable(), findsOneWidget);
         await capture(tester, 'skill-editor-${brightness.name}-200-keyboard');
       },
     );
@@ -180,6 +209,8 @@ void main() {
             : {
                 'session_id': 'fixture',
                 'flow': 'device_code',
+                'verification_url': 'https://example.invalid/sign-in',
+                'expires_in': 900,
                 'user_code': 'LONG-DEVICE-CODE-123456789',
                 'poll_interval': 60,
               };
@@ -187,7 +218,10 @@ void main() {
           app(
             AdminProviderSignIn(
               profile: fixture.server.profile('personal'),
-              provider: const {'id': 'example', 'name': 'Example provider'},
+              target: const ProviderSignInTarget(
+                id: 'example',
+                name: 'Example provider',
+              ),
             ),
             brightness,
           ),
@@ -217,12 +251,16 @@ void main() {
       'capabilities scope and failure remain reachable with keyboard in ${brightness.name}',
       (tester) async {
         narrow(tester);
+        var reads = 0;
         final gateway = ProfileGateway(
           scope: WorkspaceScope(
             connectionId: 'fixture',
             profileName: 'research',
           ),
-          get: (_, _) async => throw StateError('Offline'),
+          get: (_, _) async {
+            reads++;
+            throw StateError('Offline');
+          },
           rpc: (_, _) async => <String, dynamic>{},
           discover: () async => throw StateError('Unexpected discovery'),
         );
@@ -230,10 +268,12 @@ void main() {
           app(
             ProfileCapabilitiesScreen(
               onToolSetup: (_) async {},
-              onLibrary: () {},
-              onHub: () {},
-              onPlugins: () {},
-              gateway: gateway,
+              onLibrary: () async {},
+              onHub: () async {},
+              onPlugins: () async {},
+              onConnectedApps: () async {},
+              onMcpConnectors: () async {},
+              createSession: () => ProfileCapabilitiesSession(gateway),
               connectionLabel: 'Development server with a long display name',
             ),
             brightness,
@@ -247,6 +287,12 @@ void main() {
           tester,
           'capabilities-error-${brightness.name}-200-keyboard',
         );
+        final previousReads = reads;
+        expect(find.text('Retry').hitTestable(), findsOneWidget);
+        await tester.tap(find.text('Retry'));
+        await tester.pumpAndSettle();
+        expect(reads, greaterThan(previousReads));
+        expect(find.text('Retry').hitTestable(), findsOneWidget);
       },
     );
 
@@ -254,16 +300,17 @@ void main() {
       'long administration failure remains scrollable in ${brightness.name}',
       (tester) async {
         narrow(tester);
+        var retries = 0;
         await tester.pumpWidget(
           app(
             AdminPage(
               title: 'Providers',
               scope: 'Development / research',
-              child: AdminLoad(
-                load: () async => throw const AdministrationFailure(
+              child: SingleChildScrollView(
+                child: AdminNotice.error(
                   'This operation could not be confirmed. Your account settings are kept. Check the connection to the server, then retry to refresh the last confirmed observation.',
+                  retry: () => retries++,
                 ),
-                builder: (_, _, _) => const Text('Content'),
               ),
             ),
             brightness,
@@ -271,12 +318,11 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
-        await tester.ensureVisible(find.text('Retry'));
+        await tester.ensureVisible(find.byTooltip('Retry'));
         await tester.pumpAndSettle();
-        expect(
-          tester.getRect(find.text('Retry')).bottom,
-          lessThanOrEqualTo(480),
-        );
+        expect(find.byTooltip('Retry').hitTestable(), findsOneWidget);
+        await tester.tap(find.byTooltip('Retry'));
+        expect(retries, 1);
         await capture(tester, 'admin-error-${brightness.name}-200-keyboard');
       },
     );
@@ -285,16 +331,19 @@ void main() {
       'restore stays reachable with 320dp/200% and keyboard in ${brightness.name}',
       (tester) async {
         narrow(tester);
+        BackupImportIntent? submitted;
         await tester.pumpWidget(
           app(
             Scaffold(
               body: Builder(
                 builder: (context) => TextButton(
-                  onPressed: () => showModalBottomSheet<void>(
-                    context: context,
-                    isScrollControlled: true,
-                    builder: (_) => const ImportOptionsSheet(),
-                  ),
+                  onPressed: () async {
+                    submitted = await showModalBottomSheet<BackupImportIntent>(
+                      context: context,
+                      isScrollControlled: true,
+                      builder: (_) => const ImportOptionsSheet(),
+                    );
+                  },
                   child: const Text('Open restore'),
                 ),
               ),
@@ -314,11 +363,15 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(
-          tester.getRect(find.byKey(const Key('import_confirm_button'))).bottom,
-          lessThanOrEqualTo(480),
+          find.byKey(const Key('import_confirm_button')).hitTestable(),
+          findsOneWidget,
         );
         expect(tester.takeException(), isNull);
         await capture(tester, 'restore-${brightness.name}-200-keyboard');
+        await tester.tap(find.byKey(const Key('import_confirm_button')));
+        await tester.pumpAndSettle();
+        expect(submitted?.passphrase, 'example-passphrase');
+        expect(find.byType(ImportOptionsSheet), findsNothing);
       },
     );
 
@@ -327,11 +380,17 @@ void main() {
       (tester) async {
         narrow(tester);
         final fixture = AdministrationFixture();
-        fixture.override = (_, _, _, _) async => {
+        fixture.override = (_, _, query, _) async => {
+          'file': query['file'],
           'lines': ['INFO Hermes is ready', 'WARNING Example diagnostic'],
         };
         await tester.pumpWidget(
-          app(AdminLogsPage(server: fixture.server), brightness),
+          app(
+            AdminLogsPage(
+              createSession: () => AdministrationLogsSession(fixture.server),
+            ),
+            brightness,
+          ),
         );
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
@@ -389,12 +448,12 @@ void main() {
         await tester.tap(find.text('Open models'));
         await tester.pumpAndSettle();
         expect(
-          tester.getRect(find.byKey(const Key('profile-model-save'))).bottom,
-          lessThanOrEqualTo(480),
+          find.byKey(const Key('profile-model-save')).hitTestable(),
+          findsOneWidget,
         );
         expect(tester.takeException(), isNull);
         await capture(tester, 'default-model-${brightness.name}-200-keyboard');
-        await tester.tap(find.text('Cancel'));
+        await tester.tap(find.byTooltip('Cancel'));
         await tester.pumpAndSettle();
         expect(find.text('Open models'), findsOneWidget);
       },

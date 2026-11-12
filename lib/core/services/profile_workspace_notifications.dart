@@ -6,35 +6,67 @@ class ProfileInputNotification {
   final String connectionLabel;
   final List<NotificationInput> inputs;
   final bool alert;
-  const ProfileInputNotification(
+  ProfileInputNotification(
     this.key,
     this.title,
     this.connectionLabel,
-    this.inputs,
+    Iterable<NotificationInput> inputs,
     this.alert,
-  );
+  ) : inputs = List.unmodifiable(inputs);
 }
 
 extension ProfileNotificationState on ProfileWorkspaceController {
-  Iterable<({String title, String state})>
+  Iterable<
+    ({ProfileSessionKey? key, String payload, String title, String state})
+  >
   get notificationMonitoringChats sync* {
+    final seen = <ProfileSessionKey>{};
+    for (final group in _groupNotifications.monitoringGroups) {
+      yield (
+        key: null,
+        payload: jsonEncode(
+          GroupNotificationTarget(
+            WorkspaceScope(
+              connectionId: connection.id,
+              connectionIdentity: connectionIdentity,
+              profileName: 'default',
+            ),
+            group.roomId,
+          ).toJson(),
+        ),
+        title: group.title,
+        state: group.state,
+      );
+    }
     for (final chat in notificationChats) {
+      if (chat.source == 'bot_room') {
+        continue;
+      }
       final String? state;
-      if (chat.status == ProfileTurnStatus.reconnecting && chat.busy) {
+      if (chat.runtime.reconnecting && chat.runtime.blocksTurnAdmission) {
         state = 'reconnecting';
-      } else if (chat.approval != null) {
+      } else if (chat.runtime.approval != null) {
         state = 'needs approval';
-      } else if (chat.pendingQuestion != null || chat.sensitivePrompt != null) {
+      } else if (chat.runtime.pendingQuestion != null ||
+          chat.runtime.secureInput != null) {
         state = 'needs input';
-      } else if (chat.busy ||
-          chat.commandRunning ||
-          chat.queueDraining ||
-          chat.subagents.any((s) => !s.isTerminal)) {
+      } else if (chat.runtime.blocksTurnAdmission ||
+          chat.runtime.commandRunning ||
+          chat.composer.observation.draining ||
+          chat._subagents.any((s) => !s.isTerminal)) {
         state = 'working';
       } else {
         state = null;
       }
-      if (state != null) yield (title: chat.title, state: state);
+      if (state != null) {
+        seen.add(chat.key);
+        yield (
+          key: chat.key,
+          payload: jsonEncode(chat.key.toJson()),
+          title: _monitoringChatTitle(chat),
+          state: state,
+        );
+      }
     }
     for (final entry in _backgroundChats.entries) {
       if (_hasLoadedNotificationChat(entry.key, entry.value.sessionId)) {
@@ -44,81 +76,141 @@ extension ProfileNotificationState on ProfileWorkspaceController {
           ? 'reconnecting'
           : 'working';
       final chat = _notificationSnapshot![entry.key]!.chat;
-      yield (title: chat.title, state: state);
+      if (chat.source == 'bot_room') {
+        continue;
+      } else {
+        if (!seen.add(chat.key)) continue;
+        yield (
+          key: chat.key,
+          payload: jsonEncode(chat.key.toJson()),
+          title: _monitoringChatTitle(chat),
+          state: state,
+        );
+      }
+    }
+    for (final entry in _detachedActivity.entries) {
+      final item = entry.value;
+      if (item.source == 'bot_room' ||
+          (_resources[entry.key.workspace]?.blocksSession(item.sessionId) ??
+              false) ||
+          !seen.add(entry.key)) {
+        continue;
+      }
+      yield (
+        key: entry.key,
+        payload: jsonEncode(entry.key.toJson()),
+        title: _monitoringTitle(entry.key, item.title, item.source),
+        state: _uncertainDetachedWork.contains(entry.key)
+            ? 'reconnecting'
+            : 'working',
+      );
     }
   }
 
+  String _monitoringChatTitle(ProfileChat chat) =>
+      _monitoringTitle(chat.key, chat.title, chat.source);
+
+  String _monitoringTitle(ProfileSessionKey key, String title, String? source) {
+    if (source == 'desktop' && title == 'Bot Chat') {
+      return _discovery?.named(key.workspace.profileName)?.label ??
+          key.workspace.profileName;
+    }
+    if (title.isEmpty || title == 'Hermes session') {
+      final sessionId = key.sessionId;
+      // Date-prefixed session IDs share their leading characters.
+      final shortId = sessionId.length <= 8
+          ? sessionId
+          : sessionId.substring(sessionId.length - 8);
+      return 'Hermes session · $shortId';
+    }
+    return title;
+  }
+
   Iterable<ProfileChat> get notificationChats =>
-      _resources.values.expand((r) => r.chats.values);
+      _resources.values.expand((r) => r._chats.values);
   ProfileChat? findNotificationChat(ProfileSessionKey key) =>
-      _resources[key.workspace]?.chats[key.sessionId];
+      _resources[key.workspace]?._chats[key.sessionId];
+
+  bool _isBotExchangeReply(ProfileChat chat) {
+    for (final message in chat.reading.messages.reversed) {
+      if (message['role'] != 'user' || isHiddenAnswerMessage(message)) continue;
+      final delivery = transcriptUserDelivery(message);
+      if (delivery?.kind == 'agent_message') return true;
+      // Completion notices and model changes do not replace the initiating
+      // message. A later human prompt does: its own answer must still alert.
+      if (transcriptNoticeKind(message) != null) continue;
+      return false;
+    }
+    return false;
+  }
 
   List<NotificationInput> _notificationInputs(ProfileChat chat) {
     final result = <NotificationInput>[];
-    for (final raw in chat.approvals.requests) {
-      final request = GatewayApprovalRequest.fromEventData(raw);
+    final observation = chat.runtime;
+    for (final issued in observation.approvals) {
+      final request = issued.request;
       result.add(
         NotificationInput(
-          focus: NotificationFocus('approval', raw['request_id'] as String),
+          focus: NotificationFocus('approval', issued.requestId),
           content: ChatNotificationContent.approval(
             request.command,
             request.description,
           ),
           choices: request.choices.map((v) => v.wireValue).toList(),
-          submitting: chat.approvalResponding && identical(raw, chat.approval),
-          error: chat.notificationActionErrorRequestId == raw['request_id']
-              ? chat.notificationActionError
+          submitting:
+              observation.approvalResponding &&
+              identical(issued.correlation, observation.approval?.correlation),
+          error: observation.decisionErrorRequestId == issued.requestId
+              ? observation.decisionError
               : null,
         ),
       );
     }
-    final question = chat.pendingQuestion;
-    if (question != null && question['request_id'] is String) {
-      final request = chat.clarification!;
-      final answers = request['answers'] is Map
-          ? request['answers'] as Map
-          : const {};
-      final count = request['questions'] is List
-          ? ProfileGateway.records(
-              request['questions'],
-            ).where((q) => !answers.containsKey(q['qid'])).length
-          : 1;
-      final choices = question['choices'] is List
-          ? (question['choices'] as List).whereType<String>().join(' · ')
-          : '';
+    final question = observation.pendingQuestion;
+    if (question != null) {
+      final choices = question.choices.join(' · ');
       result.add(
         NotificationInput(
-          focus: NotificationFocus(
-            'question',
-            question['request_id'] as String,
-          ),
+          focus: NotificationFocus('question', question.requestId),
           content: ChatNotificationContent.input(
-            '${question['question'] ?? ''}${choices.isEmpty ? '' : '\n$choices'}',
+            '${question.question}${choices.isEmpty ? '' : '\n$choices'}',
           ),
-          count: count,
+          count: observation.questions!.pendingCount,
         ),
       );
     }
-    final secure = chat.sensitivePrompt;
+    final secure = chat.runtime.secureInput;
     if (secure != null) {
       result.add(
         NotificationInput(
           focus: NotificationFocus('secure', secure.requestId),
           content: ChatNotificationContent.secureInput,
-          submitting: chat.sensitivePromptResponding,
+          submitting: chat.runtime.secureResponding,
         ),
       );
     }
     return result;
   }
 
-  void _publishNotificationInputs(ProfileChat chat, {bool? alert}) {
+  void _publishNotificationInputs(
+    ProfileChat chat, {
+    bool? alert,
+    bool confirmedSnapshot = false,
+  }) {
+    if (chat.source == 'bot_room') return;
     final inputs = _notificationInputs(chat);
     final fingerprint = jsonEncode(inputs.map((v) => v.toJson()).toList());
-    if (fingerprint == chat._notificationInputFingerprint) return;
+    final savedInputs = _notificationInputsFor?.call(chat.key) ?? const [];
+    final reconcileSaved =
+        confirmedSnapshot &&
+        savedInputs.isNotEmpty &&
+        fingerprint != jsonEncode(savedInputs.map((v) => v.toJson()).toList());
+    if (fingerprint == chat._notificationInputFingerprint && !reconcileSaved) {
+      return;
+    }
     final established = chat._notificationInputFingerprint != null;
     chat._notificationInputFingerprint = fingerprint;
-    if (!established && inputs.isEmpty) return;
+    if (!established && inputs.isEmpty && !reconcileSaved) return;
     final quiet = chat._notificationInputsQuiet;
     chat._notificationInputsQuiet = false;
     final callback = onNotificationInputs;
@@ -126,8 +218,8 @@ extension ProfileNotificationState on ProfileWorkspaceController {
       _trackNotificationWork(
         () => callback(
           ProfileInputNotification(
-            chat.key,
-            chat.title,
+            chat._key,
+            chat._title,
             connection.label,
             inputs,
             alert ?? (established && !quiet),
@@ -147,47 +239,79 @@ extension ProfileNotificationState on ProfileWorkspaceController {
     );
   }
 
-  void notificationAnswerVisible(ProfileChat chat, NotificationFocus target) {
+  void notificationAnswerRead(ProfileChat chat, NotificationFocus target) {
     if (_closed ||
         !visible ||
-        current?.chat != chat ||
-        chat.opening ||
-        chat.offlineSnapshot ||
-        chat.historyLoading ||
-        chat.historyError != null ||
-        chat.notificationReadTarget?.identity != target.identity) {
+        _current?.chat != chat ||
+        chat.runtime.opening ||
+        chat.runtime.offline ||
+        chat.reading.historyLoading ||
+        chat.reading.historyError != null ||
+        chat.reading.notificationReadTarget?.identity != target.identity) {
       return;
     }
-    chat.notificationReadTarget = null;
+    if (!chat.reading.acknowledgeNotificationRead(target)) return;
     final callback = onNotificationRead;
     if (callback != null) {
-      _trackNotificationWork(() => callback(chat.key, target.identity));
+      _trackNotificationWork(() => callback(chat._key, target.identity));
     }
+  }
+
+  /// The application captured the original scoped target before navigation.
+  void revealNotification(ProfileSessionKey key, NotificationFocus? focus) {
+    if (_closed || !owns(key)) return;
+    final chat = findNotificationChat(key);
+    if (chat == null) return;
+    chat.reading.revealNotification(focus);
+    chat.reading.restoreNotificationReadTarget(
+      notificationResultFor?.call(key),
+    );
   }
 
   /// Reconcile only notification-bearing chats. Caller owns watcher cadence.
   Future<void> reconcileNotificationRequests(
     Set<ProfileSessionKey> keys,
   ) async {
+    final source = _current;
+    if (source != null) unawaited(_refreshDetachedWork(source));
     Future<Map<String, dynamic>>? activeSnapshot;
     for (final key in keys) {
       if (_closed) return;
-      final chat = findNotificationChat(key);
-      if (chat == null ||
-          chat.offlineSnapshot ||
-          chat.opening ||
-          chat.status == ProfileTurnStatus.reconnecting ||
-          chat.approvalResponding ||
-          chat.sensitivePromptResponding) {
+      if (!owns(key)) continue;
+      final savedInputs = _notificationInputsFor?.call(key) ?? const [];
+      var chat = findNotificationChat(key);
+      if (chat != null &&
+          (chat.runtime.opening ||
+              chat.runtime.reconnecting ||
+              chat.runtime.approvalResponding ||
+              chat.runtime.secureResponding)) {
         continue;
       }
-      if (chat.approval == null &&
-          chat.clarification == null &&
-          chat.sensitivePrompt == null) {
+      if (savedInputs.isNotEmpty && (chat == null || chat.runtime.offline)) {
+        try {
+          chat = await loadNotificationApproval(key);
+        } catch (_) {
+          // An unavailable saved target does not establish remote resolution.
+          continue;
+        }
+      }
+      if (chat == null ||
+          chat.runtime.offline ||
+          chat.runtime.opening ||
+          chat.runtime.reconnecting ||
+          chat.runtime.approvalResponding ||
+          chat.runtime.secureResponding) {
+        continue;
+      }
+      if (chat.runtime.approval == null &&
+          chat.runtime.questions == null &&
+          chat.runtime.secureInput == null &&
+          _notificationInputsFor?.call(key).isNotEmpty != true) {
         continue;
       }
       final resource = _owned(chat);
-      final runtime = chat.runtimeId;
+      final runtime = chat.runtime.runtimeId;
+      final read = _captureResume(resource, chat, startRead: false);
       final before = jsonEncode(
         _notificationInputs(chat).map((v) => v.toJson()).toList(),
       );
@@ -202,12 +326,24 @@ extension ProfileNotificationState on ProfileWorkspaceController {
         )) {
           continue;
         }
-        final snapshot = await resource.gateway.call('session.events.since', {
-          'session_id': runtime,
-          'last_seen': _notificationReplayCursors[runtime] ?? 0,
-        });
+        if (resource.gateway.canonical.session(runtime) == null) {
+          await _recoverCanonicalSnapshot(chat);
+          continue;
+        }
+        final cursor = resource.gateway.canonical.replay(runtime);
+        final snapshot = await resource.gateway.call(
+          'session.events.since',
+          cursor,
+        );
+        if (snapshot['snapshot_required'] == true ||
+            snapshot['truncated'] == true ||
+            snapshot['replay_epoch'] != cursor['replay_epoch']) {
+          await _recoverCanonicalSnapshot(chat);
+          continue;
+        }
         if (_closed ||
-            chat.runtimeId != runtime ||
+            !read.current() ||
+            chat.runtime.runtimeId != runtime ||
             snapshot['open_requests'] is! List ||
             before !=
                 jsonEncode(
@@ -215,40 +351,16 @@ extension ProfileNotificationState on ProfileWorkspaceController {
                 )) {
           continue;
         }
-        final sequence = snapshot['latest_seq'];
-        if (sequence is int && sequence >= 0) {
-          _notificationReplayCursors[runtime] = sequence;
+        for (final row in ProfileGateway.records(snapshot['events'])) {
+          final event = WsClient.parseGatewayEvent(row);
+          if (event != null && event.sessionId == runtime) {
+            _event(resource, event);
+          }
         }
-        final open = ProfileGateway.records(snapshot['open_requests']);
-        Map<String, dynamic>? find(String method, String id) => open
-            .where(
-              (r) =>
-                  r['method'] == method &&
-                  r['id'] == id &&
-                  (r['params'] as Map?)?['session_id'] == runtime,
-            )
-            .firstOrNull;
-        final clarification = chat.clarification;
-        if (clarification != null) {
-          final found = find('clarify', clarification['request_id'] as String);
-          chat.clarification = found == null
-              ? null
-              : {
-                  ...Map<String, dynamic>.from(found['params'] as Map),
-                  'request_id': found['id'],
-                };
-        }
-        final secure = chat.sensitivePrompt;
-        if (secure != null &&
-            !open.any(
-              (r) =>
-                  r['id'] == secure.requestId &&
-                  (r['params'] as Map?)?['session_id'] == runtime,
-            )) {
-          chat.sensitivePrompt = null;
-        }
+        if (resource.gateway.canonical.needsSnapshot(runtime)) continue;
+        chat._runtime.reconcileOpenRequests(snapshot['open_requests']);
         await _refreshApprovals(chat, notifyNew: true);
-        _updateApprovalStatus(chat);
+        _publishNotificationInputs(chat, confirmedSnapshot: true);
         _changed();
       } catch (_) {
         // Failure/absence of a valid snapshot leaves the notice and request intact.

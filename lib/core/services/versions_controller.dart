@@ -1,28 +1,31 @@
 import 'package:flutter/foundation.dart';
 
-import '../models/connection.dart';
+import 'connection_access.dart';
 import '../models/hermes_profile.dart';
 import 'backend_update_controller.dart';
 import 'profile_gateway.dart';
 
 typedef VersionsControllerFactory =
-    VersionsController Function(SavedConnection? connection);
+    VersionsController Function(ConnectionAccess? access);
 
 /// Installed version and updates for one captured server connection.
 class VersionsController extends ChangeNotifier {
-  VersionsController({ProfileGateway? gateway})
-    : server = gateway == null ? null : BackendUpdateController(gateway) {
+  VersionsController({ProfileGateway? gateway, bool cloudManaged = false})
+    : server = gateway == null
+          ? null
+          : BackendUpdateController(gateway, cloudManaged: cloudManaged) {
     server?.addListener(notifyListeners);
   }
 
-  factory VersionsController.forConnection(SavedConnection? connection) =>
+  factory VersionsController.forConnection(ConnectionAccess? access) =>
       VersionsController(
-        gateway: connection == null
+        cloudManaged: access?.connection.cloudManagedUpdates == true,
+        gateway: access == null
             ? null
             : ProfileGateway.forConnection(
-                connection,
+                access,
                 WorkspaceScope(
-                  connectionId: connection.id,
+                  connectionId: access.connection.id,
                   profileName: 'default',
                 ),
               ),

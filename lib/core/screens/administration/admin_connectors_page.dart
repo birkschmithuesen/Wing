@@ -1,450 +1,514 @@
+import '../../widgets/selection_viewport.dart';
+import '../../widgets/studio_form_actions.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
+import '../../models/profile_connectors.dart';
+import '../../services/profile_connectors_session.dart';
+import '../../services/mcp_oauth.dart';
+import '../../services/mcp_setup.dart';
 import '../../widgets/read_recovery.dart';
 import '../../widgets/studio_action_label.dart';
-import 'dart:async';
-import 'package:flutter/material.dart';
+import '../../widgets/studio_error.dart';
 import '../../widgets/compact_switch.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../services/administration_repository.dart';
-import '../../services/mcp_error.dart';
-import '../../services/mcp_oauth.dart';
-import '../../services/ws_client.dart';
 import '../../theme/wing_theme.dart';
 import 'admin_widgets.dart';
-import 'admin_mcp_setup_page.dart';
 
 class AdminConnectorsPage extends StatefulWidget {
-  final ProfileAdministration profile;
-  const AdminConnectorsPage({super.key, required this.profile});
+  const AdminConnectorsPage({
+    super.key,
+    required this.createSession,
+    required this.pushDetail,
+    required this.pushSetup,
+    this.failedConnectorNames = const {},
+  });
+  final ProfileConnectorsSession Function() createSession;
+  final Set<String> failedConnectorNames;
+  final Future<void> Function(
+    BuildContext,
+    String,
+    ConnectorDetailRoute Function(String),
+  )
+  pushDetail;
+  final Future<(String, ProfileConnector)?> Function(
+    BuildContext,
+    McpSetupSession Function(String),
+  )
+  pushSetup;
   @override
   State<AdminConnectorsPage> createState() => _AdminConnectorsPageState();
 }
 
 class _AdminConnectorsPageState extends State<AdminConnectorsPage> {
-  late final _profile = widget.profile;
-  bool _busy = false;
-  Future<void> _toggle(
-    Map<String, dynamic> row,
-    bool value,
-    VoidCallback refresh,
-  ) async {
-    setState(() => _busy = true);
-    try {
-      final name = row['name'] as String;
-      await _profile.write(
-        'PUT',
-        'mcp/servers/${Uri.encodeComponent(name)}/enabled',
-        {'enabled': value},
+  late final _session = widget.createSession();
+  @override
+  void initState() {
+    super.initState();
+    _session.refresh();
+  }
+
+  @override
+  void dispose() {
+    _session.dispose();
+    super.dispose();
+  }
+
+  Future<void> _open(
+    String name, {
+    required String profileName,
+    required bool signInOnOpen,
+  }) async {
+    await widget.pushDetail(
+      context,
+      profileName,
+      (selected) => _session.detailForProfile(
+        name,
+        profileName: selected,
+        signInOnOpen: signInOnOpen && selected == profileName,
+      ),
+    );
+    await _session.refresh();
+  }
+
+  Future<void> _add() async {
+    final created = await widget.pushSetup(context, _session.setupForProfile);
+    await _session.refresh();
+    if (mounted && created != null) {
+      await _open(
+        created.$2.name,
+        profileName: created.$1,
+        signInOnOpen: created.$2.canSignIn,
       );
-      final rows = administrationRows(
-        (await _profile.read('mcp/servers'))['servers'],
-      );
-      if (rows.where((r) => r['name'] == name).firstOrNull?['enabled'] !=
-          value) {
-        throw const AdministrationFailure(
-          'Connector setting could not be confirmed.',
-        );
-      }
-      refresh();
-      if (mounted) {
-        adminMessage(
-          context,
-          'Saved. Reconnect MCP tools to apply this change to existing chats.',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
     }
-    if (mounted) setState(() => _busy = false);
+  }
+
+  Future<void> _toggle(ProfileConnector row, bool value) async {
+    await _session.toggle(row, value);
+    if (!mounted) return;
+    final state = _session.state;
+    if (state.error == null && state.notice != null) {
+      adminMessage(context, state.notice!);
+    }
   }
 
   @override
   Widget build(BuildContext context) => AdminPage(
     title: 'MCP connectors',
-    scope: _profile.label,
-    child: AdminLoad(
-      load: () => _profile.read('mcp/servers'),
-      builder: (context, data, refresh) {
-        final rows = administrationRows(data['servers']);
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const AdminNotice(
-              'Manage the external tools available to this profile.',
-            ),
-            FilledButton.icon(
-              onPressed: _busy
-                  ? null
-                  : () async {
-                      final row = await Navigator.of(context)
-                          .push<Map<String, dynamic>>(
-                            MaterialPageRoute(
-                              builder: (_) =>
-                                  AdminMcpSetupPage(profile: _profile),
-                            ),
-                          );
-                      refresh();
-                      if (context.mounted && row != null) {
-                        await adminPushProfile(
-                          context,
-                          _profile,
-                          (context, profile) => AdminConnectorDetail(
-                            profile: profile,
-                            name: row['name'] as String,
-                            signInOnOpen:
-                                profile.scope == _profile.scope &&
-                                row['auth'] == 'oauth',
-                          ),
-                        );
-                        refresh();
-                      }
-                    },
-              icon: const Icon(Icons.add),
-              label: const Text('Add connector'),
-            ),
-            TextButton(
-              onPressed: _busy ? null : refresh,
-              child: const Text('Refresh list'),
-            ),
-            if (rows.isEmpty)
-              const AdminNotice(
-                'No MCP connectors configured for this profile.',
-              ),
-            AdminGroup(
-              children: [
-                for (final row in rows)
-                  ListTile(
-                    minTileHeight: 56,
-                    minVerticalPadding: 4,
-                    horizontalTitleGap: 12,
-                    title: Text('${row['name']}'),
-                    subtitle: Text(
-                      '${row['transport'] ?? 'Configured connector'}',
-                    ),
-                    trailing: CompactSwitch(
-                      semanticLabel: 'Enable ${row['name']}',
-                      value: row['enabled'] != false,
-                      onChanged: _busy ? null : (v) => _toggle(row, v, refresh),
-                    ),
-                    onTap: () async {
-                      await adminPushProfile(
-                        context,
-                        _profile,
-                        (context, profile) => AdminConnectorDetail(
-                          profile: profile,
-                          name: row['name'] as String,
+    scope: _session.scopeLabel,
+    child: ReadRecovery(
+      shouldRetry: () => _session.canRecoverRead,
+      retry: _session.refresh,
+      child: ListenableBuilder(
+        listenable: _session,
+        builder: (context, _) {
+          final state = _session.state;
+          return StudioPageLoading(
+            active:
+                state.phase == ConnectorPhase.reading ||
+                state.phase == ConnectorPhase.reconnecting,
+            label: state.phase == ConnectorPhase.reconnecting
+                ? 'Reconnecting MCP tools'
+                : 'Loading connectors',
+            child: LayoutBuilder(
+              builder: (context, constraints) => Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (state.error case final error?)
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight:
+                            constraints.maxHeight * (state.checked ? .45 : 1),
+                      ),
+                      child: SingleChildScrollView(
+                        primary: false,
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: AdminNotice.error(
+                          error,
+                          retry:
+                              state.busy ||
+                                  state.failureScope !=
+                                      ConnectorFailureScope.read
+                              ? null
+                              : _session.refresh,
                         ),
-                      );
-                      refresh();
-                    },
-                  ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            const Divider(height: 1),
-            const SizedBox(height: 16),
-            Text(
-              'Apply connector changes or retry connections for all profiles on this server.',
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  if (state.checked)
+                    Expanded(
+                      child: ListView(
+                        padding: const EdgeInsets.all(16),
+                        children: [
+                          const AdminNotice(
+                            'Manage the external tools available to this profile.',
+                          ),
+                          if (state.runtimeError case final error?)
+                            AdminNotice.error(error),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              StudioButtonPress(
+                                child: IconButton.filled(
+                                  tooltip: 'Add connector',
+                                  onPressed: state.canMutate ? _add : null,
+                                  icon: const Icon(Icons.add),
+                                ),
+                              ),
+                              StudioButtonPress(
+                                child: IconButton(
+                                  tooltip: 'Refresh connectors',
+                                  onPressed: state.busy
+                                      ? null
+                                      : _session.refresh,
+                                  icon: const Icon(Icons.refresh),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (state.connectors.isEmpty)
+                            const AdminNotice(
+                              'No MCP connectors configured for this profile.',
+                            ),
+                          AdminGroup(
+                            children: [
+                              for (final row in state.connectors)
+                                _connectorRow(row, state),
+                            ],
+                          ),
+                          const SizedBox(height: 24),
+                          const Divider(height: 1),
+                          const SizedBox(height: 16),
+                          Text(
+                            'Apply connector changes or retry connections for all profiles on this server.',
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: Theme.of(
+                                    context,
+                                  ).colorScheme.onSurfaceVariant,
+                                ),
+                          ),
+                          const SizedBox(height: 12),
+                          AdminReloadConnectorsButton(session: _session),
+                        ],
+                      ),
+                    ),
+                ],
               ),
             ),
-            const SizedBox(height: 12),
-            AdminReloadConnectorsButton(server: _profile.server),
-          ],
-        );
-      },
+          );
+        },
+      ),
     ),
   );
+
+  Widget _connectorRow(ProfileConnector row, ProfileConnectorsState state) {
+    final failed = widget.failedConnectorNames.contains(row.name);
+    final tile = StudioButtonPress(
+      child: ListTile(
+        minTileHeight: 56,
+        minVerticalPadding: failed ? 12 : 4,
+        horizontalTitleGap: 12,
+        title: failed
+            ? StudioError(
+                row.name,
+                detail: 'Failed health check · ${row.transport}',
+                framed: false,
+              )
+            : Text(row.name),
+        subtitle: failed
+            ? null
+            : Text(
+                [
+                  row.transport,
+                  if (state.runtime?.forConnector(row) case final runtime?)
+                    'Cached: ${runtime.label}',
+                ].join(' · '),
+              ),
+        trailing: CompactSwitch(
+          semanticLabel: 'Enable ${row.name}',
+          value: row.enabled,
+          onChanged: state.canMutate && row.canConfigure
+              ? (value) => _toggle(row, value)
+              : null,
+        ),
+        onTap: state.canMutate
+            ? () => _open(
+                row.name,
+                profileName: _session.profileName,
+                signInOnOpen: false,
+              )
+            : null,
+      ),
+    );
+    return failed ? StudioErrorFrame(child: tile) : tile;
+  }
 }
 
 class AdminConnectorDetail extends StatefulWidget {
-  final ProfileAdministration profile;
-  final String name;
-  final bool signInOnOpen;
-  const AdminConnectorDetail({
-    super.key,
-    required this.profile,
-    required this.name,
-    this.signInOnOpen = false,
-  });
+  const AdminConnectorDetail({super.key, required this.createRoute});
+  final ConnectorDetailRoute Function() createRoute;
   @override
   State<AdminConnectorDetail> createState() => _AdminConnectorDetailState();
 }
 
 class _AdminConnectorDetailState extends State<AdminConnectorDetail> {
-  late final _profile = widget.profile;
-  late final _name = widget.name;
-  Map<String, dynamic>? _configuration;
-  bool _loading = true;
-  bool _busy = false;
-  String? _error;
-  Map<String, dynamic>? _probe;
-  String? _testFailure;
-  bool _testing = false;
+  late final _session = _route.session;
+  late final _route = widget.createRoute();
+  bool _didAutoSignIn = false;
+  String get _name => _route.name;
+  bool get _loading => _session.state.phase == ConnectorPhase.reading;
+  bool get _busy => _session.state.busy;
+  bool get _testing => _session.state.phase == ConnectorPhase.testing;
+  ProfileConnector? get _configuration => _session.connector(_route);
+  ConnectorProbe? get _probe => _session.state.probe;
+  String? get _error => _session.state.error;
+  String? get _testFailure => _probe?.failure;
   @override
   void initState() {
     super.initState();
-    _load();
+    final route = _route;
+    final session = route.session;
+    // The inventory may also be observed by the list beneath this route.
+    // Begin its initial refresh after child mounting has finished.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          !identical(route, _route) ||
+          !identical(session, _session)) {
+        return;
+      }
+      _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _route.dispose();
+    super.dispose();
   }
 
   Future<void> _load() async {
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      final data = await _profile.read('mcp/servers');
-      if (!mounted) return;
-      _configuration = administrationRows(
-        data['servers'],
-      ).where((row) => row['name'] == _name).firstOrNull;
-    } catch (error) {
-      if (!mounted) return;
-      _error = administrationError(error);
-    }
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (widget.signInOnOpen && _configuration?['auth'] == 'oauth') {
+    await _session.refresh();
+    if (mounted &&
+        !_didAutoSignIn &&
+        _route.signInOnOpen &&
+        _session.canSignIn(_route)) {
+      _didAutoSignIn = true;
       await _signIn(autoStart: true);
     }
   }
 
   Future<void> _signIn({bool autoStart = false}) async {
-    await adminPushProfile(
+    await adminPush(
       context,
-      _profile,
-      (context, profile) =>
-          AdminMcpSignIn(profile: profile, name: _name, autoStart: autoStart),
+      (_) => AdminMcpSignIn(
+        createFlow: () =>
+            _session.createSignIn(_route, bindLoopback: McpLoopback.bind),
+        autoStart: autoStart,
+      ),
     );
-    if (mounted) {
-      setState(() {
-        _error = null;
-        _probe = null;
-        _testFailure = null;
-      });
-    }
+    _session.returnedFromSignIn(_route);
   }
 
-  Future<void> _test() async {
-    if (!await adminConfirm(
+  Future<void> _test() => _session.test(
+    _route,
+    () => adminConfirm(
       context,
       'Test $_name?',
       'This connects to the configured service or starts its server process to inspect capabilities.',
       action: 'Test',
-    )) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _testing = true;
-      _testFailure = null;
-      _error = null;
-      _probe = null;
-    });
-    try {
-      final result = await _profile.write(
-        'POST',
-        'mcp/servers/${Uri.encodeComponent(_name)}/test',
-      );
-      if (result['ok'] != true) {
-        throw const AdministrationFailure('Connector test failed.');
-      }
-      if (mounted) setState(() => _probe = result);
-    } catch (e) {
-      if (mounted) {
-        setState(
-          () => _testFailure = mcpErrorMessage(
-            e is AdministrationFailure ? e.serverError : null,
-            summary: 'Connection test failed.',
-          ),
-        );
-      }
-    }
-    if (mounted) {
-      setState(() {
-        _busy = false;
-        _testing = false;
-      });
-    }
-  }
 
+      actionIcon: Icons.network_check,
+      destructive: false,
+    ),
+  );
   Future<void> _remove() async {
-    if (!await adminConfirm(
-      context,
-      'Remove $_name?',
-      'Remove this connector configuration from ${_profile.name}. Existing sessions may retain their loaded tools.',
-      action: 'Remove',
-    )) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await _profile.write(
-        'DELETE',
-        'mcp/servers/${Uri.encodeComponent(_name)}',
-      );
-      final rows = administrationRows(
-        (await _profile.read('mcp/servers'))['servers'],
-      );
-      if (rows.any((r) => r['name'] == _name)) {
-        throw const AdministrationFailure('Removal could not be confirmed.');
-      }
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _error = administrationError(e, writing: true));
-      }
-    }
-    if (mounted) setState(() => _busy = false);
+    final removed = await _session.remove(
+      _route,
+      () => adminConfirm(
+        context,
+        'Remove $_name?',
+        'Remove this connector configuration from ${_session.profileName}. Existing sessions may retain their loaded tools.',
+        action: 'Remove',
+
+        actionIcon: Icons.delete_outline,
+        destructive: true,
+      ),
+    );
+    if (mounted && removed) Navigator.pop(context);
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_loading || _configuration == null) {
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _session,
+    builder: (context, _) {
+      if (_configuration == null) {
+        return AdminPage(
+          title: _name,
+          scope: _session.scopeLabel,
+          child: _loading
+              ? StudioPageLoading.waiting(label: 'Loading connectors')
+              : ListView(
+                  padding: const EdgeInsets.all(16),
+                  children: [
+                    if (_error case final error?)
+                      AdminNotice.error(error)
+                    else
+                      const AdminNotice(
+                        'This connector is not available in this profile.',
+                      ),
+                    StudioButtonPress(
+                      child: TextButton(
+                        onPressed: _load,
+                        child: const Text('Refresh'),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      }
+
+      final tokens = WingTokens.of(context);
+      final tools = _probe?.tools ?? const <ConnectorTool>[];
+      final connected = _probe?.connected == true;
       return AdminPage(
         title: _name,
-        scope: _profile.label,
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  AdminNotice(
-                    _error ??
-                        'This connector is not available in this profile.',
-                  ),
-                  TextButton(onPressed: _load, child: const Text('Refresh')),
-                ],
-              ),
-      );
-    }
-
-    final tokens =
-        Theme.of(context).extension<WingTokens>() ??
-        (Theme.of(context).brightness == Brightness.dark
-            ? WingTokens.dark()
-            : WingTokens.light());
-    final tools = _probe == null
-        ? <Map<String, dynamic>>[]
-        : administrationRows(_probe!['tools']);
-    final status = _testing
-        ? 'Testing connection…'
-        : _testFailure != null
-        ? 'Connection failed'
-        : _probe != null
-        ? 'Connected'
-        : 'Not tested';
-    final color = _testFailure != null
-        ? tokens.danger
-        : _probe != null
-        ? tokens.success
-        : tokens.muted;
-    return AdminPage(
-      title: _name,
-      scope: _profile.label,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Semantics(
-            liveRegion: true,
-            child: Padding(
-              padding: const EdgeInsets.only(bottom: 16),
-              child: Row(
-                children: [
-                  if (_testing)
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    Icon(
-                      _testFailure != null
-                          ? Icons.close
-                          : _probe != null
-                          ? Icons.check
-                          : Icons.horizontal_rule,
-                      size: 20,
-                      color: color,
-                    ),
-                  const SizedBox(width: 12),
-                  Expanded(child: Text(status)),
-                ],
-              ),
-            ),
-          ),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              FilledButton(
-                onPressed: _busy ? null : _test,
-                child: const Text('Test connection'),
-              ),
-              if (_configuration?['auth'] == 'oauth')
-                OutlinedButton(
-                  onPressed: _busy ? null : _signIn,
-                  child: const Text('Sign in'),
+        scope: _session.scopeLabel,
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            if (_configuration case final configuration?) ...[
+              if (_session.state.runtime?.forConnector(configuration)
+                  case final runtime?)
+                AdminNotice(
+                  'Cached runtime: ${runtime.label}${runtime.tools > 0 ? ' · ${runtime.tools} tools' : ''}. This is separate from Test connection.',
                 ),
+              if (_session.state.runtimeError case final error?)
+                AdminNotice.error(error),
             ],
-          ),
-          if (_testFailure != null)
-            ExpansionTile(
-              key: ValueKey(_testFailure),
-              tilePadding: EdgeInsets.zero,
-              title: const Text('Failure details'),
-              children: [AdminNotice.error(_testFailure!)],
-            ),
-          if (_probe != null)
-            ExpansionTile(
-              key: ObjectKey(_probe),
-              tilePadding: EdgeInsets.zero,
-              title: Text('Available tools (${tools.length})'),
+            if (_testFailure case final failure?)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 16),
+                child: StudioErrorFrame(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: WingSpacing.md,
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        const Padding(
+                          padding: EdgeInsets.only(top: WingSpacing.md),
+                          child: StudioError(
+                            'Connection failed',
+                            framed: false,
+                          ),
+                        ),
+                        ExpansionTile(
+                          key: ValueKey(failure),
+                          tilePadding: EdgeInsets.zero,
+                          title: const Text('Failure details'),
+                          expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                          childrenPadding: const EdgeInsets.only(
+                            bottom: WingSpacing.md,
+                          ),
+                          children: [Text(failure)],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              )
+            else
+              Semantics(
+                liveRegion: true,
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: Row(
+                    children: [
+                      if (_testing)
+                        const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            semanticsLabel: 'Testing connection',
+                          ),
+                        )
+                      else
+                        Icon(
+                          connected ? Icons.check : Icons.horizontal_rule,
+                          size: 20,
+                          color: connected ? tokens.success : tokens.muted,
+                        ),
+                      if (!_testing) ...[
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Text(connected ? 'Connected' : 'Not tested'),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                if (tools.isEmpty)
-                  const AdminNotice('This connection returned no tools.'),
-                for (final tool in tools)
-                  ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text('${tool['name']}'),
-                    subtitle: '${tool['description'] ?? ''}'.isEmpty
-                        ? null
-                        : Text('${tool['description']}'),
+                StudioButtonPress(
+                  child: FilledButton(
+                    onPressed: _session.state.canMutate ? _test : null,
+                    child: const Text('Test connection'),
+                  ),
+                ),
+                if (_configuration?.canSignIn == true)
+                  StudioButtonPress(
+                    child: OutlinedButton(
+                      onPressed: _session.canSignIn(_route) ? _signIn : null,
+                      child: const Text('Sign in'),
+                    ),
                   ),
               ],
             ),
-          if (_error != null) AdminNotice.error(_error!),
-          const SizedBox(height: 16),
-          TextButton(
-            onPressed: _busy ? null : _remove,
-            child: const Text('Remove connector'),
-          ),
-        ],
-      ),
-    );
-  }
+            if (_probe?.connected == true)
+              ExpansionTile(
+                key: ObjectKey(_probe),
+                tilePadding: EdgeInsets.zero,
+                title: Text('Available tools (${tools.length})'),
+                children: [
+                  if (tools.isEmpty)
+                    const AdminNotice('This connection returned no tools.'),
+                  for (final tool in tools)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(tool.name),
+                      subtitle: tool.description.isEmpty
+                          ? null
+                          : Text(tool.description),
+                    ),
+                ],
+              ),
+            if (_error != null)
+              AdminNotice.error(_error!, retry: _busy ? null : _load),
+            const SizedBox(height: 16),
+            StudioButtonPress(
+              child: TextButton(
+                onPressed: _session.canConfigure(_route) ? _remove : null,
+                child: const Text('Remove connector'),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
 }
 
 class AdminMcpSignIn extends StatefulWidget {
-  final ProfileAdministration profile;
-  final String name;
-  final McpLoopbackFactory bindLoopback;
+  final McpOAuth Function() createFlow;
   final bool autoStart;
   final Future<bool> Function(Uri) openBrowser;
   const AdminMcpSignIn({
     super.key,
-    required this.profile,
-    required this.name,
-    this.bindLoopback = McpLoopback.bind,
+    required this.createFlow,
     this.autoStart = false,
     this.openBrowser = _launchMcpBrowser,
   });
@@ -453,11 +517,7 @@ class AdminMcpSignIn extends StatefulWidget {
 }
 
 class _AdminMcpSignInState extends State<AdminMcpSignIn> {
-  late final _flow = McpOAuth(
-    profile: widget.profile,
-    name: widget.name,
-    bindLoopback: widget.bindLoopback,
-  );
+  late final _flow = widget.createFlow();
   final _callback = TextEditingController();
   bool _leave = false;
   String? _browserError;
@@ -537,7 +597,7 @@ class _AdminMcpSignInState extends State<AdminMcpSignIn> {
     },
     child: AdminPage(
       title: 'Sign in to ${_flow.name}',
-      scope: _flow.profile.label,
+      scope: _flow.scopeLabel,
       child: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -545,9 +605,11 @@ class _AdminMcpSignInState extends State<AdminMcpSignIn> {
             const AdminNotice(
               'Sign in through your browser. Your account access is saved on Hermes for this profile.',
             ),
-            FilledButton(
-              onPressed: _flow.busy ? null : _start,
-              child: StudioActionLabel('Start sign-in', busy: _flow.busy),
+            StudioButtonPress(
+              child: FilledButton(
+                onPressed: _flow.busy ? null : _start,
+                child: StudioActionLabel('Start sign-in', busy: _flow.busy),
+              ),
             ),
           ],
           if (_flow.error != null) AdminNotice.error(_flow.error!),
@@ -558,39 +620,50 @@ class _AdminMcpSignInState extends State<AdminMcpSignIn> {
             ),
           if (_flow.pending) ...[
             if (_flow.authUrl != null && !_flow.callbackAccepted) ...[
-              FilledButton(
-                onPressed: _flow.busy ? null : _openBrowser,
-                child: const Text('Open sign-in page'),
+              StudioButtonPress(
+                child: FilledButton(
+                  onPressed: _flow.busy ? null : _openBrowser,
+                  child: const Text('Open sign-in page'),
+                ),
               ),
               AdminNotice(
                 _flow.manualOnly
                     ? 'This connector uses its registered callback address. After approving access, copy the full address from your browser and paste it below, even if the page does not load.'
                     : 'Return to Wing after approval. If your browser stops at a localhost page, paste its full address below.',
               ),
-              TextField(
-                controller: _callback,
-                enabled: !_flow.busy,
-                obscureText: true,
-                autocorrect: false,
-                enableSuggestions: false,
-                keyboardType: TextInputType.url,
-                textInputAction: TextInputAction.done,
-                decoration: const InputDecoration(labelText: 'Callback URL'),
-                onSubmitted: (_) => _submit(),
+              viewportSelection(
+                TextField(
+                  controller: _callback,
+                  enabled: !_flow.busy,
+                  obscureText: true,
+                  autocorrect: false,
+                  enableSuggestions: false,
+                  keyboardType: TextInputType.url,
+                  textInputAction: TextInputAction.done,
+                  decoration: const InputDecoration(labelText: 'Callback URL'),
+                  onSubmitted: (_) => _submit(),
+                ),
               ),
               const SizedBox(height: 12),
-              OutlinedButton(
-                onPressed: _flow.busy ? null : _submit,
-                child: StudioActionLabel('Complete sign-in', busy: _flow.busy),
+              StudioButtonPress(
+                child: OutlinedButton(
+                  onPressed: _flow.busy ? null : _submit,
+                  child: StudioActionLabel(
+                    'Complete sign-in',
+                    busy: _flow.busy,
+                  ),
+                ),
               ),
             ],
             if (_flow.callbackAccepted)
               const AdminNotice(
                 'Authorization received. Waiting for Hermes to finish sign-in.',
               ),
-            TextButton(
-              onPressed: _flow.busy ? null : _flow.poll,
-              child: const Text('Check status'),
+            StudioButtonPress(
+              child: TextButton(
+                onPressed: _flow.busy ? null : _flow.poll,
+                child: const Text('Check status'),
+              ),
             ),
           ],
           if (!_flow.pending && _flow.status != 'approved')
@@ -603,18 +676,19 @@ class _AdminMcpSignInState extends State<AdminMcpSignIn> {
                 const AdminNotice(
                   'Device-code sign-in and providers requiring a client metadata document need a terminal on your Hermes server. Run the command for this profile, then return here to test the connector.',
                 ),
-                SelectableText(
-                  'hermes --profile ${_shellQuote(_flow.profile.name)} mcp login ${_shellQuote(_flow.name)}',
-                ),
+                viewportSelection(SelectableText(_flow.terminalCommand)),
                 const SizedBox(height: 12),
                 const AdminNotice(
                   'For device-code sign-in, add --flow device. The provider must support it.',
                 ),
               ],
             ),
-          TextButton(
-            onPressed: _flow.busy ? null : _close,
-            child: Text(_flow.pending ? 'Cancel sign-in' : 'Close'),
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: _flow.pending ? 'Cancel sign-in' : 'Close',
+              onPressed: _flow.busy ? null : _close,
+              icon: const Icon(Icons.close),
+            ),
           ),
         ],
       ),
@@ -622,107 +696,13 @@ class _AdminMcpSignInState extends State<AdminMcpSignIn> {
   );
 }
 
-class AdminPluginsPage extends StatefulWidget {
-  final ProfileAdministration profile;
-  const AdminPluginsPage({super.key, required this.profile});
-  @override
-  State<AdminPluginsPage> createState() => _AdminPluginsPageState();
-}
-
-class _AdminPluginsPageState extends State<AdminPluginsPage> {
-  bool _busy = false;
-  Future<void> _toggle(
-    Map<String, dynamic> row,
-    bool enabled,
-    VoidCallback refresh,
-  ) async {
-    setState(() => _busy = true);
-    try {
-      await widget.profile.rpc('plugins.manage', {
-        'action': 'toggle',
-        'key': row['key'],
-        'enable': enabled,
-      }, true);
-      final rows = administrationRows(
-        (await widget.profile.rpc('plugins.manage', {
-          'action': 'list',
-        }))['plugins'],
-      );
-      final after = rows.where((r) => r['key'] == row['key']).firstOrNull;
-      if (after == null || (after['status'] == 'enabled') != enabled) {
-        throw const AdministrationFailure(
-          'Plugin setting could not be confirmed.',
-        );
-      }
-      refresh();
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
-    }
-    if (mounted) setState(() => _busy = false);
-  }
-
-  @override
-  Widget build(BuildContext context) => AdminPage(
-    title: 'Agent plugins',
-    scope: widget.profile.label,
-    child: AdminLoad(
-      load: () => widget.profile.rpc('plugins.manage', {'action': 'list'}),
-      builder: (context, data, refresh) {
-        final rows = administrationRows(data['plugins']);
-        return ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            const AdminNotice(
-              'Backend capabilities for this profile. Desktop plugin screens are not Android screens.',
-            ),
-            if (rows.isEmpty) const AdminNotice('No agent plugins reported.'),
-            AdminGroup(
-              children: [
-                for (final row in rows)
-                  CompactSwitchListTile(
-                    title: Text('${row['name']}'),
-                    subtitle: Text(
-                      '${row['source']} · ${row['status']}\n${row['description'] ?? ''}',
-                    ),
-                    value: row['status'] == 'enabled',
-                    onChanged: _busy ? null : (v) => _toggle(row, v, refresh),
-                  ),
-              ],
-            ),
-            TextButton(
-              onPressed: _busy ? null : refresh,
-              child: const Text('Refresh'),
-            ),
-          ],
-        );
-      },
-    ),
-  );
-}
-
-class AdminReloadConnectorsButton extends StatefulWidget {
-  final AdministrationRepository server;
-  const AdminReloadConnectorsButton({super.key, required this.server});
-  @override
-  State<AdminReloadConnectorsButton> createState() =>
-      _AdminReloadConnectorsButtonState();
-}
-
-class _AdminReloadConnectorsButtonState
-    extends State<AdminReloadConnectorsButton> {
-  bool _busy = false;
-  bool _confirming = false;
-
-  Future<bool> _confirmReconnect() async =>
+class AdminReloadConnectorsButton extends StatelessWidget {
+  const AdminReloadConnectorsButton({super.key, required this.session});
+  final ProfileConnectorsSession session;
+  Future<bool> _confirmReconnect(BuildContext context) async =>
       await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
+        builder: (context) => StudioDialog(
           insetPadding: const EdgeInsets.symmetric(
             horizontal: 16,
             vertical: 24,
@@ -736,77 +716,38 @@ class _AdminReloadConnectorsButtonState
             'Reconnect tools for all profiles on this server using the latest settings and sign-ins.\n\nExisting chats may use more tokens on their next message as their history is resent.',
           ),
           actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Reconnect'),
+            StudioFormActions(
+              onCancel: () => Navigator.pop(context, false),
+              onConfirm: () => Navigator.pop(context, true),
+              confirmLabel: 'Reconnect tools',
+              confirmIcon: Icons.sync,
             ),
           ],
         ),
       ) ??
       false;
 
-  Future<void> _reload() async {
-    if (_busy || _confirming) return;
-    setState(() => _confirming = true);
-    try {
-      if (!await _confirmReconnect() || !mounted) {
-        return;
-      }
-      setState(() => _busy = true);
-      // This RPC is process-wide; default here owns transport, not the operation.
-      final gateway = widget.server.gateway('default');
-      await gateway.connect();
-      // The single dialog above supplies consent for this operation only.
-      final result = await gateway.reloadMcp(confirm: true);
-      if (result['status'] != 'reloaded') {
-        throw const AdministrationFailure(
-          'MCP tool reconnection could not be confirmed.',
-        );
-      }
-      if (mounted) {
-        adminMessage(context, 'MCP tools reconnected.');
-      }
-    } catch (e) {
-      if (mounted) {
-        final message = switch (e) {
-          JsonRpcError(reason: 'request_timeout') || TimeoutException() =>
-            'MCP tool reconnection timed out. It may still be running on the server. Check connector status before retrying.',
-          JsonRpcError(reason: 'connection_closed') =>
-            'The connection closed before reconnection could be confirmed. Reconnect to the server and check connector status before retrying.',
-          JsonRpcError() => mcpErrorMessage(
-            e.message,
-            summary: 'MCP tool reconnection failed.',
-          ),
-          AdministrationFailure() => e.message,
-          _ =>
-            'MCP tool reconnection could not be confirmed. Check the server connection before retrying.',
-        };
-        adminMessage(context, message, isError: true);
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _busy = false;
-          _confirming = false;
-        });
-      }
-    }
-  }
-
   @override
-  Widget build(BuildContext context) => OutlinedButton.icon(
-    onPressed: _busy || _confirming ? null : _reload,
-    icon: const Icon(Icons.refresh),
-    label: StudioActionLabel('Reconnect MCP tools', busy: _busy),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: session,
+    builder: (context, _) => StudioButtonPress(
+      child: IconButton.outlined(
+        tooltip: 'Reconnect MCP tools',
+        onPressed: session.state.busy
+            ? null
+            : () async {
+                await session.reconnect(() => _confirmReconnect(context));
+                if (!context.mounted) return;
+                final state = session.state;
+                if (state.error == null && state.notice != null) {
+                  adminMessage(context, state.notice!);
+                }
+              },
+        icon: const Icon(Icons.refresh),
+      ),
+    ),
   );
 }
-
-// Profile and connector names are data even in a copyable terminal command.
-String _shellQuote(String value) => "'${value.replaceAll("'", "'\"'\"'")}'";
 
 Future<bool> _launchMcpBrowser(Uri url) =>
     launchUrl(url, mode: LaunchMode.externalApplication);

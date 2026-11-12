@@ -1,0 +1,107 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "name": "worker directly imports codec",
+      "count": 0,
+      "files": {
+        "lib/core/services/attachment_image_worker.dart": {
+          "role": "data",
+          "source": "import 'package:image/image.dart' as codec; void transform() {}"
+        }
+      }
+    },
+    {
+      "name": "service directly imports codec",
+      "count": 1,
+      "files": {
+        "lib/service.dart": {
+          "role": "data",
+          "source": "import 'package:image/image.dart' as codec; void decode() {}"
+        }
+      }
+    },
+    {
+      "name": "conditional codec import cannot bypass",
+      "count": 1,
+      "files": {
+        "lib/service.dart": {
+          "role": "data",
+          "source": "import 'stub.dart' if (dart.library.io) 'package:image/image.dart';"
+        },
+        "lib/stub.dart": {
+          "role": "data",
+          "source": "class Stub {}"
+        }
+      }
+    },
+    {
+      "name": "authored codec barrel fails at source",
+      "count": 1,
+      "files": {
+        "lib/service.dart": {
+          "role": "data",
+          "source": "import 'barrel.dart';"
+        },
+        "lib/barrel.dart": {
+          "role": "data",
+          "source": "export 'package:image/image.dart';"
+        }
+      }
+    },
+    {
+      "name": "worker cannot export codec to callers",
+      "count": 1,
+      "files": {
+        "lib/core/services/attachment_image_worker.dart": {
+          "role": "data",
+          "source": "export 'package:image/image.dart';"
+        }
+      }
+    },
+    {
+      "name": "real worker part can import nothing and use worker symbols",
+      "count": 0,
+      "files": {
+        "lib/core/services/attachment_image_worker.dart": {
+          "role": "data",
+          "source": "import 'package:image/image.dart' as codec; part 'image_part.dart';"
+        },
+        "lib/core/services/image_part.dart": {
+          "role": "data",
+          "source": "part of 'attachment_image_worker.dart'; void transform() {}",
+          "library": "lib/core/services/attachment_image_worker.dart"
+        }
+      }
+    },
+    {
+      "name": "role manifest cannot label another importing library as worker part",
+      "count": 1,
+      "files": {
+        "lib/core/services/attachment_image_worker.dart": {
+          "role": "data",
+          "source": "void transform() {}"
+        },
+        "lib/impostor.dart": {
+          "role": "data",
+          "source": "import 'package:image/image.dart';",
+          "library": "lib/core/services/attachment_image_worker.dart"
+        }
+      }
+    },
+    {
+      "name": "relative and package worker consumers are valid",
+      "count": 0,
+      "files": {
+        "lib/core/services/attachment_image_worker.dart": {
+          "role": "data",
+          "source": "import 'package:image/image.dart' as codec; void transform() {}"
+        },
+        "lib/service.dart": {
+          "role": "data",
+          "source": "import 'core/services/attachment_image_worker.dart'; import 'package:wing/core/services/attachment_image_worker.dart';"
+        }
+      }
+    }
+  ]
+}

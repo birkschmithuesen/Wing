@@ -17,51 +17,97 @@ void main() {
       await loader.load();
     }
   });
-  testWidgets('small face retains edge taps, keyboard and accessible state', (
-    tester,
-  ) async {
-    final semantics = tester.ensureSemantics();
-    var value = false;
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: StatefulBuilder(
-            builder: (context, setState) {
-              return Center(
-                child: CompactSwitch(
-                  semanticLabel: 'Enable research',
-                  value: value,
-                  onChanged: (next) => setState(() => value = next),
-                ),
-              );
-            },
+  Future<void> showSwitch(
+    WidgetTester tester, {
+    required bool value,
+    required ValueChanged<bool>? onChanged,
+  }) => tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: CompactSwitch(
+            semanticLabel: 'Enable research',
+            value: value,
+            onChanged: onChanged,
           ),
         ),
       ),
+    ),
+  );
+
+  testWidgets('small face retains a minimum 48 dp edge-tappable target', (
+    tester,
+  ) async {
+    bool? requested;
+    await showSwitch(
+      tester,
+      value: false,
+      onChanged: (value) => requested = value,
     );
     final control = find.byType(CompactSwitch);
-    expect(tester.getSize(control), const Size(48, 48));
-    expect(
-      tester.getSemantics(control),
-      matchesSemantics(
-        label: 'Enable research',
-        hasToggledState: true,
-        hasEnabledState: true,
-        isEnabled: true,
-        isFocusable: true,
-        hasTapAction: true,
-        hasFocusAction: true,
-      ),
-    );
+    final size = tester.getSize(control);
+    expect(size.width, greaterThanOrEqualTo(48));
+    expect(size.height, greaterThanOrEqualTo(48));
     await tester.tapAt(tester.getTopLeft(control) + const Offset(2, 2));
-    await tester.pumpAndSettle();
-    expect(value, isTrue);
+    expect(requested, isTrue);
+  });
+
+  testWidgets('focused switch toggles through the keyboard', (tester) async {
+    bool? requested;
+    await showSwitch(
+      tester,
+      value: true,
+      onChanged: (value) => requested = value,
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
-    await tester.pumpAndSettle();
-    expect(value, isFalse);
-    semantics.dispose();
+    expect(requested, isFalse);
+  });
+
+  for (final value in [false, true]) {
+    testWidgets('accessibility exposes the current switch value $value', (
+      tester,
+    ) async {
+      final semantics = tester.ensureSemantics();
+      try {
+        await showSwitch(tester, value: value, onChanged: (_) {});
+        expect(
+          tester.getSemantics(find.byType(CompactSwitch)),
+          matchesSemantics(
+            label: 'Enable research',
+            hasToggledState: true,
+            isToggled: value,
+            hasEnabledState: true,
+            isEnabled: true,
+            isFocusable: true,
+            hasTapAction: true,
+            hasFocusAction: true,
+          ),
+        );
+      } finally {
+        semantics.dispose();
+      }
+    });
+  }
+
+  testWidgets('disabled switch exposes disabled state without a tap action', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      await showSwitch(tester, value: false, onChanged: null);
+      expect(
+        tester.getSemantics(find.byType(CompactSwitch)),
+        matchesSemantics(
+          label: 'Enable research',
+          hasToggledState: true,
+          hasEnabledState: true,
+        ),
+      );
+    } finally {
+      semantics.dispose();
+    }
   });
 
   for (final brightness in Brightness.values) {

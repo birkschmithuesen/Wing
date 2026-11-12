@@ -1,3 +1,4 @@
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -47,8 +48,8 @@ void main() {
         ..liveChanged('default', true);
       addTearDown(status.dispose);
       var reads = 0;
-      VersionsController factory(SavedConnection? value) => VersionsController(
-        gateway: gateway(value!, () async {
+      VersionsController factory(ConnectionAccess? value) => VersionsController(
+        gateway: gateway(value!.connection, () async {
           reads++;
           return {
             'current_version': '1.2.3',
@@ -64,7 +65,10 @@ void main() {
             drawer: AppDrawer(
               selected: AppDestination.chats,
               onSelected: (_) {},
-              connection: server,
+              access: ConnectionAccess(
+                connection: server,
+                dashboardOAuth: null,
+              ),
               connectionStatus: status,
               versionsControllerFactory: factory,
             ),
@@ -109,7 +113,7 @@ void main() {
         expect(find.byType(VersionsUpdatesScreen), findsNothing);
         expect(find.text('Connection details'), findsOneWidget);
         expect(find.text('Connected'), findsOneWidget);
-        expect(reads, 2);
+        expect(reads, 3);
         await tester.tap(find.byTooltip('Close connection details'));
         await tester.pumpAndSettle();
         expect(
@@ -121,11 +125,11 @@ void main() {
       expect(find.byType(VersionsUpdatesScreen), findsOneWidget);
       expect(find.text('Versions & updates'), findsOneWidget);
       expect(find.text('Version 1.0.1'), findsNothing);
-      expect(find.text('Check for updates'), findsOneWidget);
+      expect(find.byTooltip('Check for updates'), findsOneWidget);
       expect(find.text('View release'), findsNothing);
       expect(find.text('Releases'), findsNothing);
       expect(find.text('Home server'), findsOneWidget);
-      expect(reads, 4);
+      expect(reads, 6);
       await tester.pageBack();
       await tester.pumpAndSettle();
       expect(
@@ -184,7 +188,10 @@ void main() {
               drawer: AppDrawer(
                 selected: AppDestination.chats,
                 onSelected: (_) {},
-                connection: server,
+                access: ConnectionAccess(
+                  connection: server,
+                  dashboardOAuth: null,
+                ),
                 connectionStatus: status,
                 versionsControllerFactory: (_) => VersionsController(
                   gateway: gateway(
@@ -243,7 +250,7 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: DrawerVersions(
-            connection: server,
+            access: ConnectionAccess(connection: server, dashboardOAuth: null),
             controllerFactory: (_) => versions = VersionsController(
               gateway: gateway(server, () async {
                 if (fail) throw StateError('offline');
@@ -276,10 +283,10 @@ void main() {
     tester,
   ) async {
     final old = Completer<Map<String, dynamic>>();
-    VersionsController factory(SavedConnection? value) => VersionsController(
+    VersionsController factory(ConnectionAccess? value) => VersionsController(
       gateway: gateway(
-        value!,
-        () async => value.id == 'A'
+        value!.connection,
+        () async => value.connection.id == 'A'
             ? old.future
             : {
                 'current_version': '2.0.0',
@@ -293,7 +300,10 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: DrawerVersions(
-              connection: connection(name),
+              access: ConnectionAccess(
+                connection: connection(name),
+                dashboardOAuth: null,
+              ),
               controllerFactory: factory,
             ),
           ),

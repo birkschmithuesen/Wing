@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import zipfile
 from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -21,11 +22,14 @@ class VerifyApksTest(unittest.TestCase):
         self.apks.mkdir(parents=True)
         self.abis = {"armeabi-v7a": 1, "arm64-v8a": 2, "x86_64": 3}
         for abi in self.abis:
-            (self.apks / f"app-{abi}-release.apk").touch()
+            with zipfile.ZipFile(self.apks / f"app-{abi}-release.apk", "w",
+                                 compression=zipfile.ZIP_DEFLATED) as archive:
+                archive.writestr(f"lib/{abi}/libapp.so", b"compiled app snapshot")
         (self.root / "android").mkdir()
         (self.root / "android/wing-release-certificate.sha256").write_text("a" * 64)
         (self.root / "sdk/build-tools/36.0.0").mkdir(parents=True)
         self.bad_package = False
+        self.package_override = None
         self.bad_build = False
         self.bad_version = False
         self.bad_abi = False
@@ -46,7 +50,7 @@ class VerifyApksTest(unittest.TestCase):
         if Path(args[0]).name == "aapt":
             # Damage x86_64 only: every split must be checked, not just ARM64.
             damaged = abi == "x86_64"
-            package = "wrong.package" if damaged and self.bad_package else "com.tarkilhk.wing"
+            package = (self.package_override or "wrong.package") if damaged and self.bad_package else "com.tarkilhk.wing"
             build = "2233" if damaged and self.bad_build else str(2233 * 10 + self.abis[abi])
             version = "2.36.15" if damaged and self.bad_version else "2.36.16"
             native = "arm64-v8a" if damaged and self.bad_abi else abi
@@ -71,13 +75,34 @@ class VerifyApksTest(unittest.TestCase):
         (self.root / "sdk/build-tools/37.0.0").mkdir()
         self.verify()
 
-    def test_rejects_wrong_metadata_on_non_arm64_split(self):
-        for flag in ["bad_package", "bad_build", "bad_version", "bad_abi", "debuggable"]:
-            with self.subTest(flag=flag):
-                setattr(self, flag, True)
-                with self.assertRaises(ValueError):
+    def test_rejects_non_release_package_identity_on_non_arm64_split(self):
+        self.bad_package = True
+        for package in ('wrong.package', 'com.tarkilhk.wing.dev',
+                        'com.tarkilhk.wing.notificationqa', 'com.tarkilhk.wing.perfqa'):
+            with self.subTest(package=package):
+                self.package_override = package
+                with self.assertRaisesRegex(ValueError, 'incorrect package or version'):
                     self.verify()
-                setattr(self, flag, False)
+
+    def test_rejects_base_version_code_without_abi_offset_on_non_arm64_split(self):
+        self.bad_build = True
+        with self.assertRaisesRegex(ValueError, 'incorrect package or version'):
+            self.verify()
+
+    def test_rejects_wrong_version_name_on_non_arm64_split(self):
+        self.bad_version = True
+        with self.assertRaisesRegex(ValueError, 'incorrect package or version'):
+            self.verify()
+
+    def test_rejects_wrong_native_architecture_on_non_arm64_split(self):
+        self.bad_abi = True
+        with self.assertRaisesRegex(ValueError, 'incorrect native architecture'):
+            self.verify()
+
+    def test_rejects_debuggable_release_on_non_arm64_split(self):
+        self.debuggable = True
+        with self.assertRaisesRegex(ValueError, 'release must not be debuggable'):
+            self.verify()
 
     def test_rejects_wrong_signing_key(self):
         self.certificate = "b" * 64
@@ -97,6 +122,21 @@ class VerifyApksTest(unittest.TestCase):
     def test_rejects_extra_debug_artifact(self):
         (self.apks / "app-debug.apk").touch()
         with self.assertRaisesRegex(ValueError, "Expected exactly"):
+            self.verify()
+
+    def test_rejects_each_measurement_marker_in_non_arm64_snapshot(self):
+        apk = self.apks / 'app-x86_64-release.apk'
+        for marker in verify_release_apks.PERFORMANCE_MARKERS:
+            with self.subTest(marker=marker):
+                with zipfile.ZipFile(apk, 'w', compression=zipfile.ZIP_DEFLATED) as archive:
+                    archive.writestr('lib/x86_64/libapp.so', b'snapshot ' + marker)
+                with self.assertRaisesRegex(ValueError, 'performance instrumentation'):
+                    self.verify()
+
+    def test_rejects_missing_compiled_snapshot(self):
+        with zipfile.ZipFile(self.apks / 'app-x86_64-release.apk', 'w'):
+            pass
+        with self.assertRaisesRegex(ValueError, 'missing compiled app snapshot'):
             self.verify()
 
 

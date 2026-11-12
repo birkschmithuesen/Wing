@@ -1,0 +1,424 @@
+{
+  "cases": [
+    {
+      "name": "direct",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefixed-alias",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart' as data;\nvoid f(data.ProfileAdministration repository) { final alias = repository; alias.config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "cascade",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository..config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "tearoff",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { final request = repository.config; request(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "exported-alias",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\ntypedef Alias = ProfileAdministration;\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../public.dart';\nvoid f(Alias repository) { repository.config(); }\n"
+        },
+        "lib/public.dart": {
+          "role": "utility",
+          "source": "export 'core/services/administration_repository.dart';\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "definition-part",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "part 'task_repository_part.dart';\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        },
+        "lib/core/services/task_repository_part.dart": {
+          "role": "data",
+          "source": "part of 'administration_repository.dart';\nclass ProfileAdministration { void config() {} }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "profile-read",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('model/options'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "owner-command",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "class Session { void load() {} }\nvoid f(Session owner) { owner.load(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-name",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "class LocalIndex { void config() {} }\nvoid f(LocalIndex index) { index.config(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "protocol-in-application",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "application",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "void f(dynamic value) { value.config(); }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "conditional",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../alternate.dart' if (dart.library.io) '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        },
+        "lib/alternate.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "sdk-unrelated-write",
+      "exit": 0,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "void f(StringBuffer buffer) { buffer.write(\"local output\"); }\n"
+        }
+      }
+    },
+    {
+      "name": "same-class-wrong-library",
+      "exit": 0,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../local.dart';\nvoid f(ProfileAdministration local) { local.config(); }\n"
+        },
+        "lib/local.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        }
+      }
+    },
+    {
+      "name": "inherited-method",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nclass View extends ProfileAdministration { void f() { config(); } }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "consumer-part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\npart 'task_part.dart';\n"
+        },
+        "lib/views/task_part.dart": {
+          "role": "view",
+          "source": "part of 'task.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task_part.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "domain-wire-projection",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/models/settings_edit.dart';\nvoid f(Map<String,dynamic> config) { setting(config, 'memory.limit'); }\n"
+        },
+        "lib/core/models/settings_edit.dart": {
+          "role": "domain",
+          "source": "Object? setting(Map<String,dynamic> config, String key) => config[key];\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "domain-projection-tearoff",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/models/settings_edit.dart' as values;\nvoid f() { final project = values.setting; }\n"
+        },
+        "lib/core/models/settings_edit.dart": {
+          "role": "domain",
+          "source": "Object? setting(Map<String,dynamic> config, String key) => config[key];\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "domain-parse",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/models/settings_edit.dart';\nvoid f(AdminField field) { field.parse('12'); }\n"
+        },
+        "lib/core/models/settings_edit.dart": {
+          "role": "domain",
+          "source": "class AdminField { Object? parse(String value) => value; }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "ui-validation-unrelated",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "class FormState { bool validate() => true; }\nvoid f(FormState form) { form.validate(); }\n"
+        },
+        "lib/core/models/settings_edit.dart": {
+          "role": "domain",
+          "source": "class AdminField { String? validate(Object? value) => null; }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "domain-function-shadow",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "String shiftDecimal(String input, int places) => input;\nvoid f() { shiftDecimal('1', 2); }\n"
+        },
+        "lib/core/models/settings_edit.dart": {
+          "role": "domain",
+          "source": "String shiftDecimal(String input, int places) => input;\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "actual-json-decode",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import 'dart:convert';\nvoid f(String text) { jsonDecode(text); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "actual-number-parser",
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "void f(String text) { double.tryParse(text); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 1
+    },
+    {
+      "name": "owned-capability",
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class AdministrationRepository { final void Function() ownedMutation; final void Function() settingsWrite; AdministrationRepository(this.ownedMutation, this.settingsWrite); }\n"
+        },
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(AdministrationRepository repository) { repository.ownedMutation(); }\n"
+        }
+      }
+    },
+    {
+      "name": "owned-capability-tearoff",
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class AdministrationRepository { final void Function() ownedMutation; final void Function() settingsWrite; AdministrationRepository(this.ownedMutation, this.settingsWrite); }\n"
+        },
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(AdministrationRepository repository) { final send = repository.settingsWrite; }\n"
+        }
+      }
+    },
+    {
+      "name": "bare-inherited-capability-capture",
+      "exit": 1,
+      "diagnosticFile": "lib/views/settings.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void Function() get ownedMutation => () {}; }\n"
+        },
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nclass View extends ProfileAdministration { void f() { final send = ownedMutation; } }\n"
+        }
+      }
+    },
+    {
+      "name": "same-named-local-capability-valid",
+      "exit": 0,
+      "files": {
+        "lib/views/settings.dart": {
+          "role": "view",
+          "source": "void f(void Function() ownedMutation) { final send = ownedMutation; send(); }\n"
+        }
+      }
+    }
+  ]
+}

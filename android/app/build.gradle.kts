@@ -52,6 +52,8 @@ val hasReleaseSigning = keystoreProperties.containsKey("storeFile")
 // Opt in only for Wing development APKs. Ordinary debug builds retain
 // their separate Dev identity and debug signing key.
 val notificationQa = providers.gradleProperty("notificationQa").orNull == "true"
+val nativeShareQa = providers.gradleProperty("nativeShareQa").orNull == "true"
+check(!nativeShareQa || notificationQa) { "Native share QA requires the isolated notification QA package" }
 val wingDevelopment = providers.gradleProperty("wingDevelopment").orNull == "true"
 check(!(notificationQa && wingDevelopment)) { "Notification QA must use its isolated package" }
 check(!wingDevelopment || signingEnvironment.keys.all {
@@ -61,8 +63,10 @@ check(!wingDevelopment || signingEnvironment.keys.all {
 }
 
 android {
+   buildFeatures { buildConfig = true }
    namespace = "com.tarkilhk.wing"
    compileSdk = 36
+   ndkVersion = providers.gradleProperty("wing.ndkVersion").get()
 
    compileOptions {
        sourceCompatibility = JavaVersion.VERSION_17
@@ -71,12 +75,13 @@ android {
    }
 
    defaultConfig {
+       buildConfigField("boolean", "NATIVE_SHARE_QA", "false")
        check(flutter.versionCode > minimumInstalledVersionCode) {
            "versionCode ${flutter.versionCode} must be greater than " +
                "$minimumInstalledVersionCode to upgrade the accepted Wing APK"
        }
        applicationId = "com.tarkilhk.wing"
-       minSdk = 24
+       minSdk = 29
        targetSdk = 36
        versionCode = flutter.versionCode
        versionName = flutter.versionName
@@ -101,17 +106,18 @@ android {
            // verifies the packaged arm64 code against that scheme.
            applicationIdSuffix = if (notificationQa) ".notificationqa" else ".dev"
            versionNameSuffix = "-dev"
+           buildConfigField("boolean", "NATIVE_SHARE_QA", nativeShareQa.toString())
            manifestPlaceholders["appLabel"] = "Wing Dev"
            if (wingDevelopment) {
                signingConfig = signingConfigs.getByName("release")
            }
        }
        getByName("profile") {
-           // AOT performance builds must upgrade the separate Dev app, never
+           // AOT performance builds must upgrade the separate Perf QA app, never
            // replace the user's installed release or its saved connections.
-           applicationIdSuffix = ".dev"
-           versionNameSuffix = "-dev-profile"
-           manifestPlaceholders["appLabel"] = "Wing Dev"
+           applicationIdSuffix = ".perfqa"
+           versionNameSuffix = "-perfqa"
+           manifestPlaceholders["appLabel"] = "Wing Perf QA"
            signingConfig = signingConfigs.getByName("debug")
        }
        release {
@@ -180,7 +186,14 @@ android.applicationVariants.configureEach {
 
 dependencies {
    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+   testImplementation("junit:junit:4.13.2")
+   testImplementation("org.robolectric:robolectric:4.16.1")
+   // JVM tests exercise the actual native JSON boundary, outside Android's stub jar.
+   testImplementation("org.json:json:20260814")
 }
+
+// Correct the upstream animation-cache lifetime in every embedding build mode.
+apply(from = rootProject.file("ime-cache-fix.gradle.kts"))
 
 // Fork (Wing Voice): own build additions, see voice-offline.gradle.
 apply(from = "voice-offline.gradle")

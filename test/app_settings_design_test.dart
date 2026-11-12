@@ -1,3 +1,7 @@
+import 'package:wing/core/services/voice_preferences_session.dart';
+import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -11,6 +15,7 @@ import 'package:wing/core/config/support_wing.dart';
 import 'package:wing/core/screens/app_settings_content.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/theme/wing_icons.dart';
 import 'package:wing/core/widgets/support_wing_section.dart';
 
 const _capture = bool.fromEnvironment('CAPTURE_SETTINGS');
@@ -42,10 +47,9 @@ Future<void> _captureFrame(WidgetTester tester, String name) async {
 
 Future<void> _show(
   WidgetTester tester,
-  SharedPreferences preferences, {
+  AppPreferences appPreferences, {
   Brightness brightness = Brightness.light,
   double scale = 1,
-  VoidCallback? onChanged,
 }) async {
   await tester.pumpWidget(
     RepaintBoundary(
@@ -62,8 +66,15 @@ Future<void> _show(
         home: Scaffold(
           appBar: AppBar(title: const Text('App settings')),
           body: AppSettingsContent(
-            preferences: preferences,
-            onChanged: onChanged ?? () {},
+            pluginServer: null,
+            preferences: appPreferences,
+            createVoiceSession: () => VoicePreferencesSession(
+              preferences: appPreferences,
+              device: AndroidVoice.instance,
+              hermesProfileLabel: null,
+              openHermesSettings: null,
+            ),
+            onChanged: () {},
             enableNotifications: () async {},
           ),
         ),
@@ -91,6 +102,18 @@ void main() {
       }
       await loader.load();
     }
+    await (FontLoader('WingProjectIcons')..addFont(
+          File(
+            'assets/fonts/codicons.ttf',
+          ).readAsBytes().then(ByteData.sublistView),
+        ))
+        .load();
+    await (FontLoader('WingIcons')..addFont(
+          File(
+            'assets/fonts/wing-icons.ttf',
+          ).readAsBytes().then(ByteData.sublistView),
+        ))
+        .load();
   });
 
   setUp(() {
@@ -108,7 +131,9 @@ void main() {
     tester,
   ) async {
     final preferences = await SharedPreferences.getInstance();
-    await _show(tester, preferences);
+    final appPreferences = AppPreferences(preferences);
+    addTearDown(appPreferences.dispose);
+    await _show(tester, appPreferences);
     await tester.ensureVisible(find.text('Buy me a coffee'));
     await tester.pumpAndSettle();
     expect(find.text('Support Wing'), findsOneWidget);
@@ -132,8 +157,28 @@ void main() {
     'saved theme and accent update the preview and survive reopening',
     (tester) async {
       final preferences = await SharedPreferences.getInstance();
-      var changes = 0;
-      await _show(tester, preferences, onChanged: () => changes++);
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final confirmedAppearance =
+          <(AppThemePreference?, AppAccentPreference?)>[];
+      var previous = (
+        appPreferences.current.values.theme,
+        appPreferences.current.values.accent,
+      );
+      void observeAppearance() {
+        final next = (
+          appPreferences.current.values.theme,
+          appPreferences.current.values.accent,
+        );
+        if (next != previous) {
+          confirmedAppearance.add(next);
+          previous = next;
+        }
+      }
+
+      appPreferences.state.addListener(observeAppearance);
+      addTearDown(() => appPreferences.state.removeListener(observeAppearance));
+      await _show(tester, appPreferences);
       await tester.ensureVisible(find.byKey(const ValueKey('theme-dark')));
       await tester.tap(find.byKey(const ValueKey('theme-dark')));
       await tester.pumpAndSettle();
@@ -149,10 +194,19 @@ void main() {
         WorkspaceAccent.iris.dark,
       );
       expect(preferences.getString('theme_mode'), 'dark');
-      expect(preferences.getString(WorkspaceAccent.preferenceKey), 'iris');
-      expect(changes, 2);
+      expect(
+        preferences.getString(AppPreferenceField.accent.storageKey),
+        'iris',
+      );
+      expect(confirmedAppearance, [
+        (AppThemePreference.dark, AppAccentPreference.teal),
+        (AppThemePreference.dark, AppAccentPreference.iris),
+      ]);
       await tester.pumpWidget(const SizedBox());
-      await _show(tester, preferences);
+      await preferences.reload();
+      final reopened = AppPreferences(preferences);
+      addTearDown(reopened.dispose);
+      await _show(tester, reopened);
       expect(
         tester
             .widget<ChoiceChip>(find.byKey(const ValueKey('theme-dark')))
@@ -179,7 +233,14 @@ void main() {
         addTearDown(tester.view.reset);
         addTearDown(tester.platformDispatcher.clearPlatformBrightnessTestValue);
         final preferences = await SharedPreferences.getInstance();
-        await _show(tester, preferences, brightness: brightness, scale: scale);
+        final appPreferences = AppPreferences(preferences);
+        addTearDown(appPreferences.dispose);
+        await _show(
+          tester,
+          appPreferences,
+          brightness: brightness,
+          scale: scale,
+        );
         await _captureFrame(tester, '${brightness.name}-$scale-appearance');
         expect(tester.takeException(), isNull);
         await tester.ensureVisible(find.text('Text size'));
@@ -197,9 +258,79 @@ void main() {
         final queue = find.widgetWithText(ChoiceChip, 'Queue');
         await tester.ensureVisible(queue);
         await tester.pumpAndSettle();
+        expect(
+          find.descendant(of: queue, matching: find.byIcon(WingIcons.queue)),
+          findsOneWidget,
+        );
+        await _captureFrame(
+          tester,
+          '${brightness.name}-$scale-composer-actions',
+        );
         await tester.tap(queue);
         await tester.pumpAndSettle();
         expect(preferences.getString('composer_running_action'), 'queue');
+        final linkChoices = find.byKey(const ValueKey('link-destination'));
+        final label = find.text('Open links in');
+        await tester.ensureVisible(linkChoices);
+        await tester.pumpAndSettle();
+        void expectOneLine(String value) {
+          final displayed = find.descendant(
+            of: linkChoices,
+            matching: find.text(value),
+          );
+          expect(displayed.hitTestable(), findsOneWidget);
+          expect(
+            tester.getCenter(displayed).dy,
+            closeTo(tester.getCenter(label).dy, 1),
+          );
+          for (final text in [label, displayed]) {
+            expect(tester.widget<Text>(text).maxLines, 1);
+            final paragraph = find.descendant(
+              of: text,
+              matching: find.byType(RichText),
+            );
+            expect(
+              tester.renderObject<RenderParagraph>(paragraph).didExceedMaxLines,
+              isFalse,
+            );
+          }
+        }
+
+        expectOneLine('Wing');
+        await _captureFrame(
+          tester,
+          '${brightness.name}-$scale-link-destination',
+        );
+        void expectTrailingMenu() {
+          final row = tester.getRect(linkChoices);
+          final firstItem = find.ancestor(
+            of: find.text('Open in Wing'),
+            matching: find.byType(StudioPopupMenuItem<WebLinkDestination>),
+          );
+          final menu = tester.getRect(firstItem);
+          expect(menu.top, greaterThanOrEqualTo(row.bottom - 1));
+          expect(menu.right, closeTo(row.right, 1));
+        }
+
+        await tester.tap(label);
+        await tester.pumpAndSettle();
+        final externalBrowser = find.text('Open in external browser');
+        expect(externalBrowser.hitTestable(), findsOneWidget);
+        expectTrailingMenu();
+        await _captureFrame(tester, '${brightness.name}-$scale-link-menu');
+        await tester.tap(externalBrowser);
+        await tester.pumpAndSettle();
+        expectOneLine('Browser');
+        await tester.tap(find.text('Browser'));
+        await tester.pumpAndSettle();
+        expectTrailingMenu();
+        await _captureFrame(
+          tester,
+          '${brightness.name}-$scale-browser-link-menu',
+        );
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(externalBrowser, findsNothing);
         await tester.ensureVisible(
           find.byKey(const ValueKey('privacy-policy')),
         );

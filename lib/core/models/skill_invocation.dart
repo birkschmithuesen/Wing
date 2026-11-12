@@ -1,3 +1,5 @@
+import 'slash_command.dart';
+
 /// Client fallback from Hermes Desktop's shared skill-scaffold.ts.
 String? skillInvocationText(String text) {
   final match = RegExp(
@@ -23,6 +25,11 @@ String? skillInvocationText(String text) {
           fromEnd: true,
         )
       : '';
+  if (SlashSkillReference.inText(instruction, [
+    label,
+  ]).any((r) => r.start > 0)) {
+    return instruction;
+  }
   return instruction.isEmpty
       ? label
       : '$label ${instruction.replaceAll(RegExp(r'\s+'), ' ')}';

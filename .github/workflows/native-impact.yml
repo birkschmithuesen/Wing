@@ -1,0 +1,132 @@
+name: Changed Native Verification
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  # PR diffs accumulate from their base, so a newer run replaces the old one.
+  # Main diffs cover one push: retain each run so cancelled intermediate pushes
+  # cannot leave a changed family unverified.
+  group: native-impact-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  catalog:
+    name: Select affected Android families
+    runs-on: ubuntu-24.04
+    outputs:
+      families: ${{ steps.catalog.outputs.families }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: catalog
+        env:
+          NATIVE_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: python3 scripts/test_nightly_native.py --matrix --changed-since "$NATIVE_BASE_REF"
+      - name: Preserve selection and its reasons
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: native-selection
+          path: build/nightly-native/selection.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native:
+    name: Android — ${{ matrix.family }}
+    needs: catalog
+    if: needs.catalog.outputs.families != '[]'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        family: ${{ fromJSON(needs.catalog.outputs.families) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare Android runner storage
+        uses: ./.github/actions/prepare-native-runner
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Android SDK
+        timeout-minutes: 15
+        run: python3 scripts/install_android_sdk.py "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-36;google_apis;x86_64"
+      - name: Enable emulator acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Expose Android tools to native drivers
+        run: echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          cache-read-only: true
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          package-manager-cache: false
+      - run: flutter pub get
+      - name: Set up supported stock Hermes Python
+        if: matrix.family == 'stock-hermes'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Prepare current unmodified Hermes
+        if: matrix.family == 'stock-hermes'
+        run: |
+          git -c credential.helper= clone --depth 1 --branch main https://github.com/NousResearch/hermes-agent.git "$RUNNER_TEMP/hermes"
+          cd "$RUNNER_TEMP/hermes"
+          HERMES_HOME="$RUNNER_TEMP/hermes-home" HERMES_RUNTIME_DIR="$RUNNER_TEMP/hermes-runtime" \
+            python3 -m pm.build_env --source . --out .venv --extra web
+      - name: Run the complete selected native family
+        env:
+          NIGHTLY_FAMILY: ${{ matrix.family }}
+        run: python3 scripts/test_nightly_native.py "$NIGHTLY_FAMILY" --hermes-source "$RUNNER_TEMP/hermes"
+      - name: Preserve verdicts and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
+        with:
+          name: changed-native-${{ matrix.family }}
+          path: |
+            build/sdk-install/
+            build/nightly-native/
+            build/large-html-review/
+          if-no-files-found: error
+          retention-days: 7
+
+  complete:
+    name: Changed native result
+    if: always()
+    needs: [catalog, native]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every selected family
+        env:
+          CATALOG_RESULT: ${{ needs.catalog.result }}
+          NATIVE_RESULT: ${{ needs.native.result }}
+          FAMILIES: ${{ needs.catalog.outputs.families }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          assert os.environ['CATALOG_RESULT'] == 'success', 'Native selection failed'
+          families = json.loads(os.environ['FAMILIES'])
+          expected = 'success' if families else 'skipped'
+          assert os.environ['NATIVE_RESULT'] == expected, 'Selected native verification failed or did not finish'
+          print(f'All {len(families)} selected native families passed.')
+          PYTHON

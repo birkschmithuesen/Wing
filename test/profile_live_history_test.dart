@@ -1,3 +1,8 @@
+import 'package:wing/core/models/transcript_presentation.dart';
+import 'package:wing/core/models/transcript_timeline.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -39,18 +44,25 @@ class _ToolHistoryFixture extends ProfileHistoryFixture {
 void main() {
   late _ToolHistoryFixture host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
 
   Future<void> initialize() async {
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Test',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Test',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'test',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
@@ -61,7 +73,10 @@ void main() {
     host = _ToolHistoryFixture();
     await initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   Future<ProfileChat> open() async {
     await controller.openSession(
@@ -72,33 +87,36 @@ void main() {
 
   void expectLatestConversation(ProfileChat chat) {
     expect(
-      chat.messages.any((row) => row['id'] == 621),
+      chat.reading.messages.any((row) => row['id'] == 621),
       isTrue,
       reason:
           'The latest user prompt must appear without loading older messages',
     );
     expect(
-      chat.messages.any((row) => row['id'] == 622),
+      chat.reading.messages.any((row) => row['id'] == 622),
       isTrue,
       reason: 'The latest assistant text must survive a long run of tool calls',
     );
-    expect(chat.messages.last['id'], 622 + host.toolCount * 2);
+    expect(chat.reading.messages.last['id'], 622 + host.toolCount * 2);
   }
 
   test('opening a tool-heavy chat includes its latest conversation', () async {
     final chat = await open();
     expectLatestConversation(chat);
-    expect(chat.nextHistoryOffset, 100);
+    expect(chat.reading.nextHistoryOffset, 100);
     await controller.loadOlderMessages(chat);
-    expect(chat.messages.first['id'], 545);
-    expect(chat.messages.map((row) => row['id']).toSet(), hasLength(150));
+    expect(chat.reading.messages.first['id'], 545);
+    expect(
+      chat.reading.messages.map((row) => row['id']).toSet(),
+      hasLength(150),
+    );
   });
 
   test('commentary among tool calls still loads their user prompt', () async {
     host.includeLatestCommentary = true;
     final chat = await open();
-    expect(chat.messages.any((row) => row['id'] == 621), isTrue);
-    expect(chat.messages.last['content'], 'Checking one more source');
+    expect(chat.reading.messages.any((row) => row['id'] == 621), isTrue);
+    expect(chat.reading.messages.last['content'], 'Checking one more source');
   });
 
   test(
@@ -110,7 +128,7 @@ void main() {
       host.toolCount = 90;
       await open();
       expectLatestConversation(chat);
-      expect(chat.nextHistoryOffset, 200);
+      expect(chat.reading.nextHistoryOffset, 200);
     },
   );
 
@@ -123,6 +141,7 @@ void main() {
         [jsonEncode(key.toJson())],
       );
       controller.dispose();
+      appPreferences.dispose();
       await initialize();
       final chat = controller.current!.chats['chat-0']!;
       expect(chat.title, 'personal chat 0');
@@ -134,9 +153,9 @@ void main() {
     host.messageCount = 0;
     host.includeConversation = false;
     final chat = await open();
-    expect(chat.messages, hasLength(72));
-    expect(chat.nextHistoryOffset, isNull);
-    expect(chat.historyError, isNull);
+    expect(chat.reading.messages, hasLength(72));
+    expect(chat.reading.nextHistoryOffset, isNull);
+    expect(chat.reading.historyError, isNull);
   });
 
   test('failed backfill preserves the latest page and can retry', () async {
@@ -150,13 +169,13 @@ void main() {
     host.failHistory = true;
     delay.complete();
     final chat = await pending;
-    expect(chat.messages, hasLength(50));
-    expect(chat.historyError, isNotNull);
-    expect(chat.nextHistoryOffset, 50);
+    expect(chat.reading.messages, hasLength(50));
+    expect(chat.reading.historyError, isNotNull);
+    expect(chat.reading.nextHistoryOffset, 50);
     host.failHistory = false;
     await controller.refreshHistory(chat);
     expectLatestConversation(chat);
-    expect(chat.historyError, isNull);
+    expect(chat.reading.historyError, isNull);
   });
 
   test('navigation invalidates a delayed initial backfill', () async {
@@ -174,8 +193,8 @@ void main() {
     delay.complete();
     await pending;
     expect(controller.current!.chat, isNull);
-    expect(chat.messages, hasLength(50));
-    expect(chat.historyLoading, isFalse);
+    expect(chat.reading.messages, hasLength(50));
+    expect(chat.reading.historyLoading, isFalse);
   });
 
   testWidgets('latest conversation is visible above collapsed tool calls', (
@@ -186,9 +205,32 @@ void main() {
       MaterialApp(
         home: Scaffold(
           body: ProfileTranscript(
-            chat: chat,
-            controller: controller,
-            messageBuilder: (message) => Text(message['content'] as String),
+            presentation: TranscriptPresentation.capture(
+              identity: chat.key,
+              reader: chat.reading,
+              timeline: TranscriptTimeline.project(
+                [...chat.reading.messages, ?chat.reading.streamingMessage],
+                presentationId: chat.reading.messagePresentationId,
+                liveMessageIndex: chat.reading.streamingMessage == null
+                    ? null
+                    : chat.reading.messages.length,
+              ),
+              needsInput: chat.runtime.needsInput,
+              turnAdmissionBlocked: chat.runtime.blocksTurnAdmission,
+            ),
+            openingContent: chat.runtime.opening
+                ? ProfileTranscriptOpening(
+                    status: controller.connectionStatus,
+                    error: chat.runtime.openingError,
+                    onRetry: controller.resumeConnection,
+                  )
+                : null,
+            notificationReading: chat.reading,
+            onAnswerRead: (target) =>
+                controller.notificationAnswerRead(chat, target),
+            onRefreshHistory: () => controller.refreshHistory(chat),
+            onLoadOlder: () => controller.loadOlderMessages(chat),
+            messageBuilder: (message) => Text(message.message.text),
             tail: const [],
           ),
         ),

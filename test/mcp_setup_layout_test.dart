@@ -7,8 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_connectors_page.dart';
 import 'package:wing/core/screens/administration/admin_mcp_setup_page.dart';
 import 'package:wing/core/services/mcp_oauth.dart';
-import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/core/services/mcp_setup.dart';
+import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'support/administration_fixture.dart';
 
@@ -80,16 +80,17 @@ void main() {
                 ),
                 home: page != 'callback'
                     ? AdminMcpSetupPage(
-                        profile: fixture.server.profile('personal'),
+                        createSession: () =>
+                            McpSetupSession(fixture.server.profile('personal')),
                       )
                     : AdminMcpSignIn(
-                        profile: fixture.server.profile('personal'),
-                        name: 'aspire',
-                        openBrowser: (_) async => true,
-                        bindLoopback: (target, _) async => McpLoopback(
-                          redirectUri: target,
-                          close: () async {},
+                        createFlow: () => McpOAuth(
+                          profile: fixture.server.profile('personal'),
+                          name: 'aspire',
+                          bindLoopback: (target, _) async =>
+                              McpLoopback(close: () async {}),
                         ),
+                        openBrowser: (_) async => true,
                       ),
               ),
             ),
@@ -117,8 +118,8 @@ void main() {
             await tester.tap(find.text('Start sign-in'));
           } else if (page == 'program') {
             await select(find.byType(StudioSelect<bool>), 'Program on Hermes');
-            await reveal(find.text('Add environment variable'));
-            await tester.tap(find.text('Add environment variable'));
+            await reveal(find.byTooltip('Add environment variable'));
+            await tester.tap(find.byTooltip('Add environment variable'));
           } else if (['headers', 'bearer', 'none'].contains(page)) {
             await select(
               find.byType(StudioSelect<McpAuthentication>),
@@ -129,8 +130,8 @@ void main() {
               },
             );
             if (page == 'headers') {
-              await reveal(find.text('Add header'));
-              await tester.tap(find.text('Add header'));
+              await reveal(find.byTooltip('Add header'));
+              await tester.tap(find.byTooltip('Add header'));
             }
           } else if (page == 'advanced') {
             await reveal(find.text('Advanced'));
@@ -163,17 +164,15 @@ void main() {
             await captureScreen('-callback-field');
           }
 
-          await tester.scrollUntilVisible(
-            find.text(
-              page == 'callback'
-                  ? 'Complete sign-in'
-                  : ['setup', 'advanced'].contains(page)
-                  ? 'Add and sign in'
-                  : 'Add connector',
-            ),
-            200,
-            scrollable: find.byType(Scrollable).first,
-          );
+          final commit = page == 'callback'
+              ? find.text('Complete sign-in')
+              : find.byTooltip(
+                  ['setup', 'advanced'].contains(page)
+                      ? 'Add connector and sign in'
+                      : 'Add connector',
+                );
+          if (page == 'callback') await reveal(commit);
+          expect(commit.hitTestable(), findsOneWidget);
           await tester.pumpAndSettle();
           expect(tester.takeException(), isNull);
           await captureScreen('-action');

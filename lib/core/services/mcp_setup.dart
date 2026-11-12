@@ -1,13 +1,12 @@
 import 'dart:math';
+import 'package:flutter/foundation.dart';
+import '../models/profile_connectors.dart';
+import 'connection_manager.dart' show DashboardHttpException;
 import 'administration_repository.dart';
 import 'mcp_error.dart';
 import 'ws_client.dart';
 
 enum McpAuthentication { browser, bearer, none, headers }
-
-class McpSetupUnconfirmed extends AdministrationFailure {
-  const McpSetupUnconfirmed(super.message);
-}
 
 String mcpOperationError(Object error, String summary) =>
     mcpErrorMessage(switch (error) {
@@ -36,14 +35,14 @@ class McpSetup {
   final String clientKey;
   final String caPath;
 
-  const McpSetup({
+  McpSetup({
     required this.name,
     required this.address,
     this.subprocess = false,
-    this.arguments = const [],
+    List<String> arguments = const [],
     this.authentication = McpAuthentication.browser,
     this.token = '',
-    this.credentials = const {},
+    Map<String, String> credentials = const {},
     this.clientId = '',
     this.clientSecret = '',
     this.tokenEndpointAuthMethod = '',
@@ -52,7 +51,8 @@ class McpSetup {
     this.clientCert = '',
     this.clientKey = '',
     this.caPath = '',
-  });
+  }) : arguments = List.unmodifiable(arguments),
+       credentials = Map.unmodifiable(credentials);
 
   void validate() {
     void require(bool valid, String reason) {
@@ -132,90 +132,288 @@ class McpSetup {
       );
     }
   }
+}
 
-  Future<Map<String, dynamic>> save(ProfileAdministration profile) async {
-    validate();
-    final listing = await profile.rpc('mcp.servers.list');
-    if (listing['servers'] is! List) {
-      throw const AdministrationFailure(
-        'Could not read the connector list. Refresh before adding a connector.',
-      );
-    }
-    final existing = administrationRows(listing['servers']);
-    if (existing.any((row) => row['name'] == name)) {
-      throw const AdministrationFailure(
-        'A connector with this name already exists. Open it from the connector list.',
-      );
-    }
-    // Fresh names cannot rotate a credential owned by another connector or a
-    // concurrent create. A failed create may leave unused profile credentials.
-    final random = Random.secure();
-    final suffix = List.generate(
-      16,
-      (_) => random.nextInt(16).toRadixString(16),
-    ).join().toUpperCase();
-    final prefix = 'MCP_WING_$suffix';
-    final secrets = <String, String>{};
-    String secret(String suffix, String value) {
-      final key = '${prefix}_$suffix';
-      secrets[key] = value;
-      return '\${$key}';
-    }
-
-    final config = <String, dynamic>{
-      if (subprocess) 'command': address else 'url': address,
-      if (subprocess) 'args': arguments,
-    };
+/// Raw editor inputs. The owner, not TextEditingControllers, interprets them.
+final class McpSetupInput {
+  McpSetupInput({
+    this.name = '',
+    this.address = '',
+    this.subprocess = false,
+    this.arguments = '',
+    this.authentication = McpAuthentication.browser,
+    this.token = '',
+    Iterable<(String, String)> credentials = const [],
+    this.clientId = '',
+    this.clientSecret = '',
+    this.tokenEndpointAuthMethod = '',
+    this.scope = '',
+    this.redirect = '',
+    this.clientCert = '',
+    this.clientKey = '',
+    this.caPath = '',
+  }) : credentials = List.unmodifiable(credentials);
+  final String name,
+      address,
+      arguments,
+      token,
+      clientId,
+      clientSecret,
+      tokenEndpointAuthMethod,
+      scope,
+      redirect,
+      clientCert,
+      clientKey,
+      caPath;
+  final bool subprocess;
+  final McpAuthentication authentication;
+  final List<(String, String)> credentials;
+  bool get dirty =>
+      subprocess ||
+      authentication != McpAuthentication.browser ||
+      tokenEndpointAuthMethod.isNotEmpty ||
+      [
+        name,
+        address,
+        arguments,
+        token,
+        clientId,
+        clientSecret,
+        scope,
+        redirect,
+        clientCert,
+        clientKey,
+        caPath,
+      ].any((s) => s.isNotEmpty) ||
+      credentials.any((row) => row.$1.isNotEmpty || row.$2.isNotEmpty);
+  McpSetup resolve() {
+    final values = <String, String>{};
     if (subprocess || authentication == McpAuthentication.headers) {
-      var index = 0;
-      config[subprocess ? 'env' : 'headers'] = {
-        for (final entry in credentials.entries)
-          entry.key: secret('VALUE_${index++}', entry.value),
-      };
-    }
-    if (!subprocess && authentication == McpAuthentication.browser) {
-      config['auth'] = 'oauth';
-      config['oauth'] = {
-        if (clientId.isNotEmpty) 'client_id': clientId,
-        if (tokenEndpointAuthMethod.isNotEmpty)
-          'token_endpoint_auth_method': tokenEndpointAuthMethod,
-        if (clientSecret.isNotEmpty)
-          'client_secret': secret('CLIENT_SECRET', clientSecret),
-        if (scope.isNotEmpty) 'scope': scope,
-        if (redirect.isNotEmpty) 'redirect_uri': redirect,
-      };
-    }
-    if (!subprocess) {
-      if (clientCert.isNotEmpty) config['client_cert'] = clientCert;
-      if (clientKey.isNotEmpty) config['client_key'] = clientKey;
-      if (caPath.isNotEmpty) config['ssl_verify'] = caPath;
-    }
-    try {
-      // Do not put secrets into config.yaml; write profile .env references.
-      for (final entry in secrets.entries) {
-        await profile.write('PUT', 'env', {
-          'key': entry.key,
-          'value': entry.value,
-        });
+      for (final row in credentials) {
+        final key = row.$1.trim();
+        if (values.containsKey(key) ||
+            !subprocess &&
+                values.keys.any((k) => k.toLowerCase() == key.toLowerCase())) {
+          throw const AdministrationFailure(
+            'Each credential needs a different name.',
+          );
+        }
+        values[key] = row.$2;
       }
-      final result = await profile.rpc('mcp.servers.add', {
-        'name': name,
-        'config': config,
-        if (!subprocess && authentication == McpAuthentication.bearer)
-          'bearer_token': token,
-      }, true);
-      if (result['ok'] != true ||
-          result['server'] is! Map ||
-          (result['server'] as Map)['name'] != name) {
-        throw const AdministrationFailure(
-          'Save could not be confirmed. Refresh the connector list before retrying.',
-        );
-      }
-      return Map<String, dynamic>.from(result['server'] as Map);
-    } catch (error) {
-      throw McpSetupUnconfirmed(
-        mcpOperationError(error, 'Check the connector list before retrying.'),
-      );
     }
+    return McpSetup(
+      name: name.trim(),
+      address: address.trim(),
+      subprocess: subprocess,
+      arguments: arguments
+          .split('\n')
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList(),
+      authentication: authentication,
+      token: token.trim(),
+      credentials: values,
+      clientId: clientId.trim(),
+      clientSecret: clientSecret,
+      tokenEndpointAuthMethod: tokenEndpointAuthMethod,
+      scope: scope.trim(),
+      redirect: redirect.trim(),
+      clientCert: clientCert.trim(),
+      clientKey: clientKey.trim(),
+      caPath: caPath.trim(),
+    );
   }
 }
+
+/// New-connector provisioning; no catalog cache or existing-config editor.
+class McpSetupSession extends ChangeNotifier {
+  McpSetupSession(this._profile) {
+    _profile.server.retain();
+  }
+  final ProfileAdministration _profile;
+  String get profileName => _profile.name;
+  String get scopeLabel => _profile.label;
+  McpSetupInput _input = McpSetupInput();
+  McpSetupInput get input => _input;
+  bool _busy = false, _review = false, _disposed = false;
+  int _revision = 0, _notificationDepth = 0;
+  String? _error;
+  bool get busy => _busy;
+  bool get reviewRequired => _review;
+  bool get dirty => _input.dirty;
+  String? get error => _error;
+  void _emit() {
+    if (_disposed) return;
+    _notificationDepth++;
+    try {
+      notifyListeners();
+    } finally {
+      _notificationDepth--;
+      if (_disposed && _notificationDepth == 0) super.dispose();
+    }
+  }
+
+  void edit(McpSetupInput input) {
+    if (_disposed || _busy || _review) return;
+    _input = input;
+    _error = null;
+    _revision++;
+    _emit();
+  }
+
+  Future<ProfileConnector?> save() async {
+    if (_disposed || _busy || _review) return null;
+    final McpSetup setup;
+    try {
+      setup = _input.resolve();
+      setup.validate();
+    } catch (failure) {
+      _error = mcpOperationError(failure, 'Check the connector settings.');
+      _emit();
+      return null;
+    }
+    final revision = ++_revision;
+    bool active() => !_disposed && revision == _revision;
+    var affected = false, createDispatched = false;
+    _busy = true;
+    _error = null;
+    _profile.server.retain();
+    _emit();
+    try {
+      if (!active()) return null;
+      await _profile.requireProfile();
+      if (!active()) return null;
+      final listing = await _profile.rpc('mcp.servers.list');
+      final existing = ProfileConnector.decodeList(listing);
+      if (!active()) return null;
+      if (existing.any((row) => row.name == setup.name)) {
+        throw const AdministrationFailure(
+          'A connector with this name already exists. Open it from the connector list.',
+        );
+      }
+      final random = Random.secure();
+      final suffix = List.generate(
+        16,
+        (_) => random.nextInt(16).toRadixString(16),
+      ).join().toUpperCase();
+      final secrets = <String, String>{};
+      final prefix = 'MCP_WING_$suffix';
+      String reference(String suffix, String value) {
+        final key = '${prefix}_$suffix';
+        secrets[key] = value;
+        return '\${$key}';
+      }
+
+      final config = <String, dynamic>{
+        if (setup.subprocess)
+          'command': setup.address
+        else
+          'url': setup.address,
+        if (setup.subprocess) 'args': setup.arguments,
+      };
+      if (setup.subprocess ||
+          setup.authentication == McpAuthentication.headers) {
+        var index = 0;
+        config[setup.subprocess ? 'env' : 'headers'] = {
+          for (final entry in setup.credentials.entries)
+            entry.key: reference('VALUE_${index++}', entry.value),
+        };
+      }
+      if (!setup.subprocess &&
+          setup.authentication == McpAuthentication.browser) {
+        config['auth'] = 'oauth';
+        config['oauth'] = {
+          if (setup.clientId.isNotEmpty) 'client_id': setup.clientId,
+          if (setup.tokenEndpointAuthMethod.isNotEmpty)
+            'token_endpoint_auth_method': setup.tokenEndpointAuthMethod,
+          if (setup.clientSecret.isNotEmpty)
+            'client_secret': reference('CLIENT_SECRET', setup.clientSecret),
+          if (setup.scope.isNotEmpty) 'scope': setup.scope,
+          if (setup.redirect.isNotEmpty) 'redirect_uri': setup.redirect,
+        };
+      }
+      if (!setup.subprocess) {
+        if (setup.clientCert.isNotEmpty) {
+          config['client_cert'] = setup.clientCert;
+        }
+        if (setup.clientKey.isNotEmpty) config['client_key'] = setup.clientKey;
+        if (setup.caPath.isNotEmpty) config['ssl_verify'] = setup.caPath;
+      }
+      for (final entry in secrets.entries) {
+        await _profile.requireProfile();
+        if (!active()) return null;
+        final ack = await _profile.server.ownedMutation(
+          'PUT',
+          'env',
+          {'profile': profileName},
+          {'key': entry.key, 'value': entry.value, 'profile': profileName},
+          active,
+          () => affected = true,
+        );
+        if (ack['ok'] != true || ack['key'] != entry.key) {
+          throw const FormatException('Credential save was not acknowledged');
+        }
+        if (!active()) return null;
+      }
+      await _profile.requireProfile();
+      if (!active()) return null;
+      final result = await _profile.gateway.mcpCommand(
+        'add',
+        {
+          'name': setup.name,
+          'config': config,
+          if (!setup.subprocess &&
+              setup.authentication == McpAuthentication.bearer)
+            'bearer_token': setup.token,
+        },
+        canDispatch: active,
+        onDispatched: () {
+          affected = true;
+          createDispatched = true;
+        },
+      );
+      if (result['ok'] != true ||
+          result['name'] != setup.name ||
+          result['server'] is! Map) {
+        throw const FormatException('Connector setup was not acknowledged');
+      }
+      final created = ProfileConnector.decode(result['server'] as Map);
+      if (created.name != setup.name) {
+        throw const FormatException('Wrong connector setup acknowledgement');
+      }
+      if (!active()) return null;
+      return created;
+    } catch (failure) {
+      if (active()) {
+        // Credential writes and create are not an atomic server transaction.
+        _review = affected && (!createDispatched || !_knownRejection(failure));
+        _error = mcpOperationError(
+          failure,
+          _review
+              ? 'Check the connector list before retrying.'
+              : 'Connector setup did not complete.',
+        );
+      }
+      return null;
+    } finally {
+      _profile.server.release();
+      if (active()) {
+        _busy = false;
+        _emit();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_disposed) return;
+    _disposed = true;
+    ++_revision;
+    _profile.server.release();
+    if (_notificationDepth == 0) super.dispose();
+  }
+}
+
+bool _knownRejection(Object failure) =>
+    failure is DashboardHttpException &&
+    const {400, 401, 403, 404, 405, 409, 422}.contains(failure.statusCode);

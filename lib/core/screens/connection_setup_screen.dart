@@ -1,11 +1,15 @@
+import '../widgets/selection_viewport.dart';
+import '../widgets/studio_form_actions.dart';
+import '../widgets/wing_app_bar.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../services/hermes_cloud.dart';
 import '../widgets/studio_selection_tile.dart';
 
-import '../models/connection_address.dart';
-import '../services/connection_manager.dart';
+import '../models/connection_setup.dart';
+import '../services/connection_setup_session.dart';
+import '../models/connection.dart';
 import '../services/connection_setup_probe.dart';
 import '../theme/wing_theme.dart';
 import '../widgets/compact_switch.dart';
@@ -14,305 +18,222 @@ import '../widgets/gateway_headers_editor.dart';
 import '../widgets/playful_portrait.dart';
 import '../widgets/studio_action_label.dart';
 import '../widgets/studio_error.dart';
+import '../widgets/studio_loading.dart';
 import '../widgets/wing_wordmark.dart';
 import 'connection_guide_screen.dart';
 
-/// One dashboard address, an explicit sign-in, and a provisional access check.
+/// One gateway Webapp address, an explicit sign-in, and a provisional access check.
 class ConnectionSetupScreen extends StatefulWidget {
-  const ConnectionSetupScreen({
-    required this.onSave,
-    required this.onSaveIcon,
-    this.initialConnection,
-    this.cloud,
-    this.savedConnections = const [],
-    this.createProbe = DashboardConnectionProbe.new,
-    super.key,
-  }) : assert(initialConnection == null || onSaveIcon != null);
+  const ConnectionSetupScreen({required this.createSession, super.key});
 
-  final SavedConnection? initialConnection;
-  final HermesCloud? cloud;
-  final List<SavedConnection> savedConnections;
-  final Future<SavedConnection> Function(SavedConnection candidate) onSave;
-
-  /// Existing connections save appearance independently of access verification.
-  /// New instances keep their icon in the draft until the final save.
-  final Future<void> Function(ConnectionIcon icon)? onSaveIcon;
-  final ConnectionProbe Function(SavedConnection) createProbe;
+  final ConnectionSetupSession Function() createSession;
 
   @override
   State<ConnectionSetupScreen> createState() => _ConnectionSetupScreenState();
 }
 
-enum _Step { choose, address, cloud, signIn, check, review }
-
 class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   final _addressForm = GlobalKey<FormState>();
   final _signInForm = GlobalKey<FormState>();
   final _nameForm = GlobalKey<FormState>();
-  final _scroll = ScrollController();
+  final _pages = PageController(keepPage: false);
+  final _cardScrolls = {
+    for (final step in ConnectionSetupStep.values) step: ScrollController(),
+  };
   late final TextEditingController _address;
   late final TextEditingController _username;
   late final TextEditingController _password;
   late final TextEditingController _name;
-  late final ConnectionSetupProbe _probe;
-  late _AccessSettings _access;
-  late ConnectionIcon _icon;
-  _Step _step = _Step.choose;
-  late final HermesCloud _cloud;
-  CloudDiscovery? _discovery;
-  List<CloudOrganization> _organizations = const [];
-  CloudInstance? _instance;
-  String? _organization;
-  DashboardOAuthSession? _cloudSession;
-  String? _cloudError;
-  bool _cloudBusy = false;
-  bool _cloudRoute = false;
-  int _cloudGeneration = 0;
-
-  SavedConnection? get _alreadySaved {
-    if (_editing || _instance == null) return null;
-    for (final saved in widget.savedConnections) {
-      if (saved.cloudInstanceId == _instance!.id &&
-          saved.cloudOrganization == _organization) {
-        return saved;
-      }
-    }
-    return null;
-  }
-
-  SavedConnection? _checkedConnection;
+  late final ConnectionSetupSession _session;
+  ConnectionSetupState get _state => _session.value;
+  ConnectionSetupCheck get _probe => _state.check;
+  ConnectionSetupAccess get _access => _state.draft.access;
+  ConnectionIcon get _icon => _state.draft.icon;
+  ConnectionSetupStep get _step => _state.step;
+  CloudDiscovery? get _discovery => _state.discovery;
+  List<CloudOrganization> get _organizations => _state.organizations;
+  CloudInstance? get _instance => _state.instance;
+  String? get _organization => _state.organization;
+  String? get _cloudError => _state.cloudError;
+  String? get _saveError => _state.saveError;
+  SavedConnection? get _alreadySaved => _state.alreadySaved;
+  bool get _cloudBusy => _state.cloudBusy;
+  bool get _cloudRoute => _state.cloudRoute;
+  bool get _saving => _state.saving;
+  bool get _leaving => _state.leaving;
+  bool get _editing => _state.editing;
   bool _revealPassword = false;
-  bool _dirty = false;
-  bool _saving = false;
-  bool _leaving = false;
   bool _confirmingExit = false;
-  String? _saveError;
-
-  bool get _editing => widget.initialConnection != null;
+  bool _popScheduled = false;
+  bool _draggingCards = false;
 
   @override
   void initState() {
     super.initState();
-    final initial = widget.initialConnection;
-    _cloud = widget.cloud ?? HermesCloud();
-    _cloudRoute = initial?.isCloud ?? false;
-    _step = _cloudRoute
-        ? _Step.cloud
-        : initial == null
-        ? _Step.choose
-        : _Step.address;
-    _icon = initial?.icon ?? ConnectionIcon.server;
-    _address = TextEditingController(
-      text: initial == null
-          ? ''
-          : SavedConnection.joinBaseUrl(
-              '${initial.useHttps ? 'https' : 'http'}://${initial.host}:${initial.dashboardPort}',
-              initial.dashboardPrefix ?? '',
-            ),
-    );
-    if (_cloudRoute) {
-      _organization = initial!.cloudOrganization;
-      _instance = CloudInstance(
-        id: initial.cloudInstanceId!,
-        name: initial.label,
-        state: 'unknown',
-        dashboardUrl: _address.text,
-      );
-      _discovery = CloudDiscovery(instances: [_instance!]);
-    }
-    _username = TextEditingController(text: initial?.dashboardUsername ?? '');
-    _password = TextEditingController(text: initial?.dashboardPassword ?? '');
-    _name = TextEditingController(text: initial?.label ?? '');
-    _access = _AccessSettings(
-      proxied: initial?.dashboardProxied ?? false,
-      chatUrl: initial?.desktopGatewayUrl ?? '',
-      headers: initial?.gatewayHeaders ?? const {},
-    );
-    _probe = ConnectionSetupProbe(createProbe: widget.createProbe)
-      ..addListener(_probeChanged);
+    _session = widget.createSession();
+    _address = TextEditingController(text: _state.draft.address);
+    _username = TextEditingController(text: _state.draft.username);
+    _password = TextEditingController(text: _state.draft.password);
+    _name = TextEditingController(text: _state.draft.name);
+    _session.addListener(_changed);
   }
 
-  void _probeChanged() {
+  void _changed() {
     if (!mounted) return;
-    setState(() {
-      if (_step == _Step.check && !_probe.checking && _probe.verified) {
-        _step = _Step.review;
-        _toTop();
-      }
-    });
-  }
-
-  void _toTop() {
-    if (_scroll.hasClients) _scroll.jumpTo(0);
-  }
-
-  void _go(_Step step) {
-    FocusManager.instance.primaryFocus?.unfocus();
-    if (step != _Step.review) {
-      _probe.cancel();
-      _checkedConnection = null;
+    final previousStep = _renderedStep;
+    for (final entry in [
+      (_address, _state.draft.address),
+      (_username, _state.draft.username),
+      (_password, _state.draft.password),
+      (_name, _state.draft.name),
+    ]) {
+      if (entry.$1.text != entry.$2) entry.$1.text = entry.$2;
     }
-    setState(() {
-      _step = step;
-      _saveError = null;
-    });
-    _toTop();
+    setState(() {});
+    if (previousStep != _step) {
+      FocusManager.instance.primaryFocus?.unfocus();
+      WidgetsBinding.instance.addPostFrameCallback((_) => _syncPage());
+    }
+    if (_leaving && !_popScheduled) {
+      _popScheduled = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop(_state.result);
+      });
+    }
   }
 
+  ConnectionSetupStep? _renderedStep;
   void _continue() {
-    if (!_addressForm.currentState!.validate()) return;
-    final address = ConnectionAddress.parse(_address.text);
-    _address.text = address.url;
-    if (_name.text.isEmpty) _name.text = address.host;
-    _go(_Step.signIn);
+    // The fixed footer can be used before an incoming card mounts its form.
+    // The session still validates every command against the current draft.
+    if (_addressForm.currentState?.validate() != false) {
+      _session.continueAddress();
+    }
   }
 
-  Future<void> _customSetup() async {
-    final result = await Navigator.of(context).push<_AccessSettings>(
-      MaterialPageRoute(builder: (_) => _CustomSetupScreen(initial: _access)),
-    );
-    if (result == null || !mounted) return;
-    setState(() {
-      _access = result;
-      _dirty = true;
+  void _syncPage() {
+    if (!mounted || !_pages.hasClients) return;
+    final index = _state.cards.indexOf(_step);
+    if (index < 0) return;
+    if ((_pages.page! - index).abs() < .001) {
+      // A rapid reversal can return to the current position before the previous
+      // animation's first tick. Cancel that outgoing animation as well.
+      if (_pages.position.isScrollingNotifier.value && !_draggingCards) {
+        _pages.jumpToPage(index);
+      }
+      return;
+    }
+    if (MediaQuery.disableAnimationsOf(context)) {
+      _pages.jumpToPage(index);
+    } else {
+      _pages.animateToPage(
+        index,
+        duration: WingMotion.standard,
+        curve: WingMotion.curve,
+      );
+    }
+  }
+
+  bool _pageSettled(ScrollNotification notification) {
+    if (notification.metrics.axis != Axis.horizontal) return false;
+    if (notification is ScrollStartNotification &&
+        notification.dragDetails != null) {
+      _draggingCards = true;
+    }
+    if (notification is! ScrollEndNotification || !_draggingCards) return false;
+    _draggingCards = false;
+    // Commit only a completed swipe. A reversed or cancelled drag must not
+    // retire a check or move the workflow halfway through the gesture.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_pages.hasClients) return;
+      final index = _pages.page!.round();
+      if ((_pages.page! - index).abs() > .001 || index >= _state.cards.length) {
+        return;
+      }
+      _session.selectCard(_state.cards[index]);
+      _syncPage();
     });
-    _go(_Step.signIn);
+    return false;
   }
 
   Future<void> _check() async {
-    if (_probe.checking) return;
     if (!_cloudRoute &&
-        _step == _Step.signIn &&
+        _step == ConnectionSetupStep.signIn &&
         !_signInForm.currentState!.validate()) {
       return;
     }
-    final address = ConnectionAddress.parse(_address.text);
-    final candidate = SavedConnection(
-      id: widget.initialConnection?.id ?? 'new-connection',
-      label: _name.text.trim(),
-      host: address.host,
-      port: address.port,
-      useHttps: address.useHttps,
-      apiKey: '',
-      cloudInstanceId: _cloudRoute ? _instance!.id : null,
-      cloudOrganization: _cloudRoute ? _organization : null,
-      dashboardOAuth: _cloudRoute ? _cloudSession : null,
-      dashboardPortOverride: address.port,
-      dashboardPrefix: address.path,
-      dashboardProxied: _access.proxied,
-      dashboardUsername: _cloudRoute || _access.proxied
-          ? null
-          : _username.text.trim(),
-      dashboardPassword: _cloudRoute || _access.proxied ? null : _password.text,
-      desktopGatewayUrl: _access.chatUrl.isEmpty ? null : _access.chatUrl,
-      gatewayHeaders: _access.headers,
-    );
-    _go(_Step.check);
-    _checkedConnection = candidate;
-    await _probe.check(candidate);
+    FocusManager.instance.primaryFocus?.unfocus();
+    await _session.check();
   }
 
   Future<void> _save() async {
-    if (_saving || !_probe.verified || !_nameForm.currentState!.validate()) {
-      return;
-    }
-    final candidate = _checkedConnection!.copyWith(
-      label: _name.text.trim(),
-      icon: _icon,
-    );
-    setState(() {
-      _saving = true;
-      _saveError = null;
-    });
-    try {
-      final saved = await widget.onSave(candidate);
-      if (!mounted) return;
-      _leave(saved);
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _saving = false;
-          _saveError =
-              'Couldn’t save this connection on this device. Your details are still here. Try saving again.';
-        });
-      }
-    }
+    if (_nameForm.currentState?.validate() != false) await _session.save();
   }
 
-  void _leave([SavedConnection? result]) {
-    setState(() => _leaving = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) Navigator.of(context).pop(result);
-    });
+  Future<void> _customSetup() async {
+    final edit = _session.beginAccessEdit();
+    final result = await Navigator.of(context).push<ConnectionSetupAccessInput>(
+      MaterialPageRoute(
+        builder: (_) => _CustomSetupScreen(
+          initial: edit.initial,
+          validateAddress: _session.validateAddress,
+        ),
+      ),
+    );
+    if (result != null && mounted) {
+      _session.applyAccess(result, edit: edit);
+    }
   }
 
   Future<void> _back() async {
-    if (_saving || _leaving || _confirmingExit) return;
-    if (_cloudBusy) {
-      _cloudGeneration++;
-      await _cloud.cancel();
-      if (!mounted) return;
-      setState(() => _cloudBusy = false);
-      return;
-    }
-    if (_step == _Step.check || _step == _Step.review) {
-      _go(_cloudRoute ? _Step.cloud : _Step.signIn);
-      return;
-    }
-    if (_step == _Step.signIn) {
-      _go(_Step.address);
-      return;
-    }
-    if (!_editing && (_step == _Step.address || _step == _Step.cloud)) {
-      _cloudGeneration++;
-      _go(_Step.choose);
-      return;
-    }
-    if (!_dirty) {
-      _leave();
-      return;
-    }
+    if (_confirmingExit) return;
+    final result = await _session.back();
+    if (!mounted || result != ConnectionSetupBack.discard) return;
     _confirmingExit = true;
     final discard = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StudioDialog(
         title: const Text('Discard connection setup?'),
         content: const Text('This connection has not been saved.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Keep editing'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Discard'),
+          StudioFormActions(
+            onCancel: () => Navigator.pop(context, false),
+            cancelLabel: 'Keep editing',
+            onConfirm: () => Navigator.pop(context, true),
+            confirmLabel: 'Discard connection setup',
+            confirmIcon: Icons.delete_outline,
+            destructive: true,
           ),
         ],
       ),
     );
     _confirmingExit = false;
-    if (discard == true && mounted) _leave();
+    if (discard == true && mounted) _session.discard();
   }
 
   @override
   void dispose() {
-    _cloudGeneration++;
-    _cloud.close();
-    _probe.removeListener(_probeChanged);
-    _probe.dispose();
+    _session.removeListener(_changed);
+    _session.dispose();
     for (final controller in [_address, _username, _password, _name]) {
       controller.dispose();
     }
-    _scroll.dispose();
+    _pages.dispose();
+    for (final scroll in _cardScrolls.values) {
+      scroll.dispose();
+    }
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    _renderedStep = _step;
     final step = switch (_step) {
-      _Step.choose || _Step.address || _Step.cloud => 1,
-      _Step.signIn => 2,
-      _Step.check || _Step.review => 3,
+      ConnectionSetupStep.choose ||
+      ConnectionSetupStep.address ||
+      ConnectionSetupStep.cloud => 1,
+      ConnectionSetupStep.signIn => 2,
+      ConnectionSetupStep.check || ConnectionSetupStep.review => 3,
     };
     return PopScope(
       canPop: _leaving,
@@ -320,11 +241,18 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         if (!didPop) _back();
       },
       child: Scaffold(
-        appBar: AppBar(
-          leading: BackButton(onPressed: _saving ? null : _back),
-          title: Text(_editing ? 'Edit instance' : 'Add instance'),
+        appBar: WingAppBar(
+          context: context,
+          leading: StudioButtonPress(
+            child: BackButton(onPressed: _saving ? null : _back),
+          ),
+          title: Text(
+            _editing ? 'Edit instance' : 'Add instance',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
           actions: [
-            if (_step != _Step.review)
+            if (_step != ConnectionSetupStep.review)
               Padding(
                 padding: const EdgeInsets.only(right: 16),
                 child: Center(
@@ -336,73 +264,85 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
               ),
           ],
         ),
-        body: SafeArea(
-          top: false,
-          child: Center(
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 480),
-              child: LayoutBuilder(
-                builder: (context, constraints) => SingleChildScrollView(
-                  controller: _scroll,
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  child: ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: constraints.maxHeight,
-                    ),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              Semantics(
-                                label: 'Connection setup, step $step of 3',
-                                child: Row(
-                                  children: [
-                                    for (var index = 0; index < 3; index++)
-                                      Expanded(
-                                        child: Padding(
-                                          padding: EdgeInsets.only(
-                                            right: index == 2 ? 0 : 6,
-                                          ),
-                                          child: ColoredBox(
-                                            color: index < step
-                                                ? Theme.of(
-                                                    context,
-                                                  ).colorScheme.primary
-                                                : Theme.of(
-                                                    context,
-                                                  ).colorScheme.outlineVariant,
-                                            child: const SizedBox(height: 3),
-                                          ),
-                                        ),
-                                      ),
-                                  ],
+        bottomNavigationBar: _step == ConnectionSetupStep.choose
+            ? null
+            : SafeArea(
+                top: false,
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    16,
+                    8,
+                    16,
+                    12 + MediaQuery.viewInsetsOf(context).bottom,
+                  ),
+                  child: _footer(),
+                ),
+              ),
+        body: StudioPageLoading(
+          active: _probe.checking,
+          label: 'Checking connection',
+          child: SafeArea(
+            top: false,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      child: Semantics(
+                        label: 'Connection setup, step $step of 3',
+                        child: Row(
+                          children: [
+                            for (var index = 0; index < 3; index++)
+                              Expanded(
+                                child: Padding(
+                                  padding: EdgeInsets.only(
+                                    right: index == 2 ? 0 : 6,
+                                  ),
+                                  child: ColoredBox(
+                                    color: index < step
+                                        ? Theme.of(context).colorScheme.primary
+                                        : Theme.of(
+                                            context,
+                                          ).colorScheme.outlineVariant,
+                                    child: const SizedBox(height: 3),
+                                  ),
                                 ),
                               ),
-                              const SizedBox(height: 24),
-                              switch (_step) {
-                                _Step.choose => _chooseStep(),
-                                _Step.cloud => _cloudStep(),
-                                _Step.address => _addressStep(),
-                                _Step.signIn => _signInStep(),
-                                _Step.check => _checkStep(),
-                                _Step.review => _reviewStep(),
-                              },
-                            ],
-                          ),
-                          Padding(
-                            padding: const EdgeInsets.only(top: 24),
-                            child: _footer(),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
                     ),
-                  ),
+                    Expanded(
+                      child: !_cloudRoute && _state.cards.contains(_step)
+                          ? NotificationListener<ScrollNotification>(
+                              onNotification: _pageSettled,
+                              child: PageView.builder(
+                                key: const Key('connection-cards'),
+                                controller: _pages,
+                                physics: _saving
+                                    ? const NeverScrollableScrollPhysics()
+                                    : const BouncingScrollPhysics(),
+                                itemCount: _state.cards.length,
+                                itemBuilder: (context, index) {
+                                  final card = _state.cards[index];
+                                  return ExcludeSemantics(
+                                    excluding: card != _step,
+                                    child: ExcludeFocus(
+                                      excluding: card != _step,
+                                      child: IgnorePointer(
+                                        ignoring: card != _step,
+                                        child: _card(card),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+                            )
+                          : _card(_step),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -411,6 +351,21 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       ),
     );
   }
+
+  Widget _card(ConnectionSetupStep step) => SingleChildScrollView(
+    key: ValueKey('connection-card-${step.name}'),
+    controller: _cardScrolls[step],
+    keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: switch (step) {
+      ConnectionSetupStep.choose => _chooseStep(),
+      ConnectionSetupStep.address => _addressStep(),
+      ConnectionSetupStep.signIn => _signInStep(),
+      ConnectionSetupStep.cloud => _cloudStep(),
+      ConnectionSetupStep.check => _checkStep(),
+      ConnectionSetupStep.review => _reviewStep(),
+    },
+  );
 
   Widget _heading(String title, [String? subtitle]) => Column(
     crossAxisAlignment: CrossAxisAlignment.start,
@@ -432,19 +387,23 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     ],
   );
 
-  Widget _artwork() => const Padding(
-    padding: EdgeInsets.only(bottom: 24),
+  Widget _artwork({double size = 112}) => Padding(
+    padding: const EdgeInsets.only(bottom: 16),
     child: Center(
       child: SizedBox(
-        width: 220,
-        height: 128,
+        width: 220 * size / 112,
+        height: 128 * size / 112,
         child: Stack(
           children: [
             Align(
               alignment: Alignment.bottomCenter,
-              child: PlayfulPortrait(size: 112, circular: true),
+              child: PlayfulPortrait(size: size, circular: true),
             ),
-            Positioned(right: 6, top: 0, child: WingFeathers(width: 58)),
+            Positioned(
+              right: 6,
+              top: 0,
+              child: WingFeathers(width: 58 * size / 112),
+            ),
           ],
         ),
       ),
@@ -460,20 +419,19 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         _panel(
           Material(
             color: Colors.transparent,
-            child: ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: Icon(cloud ? Icons.cloud_outlined : Icons.link),
-              title: Text(cloud ? 'Hermes Cloud' : 'Use an address'),
-              subtitle: Text(
-                cloud
-                    ? 'Find your instances with Nous Portal'
-                    : 'Connect with a dashboard address',
+            child: StudioButtonPress(
+              child: ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Icon(cloud ? Icons.cloud_outlined : Icons.link),
+                title: Text(cloud ? 'Hermes Cloud' : 'Use an address'),
+                subtitle: Text(
+                  cloud
+                      ? 'Find your instances with Nous Portal'
+                      : 'Use your gateway’s Webapp address',
+                ),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => _session.chooseSource(cloud: cloud),
               ),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () {
-                _cloudRoute = cloud;
-                _go(cloud ? _Step.cloud : _Step.address);
-              },
             ),
           ),
         ),
@@ -482,95 +440,9 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     ],
   );
 
-  Future<void> _discoverCloud({bool switchAccount = false}) async {
-    if (_cloudBusy) return;
-    final generation = ++_cloudGeneration;
-    setState(() {
-      _cloudBusy = true;
-      _cloudError = null;
-      if (switchAccount) {
-        _discovery = null;
-        _instance = null;
-        _organization = null;
-        _organizations = const [];
-        _cloudSession = null;
-      }
-    });
-    try {
-      final result = await _cloud.discover(
-        organization: switchAccount ? null : _organization,
-        switchAccount: switchAccount,
-      );
-      if (!mounted || generation != _cloudGeneration) return;
-      setState(() {
-        if (result != null) {
-          _discovery = result;
-          if (result.organizations.isNotEmpty) {
-            _organizations = result.organizations;
-          }
-          _instance = null;
-          _cloudSession = null;
-          _organization = result.organization?.id;
-        }
-      });
-    } catch (error) {
-      if (mounted && generation == _cloudGeneration) {
-        setState(() {
-          _cloudError = error is CloudAccessException
-              ? error.message
-              : 'Couldn’t reach Nous Portal. Try again.';
-        });
-      }
-    } finally {
-      if (mounted && generation == _cloudGeneration) {
-        setState(() => _cloudBusy = false);
-      }
-    }
-  }
-
-  Future<void> _continueCloud() async {
-    if (_cloudBusy) return;
-    if (_discovery == null || _discovery!.organizations.isNotEmpty) {
-      await _discoverCloud();
-      return;
-    }
-    final instance = _instance;
-    if (instance?.canConnect != true) return;
-    if (_alreadySaved case final saved?) {
-      _leave(saved);
-      return;
-    }
-    final generation = ++_cloudGeneration;
-    setState(() {
-      _cloudBusy = true;
-      _cloudError = null;
-    });
-    try {
-      final session = await _cloud.signIn(instance!);
-      if (!mounted || generation != _cloudGeneration || session == null) return;
-      _cloudSession = session;
-      _address.text = instance.dashboardUrl!;
-      if (!_editing) _name.text = instance.name;
-      _access = const _AccessSettings();
-      _username.clear();
-      _password.clear();
-      _dirty = true;
-      setState(() => _cloudBusy = false);
-      await _check();
-    } catch (error) {
-      if (mounted && generation == _cloudGeneration) {
-        setState(() {
-          _cloudError = error is CloudAccessException
-              ? error.message
-              : 'Couldn’t sign in to this Hermes. Try again.';
-        });
-      }
-    } finally {
-      if (mounted && generation == _cloudGeneration) {
-        setState(() => _cloudBusy = false);
-      }
-    }
-  }
+  Future<void> _discoverCloud({bool switchAccount = false}) =>
+      _session.refreshCloud(switchAccount: switchAccount);
+  Future<void> _continueCloud() => _session.continueCloud();
 
   Future<void> _openPortal() async {
     try {
@@ -584,10 +456,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       /* Show an actionable error without platform details. */
     }
     if (mounted) {
-      setState(
-        () => _cloudError =
-            'Couldn’t open Nous Portal. Visit portal.nousresearch.com in your browser.',
-      );
+      _session.portalOpenFailed();
     }
   }
 
@@ -613,15 +482,19 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       if (_cloudError case final message?) ...[
         StudioError(message),
         const SizedBox(height: 16),
-        TextButton(
-          onPressed: _cloudBusy ? null : () => _discoverCloud(),
-          child: const Text('Refresh instances'),
+        StudioButtonPress(
+          child: TextButton(
+            onPressed: _cloudBusy ? null : () => _discoverCloud(),
+            child: const Text('Refresh instances'),
+          ),
         ),
-        TextButton(
-          onPressed: _cloudBusy
-              ? null
-              : () => _discoverCloud(switchAccount: true),
-          child: const Text('Sign in again'),
+        StudioButtonPress(
+          child: TextButton(
+            onPressed: _cloudBusy
+                ? null
+                : () => _discoverCloud(switchAccount: true),
+            child: const Text('Sign in again'),
+          ),
         ),
       ],
       if (_discovery == null)
@@ -640,9 +513,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       else if (_discovery!.organizations.isNotEmpty)
         RadioGroup<String>(
           groupValue: _organization,
-          onChanged: _cloudBusy
-              ? (_) {}
-              : (value) => setState(() => _organization = value),
+          onChanged: _cloudBusy ? (_) {} : _session.selectOrganization,
           child: Column(
             children: [
               for (final org in _discovery!.organizations)
@@ -670,15 +541,7 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       else
         RadioGroup<String>(
           groupValue: _instance?.id,
-          onChanged: (value) {
-            if (_cloudBusy) return;
-            setState(() {
-              _instance = _discovery!.instances.firstWhere(
-                (i) => i.id == value,
-              );
-              _cloudError = null;
-            });
-          },
+          onChanged: _session.selectInstance,
           child: Column(
             children: [
               for (final instance in _discovery!.instances)
@@ -706,33 +569,32 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         Wrap(
           spacing: 8,
           children: [
-            TextButton(
-              onPressed: _cloudBusy ? null : () => _discoverCloud(),
-              child: const Text('Refresh'),
+            StudioButtonPress(
+              child: TextButton(
+                onPressed: _cloudBusy ? null : () => _discoverCloud(),
+                child: const Text('Refresh'),
+              ),
             ),
             if (_organizations.length > 1 && _discovery!.organizations.isEmpty)
-              TextButton(
+              StudioButtonPress(
+                child: TextButton(
+                  onPressed: _cloudBusy ? null : _session.changeOrganization,
+                  child: const Text('Change organization'),
+                ),
+              ),
+            StudioButtonPress(
+              child: TextButton(
+                onPressed: _cloudBusy ? null : _openPortal,
+                child: const Text('Open Nous Portal'),
+              ),
+            ),
+            StudioButtonPress(
+              child: TextButton(
                 onPressed: _cloudBusy
                     ? null
-                    : () => setState(() {
-                        _discovery = CloudDiscovery(
-                          organizations: _organizations,
-                        );
-                        _organization = null;
-                        _instance = null;
-                        _cloudError = null;
-                      }),
-                child: const Text('Change organization'),
+                    : () => _discoverCloud(switchAccount: true),
+                child: const Text('Switch account'),
               ),
-            TextButton(
-              onPressed: _cloudBusy ? null : _openPortal,
-              child: const Text('Open Nous Portal'),
-            ),
-            TextButton(
-              onPressed: _cloudBusy
-                  ? null
-                  : () => _discoverCloud(switchAccount: true),
-              child: const Text('Switch account'),
             ),
           ],
         ),
@@ -753,32 +615,27 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         if (MediaQuery.viewInsetsOf(context).bottom == 0) _artwork(),
         _heading(
           'Where’s your Hermes?',
-          'Use the dashboard address you open in your phone’s browser.',
+          'Use your Hermes gateway’s Webapp address. A standalone Dashboard address cannot open chats.',
         ),
-        TextFormField(
-          key: const Key('connection-address'),
-          controller: _address,
-          decoration: const InputDecoration(
-            labelText: 'Dashboard address',
-            hintText: 'https://hermes.example.com',
-            helperText: 'Include the port and any path in this one address.',
-            helperMaxLines: 4,
-            errorMaxLines: 5,
+        viewportSelection(
+          TextFormField(
+            key: const Key('connection-address'),
+            controller: _address,
+            decoration: const InputDecoration(
+              labelText: 'Gateway Webapp address',
+              hintText: 'https://hermes.example.com',
+              helperText: 'Include the port and any path in this one address.',
+              helperMaxLines: 4,
+              errorMaxLines: 5,
+            ),
+            keyboardType: TextInputType.url,
+            textInputAction: TextInputAction.next,
+            autocorrect: false,
+            enableSuggestions: false,
+            onChanged: _session.editAddress,
+            onFieldSubmitted: (_) => _continue(),
+            validator: _session.validateAddress,
           ),
-          keyboardType: TextInputType.url,
-          textInputAction: TextInputAction.next,
-          autocorrect: false,
-          enableSuggestions: false,
-          onChanged: (_) => _dirty = true,
-          onFieldSubmitted: (_) => _continue(),
-          validator: (value) {
-            try {
-              ConnectionAddress.parse(value ?? '');
-              return null;
-            } on FormatException catch (error) {
-              return error.message;
-            }
-          },
         ),
         const SizedBox(height: 24),
         _panel(
@@ -803,10 +660,12 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         ),
         Align(
           alignment: AlignmentDirectional.centerStart,
-          child: TextButton.icon(
-            onPressed: _findAddress,
-            icon: const Icon(Icons.help_outline, size: 18),
-            label: const Text('Find my address'),
+          child: StudioButtonPress(
+            child: IconButton(
+              onPressed: _findAddress,
+              icon: const Icon(Icons.help_outline, size: 18),
+              tooltip: 'Find my address',
+            ),
           ),
         ),
       ],
@@ -821,14 +680,28 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     context,
     connectionName: _name.text.trim(),
     initialIcon: _icon,
-    onSave: (icon) async {
-      if (widget.onSaveIcon != null) await widget.onSaveIcon!(icon);
-      if (!mounted) return;
-      setState(() {
-        _icon = icon;
-        if (!_editing) _dirty = true;
-      });
-    },
+    onSave: _session.setIcon,
+  );
+
+  Widget _compactDestination() => Padding(
+    padding: const EdgeInsets.only(bottom: 12),
+    child: Row(
+      children: [
+        ConnectionIconButton(
+          icon: _icon,
+          onPressed: _saving ? null : _pickIcon,
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            _address.text,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall,
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _destination() => Padding(
@@ -886,88 +759,105 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          _heading(
+          Text(
             _access.proxied
                 ? 'Connect through your proxy'
                 : 'Sign in to Hermes',
+            style: Theme.of(context).textTheme.titleLarge,
           ),
-          _destination(),
+          const SizedBox(height: 4),
+          _compactDestination(),
           if (_access.proxied)
             const Text(
               'Your access proxy handles sign-in. Wing will check that it allows profiles, live chat and history.',
             )
           else ...[
-            TextFormField(
-              key: const Key('connection-username'),
-              controller: _username,
-              decoration: const InputDecoration(
-                labelText: 'Username',
-                errorMaxLines: 3,
+            viewportSelection(
+              TextFormField(
+                key: const Key('connection-username'),
+                controller: _username,
+                decoration: const InputDecoration(
+                  labelText: 'Username',
+                  errorMaxLines: 3,
+                ),
+                autofillHints: const [AutofillHints.username],
+                textInputAction: TextInputAction.next,
+                autocorrect: false,
+                enableSuggestions: false,
+                onChanged: _session.editUsername,
+                validator: _session.validateUsername,
               ),
-              autofillHints: const [AutofillHints.username],
-              textInputAction: TextInputAction.next,
-              autocorrect: false,
-              enableSuggestions: false,
-              onChanged: (_) => _dirty = true,
-              validator: (value) => value == null || value.trim().isEmpty
-                  ? 'Enter your dashboard username.'
-                  : null,
             ),
-            const SizedBox(height: 20),
-            TextFormField(
-              key: const Key('connection-password'),
-              controller: _password,
-              obscureText: !_revealPassword,
-              autofillHints: const [AutofillHints.password],
-              textInputAction: TextInputAction.done,
-              autocorrect: false,
-              enableSuggestions: false,
-              decoration: InputDecoration(
-                labelText: 'Password',
-                errorMaxLines: 3,
-                suffixIcon: IconButton(
-                  tooltip: _revealPassword ? 'Hide password' : 'Show password',
-                  onPressed: () =>
-                      setState(() => _revealPassword = !_revealPassword),
-                  icon: Icon(
-                    _revealPassword
-                        ? Icons.visibility_off_outlined
-                        : Icons.visibility_outlined,
+            const SizedBox(height: 12),
+            viewportSelection(
+              TextFormField(
+                key: const Key('connection-password'),
+                controller: _password,
+                obscureText: !_revealPassword,
+                autofillHints: const [AutofillHints.password],
+                textInputAction: TextInputAction.done,
+                autocorrect: false,
+                enableSuggestions: false,
+                decoration: InputDecoration(
+                  labelText: 'Password',
+                  errorMaxLines: 3,
+                  suffixIcon: StudioButtonPress(
+                    child: IconButton(
+                      tooltip: _revealPassword
+                          ? 'Hide password'
+                          : 'Show password',
+                      onPressed: () =>
+                          setState(() => _revealPassword = !_revealPassword),
+                      icon: Icon(
+                        _revealPassword
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined,
+                      ),
+                    ),
                   ),
                 ),
+                onChanged: _session.editPassword,
+                onFieldSubmitted: (_) => _check(),
+                validator: _session.validatePassword,
               ),
-              onChanged: (_) => _dirty = true,
-              onFieldSubmitted: (_) => _check(),
-              validator: (value) => value == null || value.isEmpty
-                  ? 'Enter your dashboard password.'
+            ),
+          ],
+          if (_state.unencrypted) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Unencrypted HTTP. Use a trusted network or HTTPS.',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+          ],
+          const SizedBox(height: 4),
+          StudioButtonPress(
+            child: ListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('Custom setup'),
+              subtitle:
+                  _access.proxied ||
+                      _access.chatUrl.isNotEmpty ||
+                      _access.headers.isNotEmpty
+                  ? Text(_accessDescription(_access))
                   : null,
+              trailing: const Icon(Icons.chevron_right),
+              onTap: _customSetup,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'Use your dashboard login. Model-provider keys stay on Hermes.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-          if (_address.text.startsWith('http:')) ...[
-            const SizedBox(height: 16),
-            Text(
-              'HTTP does not encrypt this connection. Use a trusted private network or an HTTPS address.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
-          const SizedBox(height: 24),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Custom setup'),
-            subtitle: Text(_access.description),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: _customSetup,
           ),
           if (_access.chatUrl.isNotEmpty)
             Text(
-              'Your dashboard authentication and access headers will also be sent to the chat address shown above.',
+              'Your dashboard authentication and access headers will also be sent to ${_access.chatUrl}.',
               style: Theme.of(context).textTheme.bodySmall,
             ),
+          const SizedBox(height: 8),
+          StudioButtonPress(
+            child: OutlinedButton(
+              onPressed: _probe.checking ? null : _check,
+              child: const Text('Check connection'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          _checkResultsPanel(),
         ],
       ),
     ),
@@ -982,72 +872,59 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
             : 'One part needs attention',
       ),
       _destination(),
-      _panel(
-        Column(
-          children: [
-            for (final stage in ConnectionCheck.values) ...[
-              if (stage != ConnectionCheck.profiles) const Divider(height: 28),
-              _checkRow(stage),
-            ],
-          ],
-        ),
-      ),
-      const SizedBox(height: 16),
-      if (_probe.error case final message?) ...[
-        StudioError(message),
-        if (_probe.failedStage == ConnectionCheck.chat) ...[
-          const SizedBox(height: 12),
-          Text(
-            'If you use a reverse proxy, check WebSocket forwarding for ${ConnectionAddress.parse(_access.chatUrl.isEmpty ? _address.text : _access.chatUrl).path}/api/ws.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-        ],
-        ExpansionTile(
-          tilePadding: EdgeInsets.zero,
-          title: const Text('Connection details'),
-          children: [
-            Align(
-              alignment: AlignmentDirectional.centerStart,
-              child: SelectableText(
-                [
-                  'Dashboard: ${_address.text}',
-                  'Live chat: ${ConnectionAddress.parse(_access.chatUrl.isEmpty ? _address.text : _access.chatUrl).socketUrl}',
-                  if (_probe.httpStatus != null) 'HTTP ${_probe.httpStatus}',
-                  if (_probe.checkedAt != null)
-                    'Checked: ${_probe.checkedAt!.toLocal()}',
-                ].join('\n'),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
-          ],
-        ),
-        TextButton(
-          onPressed: () => _go(_cloudRoute ? _Step.cloud : _Step.signIn),
-          child: Text(
-            _cloudRoute
-                ? 'Sign in to Hermes Cloud again'
-                : 'Edit sign-in or custom setup',
-          ),
-        ),
-      ] else
-        Text(
-          'Checking access to your Hermes. No message will be sent.',
-          style: Theme.of(context).textTheme.bodySmall,
-        ),
+      _checkResultsPanel(),
     ],
+  );
+
+  Widget _checkResultsPanel() => Container(
+    key: const Key('connection-results'),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+    decoration: BoxDecoration(
+      color: Theme.of(context).colorScheme.surfaceContainer,
+      border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+      borderRadius: WingRadius.card,
+    ),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final stage in ConnectionCheck.values) _checkRow(stage),
+        const Divider(height: 12),
+        SizedBox(
+          height: MediaQuery.textScalerOf(context).scale(48),
+          child: SingleChildScrollView(
+            primary: false,
+            child: _probe.error != null
+                ? StudioError(
+                    _probe.error!,
+                    framed: false,
+                    icon: Icons.cloud_off_outlined,
+                  )
+                : Semantics(
+                    liveRegion: true,
+                    child: Text(
+                      _probe.verified
+                          ? 'Connection verified. Select Next to continue.'
+                          : _probe.checking
+                          ? 'Checking access to your Hermes. No message will be sent.'
+                          : 'Check access before continuing. No message will be sent.',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+          ),
+        ),
+      ],
+    ),
   );
 
   Widget _checkRow(ConnectionCheck stage) {
     final status = _probe.statuses[stage]!;
-    final failed = status == ConnectionCheckStatus.failed;
-    final available = status == ConnectionCheckStatus.available;
-    final pending = status == ConnectionCheckStatus.checking;
-    final colors = Theme.of(context).colorScheme;
-    final color = failed
-        ? colors.error
-        : available || pending
-        ? colors.primary
-        : colors.onSurfaceVariant;
+    final tokens = Theme.of(context).extension<WingTokens>()!;
+    final color = switch (status) {
+      ConnectionCheckStatus.available => tokens.success,
+      ConnectionCheckStatus.failed => tokens.danger,
+      ConnectionCheckStatus.checking => tokens.warning,
+      ConnectionCheckStatus.waiting => tokens.muted,
+    };
     final label = switch (stage) {
       ConnectionCheck.profiles => 'Profiles & access',
       ConnectionCheck.chat => 'Live chat',
@@ -1058,42 +935,39 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
         _probe.error == null ? 'Waiting' : 'Not checked',
       ConnectionCheckStatus.checking => 'Checking…',
       ConnectionCheckStatus.available => 'Available',
-      ConnectionCheckStatus.failed => 'Couldn’t connect',
+      ConnectionCheckStatus.failed => 'Failed',
     };
     return Semantics(
       liveRegion: true,
-      child: Row(
-        children: [
-          SizedBox(
-            width: 24,
-            height: 24,
-            child: pending && !MediaQuery.disableAnimationsOf(context)
-                ? CircularProgressIndicator(strokeWidth: 2, color: color)
-                : Icon(
-                    failed
-                        ? Icons.error_outline
-                        : available
-                        ? Icons.link
-                        : Icons.more_horiz,
-                    color: color,
-                  ),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+      label: '$label, $detail',
+      child: ExcludeSemantics(
+        child: Tooltip(
+          message: '$label: $detail',
+          excludeFromSemantics: true,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            child: Row(
               children: [
-                Text(label, style: Theme.of(context).textTheme.titleSmall),
-                Text(
-                  detail,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.bodySmall?.copyWith(color: color),
+                Expanded(
+                  child: Text(
+                    label,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Container(
+                  key: ValueKey('connection-check-${stage.name}-led'),
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
                 ),
               ],
             ),
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1103,43 +977,45 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _artwork(),
+        _artwork(size: 72),
         _heading(
           'Connection verified',
           'Give this Hermes a name you’ll recognize.',
         ),
-        _destination(),
-        TextFormField(
-          key: const Key('connection-name'),
-          controller: _name,
-          enabled: !_saving,
-          decoration: const InputDecoration(
-            labelText: 'Instance name',
-            hintText: 'Home',
-            errorMaxLines: 3,
+        if (_cloudRoute) _destination() else _compactDestination(),
+        viewportSelection(
+          TextFormField(
+            key: const Key('connection-name'),
+            controller: _name,
+            enabled: !_saving,
+            decoration: const InputDecoration(
+              labelText: 'Instance name',
+              hintText: 'Home',
+              errorMaxLines: 3,
+            ),
+            textInputAction: TextInputAction.done,
+            onChanged: _session.editName,
+            onFieldSubmitted: (_) => _save(),
+            validator: _session.validateName,
           ),
-          textInputAction: TextInputAction.done,
-          onChanged: (_) => _dirty = true,
-          onFieldSubmitted: (_) => _save(),
-          validator: (value) => value == null || value.trim().isEmpty
-              ? 'Give this instance a name.'
-              : null,
         ),
-        const SizedBox(height: 24),
-        ListTile(
-          key: const Key('connection-appearance'),
-          contentPadding: EdgeInsets.zero,
-          leading: ConnectionIconBadge(icon: _icon),
-          title: const Text('Instance icon'),
-          subtitle: Text(_icon.label),
-          trailing: const Icon(Icons.chevron_right),
-          enabled: !_saving,
-          onTap: _saving ? null : _pickIcon,
+        const SizedBox(height: 16),
+        StudioButtonPress(
+          child: ListTile(
+            key: const Key('connection-appearance'),
+            contentPadding: EdgeInsets.zero,
+            leading: ConnectionIconBadge(icon: _icon),
+            title: const Text('Instance icon'),
+            subtitle: Text(_icon.label),
+            trailing: const Icon(Icons.chevron_right),
+            enabled: !_saving,
+            onTap: _saving ? null : _pickIcon,
+          ),
         ),
         const SizedBox(height: 16),
         if (!_editing)
           Text(
-            'Opens with profile ${_probe.discovery!.serverPreferred.label}',
+            'Opens with profile ${_probe.preferredProfileLabel!}',
             style: Theme.of(context).textTheme.bodyMedium,
           ),
         const SizedBox(height: 16),
@@ -1161,38 +1037,54 @@ class _ConnectionSetupScreenState extends State<ConnectionSetupScreen> {
   );
 
   Widget _footer() {
-    if (_step == _Step.choose) return const SizedBox.shrink();
+    if (_step == ConnectionSetupStep.choose) return const SizedBox.shrink();
     final (label, action) = switch (_step) {
-      _Step.choose => ('Continue', _continue),
-      _Step.cloud => (
-        _alreadySaved == null ? 'Continue' : 'Open instance',
+      ConnectionSetupStep.choose => ('Next', _continue),
+      ConnectionSetupStep.cloud => (
+        _alreadySaved == null ? 'Next' : 'Open instance',
         _continueCloud,
       ),
-      _Step.address => ('Continue', _continue),
-      _Step.signIn => ('Check connection', _check),
-      _Step.check =>
-        _probe.checking
-            ? (
-                'Cancel check',
-                () => _go(_cloudRoute ? _Step.cloud : _Step.signIn),
-              )
-            : ('Try again', _check),
-      _Step.review => (_editing ? 'Save changes' : 'Save and open', _save),
+      ConnectionSetupStep.address => ('Next', _continue),
+      ConnectionSetupStep.signIn ||
+      ConnectionSetupStep.check => ('Next', _session.continueVerified),
+      ConnectionSetupStep.review => (
+        _editing ? 'Save changes' : 'Save and open',
+        _save,
+      ),
     };
-    return FilledButton(
-      key: const Key('connection-primary'),
-      style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
-      onPressed:
-          _saving ||
-              _cloudBusy ||
-              (_step == _Step.cloud &&
-                  _discovery != null &&
-                  (_discovery!.organizations.isNotEmpty
-                      ? _organization == null
-                      : _instance?.canConnect != true))
-          ? null
-          : action,
-      child: StudioActionLabel(label, busy: _saving || _cloudBusy),
+    if (_step == ConnectionSetupStep.review) {
+      return StudioFormActions(
+        onCancel: _saving ? null : _back,
+        cancelLabel: 'Back to connection settings',
+        onConfirm: _state.canAdvance ? action : null,
+        confirmKey: const Key('connection-primary'),
+        confirmLabel: label,
+        busy: _saving,
+        progressLabel: 'Saving connection',
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_step == ConnectionSetupStep.check)
+          StudioButtonPress(
+            child: TextButton(
+              onPressed: _probe.checking ? _session.editSignIn : _check,
+              child: Text(
+                _probe.checking ? 'Cancel check' : 'Check connection',
+              ),
+            ),
+          ),
+        StudioButtonPress(
+          child: FilledButton(
+            key: const Key('connection-primary'),
+            style: FilledButton.styleFrom(minimumSize: const Size(48, 52)),
+            onPressed: _state.canAdvance ? action : null,
+            child: StudioActionLabel(label, busy: _saving || _cloudBusy),
+          ),
+        ),
+      ],
     );
   }
 
@@ -1230,32 +1122,25 @@ class _CapabilityRow extends StatelessWidget {
   );
 }
 
-class _AccessSettings {
-  const _AccessSettings({
-    this.proxied = false,
-    this.chatUrl = '',
-    this.headers = const {},
-  });
-  final bool proxied;
-  final String chatUrl;
-  final Map<String, String> headers;
-
-  String get description {
-    final configured = [
-      if (proxied) 'Proxy sign-in',
-      if (chatUrl.isNotEmpty) 'Separate chat address',
-      if (headers.isNotEmpty)
-        '${headers.length} access ${headers.length == 1 ? 'header' : 'headers'}',
-    ];
-    return configured.isEmpty
-        ? 'Only if your administrator gave you extra settings'
-        : configured.join(' · ');
-  }
+String _accessDescription(ConnectionSetupAccess access) {
+  final configured = [
+    if (access.proxied) 'Proxy sign-in',
+    if (access.chatUrl.isNotEmpty) 'Separate chat address',
+    if (access.headers.isNotEmpty)
+      '${access.headers.length} access ${access.headers.length == 1 ? 'header' : 'headers'}',
+  ];
+  return configured.isEmpty
+      ? 'Only if your administrator gave you extra settings'
+      : configured.join(' · ');
 }
 
 class _CustomSetupScreen extends StatefulWidget {
-  const _CustomSetupScreen({required this.initial});
-  final _AccessSettings initial;
+  const _CustomSetupScreen({
+    required this.initial,
+    required this.validateAddress,
+  });
+  final ConnectionSetupAccess initial;
+  final String? Function(String?) validateAddress;
 
   @override
   State<_CustomSetupScreen> createState() => _CustomSetupScreenState();
@@ -1266,9 +1151,9 @@ class _CustomSetupScreenState extends State<_CustomSetupScreen> {
   late final _chat = TextEditingController(text: widget.initial.chatUrl);
   late bool _separate = widget.initial.chatUrl.isNotEmpty;
   late bool _proxied = widget.initial.proxied;
-  late Map<String, String?> _headers = {
-    for (final key in widget.initial.headers.keys) key: null,
-  };
+  late GatewayHeaderEdit _headers = GatewayHeaderEdit.retaining(
+    widget.initial.headers.keys,
+  );
   late bool _showHeaders = widget.initial.headers.isNotEmpty;
 
   @override
@@ -1284,17 +1169,34 @@ class _CustomSetupScreenState extends State<_CustomSetupScreen> {
     }
     Navigator.pop(
       context,
-      _AccessSettings(
+      ConnectionSetupAccessInput(
         proxied: _proxied,
-        chatUrl: _separate ? ConnectionAddress.parse(_chat.text).url : '',
-        headers: resolveGatewayHeaderUpdate(widget.initial.headers, _headers),
+        separateChat: _separate,
+        chatAddress: _chat.text,
+        headerEdits: _headers,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Custom setup')),
+    appBar: WingAppBar(context: context, title: const Text('Custom setup')),
+    bottomNavigationBar: SafeArea(
+      top: false,
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          16,
+          8,
+          16,
+          16 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
+        child: StudioFormActions(
+          onCancel: () => Navigator.pop(context),
+          onConfirm: _done,
+          confirmLabel: 'Use connection settings',
+        ),
+      ),
+    ),
     body: SafeArea(
       child: Center(
         child: ConstrainedBox(
@@ -1322,34 +1224,44 @@ class _CustomSetupScreenState extends State<_CustomSetupScreen> {
                   contentPadding: EdgeInsets.zero,
                   title: const Text('Use a separate chat address'),
                   subtitle: const Text(
-                    'Normally, live chat uses your dashboard address.',
+                    'Normally, live chat uses your gateway Webapp address.',
                   ),
                   value: _separate,
                   onChanged: (value) => setState(() => _separate = value),
                 ),
                 if (_separate) ...[
                   const SizedBox(height: 16),
-                  TextFormField(
-                    key: const Key('connection-chat-address'),
-                    controller: _chat,
-                    keyboardType: TextInputType.url,
-                    autocorrect: false,
-                    enableSuggestions: false,
-                    decoration: const InputDecoration(
-                      labelText: 'Chat gateway base address',
-                      helperText:
-                          'Use an http(s) base address. Wing adds /api/ws.',
-                      helperMaxLines: 4,
-                      errorMaxLines: 5,
+                  if (MediaQuery.textScalerOf(context).scale(16) >= 24) ...[
+                    Text(
+                      'Chat gateway base address',
+                      style: Theme.of(context).textTheme.bodyLarge,
                     ),
-                    validator: (value) {
-                      try {
-                        ConnectionAddress.parse(value ?? '');
-                        return null;
-                      } on FormatException catch (error) {
-                        return error.message;
-                      }
-                    },
+                    const SizedBox(height: 8),
+                  ],
+                  Semantics(
+                    label: MediaQuery.textScalerOf(context).scale(16) >= 24
+                        ? 'Chat gateway base address'
+                        : null,
+                    child: viewportSelection(
+                      TextFormField(
+                        key: const Key('connection-chat-address'),
+                        controller: _chat,
+                        keyboardType: TextInputType.url,
+                        autocorrect: false,
+                        enableSuggestions: false,
+                        decoration: InputDecoration(
+                          labelText:
+                              MediaQuery.textScalerOf(context).scale(16) >= 24
+                              ? null
+                              : 'Chat gateway base address',
+                          helperText:
+                              'Use an http(s) base address. Wing adds /api/ws.',
+                          helperMaxLines: 4,
+                          errorMaxLines: 5,
+                        ),
+                        validator: widget.validateAddress,
+                      ),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   Text(
@@ -1358,16 +1270,18 @@ class _CustomSetupScreenState extends State<_CustomSetupScreen> {
                   ),
                 ],
                 const Divider(height: 32),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('Access headers'),
-                  subtitle: const Text(
-                    'Extra credentials required by some access proxies',
+                StudioButtonPress(
+                  child: ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('Access headers'),
+                    subtitle: const Text(
+                      'Extra credentials required by some access proxies',
+                    ),
+                    trailing: Icon(
+                      _showHeaders ? Icons.expand_less : Icons.expand_more,
+                    ),
+                    onTap: () => setState(() => _showHeaders = !_showHeaders),
                   ),
-                  trailing: Icon(
-                    _showHeaders ? Icons.expand_less : Icons.expand_more,
-                  ),
-                  onTap: () => setState(() => _showHeaders = !_showHeaders),
                 ),
                 Visibility(
                   visible: _showHeaders,
@@ -1378,13 +1292,6 @@ class _CustomSetupScreenState extends State<_CustomSetupScreen> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                FilledButton(
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size(48, 52),
-                  ),
-                  onPressed: _done,
-                  child: const Text('Use these settings'),
-                ),
               ],
             ),
           ),

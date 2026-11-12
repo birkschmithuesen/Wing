@@ -1,3 +1,10 @@
+import 'package:wing/core/models/composer_reference.dart';
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/models/composer_work.dart';
+import 'support/composer_fixture.dart';
+import 'support/canonical_gateway_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,20 +12,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/attachment_draft.dart';
 import 'package:wing/core/models/queued_prompt_draft.dart';
 import 'package:wing/core/services/composer_draft_store.dart';
+import 'package:wing/core/services/attachment_draft_service.dart';
 import 'package:wing/core/services/connection_manager.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'profile_workspace_controller_test.dart' show Host;
-
-Future<void> until(bool Function() ready) async {
-  for (var i = 0; i < 200 && !ready(); i++) {
-    await Future<void>.delayed(const Duration(milliseconds: 1));
-  }
-  expect(ready(), isTrue);
-}
 
 class _FailingDraftStore extends ComposerDraftStore {
   bool failNextWrite = false;
   bool failNextEmptyQueueWrite = false;
+  bool failEmptyQueueWrites = false;
   Completer<void>? delayNextWrite;
 
   _FailingDraftStore(super.preferences, {required super.connectionIdentity});
@@ -28,6 +31,7 @@ class _FailingDraftStore extends ComposerDraftStore {
     required String profileName,
     required String sessionId,
     required String text,
+    Iterable<ComposerReference> references = const [],
     required Iterable<AttachmentDraft> attachments,
     bool submissionUncertain = false,
     Iterable<QueuedPromptDraft> queuedPrompts = const [],
@@ -41,7 +45,7 @@ class _FailingDraftStore extends ComposerDraftStore {
       failNextWrite = false;
       throw StateError('Could not save unsent messages.');
     }
-    if (failNextEmptyQueueWrite && queued.isEmpty) {
+    if ((failNextEmptyQueueWrite || failEmptyQueueWrites) && queued.isEmpty) {
       failNextEmptyQueueWrite = false;
       throw StateError('Could not save unsent messages.');
     }
@@ -49,6 +53,7 @@ class _FailingDraftStore extends ComposerDraftStore {
       profileName: profileName,
       sessionId: sessionId,
       text: text,
+      references: references,
       attachments: attachments,
       submissionUncertain: submissionUncertain,
       queuedPrompts: queued,
@@ -60,41 +65,71 @@ class _FailingDraftStore extends ComposerDraftStore {
 void main() {
   late Host host;
   late SharedPreferences prefs;
+  late AppPreferences appPreferences;
   late _FailingDraftStore draftStore;
   late ProfileWorkspaceController controller;
   late ProfileChat chat;
   late Directory cache;
+  late AttachmentDraftService attachmentService;
+  Future<void> until(bool Function() ready) async {
+    if (ready()) return;
+    final reached = Completer<void>();
+    void observe() {
+      if (ready() && !reached.isCompleted) reached.complete();
+    }
+
+    controller.addListener(observe);
+    try {
+      await reached.future.timeout(const Duration(seconds: 5));
+    } finally {
+      controller.removeListener(observe);
+    }
+  }
+
   ProfileWorkspaceController makeController() => ProfileWorkspaceController(
-    connection: SavedConnection(
-      id: 'host',
-      label: 'Host',
-      host: 'localhost',
-      port: 1,
-      apiKey: '',
+    access: ConnectionAccess(
+      connection: SavedConnection(
+        id: 'host',
+        label: 'Host',
+        host: 'localhost',
+        port: 1,
+        apiKey: '',
+      ),
+      dashboardOAuth: null,
     ),
     connectionIdentity: 'queue-test',
     preferences: prefs,
+    appPreferences: appPreferences,
     gatewayFactory: host.gateway,
     draftStore: draftStore,
+    attachmentService: attachmentService,
   );
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(prefs);
     draftStore = _FailingDraftStore(prefs, connectionIdentity: 'queue-test');
     cache = await Directory.systemTemp.createTemp('hermes-queue-');
+    attachmentService = AttachmentDraftService(
+      cacheDirectoryProvider: () async => Directory('${cache.path}/managed'),
+    );
     host = Host();
     controller = makeController();
     await controller.initialize();
-    chat = await controller.createChat();
-    chat.status = ProfileTurnStatus.running;
+    chat = await controller.createChat(canDispatch: () => true);
+    emitChatEvent(controller, chat, 'message.start');
+    // These local-draft cases deliberately hold preparation before admission.
+    // Canonical server-queue cases explicitly resume below.
+    await chat.composer.pause();
   });
   tearDown(() async {
     controller.dispose();
+    appPreferences.dispose();
     if (await cache.exists()) await cache.delete(recursive: true);
   });
   int sends() => host.calls.where((call) => call.$2 == 'prompt.submit').length;
   List<String> queuedTexts() =>
-      chat.queuedPrompts.map((prompt) => prompt.text).toList();
+      chat.composer.observation.queue.map((prompt) => prompt.text).toList();
   void finish() => host.event('a', 'turn.end', {'status': 'completed'});
   Future<ComposerDraftSnapshot?> saved() => ComposerDraftStore(
     prefs,
@@ -103,158 +138,388 @@ void main() {
   Future<AttachmentDraft> attachment(String name) async {
     final file = File('${cache.path}${Platform.pathSeparator}$name');
     await file.writeAsString('payload');
-    return AttachmentDraft(
-      id: name,
-      cachedPath: file.path,
-      name: name,
-      byteLength: await file.length(),
-      mediaType: 'text/plain',
-      kind: AttachmentDraftKind.genericFile,
+    return attachmentService.prepareGenericFile(
+      sourcePath: file.path,
+      displayName: name,
+      existingDrafts: const [],
+    );
+  }
+
+  for (final restart in [false, true]) {
+    test('resume-only failure holds older work restart=$restart', () async {
+      await restoreComposerFixture(
+        chat: chat,
+        preferences: prefs,
+        queuedPrompts: [QueuedPromptDraft(text: 'Older queued request')],
+        paused: false,
+      );
+      host.running = false;
+      host.inflight = {'status': 'error', 'error': 'Provider stopped'};
+      if (restart) {
+        final key = chat.key;
+        controller.dispose();
+        controller = makeController();
+        await controller.initialize();
+        chat = (await controller.openSession(key))!;
+      } else {
+        await controller.reconnect(chat.key.workspace);
+      }
+      expect(sends(), 0);
+      expect(chat.composer.observation.paused, isTrue);
+      expect(queuedTexts(), ['Older queued request']);
+      expect((await saved())!.queuePaused, isTrue);
+      await controller.resumeQueue(chat);
+      expect(sends(), 1);
+      expect(chat.composer.observation.paused, isFalse);
+    });
+  }
+
+  for (final status in ['completed', 'interrupted', 'error']) {
+    test('fresh Send after $status reaches Hermes', () async {
+      await controller.resumeQueue(chat);
+      host.event('a', 'turn.end', {'status': status});
+      await until(() => !chat.runtime.blocksTurnAdmission);
+      await controller.updateDraft(chat, 'A fresh request');
+      await controller.send(chat);
+      expect(sends(), 1);
+      expect(chat.composer.observation.paused, isFalse);
+    });
+  }
+
+  test(
+    'fresh Send after removing the last paused item reaches Hermes',
+    () async {
+      await controller.queuePrompt(chat, 'Discard this');
+      await controller.removeQueuedPrompt(
+        chat,
+        chat.composer.observation.queue.single.id,
+      );
+      finish();
+      await until(() => !chat.runtime.blocksTurnAdmission);
+      await controller.updateDraft(chat, 'A fresh request');
+      await controller.send(chat);
+      expect(sends(), 1);
+      expect(chat.composer.observation.paused, isFalse);
+    },
+  );
+
+  test('fresh Send preserves older paused work', () async {
+    await controller.queuePrompt(chat, 'Older paused request');
+    finish();
+    await until(() => !chat.runtime.blocksTurnAdmission);
+    await controller.updateDraft(chat, 'New request');
+    await controller.send(chat);
+    expect(sends(), 0);
+    expect(queuedTexts(), ['Older paused request', 'New request']);
+    expect(chat.composer.observation.paused, isTrue);
+  });
+
+  for (final errorEvent in [false, true]) {
+    test(
+      'failure pauses work waiting at that moment errorEvent=$errorEvent',
+      () async {
+        await controller.resumeQueue(chat);
+        final delay = Completer<void>();
+        draftStore.delayNextWrite = delay;
+        final queuing = controller.queuePrompt(chat, 'Already waiting');
+        if (errorEvent) {
+          host.event('a', 'turn.error', {'message': 'Provider stopped'});
+        } else {
+          host.event('a', 'turn.end', {'status': 'interrupted'});
+        }
+        await until(() => !chat.runtime.blocksTurnAdmission);
+        delay.complete();
+        await queuing;
+        expect(sends(), 0);
+        expect(queuedTexts(), ['Already waiting']);
+        expect(chat.composer.observation.paused, isTrue);
+        expect((await saved())!.queuePaused, isTrue);
+      },
     );
   }
 
   test(
-    'two queued messages send exactly once and leave a separate draft alone',
+    'screen handoff queues identical text without consuming the chat draft or attachments',
     () async {
+      await controller.updateDraft(chat, 'Finished signing in');
+      final file = await attachment('screen-draft.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        text: 'Finished signing in',
+        appendAttachments: [file],
+      );
+      await controller.queueScreenMessage(chat, 'Finished signing in');
+      expect(chat.composer.observation.text, 'Finished signing in');
+      expect(chat.composer.observation.attachments.map((v) => v.id), [file.id]);
+      expect(
+        chat.composer.observation.queue.single.text,
+        'Finished signing in',
+      );
+      expect(chat.composer.observation.queue.single.attachments, isEmpty);
+    },
+  );
+
+  test(
+    'accepted Send still reports a genuine local save failure without resending',
+    () async {
+      await controller.resumeQueue(chat);
+      host.promptSubmitStarted = Completer<void>();
+      host.promptSubmitDelay = Completer<void>();
+      final sending = controller.queuePrompt(chat, 'Accepted once');
+      await host.promptSubmitStarted!.future;
+      draftStore.failEmptyQueueWrites = true;
+      host.promptSubmitDelay!.complete();
+      await sending;
+      expect(sends(), 1);
+      expect(host.canonicalAdmissions, hasLength(1));
+      expect(
+        chat.runtime.error,
+        'The message was accepted. Remaining unsent work could not be saved.',
+      );
+      expect(chat.composer.observation.paused, isTrue);
+      draftStore.failEmptyQueueWrites = false;
+      await controller.resumeQueue(chat);
+      expect(sends(), 1);
+      expect(chat.composer.observation.submissionUncertain, isFalse);
+    },
+  );
+
+  test(
+    'selected identities survive queue edits, restart and failed dispatch',
+    () async {
+      const file = ComposerReference(
+        kind: ComposerReferenceKind.file,
+        token: '@file:/work/note.md',
+        target: '/work/note.md',
+      );
+      const agent = ComposerReference(
+        kind: ComposerReferenceKind.agent,
+        token: '@butler',
+        target: 'butler',
+      );
+      await controller.updateDraft(chat, 'Read ${file.token}', reference: file);
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      await controller.updateDraft(
+        chat,
+        'Ask ${agent.token}',
+        reference: agent,
+      );
+      final id = chat.composer.observation.queue.single.id;
+      await controller.beginQueuedPromptEdit(chat, id);
+      controller.updateQueuedPromptEdit(chat, 'Review ${file.token} carefully');
+      await controller.saveQueuedPromptEdit(chat);
+      expect(chat.composer.observation.references.single.target, 'butler');
+      expect(
+        (await saved())!.queuedPrompts.single.references.single.target,
+        file.target,
+      );
+      controller.dispose();
+      controller = makeController();
+      await controller.initialize();
+      chat = (await controller.openSession(chat.key))!;
+      expect(chat.composer.observation.references.single.target, 'butler');
+      final queued = chat.composer.observation.queue.single;
+      expect(queued.references.single.target, file.target);
+      final ticket = await chat.composer.beginSubmission(
+        queued: queued.id,
+        preserveComposer: true,
+      );
+      expect(ticket.references.single.target, file.target);
+      await chat.composer.settle(ticket, ComposerDelivery.definitelyUnsent);
+      expect(
+        chat.composer.observation.queue.single.references.single.target,
+        file.target,
+      );
+      expect(chat.composer.observation.references.single.target, 'butler');
+      await controller.updateDraft(chat, 'Ordinary editable text');
+      expect(chat.composer.observation.references, isEmpty);
+    },
+  );
+
+  test(
+    'canonical queued receipts admit both inputs before the active turn ends',
+    () async {
+      await controller.resumeQueue(chat);
       await controller.queuePrompt(chat, 'First');
       await controller.queuePrompt(chat, 'Second');
       await controller.updateDraft(chat, 'Still composing');
-      final file = AttachmentDraft(
-        id: 'draft-file',
-        cachedPath: 'unused.txt',
-        name: 'unused.txt',
-        byteLength: 1,
-        mediaType: 'text/plain',
-        kind: AttachmentDraftKind.genericFile,
+      final file = await attachment('unused.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: prefs,
+        appendAttachments: [file],
       );
-      chat.attachments.add(file);
-      finish();
-      await until(() => sends() == 1 && !chat.queueDraining);
-      expect(queuedTexts(), ['Second']);
-      expect(chat.draft, 'Still composing');
-      expect(chat.attachments, [file]);
-      finish();
-      await until(() => sends() == 2 && !chat.queueDraining);
-      expect(chat.queuedPrompts, isEmpty);
-      expect(host.calls.where((call) => call.$2 == 'file.attach'), isEmpty);
-      finish();
-      await until(() => chat.status == ProfileTurnStatus.completed);
       expect(sends(), 2);
-      expect(chat.draft, 'Still composing');
+      expect(queuedTexts(), ['First', 'Second']);
+      expect(
+        chat.composer.observation.queue.every((row) => row.serverOwned),
+        true,
+      );
+      finish();
+      await until(() => queuedTexts().length == 1);
+      expect(queuedTexts(), ['Second']);
+      finish();
+      await until(() => queuedTexts().isEmpty);
+      expect(sends(), 2);
+      expect(host.calls.where((call) => call.$2 == 'file.attach'), isEmpty);
+      expect(chat.composer.observation.text, 'Still composing');
+      expect(chat.composer.observation.attachments.single.id, file.id);
     },
   );
 
   test(
-    'lost acknowledgement survives restart as a paused queue without resending',
+    'lost queued acknowledgement recovers the same admission across restart',
     () async {
-      await controller.queuePrompt(chat, 'Send once');
+      await controller.resumeQueue(chat);
       host.promptSubmitFails = true;
-      finish();
-      await until(() => sends() == 1 && !chat.queueDraining);
-      expect(chat.queuePaused, isTrue);
-      expect(queuedTexts(), ['Send once']);
-      expect((await saved())!.queuePaused, isTrue);
+      await controller.queuePrompt(chat, 'Send once');
+      expect(sends(), 1);
+      expect(chat.composer.observation.paused, true);
       final key = chat.key;
       controller.dispose();
-      host.running = false;
+      host.promptSubmitFails = false;
       controller = makeController();
       await controller.initialize();
-      await controller.openSession(key);
-      chat = controller.current!.chat!;
-      expect(chat.queuePaused, isTrue);
+      chat = (await controller.openSession(key))!;
+      expect(host.canonicalAdmissions, hasLength(1));
+      final requests = host.calls.where((call) => call.$2 == 'prompt.submit');
+      expect(
+        requests.map((call) => call.$3['submission_id']).toSet(),
+        hasLength(1),
+      );
       expect(queuedTexts(), ['Send once']);
-      expect(sends(), 1);
+      expect(chat.composer.observation.queue.single.serverOwned, true);
     },
   );
 
   test(
-    'reopening refreshes Hermes before draining a saved unsent queue',
+    'reopening observes accepted server queue without admitting it again',
     () async {
+      await controller.resumeQueue(chat);
       await controller.queuePrompt(chat, 'After the running turn');
       final key = chat.key;
       controller.dispose();
-      host.running = false;
       controller = makeController();
       await controller.initialize();
-      await controller.openSession(key);
-      chat = controller.current!.chat!;
+      chat = (await controller.openSession(key))!;
       expect(sends(), 1);
-      expect(chat.queuedPrompts, isEmpty);
-      final methods = host.calls.map((call) => call.$2).toList();
-      expect(
-        methods.indexOf('session.resume'),
-        lessThan(methods.indexOf('prompt.submit')),
-      );
-    },
-  );
-
-  test(
-    'the pending head is saved paused before its acknowledgement arrives',
-    () async {
-      await controller.queuePrompt(chat, 'First');
-      await controller.queuePrompt(chat, 'Second');
-      host.promptSubmitDelay = Completer<void>();
-      finish();
-      await until(() => sends() == 1);
-      final snapshot = (await saved())!;
-      expect(snapshot.queuePaused, isTrue);
-      expect(snapshot.queuedPrompts.map((prompt) => prompt.text), [
-        'First',
-        'Second',
-      ]);
-      await controller.removeQueuedPrompt(chat, 0);
-      expect(queuedTexts(), ['First', 'Second']);
-      await controller.stop(chat);
-      host.promptSubmitDelay!.complete();
-      await until(() => !chat.queueDraining);
-      expect(chat.queuePaused, isTrue);
-      expect(queuedTexts(), ['Second']);
-      finish();
-      await until(() => chat.status == ProfileTurnStatus.completed);
-      expect(sends(), 1);
-    },
-  );
-
-  test(
-    'a failed turn pauses remaining messages until explicitly resumed',
-    () async {
-      await controller.queuePrompt(chat, 'Follow-up');
-      host.event('a', 'turn.end', {'status': 'error'});
-      await until(() => chat.status == ProfileTurnStatus.failed);
-      expect(chat.queuePaused, isTrue);
-      expect(sends(), 0);
-      host.running = false;
-      await Future.wait([
-        controller.resumeQueue(chat),
-        controller.resumeQueue(chat),
-      ]);
+      expect(queuedTexts(), ['After the running turn']);
+      expect(chat.composer.observation.queue.single.serverOwned, true);
       expect(
         host.calls.where((call) => call.$2 == 'session.resume'),
-        hasLength(1),
+        isNotEmpty,
       );
-      expect(sends(), 1);
-      expect(chat.queuedPrompts, isEmpty);
     },
   );
 
   test(
-    'queued attachments send before the prompt and leave the composer alone',
+    'held admission is durably uncertain before its receipt arrives',
     () async {
-      final queuedFile = await attachment('queued.txt');
-      chat
-        ..draft = 'Review queued'
-        ..attachments.add(queuedFile);
-      await controller.queuePrompt(chat, chat.draft);
-      expect(chat.queuedPrompts.single.attachments, [same(queuedFile)]);
-      expect(chat.draft, isEmpty);
-      expect(chat.attachments, isEmpty);
+      await controller.resumeQueue(chat);
+      host.promptSubmitDelay = Completer<void>();
+      host.promptSubmitStarted = Completer<void>();
+      final queuing = controller.queuePrompt(chat, 'First');
+      await host.promptSubmitStarted!.future;
+      final snapshot = (await saved())!;
+      expect(snapshot.queuePaused, true);
+      expect(snapshot.queuedPrompts.single.submissionUncertain, true);
+      expect(chat.composer.observation.draining, true);
+      host.promptSubmitDelay!.complete();
+      await queuing;
+      expect(queuedTexts(), ['First']);
+      expect(chat.composer.observation.queue.single.serverOwned, true);
+      expect((await saved())?.queuedPrompts ?? [], isEmpty);
+    },
+  );
 
-      final composingFile = await attachment('composing.txt');
-      await controller.updateDraft(chat, 'Still composing');
-      chat.attachments.add(composingFile);
-      finish();
-      await until(() => sends() == 1 && !chat.queueDraining);
+  test('server queued edit replaces the exact admission at the tail', () async {
+    await controller.resumeQueue(chat);
+    await controller.queuePrompt(chat, 'Original');
+    await controller.queuePrompt(chat, 'Second');
+    await controller.updateDraft(chat, 'Separate draft');
+    final original = chat.composer.observation.queue.first;
+    await controller.beginQueuedPromptEdit(chat, original.id);
+    controller.updateQueuedPromptEdit(chat, 'Updated');
+    await controller.saveQueuedPromptEdit(chat);
+    expect(queuedTexts(), ['Second', 'Updated']);
+    expect(chat.composer.observation.text, 'Separate draft');
+    final replace = host.calls.singleWhere(
+      (call) => call.$2 == 'prompt.replace_queued',
+    );
+    expect(replace.$3['admission_id'], 'admission-1');
+    expect(replace.$3['text'], 'Updated');
+    expect(sends(), 2);
+  });
 
+  test(
+    'server cancel and steer use admitted identity without another submit',
+    () async {
+      await controller.resumeQueue(chat);
+      await controller.queuePrompt(chat, 'Same');
+      await controller.queuePrompt(chat, 'Same');
+      final rows = List.of(chat.composer.observation.queue);
+      await controller.removeQueuedPrompt(chat, rows.first.id);
+      expect(queuedTexts(), ['Same']);
+      expect(
+        await controller.steerQueuedPrompt(
+          chat,
+          chat.composer.observation.queue.single.id,
+        ),
+        true,
+      );
+      expect(queuedTexts(), ['Same']);
+      final transfer = chat.composer.observation.queue.single;
+      expect(transfer.pendingSteering, true);
+      expect(
+        (
+          canEdit: chat.composer.queueActions(transfer.id).canEdit,
+          canSteer: chat.composer.queueActions(transfer.id).canSteer,
+          canDelete: chat.composer.queueActions(transfer.id).canDelete,
+        ),
+        (canEdit: false, canDelete: false, canSteer: false),
+      );
+      host.event('a', 'turn.end');
+      expect(queuedTexts(), isEmpty);
+      expect(
+        host.calls
+            .singleWhere((call) => call.$2 == 'prompt.cancel')
+            .$3['admission_id'],
+        'admission-1',
+      );
+      expect(
+        host.calls
+            .singleWhere((call) => call.$2 == 'prompt.steer_queued')
+            .$3['admission_id'],
+        'admission-2',
+      );
+      expect(sends(), 2);
+    },
+  );
+
+  test(
+    'queued attachments upload before admission and preserve separate composer work',
+    () async {
+      final file = await attachment('queued.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: prefs,
+        text: 'Review queued',
+        appendAttachments: [file],
+      );
+      await controller.queuePrompt(chat, 'Review queued');
+      final composing = await attachment('composing.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: prefs,
+        text: 'Still composing',
+        appendAttachments: [composing],
+      );
+      await controller.resumeQueue(chat);
       final methods = host.calls.map((call) => call.$2).toList();
       expect(
         methods.indexOf('file.attach'),
@@ -264,82 +529,97 @@ void main() {
         (call) => call.$2 == 'prompt.submit',
       );
       expect(submit.$3['text'], contains('attached:queued.txt'));
-      expect(chat.queuedPrompts, isEmpty);
-      expect(await File(queuedFile.cachedPath).exists(), isFalse);
-      expect(chat.draft, 'Still composing');
-      expect(chat.attachments, [same(composingFile)]);
-      expect(await File(composingFile.cachedPath).exists(), isTrue);
+      expect(chat.composer.observation.queue.single.serverOwned, true);
+      expect(chat.composer.observation.queue.single.attachments, isEmpty);
+      expect(await File(file.cachedPath).exists(), false);
+      expect(chat.composer.observation.text, 'Still composing');
+      expect(chat.composer.observation.attachments.single.id, composing.id);
+      expect(await File(composing.cachedPath).exists(), true);
     },
   );
 
-  test('attachment-only queue sends its uploaded reference', () async {
-    final file = await attachment('only.txt');
-    chat.attachments.add(file);
-    await controller.queuePrompt(chat, '');
-
-    finish();
-    await until(() => sends() == 1 && !chat.queueDraining);
-
-    final submit = host.calls.singleWhere((call) => call.$2 == 'prompt.submit');
-    expect(submit.$3['text'], 'attached:only.txt');
-    expect(chat.queuedPrompts, isEmpty);
-    expect(await File(file.cachedPath).exists(), isFalse);
-  });
+  test(
+    'attachment-only queue submits its uploaded reference to server FIFO',
+    () async {
+      final file = await attachment('only.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: prefs,
+        appendAttachments: [file],
+      );
+      await controller.queuePrompt(chat, '');
+      await controller.resumeQueue(chat);
+      expect(
+        host.calls.singleWhere((call) => call.$2 == 'prompt.submit').$3['text'],
+        'attached:only.txt',
+      );
+      expect(chat.composer.observation.queue.single.serverOwned, true);
+      expect(await File(file.cachedPath).exists(), false);
+    },
+  );
 
   test(
-    'lost attachment prompt acknowledgement restores a paused reusable head',
+    'lost attachment acknowledgement reuses uploaded reference and stable input ID',
     () async {
       final file = await attachment('uncertain.txt');
-      chat
-        ..draft = 'With file'
-        ..attachments.add(file);
-      await controller.queuePrompt(chat, chat.draft);
-      host.promptSubmitFails = true;
-
-      finish();
-      await until(() => sends() == 1 && !chat.queueDraining);
-      expect(chat.queuePaused, isTrue);
-      expect(
-        chat.queuedPrompts.single.attachments.single.status,
-        AttachmentDraftStatus.attached,
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: prefs,
+        text: 'With file',
+        appendAttachments: [file],
       );
+      await controller.queuePrompt(chat, 'With file');
+      host.promptSubmitFails = true;
+      await controller.resumeQueue(chat);
       expect(
-        chat.queuedPrompts.single.attachments.single.refText,
+        chat.composer.observation.queue.single.attachments.single.refText,
         'attached:uncertain.txt',
       );
-      expect(await File(file.cachedPath).exists(), isTrue);
       final key = chat.key;
       controller.dispose();
-      host
-        ..promptSubmitFails = false
-        ..running = false;
+      host.promptSubmitFails = false;
       controller = makeController();
       await controller.initialize();
-      await controller.openSession(key);
-      chat = controller.current!.chat!;
-
-      expect(chat.queuePaused, isTrue);
+      chat = (await controller.openSession(key))!;
+      expect(host.canonicalAdmissions, hasLength(1));
       expect(
-        chat.queuedPrompts.single.attachments.single.refText,
-        'attached:uncertain.txt',
+        host.calls.where((call) => call.$2 == 'file.attach'),
+        hasLength(1),
       );
-      expect(await File(file.cachedPath).exists(), isTrue);
-      expect(sends(), 1);
+      expect(
+        host.calls
+            .where((call) => call.$2 == 'prompt.submit')
+            .map((call) => call.$3['submission_id'])
+            .toSet(),
+        hasLength(1),
+      );
+      expect(chat.composer.observation.queue.single.serverOwned, true);
     },
   );
 
   test('attachment upload failure keeps the paused head and cache', () async {
     final file = await attachment('upload-fails.txt');
-    chat.attachments.add(file);
+    await restoreComposerFixture(
+      paused: chat.composer.observation.paused,
+      chat: chat,
+      preferences: controller.preferences,
+      appendAttachments: [file],
+    );
     await controller.queuePrompt(chat, '');
     host.fileAttachFails = true;
 
-    finish();
-    await until(() => !chat.queueDraining && chat.queuePaused);
+    await controller.resumeQueue(chat);
+    await until(
+      () =>
+          !chat.composer.observation.draining &&
+          chat.composer.observation.paused,
+    );
 
     expect(sends(), 0);
     expect(
-      chat.queuedPrompts.single.attachments.single.status,
+      chat.composer.observation.queue.single.attachments.single.status,
       AttachmentDraftStatus.failed,
     );
     expect(await File(file.cachedPath).exists(), isTrue);
@@ -352,87 +632,194 @@ void main() {
   });
 
   test(
+    'missing queued file pauses before upload and preserves newer draft',
+    () async {
+      final file = await attachment('missing-local.txt');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        text: 'Keep this queued work',
+        appendAttachments: [file],
+      );
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      final queuedId = chat.composer.observation.queue.single.id;
+      await controller.updateDraft(chat, 'Newer separate draft');
+      await File(file.cachedPath).delete();
+
+      await controller.resumeQueue(chat);
+      await until(
+        () =>
+            !chat.composer.observation.draining &&
+            chat.composer.observation.paused,
+      );
+      expect(sends(), 0);
+      expect(host.calls.where((call) => call.$2 == 'file.attach'), isEmpty);
+      final queued = chat.composer.observation.queue.single;
+      expect(queued.id, queuedId);
+      expect(queued.text, 'Keep this queued work');
+      expect(queued.submissionUncertain, isFalse);
+      expect(queued.attachments.single.id, file.id);
+      expect(queued.attachments.single.status, AttachmentDraftStatus.failed);
+      expect(chat.composer.observation.text, 'Newer separate draft');
+      final snapshot = (await saved())!;
+      expect(snapshot.queuePaused, isTrue);
+      expect(snapshot.text, 'Newer separate draft');
+      expect(snapshot.queuedPrompts.single.text, 'Keep this queued work');
+      expect(snapshot.queuedPrompts.single.attachments.single.id, file.id);
+      expect(
+        snapshot.queuedPrompts.single.attachments.single.status,
+        AttachmentDraftStatus.failed,
+      );
+
+      final key = chat.key;
+      controller.dispose();
+      host.running = false;
+      controller = makeController();
+      await controller.initialize();
+      await controller.openSession(key);
+      chat = controller.current!.chat!;
+      expect(chat.composer.observation.paused, isTrue);
+      expect(
+        chat.composer.observation.queue.single.text,
+        'Keep this queued work',
+      );
+      expect(
+        chat.composer.observation.queue.single.attachments.single.id,
+        file.id,
+      );
+      expect(chat.composer.observation.text, 'Newer separate draft');
+      expect(sends(), 0);
+      expect(host.calls.where((call) => call.$2 == 'file.attach'), isEmpty);
+    },
+  );
+
+  test(
     'failed queue save restores original work beside newer composer edits',
     () async {
       final originalFile = await attachment('original.txt');
       final newerFile = await attachment('newer.txt');
-      chat
-        ..draft = 'Original'
-        ..attachments.add(originalFile);
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        text: 'Original',
+        appendAttachments: [originalFile],
+      );
       final delay = Completer<void>();
       draftStore
         ..delayNextWrite = delay
         ..failNextWrite = true;
 
-      final queued = controller.queuePrompt(chat, chat.draft);
-      expect(chat.queueMutating, isTrue);
+      final queued = controller.queuePrompt(
+        chat,
+        chat.composer.observation.text,
+      );
+      expect(chat.composer.observation.saving, isTrue);
       await controller.updateDraft(chat, 'Newer typing');
-      chat.attachments.add(newerFile);
+      await expectLater(
+        controller.addAttachments(chat, [
+          (path: newerFile.cachedPath, name: newerFile.name),
+        ]),
+        throwsStateError,
+      );
+      expect(await File(newerFile.cachedPath).exists(), isTrue);
       delay.complete();
       await expectLater(queued, throwsStateError);
 
-      expect(chat.queueMutating, isFalse);
-      expect(chat.queuedPrompts, isEmpty);
-      expect(chat.draft, 'Original\n\nNewer typing');
-      expect(chat.attachments, [same(originalFile), same(newerFile)]);
+      expect(chat.composer.observation.saving, isFalse);
+      expect(chat.composer.observation.queue, isEmpty);
+      expect(chat.composer.observation.text, 'Original\n\nNewer typing');
+      expect(chat.composer.observation.attachments.map((file) => file.id), [
+        originalFile.id,
+      ]);
       expect(await File(originalFile.cachedPath).exists(), isTrue);
       expect(await File(newerFile.cachedPath).exists(), isTrue);
       final snapshot = (await saved())!;
       expect(snapshot.text, 'Original\n\nNewer typing');
-      expect(snapshot.attachments.map((file) => file.id), [
-        'original.txt',
-        'newer.txt',
-      ]);
+      expect(snapshot.attachments.map((file) => file.id), [originalFile.id]);
+      expect(snapshot.attachments.map((file) => file.name), ['original.txt']);
     },
   );
 
-  test(
-    'failed durable removal keeps acknowledged attachment head paused',
-    () async {
-      final file = await attachment('keep.txt');
-      chat
-        ..draft = 'Send once'
-        ..attachments.add(file);
-      await controller.queuePrompt(chat, chat.draft);
-      draftStore.failNextEmptyQueueWrite = true;
-
-      finish();
-      await until(() => sends() == 1 && !chat.queueDraining);
-      expect(chat.queuePaused, isTrue);
-      expect(queuedTexts(), ['Send once']);
-      expect(await File(file.cachedPath).exists(), isTrue);
-      final snapshot = (await saved())!;
-      expect(snapshot.queuePaused, isTrue);
-      expect(snapshot.queuedPrompts.single.text, 'Send once');
-
-      finish();
-      await Future<void>.delayed(const Duration(milliseconds: 10));
-      expect(sends(), 1);
-    },
-  );
+  for (final persistentFailure in [false, true]) {
+    test(
+      'local ACK cleanup failure preserves one canonical admission: persistent=$persistentFailure',
+      () async {
+        final file = await attachment('keep.txt');
+        await restoreComposerFixture(
+          paused: chat.composer.observation.paused,
+          chat: chat,
+          preferences: prefs,
+          text: 'Send once',
+          appendAttachments: [file],
+        );
+        await controller.queuePrompt(chat, 'Send once');
+        draftStore
+          ..failNextEmptyQueueWrite = true
+          ..failEmptyQueueWrites = persistentFailure;
+        await controller.resumeQueue(chat);
+        expect(sends(), 1);
+        expect(host.canonicalAdmissions, hasLength(1));
+        expect(
+          chat.composer.observation.queue.where((row) => row.serverOwned),
+          hasLength(1),
+        );
+        final key = chat.key;
+        controller.dispose();
+        draftStore.failEmptyQueueWrites = false;
+        controller = makeController();
+        await controller.initialize();
+        chat = (await controller.openSession(key))!;
+        expect(host.canonicalAdmissions, hasLength(1));
+        expect(
+          host.calls
+              .where((call) => call.$2 == 'prompt.submit')
+              .map((call) => call.$3['submission_id'])
+              .toSet(),
+          hasLength(1),
+        );
+        expect(
+          chat.composer.observation.queue.where((row) => row.serverOwned),
+          hasLength(1),
+        );
+      },
+    );
+  }
 
   test('editing holds the queue when the active turn finishes', () async {
     await controller.queuePrompt(chat, 'Original');
     await controller.queuePrompt(chat, 'Second');
     final file = await attachment('draft-buffer.txt');
-    chat.attachments.add(file);
+    await restoreComposerFixture(
+      paused: chat.composer.observation.paused,
+      chat: chat,
+      preferences: controller.preferences,
+      appendAttachments: [file],
+    );
     await controller.updateDraft(chat, 'Separate draft');
-    await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+    await controller.beginQueuedPromptEdit(
+      chat,
+      chat.composer.observation.queue.first.id,
+    );
     controller.updateQueuedPromptEdit(chat, 'Changed');
+    await controller.resumeQueue(chat);
     finish();
-    await until(() => chat.status == ProfileTurnStatus.completed);
+    await until(() => chat.runtime.execution == ChatExecution.completed);
     expect(sends(), 0);
     expect((await saved())!.queuePaused, isTrue);
     expect((await saved())!.text, 'Separate draft');
     await controller.saveQueuedPromptEdit(chat);
-    await until(() => sends() == 1 && !chat.queueDraining);
+    await until(() => sends() == 2 && !chat.composer.observation.draining);
     expect(
-      host.calls.singleWhere((call) => call.$2 == 'prompt.submit').$3['text'],
+      host.calls.where((call) => call.$2 == 'prompt.submit').first.$3['text'],
       'Changed',
     );
     expect(queuedTexts(), ['Second']);
-    expect(chat.composerText, 'Separate draft');
-    expect(chat.attachments, [same(file)]);
+    expect(chat.composer.observation.displayedText, 'Separate draft');
+    expect(chat.composer.observation.attachments.map((file) => file.id), [
+      file.id,
+    ]);
     expect(await File(file.cachedPath).exists(), isTrue);
   });
 
@@ -440,16 +827,29 @@ void main() {
     'cancel restores the draft without changing queued attachments',
     () async {
       final queuedFile = await attachment('queued-edit.txt');
-      chat.draft = 'Original';
-      chat.attachments.add(queuedFile);
+      chat.composer.editText('Original');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        appendAttachments: [queuedFile],
+      );
       await controller.queuePrompt(chat, 'Original');
       await controller.updateDraft(chat, 'Separate draft');
-      await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+      await controller.beginQueuedPromptEdit(
+        chat,
+        chat.composer.observation.queue.first.id,
+      );
       controller.updateQueuedPromptEdit(chat, 'Discard');
       await controller.cancelQueuedPromptEdit(chat);
-      expect(chat.composerText, 'Separate draft');
-      expect(chat.queuedPrompts.single.text, 'Original');
-      expect(chat.queuedPrompts.single.attachments, [same(queuedFile)]);
+      expect(chat.composer.observation.displayedText, 'Separate draft');
+      expect(chat.composer.observation.queue.single.text, 'Original');
+      expect(
+        chat.composer.observation.queue.single.attachments.map(
+          (file) => file.id,
+        ),
+        [queuedFile.id],
+      );
       expect(await File(queuedFile.cachedPath).exists(), isTrue);
     },
   );
@@ -459,17 +859,20 @@ void main() {
     () async {
       await controller.queuePrompt(chat, 'Original');
       await controller.updateDraft(chat, 'Separate draft');
-      await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+      await controller.beginQueuedPromptEdit(
+        chat,
+        chat.composer.observation.queue.first.id,
+      );
       controller.updateQueuedPromptEdit(chat, 'Changed');
       draftStore.failNextWrite = true;
       await expectLater(
         controller.saveQueuedPromptEdit(chat),
         throwsStateError,
       );
-      expect(chat.composerText, 'Changed');
-      expect(chat.draft, 'Separate draft');
-      expect(chat.queuedPrompts.single.text, 'Original');
-      expect(chat.queuePaused, isTrue);
+      expect(chat.composer.observation.displayedText, 'Changed');
+      expect(chat.composer.observation.text, 'Separate draft');
+      expect(chat.composer.observation.queue.single.text, 'Original');
+      expect(chat.composer.observation.paused, isTrue);
     },
   );
 
@@ -479,9 +882,17 @@ void main() {
       await controller.queuePrompt(chat, 'Original');
       await controller.queuePrompt(chat, 'Second');
       final file = await attachment('buffered.txt');
-      chat.attachments.add(file);
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        appendAttachments: [file],
+      );
       await controller.updateDraft(chat, 'Separate draft');
-      await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+      await controller.beginQueuedPromptEdit(
+        chat,
+        chat.composer.observation.queue.first.id,
+      );
       controller.updateQueuedPromptEdit(chat, 'Changed direction');
       expect(await controller.steerQueuedPromptEdit(chat), isTrue);
       expect(
@@ -489,8 +900,10 @@ void main() {
         'Changed direction',
       );
       expect(queuedTexts(), ['Second']);
-      expect(chat.composerText, 'Separate draft');
-      expect(chat.attachments, [same(file)]);
+      expect(chat.composer.observation.displayedText, 'Separate draft');
+      expect(chat.composer.observation.attachments.map((file) => file.id), [
+        file.id,
+      ]);
       expect((await saved())!.queuedPrompts.single.text, 'Second');
       expect((await saved())!.text, 'Separate draft');
       expect(await File(file.cachedPath).exists(), isTrue);
@@ -502,7 +915,10 @@ void main() {
     'failed steering preflight save never attempts delivery or loses the edit',
     () async {
       await controller.queuePrompt(chat, 'Original');
-      await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+      await controller.beginQueuedPromptEdit(
+        chat,
+        chat.composer.observation.queue.first.id,
+      );
       controller.updateQueuedPromptEdit(chat, 'Changed');
       draftStore.failNextWrite = true;
       await expectLater(
@@ -510,9 +926,9 @@ void main() {
         throwsStateError,
       );
       expect(host.calls.where((call) => call.$2 == 'session.steer'), isEmpty);
-      expect(chat.queuedPrompts.single.text, 'Original');
-      expect(chat.composerText, 'Changed');
-      expect(chat.queueMutating, isFalse);
+      expect(chat.composer.observation.queue.single.text, 'Original');
+      expect(chat.composer.observation.displayedText, 'Changed');
+      expect(chat.composer.observation.saving, isFalse);
       expect((await saved())!.queuedPrompts.single.text, 'Original');
     },
   );
@@ -522,7 +938,10 @@ void main() {
     () async {
       await controller.queuePrompt(chat, 'Original');
       await controller.updateDraft(chat, 'Separate draft');
-      await controller.beginQueuedPromptEdit(chat, chat.queuedPrompts.first);
+      await controller.beginQueuedPromptEdit(
+        chat,
+        chat.composer.observation.queue.first.id,
+      );
       controller.updateQueuedPromptEdit(chat, 'Changed');
       draftStore.failNextEmptyQueueWrite = true;
       await expectLater(
@@ -533,12 +952,12 @@ void main() {
         host.calls.where((call) => call.$2 == 'session.steer'),
         hasLength(1),
       );
-      expect(chat.queuedPrompts, isEmpty);
-      expect(chat.composerText, 'Separate draft');
-      expect(chat.queuePaused, isTrue);
+      expect(chat.composer.observation.queue, isEmpty);
+      expect(chat.composer.observation.displayedText, 'Separate draft');
+      expect(chat.composer.observation.paused, isTrue);
       expect((await saved())!.queuePaused, isTrue);
       finish();
-      await until(() => chat.status == ProfileTurnStatus.completed);
+      await until(() => chat.runtime.execution == ChatExecution.completed);
       expect(sends(), 0);
     },
   );
@@ -547,19 +966,29 @@ void main() {
     'editing keeps queue order, attachments and the separate draft on disk',
     () async {
       final file = await attachment('edit.txt');
-      chat.draft = 'Original';
-      chat.attachments.add(file);
+      chat.composer.editText('Original');
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        appendAttachments: [file],
+      );
       await controller.queuePrompt(chat, 'Original');
       await controller.queuePrompt(chat, 'Second');
       await controller.updateDraft(chat, 'Separate draft');
-      await controller.editQueuedPrompt(
+      await controller.beginQueuedPromptEdit(
         chat,
-        0,
-        'Updated',
-        expectedPrompt: chat.queuedPrompts.first,
+        chat.composer.observation.queue.first.id,
       );
+      controller.updateQueuedPromptEdit(chat, 'Updated');
+      await controller.saveQueuedPromptEdit(chat);
       expect(queuedTexts(), ['Updated', 'Second']);
-      expect(chat.queuedPrompts.first.attachments, [same(file)]);
+      expect(
+        chat.composer.observation.queue.first.attachments.map(
+          (file) => file.id,
+        ),
+        [file.id],
+      );
       expect(await File(file.cachedPath).exists(), isTrue);
       final snapshot = (await saved())!;
       expect(snapshot.text, 'Separate draft');
@@ -578,31 +1007,58 @@ void main() {
     'failed queued edit restores the saved original and pauses the queue',
     () async {
       await controller.queuePrompt(chat, 'Original');
-      final original = chat.queuedPrompts.single;
+      final original = chat.composer.observation.queue.single;
+      await controller.beginQueuedPromptEdit(chat, original.id);
+      controller.updateQueuedPromptEdit(chat, 'Updated');
       draftStore.failNextWrite = true;
       await expectLater(
-        controller.editQueuedPrompt(
-          chat,
-          0,
-          'Updated',
-          expectedPrompt: original,
-        ),
+        controller.saveQueuedPromptEdit(chat),
         throwsStateError,
       );
-      expect(chat.queuedPrompts.single, same(original));
-      expect(chat.queuePaused, isTrue);
-      expect(chat.queueMutating, isFalse);
+      expect(chat.composer.observation.queue.single.id, same(original.id));
+      expect(chat.composer.observation.paused, isTrue);
+      expect(chat.composer.observation.saving, isFalse);
       expect((await saved())!.queuedPrompts.single.text, 'Original');
+    },
+  );
+
+  test(
+    'editing a prepared request does not reuse its old dispatch identity',
+    () async {
+      await restoreComposerFixture(
+        chat: chat,
+        preferences: prefs,
+        paused: true,
+        queuedPrompts: [
+          QueuedPromptDraft(
+            text: 'Original',
+            voiceContext: 'Voice context',
+            submissionId: 'prepared-input',
+            submissionPayload: {
+              'submission_id': 'prepared-input',
+              'text': 'Original',
+            },
+          ),
+        ],
+      );
+      final queued = chat.composer.observation.queue.single;
+      await controller.beginQueuedPromptEdit(chat, queued.id);
+      controller.updateQueuedPromptEdit(chat, 'Changed');
+      await controller.saveQueuedPromptEdit(chat);
+      final value = (await saved())!.queuedPrompts.single;
+      expect(value.submissionId, isNull);
+      expect(value.submissionPayload, isNull);
+      expect(value.voiceContext, 'Voice context');
     },
   );
 
   test('stale queued edit cannot overwrite another entry', () async {
     await controller.queuePrompt(chat, 'Same');
     await controller.queuePrompt(chat, 'Same');
-    final original = chat.queuedPrompts.first;
-    await controller.removeQueuedPrompt(chat, 0, expectedPrompt: original);
+    final original = chat.composer.observation.queue.first;
+    await controller.removeQueuedPrompt(chat, original.id);
     await expectLater(
-      controller.editQueuedPrompt(chat, 0, 'Updated', expectedPrompt: original),
+      controller.beginQueuedPromptEdit(chat, original.id),
       throwsStateError,
     );
     expect(queuedTexts(), ['Same']);
@@ -611,36 +1067,45 @@ void main() {
   test('duplicate queued text is removed by entry identity', () async {
     await controller.queuePrompt(chat, 'Same');
     await controller.queuePrompt(chat, 'Same');
-    final first = chat.queuedPrompts.first;
-    final second = chat.queuedPrompts.last;
+    final first = chat.composer.observation.queue.first;
+    final second = chat.composer.observation.queue.last;
 
-    await controller.removeQueuedPrompt(chat, 1, expectedPrompt: first);
-    expect(chat.queuedPrompts, [same(first), same(second)]);
-    await controller.removeQueuedPrompt(chat, 1, expectedPrompt: second);
-    expect(chat.queuedPrompts, [same(first)]);
+    await controller.removeQueuedPrompt(chat, ComposerQueueId());
+    expect(chat.composer.observation.queue.map((item) => item.id), [
+      first.id,
+      second.id,
+    ]);
+    await controller.removeQueuedPrompt(chat, second.id);
+    expect(chat.composer.observation.queue.map((item) => item.id), [first.id]);
   });
 
   test('stale captured text does not clear a newer composer draft', () async {
-    chat.draft = 'Newer composer text';
+    chat.composer.editText('Newer composer text');
 
     await controller.queuePrompt(chat, 'Earlier captured text');
 
     expect(queuedTexts(), ['Earlier captured text']);
-    expect(chat.draft, 'Newer composer text');
+    expect(chat.composer.observation.text, 'Newer composer text');
     expect((await saved())!.text, 'Newer composer text');
   });
 
   test('stale empty capture leaves newer composer work in place', () async {
     final newerFile = await attachment('newer-composer.txt');
-    chat
-      ..draft = 'Newer composer text'
-      ..attachments.add(newerFile);
+    await restoreComposerFixture(
+      paused: chat.composer.observation.paused,
+      chat: chat,
+      preferences: controller.preferences,
+      text: 'Newer composer text',
+      appendAttachments: [newerFile],
+    );
 
     await expectLater(controller.queuePrompt(chat, ''), throwsStateError);
 
-    expect(chat.queuedPrompts, isEmpty);
-    expect(chat.draft, 'Newer composer text');
-    expect(chat.attachments, [same(newerFile)]);
+    expect(chat.composer.observation.queue, isEmpty);
+    expect(chat.composer.observation.text, 'Newer composer text');
+    expect(chat.composer.observation.attachments.map((file) => file.id), [
+      newerFile.id,
+    ]);
     expect(await File(newerFile.cachedPath).exists(), isTrue);
   });
 
@@ -651,32 +1116,40 @@ void main() {
       final delay = Completer<void>();
       draftStore.delayNextWrite = delay;
 
-      final removing = controller.removeQueuedPrompt(chat, 0);
-      await controller.updateDraft(chat, 'Typed while saving');
+      final removing = controller.removeQueuedPrompt(
+        chat,
+        chat.composer.observation.queue[0].id,
+      );
+      final typing = controller.updateDraft(chat, 'Typed while saving');
       delay.complete();
-      await removing;
+      await Future.wait([removing, typing]);
 
-      expect(chat.queuedPrompts, isEmpty);
-      expect(chat.draft, 'Typed while saving');
+      expect(chat.composer.observation.queue, isEmpty);
+      expect(chat.composer.observation.text, 'Typed while saving');
       expect((await saved())!.text, 'Typed while saving');
     },
   );
 
   test(
-    'turn end during queued removal still drains the remaining head',
+    'turn end during local removal preserves the remaining row until explicit resume',
     () async {
       await controller.queuePrompt(chat, 'Remove me');
       await controller.queuePrompt(chat, 'Send me');
       final delay = Completer<void>();
       draftStore.delayNextWrite = delay;
 
-      final removing = controller.removeQueuedPrompt(chat, 0);
+      final removing = controller.removeQueuedPrompt(
+        chat,
+        chat.composer.observation.queue[0].id,
+      );
       finish();
       delay.complete();
       await removing;
-      await until(() => sends() == 1 && !chat.queueDraining);
-
-      expect(chat.queuedPrompts, isEmpty);
+      expect(sends(), 0);
+      expect(queuedTexts(), ['Send me']);
+      await controller.resumeQueue(chat);
+      expect(sends(), 1);
+      expect(chat.composer.observation.queue.single.serverOwned, true);
       final submit = host.calls.singleWhere(
         (call) => call.$2 == 'prompt.submit',
       );
@@ -689,16 +1162,32 @@ void main() {
     () async {
       final queuedFile = await attachment('delete-queued.txt');
       final composerFile = await attachment('delete-composer.txt');
-      chat
-        ..draft = 'Queued'
-        ..attachments.add(queuedFile);
-      await controller.queuePrompt(chat, chat.draft);
-      chat
-        ..status = ProfileTurnStatus.idle
-        ..attachments.add(composerFile);
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        text: 'Queued',
+        appendAttachments: [queuedFile],
+      );
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      emitChatEvent(controller, chat, 'session.info', {
+        ...canonicalSnapshotFields,
+        'open_requests': [],
+        'running': false,
+      });
+      await restoreComposerFixture(
+        paused: chat.composer.observation.paused,
+        chat: chat,
+        preferences: controller.preferences,
+        appendAttachments: [composerFile],
+      );
       await controller.updateDraft(chat, 'Composer');
 
-      await controller.mutateSession(chat.key, delete: true);
+      await controller.mutateSession(
+        chat.key,
+        delete: true,
+        canDispatch: () => true,
+      );
 
       expect(await File(queuedFile.cachedPath).exists(), isFalse);
       expect(await File(composerFile.cachedPath).exists(), isFalse);
@@ -722,7 +1211,11 @@ void main() {
       );
       final key = ProfileSessionKey(chat.key.workspace, sessionId);
 
-      await controller.mutateSession(key, delete: true);
+      await controller.mutateSession(
+        key,
+        delete: true,
+        canDispatch: () => true,
+      );
 
       expect(await File(file.cachedPath).exists(), isFalse);
       expect(

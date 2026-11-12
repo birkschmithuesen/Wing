@@ -1,11 +1,13 @@
-import 'dart:async';
+import '../../widgets/selection_viewport.dart';
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../../models/profile_session_key.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/profile_workspace_controller.dart'
-    show ProfileSessionKey;
 import '../../models/scheduled_task.dart';
 import '../../services/scheduled_tasks_controller.dart';
-import '../../widgets/studio_action_label.dart';
+import '../../services/scheduled_task_detail_session.dart';
+import '../../widgets/activity/activity_detail_actions.dart';
 import 'admin_scheduled_task_editor_page.dart';
 import 'admin_widgets.dart';
 import 'scheduled_task_widgets.dart';
@@ -16,10 +18,12 @@ class AdminScheduledTaskDetailPage extends StatefulWidget {
     required this.controller,
     required this.initial,
     required this.onOpenSession,
+    this.onInvestigate,
   });
   final ScheduledTasksController controller;
   final ScheduledTask initial;
   final Future<void> Function(ProfileSessionKey) onOpenSession;
+  final ValueChanged<ScheduledTaskInvestigationRequest>? onInvestigate;
   @override
   State<AdminScheduledTaskDetailPage> createState() =>
       _AdminScheduledTaskDetailPageState();
@@ -29,74 +33,49 @@ class _AdminScheduledTaskDetailPageState
     extends State<AdminScheduledTaskDetailPage>
     with WidgetsBindingObserver {
   ScheduledTasksController get controller => widget.controller;
-  List<TaskRun>? runs;
-  String? runError;
-  bool loading = false, resumed = true, opening = false;
-  int limit = 20, generation = 0;
-  Timer? timer;
+  late final session = ScheduledTaskDetailSession(
+    controller,
+    widget.initial,
+    isVisible: () => mounted && ModalRoute.of(context)?.isCurrent == true,
+    onOpenSession: widget.onOpenSession,
+  );
+  ScheduledTaskDetailState get state => session.state;
+  List<TaskRun>? get runs => state.history;
+  String? get runError => state.error;
+  bool get loading => state.loading;
+  bool get opening => state.opening;
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) refresh();
-    });
-    timer = Timer.periodic(const Duration(seconds: 8), (_) {
-      if (resumed &&
-          mounted &&
-          ModalRoute.of(context)?.isCurrent == true &&
-          !loading &&
-          runError == null &&
-          controller.error == null) {
-        refresh();
-      }
+      if (mounted) session.refresh();
     });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    resumed = state == AppLifecycleState.resumed;
-    if (resumed) refresh();
+    session.resumed(state == AppLifecycleState.resumed);
   }
 
   @override
   void dispose() {
-    timer?.cancel();
-    generation++;
+    session.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
-  Future<void> refresh() async {
-    final request = ++generation;
-    setState(() {
-      loading = true;
-      runError = null;
-    });
-    await controller.refresh();
-    try {
-      final result = await controller.repository.runs(
-        widget.initial.id,
-        limit: limit,
-      );
-      if (mounted && request == generation) setState(() => runs = result);
-    } catch (e) {
-      if (mounted && request == generation) {
-        setState(() => runError = taskFailure(e));
-      }
-    } finally {
-      if (mounted && request == generation) setState(() => loading = false);
-    }
-  }
+  Future<void> refresh() => session.refresh();
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: controller,
+    listenable: session,
     builder: (context, _) {
-      final task = controller.task(widget.initial.id) ?? widget.initial;
-      final missing =
-          controller.tasks != null && controller.task(task.id) == null;
-      final busy = controller.blocked(task.id);
+      final task = state.task;
+      final missing = state.missing;
+      final toggle = controller.toggleChoice(task);
+      final cancel = controller.actionChoice(task, TaskAction.cancel);
+      final trigger = controller.actionChoice(task, TaskAction.trigger)!;
       final theme = Theme.of(context);
       return TaskPage(
         title: 'Task details',
@@ -106,12 +85,13 @@ class _AdminScheduledTaskDetailPageState
             TaskMenu(
               task: task,
               controller: controller,
+              showStopProgress: false,
               onEdit: () => adminPushProfile(
                 context,
                 controller.repository.profile,
                 (context, profile) => AdminTaskRoute(
                   profile: profile,
-                  preferences: controller.preferences,
+                  acquireController: controller.acquireLease,
                   title: 'Edit task',
                   taskId: task.id,
                   builder: (controller, selectedTask) =>
@@ -123,47 +103,55 @@ class _AdminScheduledTaskDetailPageState
               ),
             ),
         ],
-        bottom: missing
+        bottom: missing && !controller.stopping(task.id)
             ? null
             : Wrap(
                 spacing: 8,
                 runSpacing: 8,
                 alignment: WrapAlignment.end,
                 children: [
-                  if (task.canPause || task.canResume)
-                    OutlinedButton.icon(
-                      onPressed: busy
-                          ? null
-                          : () => performTaskAction(
-                              context,
-                              controller,
-                              task,
-                              task.canResume ? 'resume' : 'pause',
-                            ),
-                      icon: Icon(
-                        task.canResume
-                            ? Icons.play_arrow_rounded
-                            : Icons.pause_rounded,
+                  if (controller.updating(task.id))
+                    SizedBox.square(
+                      dimension: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: theme.colorScheme.primary,
+                        semanticsLabel: 'Updating task',
+                        value: MediaQuery.disableAnimationsOf(context)
+                            ? .75
+                            : null,
                       ),
-                      label: Text(task.canResume ? 'Resume' : 'Pause'),
                     ),
-                  FilledButton(
-                    onPressed: busy || !task.canRun
-                        ? null
-                        : () => performTaskAction(
-                            context,
-                            controller,
-                            task,
-                            'trigger',
-                          ),
-                    child: StudioActionLabel(
-                      task.enabled ? 'Run now' : 'Resume and run',
-                      busy: controller.busy.contains(task.id),
+                  for (final choice
+                      in missing ? [?cancel] : [?toggle, ?cancel, trigger])
+                    StudioButtonPress(
+                      child: IconButton.filledTonal(
+                        tooltip: choice.label,
+                        onPressed: choice.enabled
+                            ? () => performTaskAction(
+                                context,
+                                controller,
+                                task,
+                                choice.kind,
+                              )
+                            : null,
+                        icon:
+                            choice.kind == TaskAction.cancel &&
+                                controller.stopping(task.id)
+                            ? const TaskStopProgress()
+                            : Icon(switch (choice.kind) {
+                                TaskAction.pause => Icons.pause_rounded,
+                                TaskAction.cancel => Icons.stop_rounded,
+                                TaskAction.trigger => Icons.bolt_outlined,
+                                _ => Icons.play_arrow_rounded,
+                              }),
+                      ),
                     ),
-                  ),
                 ],
               ),
-        child: RefreshIndicator(
+        child: StudioRefresh(
+          available: true,
+          label: 'Loading runs',
           onRefresh: refresh,
           child: ListView(
             key: const ValueKey('task-detail-scroll'),
@@ -176,11 +164,17 @@ class _AdminScheduledTaskDetailPageState
                 ),
               ),
               const SizedBox(height: 12),
-              TaskStatus(task),
+              TaskStatus(
+                task,
+                confirmed:
+                    !missing &&
+                    controller.checkedAt != null &&
+                    controller.error == null,
+              ),
               const SizedBox(height: 24),
               if (missing)
                 const TaskMessage(
-                  'This task is no longer in the schedule. One-time tasks may be removed after their final run. Recent conversations remain below.',
+                  'This task is no longer in the schedule. One-time tasks may be removed after their final run. Recent runs remain below.',
                 ),
               if (controller.error != null)
                 TaskMessage(controller.error!, error: true),
@@ -194,15 +188,7 @@ class _AdminScheduledTaskDetailPageState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          !task.knownState ||
-                                  task.state == 'completed' ||
-                                  task.state == 'disabled'
-                              ? task.statusLabel.toUpperCase()
-                              : task.running
-                              ? 'IN PROGRESS'
-                              : task.paused
-                              ? 'ON PAUSE'
-                              : 'NEXT RUN',
+                          task.nextRunHeading,
                           style: TextStyle(
                             fontSize: 12,
                             letterSpacing: 1.2,
@@ -212,17 +198,7 @@ class _AdminScheduledTaskDetailPageState
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          !task.knownState
-                              ? 'Schedule status unavailable'
-                              : task.state == 'completed'
-                              ? 'No further runs'
-                              : task.state == 'disabled'
-                              ? 'Schedule disabled'
-                              : task.running
-                              ? 'Your agent is working'
-                              : !task.enabled
-                              ? 'Ready when you are'
-                              : taskTime(context, task.nextRun),
+                          task.nextRunText ?? taskTime(context, task.nextRun),
                           style: theme.textTheme.headlineSmall?.copyWith(
                             color: theme.colorScheme.primary,
                           ),
@@ -236,7 +212,7 @@ class _AdminScheduledTaskDetailPageState
                         const Divider(height: 1),
                         const SizedBox(height: 16),
                         Text(
-                          'Run times use your phone’s timezone. Recurring schedules follow Hermes’ timezone.',
+                          'Run times use your phone’s timezone. Schedule timezone: ${task.timezoneLabel}. Pause changes future runs; Stop cancels the current run.',
                           style: theme.textTheme.bodySmall,
                         ),
                       ],
@@ -246,17 +222,44 @@ class _AdminScheduledTaskDetailPageState
               const SizedBox(height: 24),
               if (task.error.isNotEmpty)
                 TaskSection(
-                  'Last run needs attention',
-                  child: TaskMessage(task.error, error: true),
+                  task.needsAttention
+                      ? 'Last run needs attention'
+                      : 'Last run outcome',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Wrap(
+                        alignment: WrapAlignment.end,
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        children: [
+                          if (widget.onInvestigate != null &&
+                              task.needsAttention)
+                            AdminAskHermesButton(
+                              label: 'Ask ${task.profileName}',
+                              onPressed: () => widget.onInvestigate!(
+                                ScheduledTaskInvestigationRequest(
+                                  owner: controller.repository.profile.scope,
+                                  task: task,
+                                ),
+                              ),
+                            ),
+                          ToolDetailCopyButton(
+                            label: task.needsAttention
+                                ? 'Copy task error'
+                                : 'Copy run outcome',
+                            text: task.error,
+                          ),
+                        ],
+                      ),
+                      TaskMessage(task.error, error: task.needsAttention),
+                    ],
+                  ),
                 ),
               TaskSection(
                 'Task',
-                child: SelectableText(
-                  task.prompt.isEmpty
-                      ? task.scriptOnly
-                            ? 'Runs a server script without an agent.'
-                            : 'Uses the task’s server-side execution settings.'
-                      : task.prompt,
+                child: viewportSelection(
+                  SelectableText(task.instructionsDisplay),
                 ),
               ),
               TaskSection(
@@ -267,20 +270,16 @@ class _AdminScheduledTaskDetailPageState
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _fact(
-                          'Results',
-                          task.destinations
-                              .map((d) => d == 'local' ? 'Saved on server' : d)
-                              .join(' · '),
-                        ),
-                        _fact(
-                          'Model',
-                          task.scriptOnly
-                              ? 'No agent'
-                              : task.text('model').isEmpty
-                              ? 'Profile default at run time'
-                              : '${task.text('provider')} / ${task.text('model')}',
-                        ),
+                        _fact('Results', task.destinationsDisplay),
+                        _fact('Model', task.modelDisplay),
+                        _fact('Missed runs', task.catchUpLabel),
+                        if (task.schedule['kind'] == 'cron')
+                          _fact('Late-run window', task.graceLabel),
+                        if (task.latestExecution case final execution?)
+                          _fact(
+                            'Latest attempt',
+                            '${execution.label}${execution.reason.isEmpty ? '' : ': ${execution.reason}'}',
+                          ),
                         _fact(
                           'Last run',
                           task.lastRun == null
@@ -289,18 +288,10 @@ class _AdminScheduledTaskDetailPageState
                         ),
                         if (task.text('script').isNotEmpty)
                           _fact('Server script', task.text('script')),
-                        if (task.data['skills'] is List &&
-                            (task.data['skills'] as List).isNotEmpty)
-                          _fact(
-                            'Skills',
-                            (task.data['skills'] as List).join(', '),
-                          ),
-                        if (task.data['context_from'] is List &&
-                            (task.data['context_from'] as List).isNotEmpty)
-                          _fact(
-                            'Context from',
-                            (task.data['context_from'] as List).join(', '),
-                          ),
+                        if (task.skills.isNotEmpty)
+                          _fact('Skills', task.skills.join(', ')),
+                        if (task.contextFrom.isNotEmpty)
+                          _fact('Context from', task.contextFrom.join(', ')),
                       ],
                     ),
                   ),
@@ -308,75 +299,53 @@ class _AdminScheduledTaskDetailPageState
               ),
               TaskSection(
                 'Recent runs',
-                description: 'Open a run to read its conversation.',
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    if (loading) const LinearProgressIndicator(),
-                    if (runError != null)
-                      TaskMessage(
-                        runError!,
-                        error: true,
-                        action: TextButton(
-                          onPressed: loading ? null : refresh,
-                          child: const Text('Refresh runs'),
+                description:
+                    'Open conversation runs to read the chat. Script runs show their recorded status and output preview here.',
+                child: StudioLoadingRegion(
+                  available: state.history != null,
+                  busy: loading,
+                  label: 'Loading runs',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (runError != null)
+                        TaskMessage(
+                          runError!,
+                          error: true,
+                          action: StudioButtonPress(
+                            child: TextButton(
+                              onPressed: loading ? null : refresh,
+                              child: const Text('Refresh runs'),
+                            ),
+                          ),
                         ),
-                      ),
-                    if (runs?.isEmpty == true)
-                      Text(
-                        task.scriptOnly
-                            ? 'No run conversations. Script-only tasks may not create a conversation.'
-                            : 'No run conversations yet.',
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    if (runs?.isNotEmpty == true)
-                      TaskSurface(
-                        child: Column(
-                          children: [
-                            for (var i = 0; i < runs!.length; i++) ...[
-                              if (i > 0) const Divider(height: 1),
-                              ListTile(
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 4,
-                                ),
-                                leading: Icon(
-                                  runs![i].active
-                                      ? Icons.play_arrow_rounded
-                                      : Icons.chat_bubble_outline,
-                                  size: 20,
-                                ),
-                                title: Text(
-                                  runs![i].title.isEmpty
-                                      ? 'Task conversation'
-                                      : runs![i].title,
-                                ),
-                                subtitle: Text(
-                                  '${taskTime(context, runs![i].started)}${runs![i].active ? ' · Active' : ''}',
-                                ),
-                                trailing: const Icon(
-                                  Icons.chevron_right,
-                                  size: 18,
-                                ),
-                                onTap: opening ? null : () => open(runs![i]),
-                              ),
+                      if (runs?.isEmpty == true)
+                        Text(
+                          'No recorded runs yet.',
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      if (runs?.isNotEmpty == true)
+                        TaskSurface(
+                          child: Column(
+                            children: [
+                              for (var i = 0; i < runs!.length; i++) ...[
+                                if (i > 0) const Divider(height: 1),
+                                _runTile(runs![i]),
+                              ],
                             ],
-                          ],
+                          ),
                         ),
-                      ),
-                    if (runs != null && runs!.length >= limit && limit < 100)
-                      TextButton(
-                        onPressed: loading
-                            ? null
-                            : () {
-                                limit = 100;
-                                refresh();
-                              },
-                        child: const Text('Show more runs'),
-                      ),
-                    if (limit == 100 && runs?.length == 100)
-                      const Text('Showing the latest 100 runs.'),
-                  ],
+                      if (state.canShowMore)
+                        StudioButtonPress(
+                          child: TextButton(
+                            onPressed: loading ? null : session.showMore,
+                            child: const Text('Show more runs'),
+                          ),
+                        ),
+                      if (state.atLimit)
+                        const Text('Showing the latest 100 runs.'),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -385,6 +354,49 @@ class _AdminScheduledTaskDetailPageState
       );
     },
   );
+  Widget _runTile(TaskRun run) => StudioButtonPress(
+    child: ListTile(
+      key: ValueKey('task-run-${run.id}'),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      leading: Icon(
+        run.isConversation
+            ? run.active
+                  ? Icons.play_arrow_rounded
+                  : Icons.chat_bubble_outline
+            : Icons.description_outlined,
+        size: 20,
+      ),
+      title: Text(
+        run.title.isNotEmpty
+            ? run.title
+            : run.isConversation
+            ? 'Task conversation'
+            : run.isScriptOutput
+            ? 'Script run'
+            : 'Run record',
+      ),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '${run.isConversation
+                ? 'Conversation'
+                : run.isScriptOutput
+                ? 'Script output'
+                : 'Run record'} · ${taskTime(context, run.started)}${run.active ? ' · Active' : ''}',
+          ),
+          if (run.preview.isNotEmpty && !run.title.contains(run.preview)) ...[
+            const SizedBox(height: 4),
+            viewportSelection(SelectableText(run.preview)),
+          ],
+        ],
+      ),
+      trailing: run.isConversation
+          ? const Icon(Icons.chevron_right, size: 18)
+          : null,
+      onTap: run.isConversation && !opening ? () => session.open(run) : null,
+    ),
+  );
   Widget _fact(String label, String value) => Padding(
     padding: const EdgeInsets.only(bottom: 12),
     child: Column(
@@ -392,20 +404,8 @@ class _AdminScheduledTaskDetailPageState
       children: [
         Text(label, style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 4),
-        SelectableText(value),
+        viewportSelection(SelectableText(value)),
       ],
     ),
   );
-  Future<void> open(TaskRun run) async {
-    setState(() => opening = true);
-    try {
-      await widget.onOpenSession(
-        ProfileSessionKey(controller.repository.profile.scope, run.id),
-      );
-    } catch (e) {
-      if (mounted) adminMessage(context, taskFailure(e), isError: true);
-    } finally {
-      if (mounted) setState(() => opening = false);
-    }
-  }
 }

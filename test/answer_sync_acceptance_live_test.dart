@@ -1,3 +1,7 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,18 +23,25 @@ void main() {
       final clients = <ProfileWorkspaceController>[];
       ProfileChat? original;
       try {
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        addTearDown(appPreferences.dispose);
         Future<ProfileWorkspaceController> connect(String id) async {
           final client = ProfileWorkspaceController(
             connectionIdentity: id,
-            connection: SavedConnection(
-              id: id,
-              label: 'Answer sync QA',
-              host: '127.0.0.1',
-              port: port,
-              dashboardPortOverride: port,
-              apiKey: '',
+            access: ConnectionAccess(
+              connection: SavedConnection(
+                id: id,
+                label: 'Answer sync QA',
+                host: '127.0.0.1',
+                port: port,
+                dashboardPortOverride: port,
+                apiKey: '',
+              ),
+              dashboardOAuth: null,
             ),
-            preferences: await SharedPreferences.getInstance(),
+            preferences: preferences,
+            appPreferences: appPreferences,
           );
           clients.add(client);
           await client.initialize();
@@ -41,15 +52,16 @@ void main() {
 
         Future<void> settle(ProfileChat chat) async {
           final deadline = DateTime.now().add(const Duration(seconds: 70));
-          while (chat.busy && DateTime.now().isBefore(deadline)) {
+          while (chat.runtime.blocksTurnAdmission &&
+              DateTime.now().isBefore(deadline)) {
             await Future<void>.delayed(const Duration(milliseconds: 150));
           }
-          expect(chat.status, ProfileTurnStatus.completed);
-          expect(chat.error, isNull);
+          expect(chat.runtime.execution, ChatExecution.completed);
+          expect(chat.runtime.error, isNull);
         }
 
         final writer = await connect('answer-sync-writer');
-        final chat = await writer.createChat();
+        final chat = await writer.createChat(canDispatch: () => true);
         original = chat;
         await writer.updateDraft(
           chat,
@@ -57,7 +69,7 @@ void main() {
         );
         await writer.send(chat);
         await settle(chat);
-        final index = chat.messages.lastIndexWhere(
+        final index = chat.reading.messages.lastIndexWhere(
           (row) => row['role'] == 'assistant',
         );
         expect(index, greaterThanOrEqualTo(0));
@@ -84,7 +96,7 @@ void main() {
           ProfileSessionKey(reader.current!.scope, chat.key.sessionId),
         );
         expect(fresh, isNotNull);
-        final answers = fresh!.messages
+        final answers = fresh!.reading.messages
             .where((row) => row['role'] == 'assistant')
             .toList();
         expect(answers, hasLength(1));
@@ -102,7 +114,9 @@ void main() {
         );
         expect(freshBranch, isNotNull);
         expect(
-          freshBranch!.messages.where((row) => row['role'] == 'assistant'),
+          freshBranch!.reading.messages.where(
+            (row) => row['role'] == 'assistant',
+          ),
           hasLength(1),
         );
         expect(freshBranch.key.sessionId, isNot(fresh.key.sessionId));
@@ -114,7 +128,9 @@ void main() {
         );
       } finally {
         try {
-          if (original?.busy == true) await clients.first.stop(original!);
+          if (original?.runtime.blocksTurnAdmission == true) {
+            await clients.first.stop(original!);
+          }
         } finally {
           for (final client in clients) {
             client.dispose();

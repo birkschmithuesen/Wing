@@ -1,15 +1,15 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:flutter/widgets.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/main.dart';
 import 'package:wing/core/services/connection_manager.dart';
-import 'package:wing/core/services/profile_selection_store.dart';
 import 'package:wing/core/services/profile_connection_identity.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 
 /// Opt-in emulator test against unmodified Hermes Desktop. With RUN_MODEL=true
@@ -33,13 +33,28 @@ void main() {
         dashboardPortOverride: port,
         apiKey: '',
       );
-      await manager.importConnections([connection], replaceExisting: false);
-      await preferences.setString('last_connection_id', connection.id);
-      await ProfileSelectionStore(preferences).write(
-        await ProfileConnectionIdentity().resolve(connection),
-        'android-qa-a',
+      await manager.importConnections(
+        [connection],
+        replaceExisting: false,
+        canCommit: () => true,
       );
-      await tester.pumpWidget(WingApp(connManager: manager));
+      await preferences.setString('last_connection_id', connection.id);
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      expect(
+        (await appPreferences
+                .admitProfileSelection(
+                  await ProfileConnectionIdentity().resolve(connection),
+                  'android-qa-a',
+                )
+                .settled)
+            .confirmed,
+        isTrue,
+      );
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      await tester.pumpWidget(
+        WingApp(connManager: manager, appPreferences: appPreferences),
+      );
       Future<void> until(bool Function() condition, {int seconds = 30}) async {
         final deadline = DateTime.now().add(Duration(seconds: seconds));
         while (!condition() && DateTime.now().isBefore(deadline)) {
@@ -69,6 +84,9 @@ void main() {
           await controller.createProject(
             'Android QA ${DateTime.now().millisecondsSinceEpoch}',
             projectPath,
+            color: '',
+            icon: 'folder-library',
+            canDispatch: () => true,
           );
         }
         await controller.selectProject(
@@ -82,7 +100,7 @@ void main() {
       final a = controller.current!.chat!;
       String? profileAtCompletion;
       void observeCompletion() {
-        if (a.status == ProfileTurnStatus.completed) {
+        if (a.runtime.execution == ChatExecution.completed) {
           profileAtCompletion ??= controller.current?.scope.profileName;
         }
       }
@@ -92,14 +110,20 @@ void main() {
       final directory = await getTemporaryDirectory();
       final attachment = File('${directory.path}/android-qa.txt');
       await attachment.writeAsString('ANDROID_PROFILE_QA');
-      await controller.addAttachment(a, attachment.path, 'android-qa.txt');
+      addTearDown(() async {
+        if (await attachment.exists()) await attachment.delete();
+      });
+      await controller.addAttachments(a, [
+        (path: attachment.path, name: 'android-qa.txt'),
+      ]);
       await tester.pump();
       expect(find.text('android-qa.txt'), findsOneWidget);
       if (runModel) {
-        a.draft =
-            'This is one bounded Android integration test. Read the attached text file and reply with its exact contents only. Do not edit files, browse, delegate, or perform any other task.';
+        a.composer.editText(
+          'This is one bounded Android integration test. Read the attached text file and reply with its exact contents only. Do not edit files, browse, delegate, or perform any other task.',
+        );
         await controller.send(a);
-        expect(a.busy, isTrue, reason: a.error);
+        expect(a.runtime.blocksTurnAdmission, isTrue, reason: a.runtime.error);
       }
       await tester.tap(find.byTooltip('Switch profile'));
       await tester.pumpAndSettle();
@@ -110,11 +134,15 @@ void main() {
       expect(controller.current!.chat, isNull);
       expect(find.text('android-qa.txt'), findsNothing);
       if (runModel) {
-        await until(() => !a.busy, seconds: 120);
-        expect(a.status, ProfileTurnStatus.completed, reason: a.error);
+        await until(() => !a.runtime.blocksTurnAdmission, seconds: 120);
+        expect(
+          a.runtime.execution,
+          ChatExecution.completed,
+          reason: a.runtime.error,
+        );
         expect(profileAtCompletion, 'android-qa-b');
         expect(
-          a.messages.any(
+          a.reading.messages.any(
             (m) =>
                 m['role'] == 'assistant' &&
                 m['content'].toString().contains('ANDROID_PROFILE_QA'),
@@ -135,9 +163,11 @@ void main() {
         dashboardPortOverride: 1,
       );
       try {
-        await manager.importConnections([
-          replacementConnection,
-        ], replaceExisting: false);
+        await manager.importConnections(
+          [replacementConnection],
+          replaceExisting: false,
+          canCommit: () => true,
+        );
         final savedReplacement = (await manager.loadConnectionsWithSecrets())
             .singleWhere((c) => c.id == connection.id);
         final replacement = await app.profileController(savedReplacement);
@@ -154,13 +184,16 @@ void main() {
           reason: 'A fresh resolver must read the same Android secure key',
         );
       } finally {
-        await manager.importConnections([connection], replaceExisting: false);
+        await manager.importConnections(
+          [connection],
+          replaceExisting: false,
+          canCommit: () => true,
+        );
       }
       expect(await app.profileController(connection), same(controller));
       debugPrint(
         '[connection-qa] PASS: edited endpoint isolated; old session rejected; original owner preserved.',
       );
-      await attachment.delete();
     },
     timeout: const Timeout(Duration(minutes: 5)),
   );

@@ -1,8 +1,7 @@
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
-import 'package:wing/core/services/voice_preferences.dart';
-import 'package:wing/voice_offline/voice_offline_prefs.dart';
+import 'package:wing/core/models/voice_processing_settings.dart';
 import '../support/voice_fixture.dart';
 import '../support/voice_workspace_fixture.dart';
 
@@ -22,17 +21,14 @@ void main() {
       'R4: recording is bounded at the new maximum duration and native errors leave the draft untouched',
       (tester) async {
         final device = VoiceDeviceFixture();
-        final controller = VoiceInputController(
-          device: device,
-          createRemote: RemoteVoiceFixture.new,
-        );
+        final controller = VoiceInputController(device: device);
         addTearDown(controller.dispose);
         addTearDown(device.stream.close);
         await controller.start(
-          const VoicePreferences(),
-          const VoiceOfflinePrefs(),
-          TextEditingValue.empty,
+          const LocalVoiceInputSettings(language: ''),
+          const VoiceDraft(text: '', selectionStart: -1, selectionEnd: -1),
           (_) => fail('Unexpected draft edit'),
+          createRemote: RemoteVoiceFixture.new,
         );
         await tester.pump(const Duration(seconds: 121));
         expect(device.calls.where((c) => c == 'stop').length, 0);

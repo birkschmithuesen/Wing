@@ -1,10 +1,35 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../models/gateway_approval.dart';
 import '../theme/wing_theme.dart';
+import 'selection_viewport.dart';
+import 'studio_error.dart';
 
-/// The command scrolls independently so its decision controls stay reachable.
-class GatewayApprovalPanel extends StatefulWidget {
+/// Exact command review shared by chat, bot, group and notification approvals.
+/// Completed request receipts belong to Activity; live review stays visible.
+class ApprovalCommandDetails extends StatelessWidget {
+  const ApprovalCommandDetails({super.key, required this.request});
+
+  final GatewayApprovalRequest request;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      viewportSelection(SelectableText(request.command)),
+      if (request.description.isNotEmpty)
+        ExpansionTile(
+          tilePadding: EdgeInsets.zero,
+          title: const Text('Hermes request details'),
+          children: [Text(request.description)],
+        ),
+    ],
+  );
+}
+
+/// Live decisions retain their exact server-owned scopes and shared reviewer.
+class GatewayApprovalPanel extends StatelessWidget {
   const GatewayApprovalPanel({
     super.key,
     required this.request,
@@ -12,6 +37,7 @@ class GatewayApprovalPanel extends StatefulWidget {
     this.position = 1,
     this.total = 1,
     this.enabled = true,
+    this.error,
   });
 
   final GatewayApprovalRequest request;
@@ -19,96 +45,91 @@ class GatewayApprovalPanel extends StatefulWidget {
   final int position;
   final int total;
   final bool enabled;
+  final String? error;
 
   @override
-  State<GatewayApprovalPanel> createState() => _GatewayApprovalPanelState();
-}
-
-class _GatewayApprovalPanelState extends State<GatewayApprovalPanel> {
-  final _scroll = ScrollController();
-
-  @override
-  void dispose() {
-    _scroll.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final request = widget.request;
-    // Leave room for the larger decision controls when text is enlarged.
-    final commandHeight =
-        160 / MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(WingSpacing.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              widget.total > 1
-                  ? 'Approval needed (${widget.position}/${widget.total})'
-                  : 'Approval needed',
-              style: theme.textTheme.titleMedium,
-            ),
-            const SizedBox(height: WingSpacing.sm),
-            Container(
-              decoration: BoxDecoration(
-                color: theme.colorScheme.surfaceContainerLow,
-                borderRadius: WingRadius.control,
-              ),
-              clipBehavior: Clip.antiAlias,
-              constraints: BoxConstraints(maxHeight: commandHeight),
-              child: Scrollbar(
-                controller: _scroll,
-                thumbVisibility: true,
-                child: SingleChildScrollView(
-                  key: const Key('approval-command-scroll'),
-                  controller: _scroll,
-                  primary: false,
-                  padding: const EdgeInsets.all(WingSpacing.sm),
-                  child: SelectableText(
-                    request.command.isEmpty
-                        ? request.description
-                        : request.command,
-                    style: WingTypography.ramp(
-                      theme.brightness,
-                    ).mono.copyWith(color: theme.colorScheme.onSurface),
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: WingSpacing.sm),
-            Wrap(
-              spacing: WingSpacing.sm,
-              runSpacing: WingSpacing.xs,
-              children: [
-                for (final choice in request.choices)
-                  if (choice == GatewayApprovalChoice.deny)
-                    OutlinedButton(
-                      onPressed: widget.enabled
-                          ? () => widget.onRespond(choice)
-                          : null,
-                      child: const Text('Deny'),
-                    )
-                  else
-                    FilledButton(
-                      onPressed: widget.enabled
-                          ? () => widget.onRespond(choice)
-                          : null,
-                      child: Text(switch (choice) {
-                        GatewayApprovalChoice.once => 'Allow once',
-                        GatewayApprovalChoice.session => 'Allow for session',
-                        GatewayApprovalChoice.always => 'Always allow',
-                        GatewayApprovalChoice.deny => 'Deny',
-                      }),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final preferred =
+          (MediaQuery.sizeOf(context).height -
+              MediaQuery.viewInsetsOf(context).bottom) *
+          .35;
+      final footerWidth = request.choices.length * 56.0 + (total > 1 ? 56 : 0);
+      final footerRows = math.max(
+        1,
+        (footerWidth / constraints.maxWidth).ceil(),
+      );
+      final detailsHeight = constraints.hasBoundedHeight
+          ? math.min(
+              preferred,
+              math.max(0.0, constraints.maxHeight - footerRows * 48),
+            )
+          : preferred;
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          ConstrainedBox(
+            constraints: BoxConstraints(maxHeight: detailsHeight),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Semantics(
+                    header: true,
+                    child: Text(
+                      'Review command',
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-              ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (error case final message?)
+                    StudioError(
+                      message,
+                      icon: Icons.rule_outlined,
+                      framed: false,
+                    ),
+                  ApprovalCommandDetails(request: request),
+                ],
+              ),
             ),
-          ],
-        ),
-      ),
-    );
-  }
+          ),
+          Wrap(
+            alignment: WrapAlignment.end,
+            spacing: 8,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              if (total > 1) Text('$position/$total'),
+              for (final choice in request.choices.reversed)
+                StudioButtonPress(
+                  child: choice == GatewayApprovalChoice.deny
+                      ? IconButton.outlined(
+                          tooltip: 'Reject',
+                          onPressed: enabled ? () => onRespond(choice) : null,
+                          icon: const Icon(Icons.close),
+                        )
+                      : IconButton.filled(
+                          tooltip: switch (choice) {
+                            GatewayApprovalChoice.once => 'Approve once',
+                            GatewayApprovalChoice.session =>
+                              'Approve for session',
+                            GatewayApprovalChoice.always => 'Always approve',
+                            GatewayApprovalChoice.deny => 'Reject',
+                          },
+                          onPressed: enabled ? () => onRespond(choice) : null,
+                          icon: Icon(switch (choice) {
+                            GatewayApprovalChoice.once => Icons.check,
+                            GatewayApprovalChoice.session =>
+                              Icons.playlist_add_check,
+                            GatewayApprovalChoice.always => Icons.done_all,
+                            GatewayApprovalChoice.deny => Icons.close,
+                          }),
+                        ),
+                ),
+            ],
+          ),
+        ],
+      );
+    },
+  );
 }

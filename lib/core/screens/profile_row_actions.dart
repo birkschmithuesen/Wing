@@ -1,34 +1,34 @@
+import '../widgets/selection_viewport.dart';
+import '../widgets/studio_form_actions.dart';
 import '../widgets/studio_error.dart';
 import '../theme/wing_theme.dart';
 import 'profile_project_actions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../models/hermes_profile.dart';
+import '../models/chat_list_view.dart';
+import '../models/browser_actions.dart';
 import '../widgets/workspace_action_menu.dart';
-import '../services/profile_workspace_controller.dart';
-import '../services/profile_gateway.dart';
-import '../services/composer_draft_store.dart';
+import '../services/chat_browser_data.dart';
 
 Future<void> showSavedDraftActions(
   BuildContext context,
-  ProfileWorkspaceController controller,
-  WorkspaceScope owner,
-  ComposerDraftSummary draft,
+  BrowserActionSession session,
+  BrowserDraft draft,
   String title,
 ) async {
   final action =
-      await showWorkspaceActionMenu(context, title, owner.profileName, [
+      await showWorkspaceActionMenu(context, title, session.scope.profileName, [
         ('edit', 'Continue editing', Icons.edit_outlined, true),
         ('delete', 'Discard draft', Icons.delete_outline, true),
       ]);
   if (action == null || !context.mounted) return;
   if (action == 'edit') {
-    await controller.openSavedDraft(owner, draft.sessionId);
+    await session.perform(BrowserAction.editDraft);
     return;
   }
   final confirmed = await showDialog<bool>(
     context: context,
-    builder: (context) => AlertDialog(
+    builder: (context) => StudioDialog(
       scrollable: true,
       title: const Text('Discard draft?'),
       content: Column(
@@ -49,24 +49,22 @@ Future<void> showSavedDraftActions(
         ],
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          style: FilledButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.error,
-            foregroundColor: Theme.of(context).colorScheme.onError,
-          ),
-          onPressed: () => Navigator.pop(context, true),
-          child: const Text('Discard'),
+        StudioFormActions(
+          onCancel: () => Navigator.pop(context, false),
+          onConfirm: () => Navigator.pop(context, true),
+          confirmLabel: 'Discard draft',
+          confirmIcon: Icons.delete_outline,
+          destructive: true,
         ),
       ],
     ),
   );
   if (confirmed != true || !context.mounted) return;
   final messenger = ScaffoldMessenger.of(context);
-  await controller.discardSavedDraft(owner, draft);
+  if (!await session.perform(BrowserAction.delete)) {
+    if (session.state.error case final error?) throw StateError(error);
+    return;
+  }
   if (messenger.mounted) {
     messenger.showSnackBar(const SnackBar(content: Text('Draft discarded')));
   }
@@ -74,235 +72,298 @@ Future<void> showSavedDraftActions(
 
 Future<void> showChatActions(
   BuildContext context,
-  ProfileWorkspaceController controller,
-  Map<String, dynamic> row,
+  BrowserActionSession session,
 ) async {
-  final resource = controller.current!;
-  final key = ProfileSessionKey(resource.scope, row['id'] as String);
-  final title = row['title']?.toString() ?? 'Untitled chat';
-  final busy = resource.chats[key.sessionId]?.busy == true;
-  final pinned = row['pinned'] == true;
-  final archived = row['archived'] == true || resource.archivedOnly;
-  final unread = row['unread'] == true;
-  final action = await showWorkspaceActionMenu(
-    context,
-    title,
-    resource.scope.profileName,
-    [
-      ('rename', 'Rename', Icons.edit_outlined, true),
-      ('pin', pinned ? 'Unpin' : 'Pin', Icons.push_pin_outlined, true),
-      (
-        'unread',
-        unread ? 'Mark as read' : 'Mark as unread',
-        Icons.mark_email_unread_outlined,
-        true,
-      ),
-      ('copy', 'Copy ID', Icons.copy_outlined, true),
-      ('move', 'Move to project', Icons.drive_file_move_outlined, !busy),
-      (
-        'archive',
-        archived ? 'Unarchive' : 'Archive',
-        Icons.archive_outlined,
-        !busy,
-      ),
-      ('delete', 'Delete', Icons.delete_outline, !busy),
-    ],
-  );
+  final key = session.entry!.sessionKey;
+  final title = session.title;
+  final action =
+      await showWorkspaceActionMenu(context, title, session.scope.profileName, [
+        for (final choice in session.choices)
+          (
+            choice.action.name,
+            choice.label,
+            switch (choice.action) {
+              BrowserAction.rename => Icons.edit_outlined,
+              BrowserAction.pin => Icons.push_pin_outlined,
+              BrowserAction.unread => Icons.mark_email_unread_outlined,
+              BrowserAction.copy => Icons.copy_outlined,
+              BrowserAction.move => Icons.drive_file_move_outlined,
+              BrowserAction.archive => Icons.archive_outlined,
+              _ => Icons.delete_outline,
+            },
+            choice.enabled,
+          ),
+      ]);
   if (action == null || !context.mounted) return;
   if (action == 'copy') {
     await Clipboard.setData(ClipboardData(text: key.sessionId));
-    if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Chat ID copied')));
-    }
     return;
   }
   if (action == 'move') {
-    await showChatProjectPicker(
-      context,
-      controller,
-      key,
-      currentProjectId:
-          resource.chats[key.sessionId]?.projectId ??
-          (resource.projectSessions.any((item) => item['id'] == key.sessionId)
-              ? (resource.selectedProject?['id'] as String?)
-              : null),
-      cwd: row['cwd'] as String?,
-    );
+    await showChatProjectPicker(context, session);
   } else if (action == 'rename') {
-    var value = title;
-    final result = await showDialog<String>(
-      context: context,
-      builder: (context) => AlertDialog(
-        scrollable: true,
-        title: const Text('Rename chat'),
-        content: TextFormField(
-          initialValue: title,
-          autofocus: true,
-          maxLength: 200,
-          onChanged: (text) => value = text,
-          decoration: const InputDecoration(labelText: 'Chat title'),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, value.trim()),
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-    if (result != null && result.isNotEmpty) {
-      await controller.mutateSession(key, changes: {'title': result});
-    }
+    await showChatRenameDialog(context, session);
   } else if (action == 'delete') {
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StudioDialog(
         scrollable: true,
         title: const Text('Delete chat?'),
         content: Text(
-          'Permanently delete "$title" from ${resource.scope.profileName}? Its stored history cannot be recovered. Archive it instead to keep the conversation.',
+          'Permanently delete "$title" from ${session.scope.profileName}? Its stored history cannot be recovered. Archive it instead to keep the conversation.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
+          StudioFormActions(
+            onCancel: () => Navigator.pop(context, false),
+            onConfirm: () => Navigator.pop(context, true),
+            confirmLabel: 'Delete chat',
+            confirmIcon: Icons.delete_outline,
+            destructive: true,
           ),
         ],
       ),
     );
-    if (confirmed == true) await controller.mutateSession(key, delete: true);
+    if (confirmed == true && context.mounted) {
+      await _submit(session, BrowserAction.delete);
+    }
   } else {
-    await controller.mutateSession(
-      key,
-      changes: switch (action) {
-        'pin' => {'pinned': !pinned},
-        'archive' => {'archived': !archived},
-        'unread' => {'unread': !unread},
-        _ => throw StateError('Unknown action'),
-      },
+    await _submit(session, BrowserAction.values.byName(action));
+  }
+}
+
+Future<void> showChatRenameDialog(
+  BuildContext context,
+  BrowserActionSession session,
+) => showDialog<void>(
+  context: context,
+  builder: (_) => _ChatRenameDialog(session: session),
+);
+
+class _ChatRenameDialog extends StatefulWidget {
+  const _ChatRenameDialog({required this.session});
+  final BrowserActionSession session;
+
+  @override
+  State<_ChatRenameDialog> createState() => _ChatRenameDialogState();
+}
+
+class _ChatRenameDialogState extends State<_ChatRenameDialog> {
+  late final _title = TextEditingController(text: widget.session.title);
+  int _editRevision = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_changed);
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void dispose() {
+    widget.session.removeListener(_changed);
+    _title.dispose();
+    super.dispose();
+  }
+
+  Future<void> _generate() async {
+    final revision = _editRevision;
+    final title = await widget.session.generateTitle();
+    if (!mounted || title == null || revision != _editRevision) return;
+    setState(() {
+      _title.value = TextEditingValue(
+        text: title,
+        selection: TextSelection.collapsed(offset: title.length),
+      );
+    });
+  }
+
+  Future<void> _save() async {
+    final saved = await widget.session.perform(
+      BrowserAction.rename,
+      name: _title.text,
     );
+    if (saved && mounted) Navigator.pop(context);
+  }
+
+  Widget _progress(String label) => SizedBox.square(
+    dimension: 20,
+    child: CircularProgressIndicator(
+      value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
+      strokeWidth: 2,
+      semanticsLabel: label,
+    ),
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.session.state;
+    final pending = state.submitting || state.generatingTitle;
+    return PopScope(
+      canPop: !state.submitting,
+      child: StudioDialog(
+        scrollable: true,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+        title: const Text('Rename chat'),
+        content: SizedBox(
+          width: 360,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              viewportSelection(
+                TextField(
+                  key: const ValueKey('chat-rename-title'),
+                  controller: _title,
+                  autofocus: true,
+                  enabled: !state.submitting,
+                  maxLength: 100,
+                  textInputAction: TextInputAction.done,
+                  onChanged: (_) => setState(() => _editRevision++),
+                  onSubmitted: (_) {
+                    if (!pending &&
+                        widget.session.available &&
+                        _title.text.trim().isNotEmpty) {
+                      _save();
+                    }
+                  },
+                  decoration: InputDecoration(
+                    labelText: 'Chat title',
+                    suffixIcon: StudioButtonPress(
+                      child: IconButton(
+                        key: const ValueKey('chat-rename-ai'),
+                        tooltip: 'Auto rename',
+                        onPressed: pending || !widget.session.available
+                            ? null
+                            : _generate,
+                        icon: state.generatingTitle
+                            ? _progress('Generating chat title')
+                            : const Icon(Icons.auto_awesome_outlined),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              if (state.error case final error?) ...[
+                const SizedBox(height: 12),
+                StudioError(error),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          StudioFormActions(
+            onCancel: state.submitting ? null : () => Navigator.pop(context),
+            onConfirm:
+                pending ||
+                    !widget.session.available ||
+                    _title.text.trim().isEmpty
+                ? null
+                : _save,
+            confirmKey: const ValueKey('chat-rename-save'),
+            confirmLabel: 'Save chat title',
+            busy: state.submitting,
+            progressLabel: 'Saving chat title',
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+Future<void> _submit(
+  BrowserActionSession session,
+  BrowserAction action, {
+  String name = '',
+}) async {
+  if (!await session.perform(action, name: name)) {
+    if (session.state.error case final error?) throw StateError(error);
   }
 }
 
 Future<void> showChatProjectPicker(
   BuildContext context,
-  ProfileWorkspaceController controller,
-  ProfileSessionKey key, {
-  String? currentProjectId,
-  String? cwd,
-}) async {
-  final resource = controller.current;
-  if (resource == null || resource.scope != key.workspace) {
-    throw StateError('Profile changed. Open the project picker again.');
-  }
-  final projects = resource.projects
-      .where(
-        (project) =>
-            project['isNoProject'] != true &&
-            ProfileGateway.projectDirectory(project).isNotEmpty &&
-            project['id'] != currentProjectId &&
-            ProfileGateway.projectDirectory(project) != cwd,
-      )
-      .toList();
-  // A row can disappear when its project reloads after a successful move.
+  BrowserActionSession session,
+) async {
   final messenger = ScaffoldMessenger.of(context);
-  final currentProject = resource.projects
-      .where(
-        (project) =>
-            project['id'] == currentProjectId ||
-            (cwd != null && ProfileGateway.projectDirectory(project) == cwd),
-      )
-      .firstOrNull;
-  final target = await showModalBottomSheet<Map<String, dynamic>>(
+  final message = await showModalBottomSheet<String>(
     context: context,
     isScrollControlled: true,
     useSafeArea: true,
     isDismissible: false,
     enableDrag: false,
     constraints: const BoxConstraints(maxWidth: 640),
-    builder: (context) => _ChatProjectSheet(
-      projects: projects,
-      currentProject: currentProject,
-      profileName: resource.scope.profileName,
-      move: (project) => controller.moveSessionToProject(key, project),
-    ),
+    builder: (context) => _ChatProjectSheet(session: session),
   );
-  if (target != null && messenger.mounted) {
-    messenger.showSnackBar(
-      SnackBar(content: Text('Moved to ${target['name']}')),
-    );
+  if (message != null && messenger.mounted) {
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 }
 
 class _ChatProjectSheet extends StatefulWidget {
-  const _ChatProjectSheet({
-    required this.projects,
-    required this.currentProject,
-    required this.profileName,
-    required this.move,
-  });
-
-  final List<Map<String, dynamic>> projects;
-  final Map<String, dynamic>? currentProject;
-  final String profileName;
-  final Future<bool> Function(Map<String, dynamic>) move;
-
+  const _ChatProjectSheet({required this.session});
+  final BrowserActionSession session;
   @override
   State<_ChatProjectSheet> createState() => _ChatProjectSheetState();
 }
 
 class _ChatProjectSheetState extends State<_ChatProjectSheet> {
   final search = TextEditingController();
-  Map<String, dynamic>? moving;
-  String? error;
+  bool get _moving => widget.session.state.submitting;
+  String? get _failure => widget.session.state.error;
+  @override
+  void initState() {
+    super.initState();
+    widget.session.addListener(_changed);
+  }
+
+  void _changed() {
+    if (mounted) setState(() {});
+  }
 
   @override
   void dispose() {
+    widget.session.removeListener(_changed);
     search.dispose();
     super.dispose();
   }
 
-  Future<void> move(Map<String, dynamic> project) async {
-    if (moving != null) return;
+  Future<void> move(BrowserProject? project) async {
     FocusScope.of(context).unfocus();
-    setState(() {
-      moving = project;
-      error = null;
-    });
-    try {
-      final moved = await widget.move(project);
-      if (!mounted) return;
-      if (moved) {
-        Navigator.pop(context, project);
-        return;
-      }
-      setState(() {
-        moving = null;
-        error = 'A change to this chat is already in progress. Try again.';
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        moving = null;
-        error = switch (e) {
-          StateError e => e.message.toString(),
-          FormatException e => e.message,
-          _ => 'Could not move this chat. $e',
-        };
-      });
+    final destination = project == null
+        ? 'the default project of ${widget.session.scope.profileName}'
+        : '"${project.name}" in ${widget.session.scope.profileName}';
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StudioDialog(
+        title: const Text('Move chat?'),
+        content: Text(
+          'Move this chat to $destination? Its messages will be kept.',
+        ),
+        actions: [
+          StudioFormActions(
+            onCancel: () => Navigator.pop(context, false),
+            onConfirm: () => Navigator.pop(context, true),
+            confirmLabel: 'Move chat',
+            confirmIcon: Icons.drive_file_move_outlined,
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    final moved = await widget.session.perform(
+      BrowserAction.move,
+      target: project,
+    );
+    if (moved && mounted) {
+      Navigator.pop(
+        context,
+        project == null
+            ? 'Moved to the default project of ${widget.session.scope.profileName}'
+            : 'Moved to ${project.name}',
+      );
     }
   }
 
@@ -310,18 +371,16 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final query = search.text.trim().toLowerCase();
-    final projects = widget.projects
+    final projects = widget.session.projects
         .where(
           (project) =>
-              project['name'].toString().toLowerCase().contains(query) ||
-              ProfileGateway.projectDirectory(
-                project,
-              ).toLowerCase().contains(query),
+              project.name.toLowerCase().contains(query) ||
+              project.directory.toLowerCase().contains(query),
         )
         .toList();
-    final current = widget.currentProject;
+    final current = widget.session.currentProject;
     return PopScope(
-      canPop: moving == null,
+      canPop: !_moving,
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -352,7 +411,7 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Projects in ${widget.profileName}',
+                            'Projects in ${widget.session.scope.profileName}',
                             style: theme.textTheme.bodySmall,
                           ),
                           const SizedBox(height: 16),
@@ -384,13 +443,45 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                                           style: theme.textTheme.labelSmall,
                                         ),
                                         Text(
-                                          current?['name'] as String? ??
-                                              'Unassigned',
+                                          current?.name ?? 'Unassigned',
                                           style: theme.textTheme.titleSmall,
                                         ),
                                       ],
                                     ),
                                   ),
+                                  if (widget.session.canRemoveProject) ...[
+                                    const SizedBox(width: 8),
+                                    StudioButtonPress(
+                                      child: IconButton(
+                                        tooltip: 'Remove from project',
+                                        onPressed: _moving
+                                            ? null
+                                            : () => move(null),
+                                        icon: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            const Icon(Icons.close),
+                                            if (_moving &&
+                                                widget.session.state.moving ==
+                                                    null)
+                                              SizedBox.square(
+                                                dimension: 32,
+                                                child: CircularProgressIndicator(
+                                                  value:
+                                                      MediaQuery.disableAnimationsOf(
+                                                        context,
+                                                      )
+                                                      ? .75
+                                                      : null,
+                                                  strokeWidth: 2,
+                                                  semanticsLabel: 'Moving chat',
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -401,35 +492,39 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                             style: theme.textTheme.bodySmall,
                           ),
                           const SizedBox(height: 16),
-                          if (widget.projects.isNotEmpty) ...[
-                            TextField(
-                              key: const ValueKey('project-picker-search'),
-                              controller: search,
-                              enabled: moving == null,
-                              onChanged: (_) => setState(() {}),
-                              decoration: InputDecoration(
-                                hintText: 'Find a project',
-                                prefixIcon: const Icon(Icons.search),
-                                suffixIcon: search.text.isEmpty
-                                    ? null
-                                    : IconButton(
-                                        tooltip: 'Clear search',
-                                        onPressed: moving == null
-                                            ? () {
-                                                search.clear();
-                                                setState(() {});
-                                              }
-                                            : null,
-                                        icon: const Icon(Icons.close),
-                                      ),
+                          if (widget.session.projects.isNotEmpty) ...[
+                            viewportSelection(
+                              TextField(
+                                key: const ValueKey('project-picker-search'),
+                                controller: search,
+                                enabled: !_moving,
+                                onChanged: (_) => setState(() {}),
+                                decoration: InputDecoration(
+                                  hintText: 'Find a project',
+                                  prefixIcon: const Icon(Icons.search),
+                                  suffixIcon: search.text.isEmpty
+                                      ? null
+                                      : StudioButtonPress(
+                                          child: IconButton(
+                                            tooltip: 'Clear search',
+                                            onPressed: !_moving
+                                                ? () {
+                                                    search.clear();
+                                                    setState(() {});
+                                                  }
+                                                : null,
+                                            icon: const Icon(Icons.close),
+                                          ),
+                                        ),
+                                ),
                               ),
                             ),
                             const SizedBox(height: 12),
                           ],
-                          if (error != null) ...[
+                          if (_failure != null) ...[
                             Semantics(
                               liveRegion: true,
-                              child: StudioError(error!),
+                              child: StudioError(_failure!),
                             ),
                             const SizedBox(height: 12),
                           ],
@@ -437,7 +532,7 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                             Padding(
                               padding: const EdgeInsets.symmetric(vertical: 16),
                               child: Text(
-                                widget.projects.isEmpty
+                                widget.session.projects.isEmpty
                                     ? 'No other projects with a working folder are available.'
                                     : 'No matching projects. Try another name or folder.',
                               ),
@@ -455,44 +550,46 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                                 children: [
                                   for (var i = 0; i < projects.length; i++) ...[
                                     if (i > 0) const Divider(height: 1),
-                                    ListTile(
-                                      key: ValueKey(
-                                        'move-project-${projects[i]['id']}',
-                                      ),
-                                      enabled: moving == null,
-                                      contentPadding:
-                                          const EdgeInsets.symmetric(
-                                            horizontal: 12,
-                                            vertical: 4,
-                                          ),
-                                      minTileHeight: 64,
-                                      leading: projectAvatar(
-                                        context,
-                                        projects[i],
-                                        size: 32,
-                                      ),
-                                      title: Text(
-                                        projects[i]['name'] as String,
-                                      ),
-                                      subtitle: Text(
-                                        ProfileGateway.projectDirectory(
-                                          projects[i],
+                                    StudioButtonPress(
+                                      child: ListTile(
+                                        key: ValueKey(
+                                          'move-project-${projects[i].id}',
                                         ),
-                                        style: theme.textTheme.bodySmall,
+                                        enabled: !_moving,
+                                        contentPadding:
+                                            const EdgeInsets.symmetric(
+                                              horizontal: 12,
+                                              vertical: 4,
+                                            ),
+                                        minTileHeight: 64,
+                                        leading: projectAvatar(
+                                          context,
+                                          projects[i],
+                                          size: 32,
+                                        ),
+                                        title: Text(projects[i].name),
+                                        subtitle: Text(
+                                          projects[i].directory,
+                                          style: theme.textTheme.bodySmall,
+                                        ),
+                                        trailing:
+                                            widget.session.state.moving ==
+                                                projects[i]
+                                            ? const SizedBox(
+                                                width: 20,
+                                                height: 20,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      semanticsLabel:
+                                                          'Moving chat',
+                                                    ),
+                                              )
+                                            : null,
+                                        onTap: !_moving
+                                            ? () => move(projects[i])
+                                            : null,
                                       ),
-                                      trailing: moving == projects[i]
-                                          ? const SizedBox(
-                                              width: 20,
-                                              height: 20,
-                                              child: CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                semanticsLabel: 'Moving chat',
-                                              ),
-                                            )
-                                          : null,
-                                      onTap: moving == null
-                                          ? () => move(projects[i])
-                                          : null,
                                     ),
                                   ],
                                 ],
@@ -505,11 +602,14 @@ class _ChatProjectSheetState extends State<_ChatProjectSheet> {
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: moving == null
-                          ? () => Navigator.pop(context)
-                          : null,
-                      child: const Text('Cancel'),
+                    child: StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Cancel project selection',
+                        onPressed: !_moving
+                            ? () => Navigator.pop(context)
+                            : null,
+                        icon: const Icon(Icons.close),
+                      ),
                     ),
                   ),
                 ],

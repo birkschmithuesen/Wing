@@ -1,11 +1,27 @@
-# Server chat relationships
+# Related chats and answer changes
 
-Regenerate replaces an answer in the current conversation. Branch/Fork creates a separate durable session from freshly verified saved rows. These supported actions do not require an answer-version extension. See [Conversation actions](CONVERSATION_ACTIONS_AND_READING.md#edit-regenerate-and-fork).
+**Regenerate** replaces an answer in the current conversation. **Branch in new
+session** creates a separate chat through the selected saved answer, preserving
+the original. The composer commands `/branch` and `/fork` branch through the
+latest saved assistant reply; an optional argument names the new chat.
 
-Parent chat appears when Hermes supplies a nonblank `parent_session_id`. An acknowledged branch can also supply `parent`, accepted only when it matches the source. Navigation keeps the original connection/profile. Explicit null clears a parent; an omitted field may retain already received metadata.
+Fork requires a connected, idle source chat. The branch includes only history
+through the selected saved answer and leaves the original conversation intact. Tapping the answer's branch
+action opens **New chat** immediately, with the Wing loading indicator while
+the fork is prepared. If it fails, use Retry or Back.
 
-Parent does not mean previous answer. Hermes uses parent sessions for other relationships too. Do not infer siblings from matching transcript prefixes, scan pages as a complete version list or assign version numbers locally.
+**Restore checkpoint** on a saved user prompt changes the existing chat instead.
+After confirmation, it replaces that prompt and everything after it, then reruns
+the prompt. It can interrupt ongoing work and pauses the unsent queue. If the
+restore cannot be confirmed, reconnect and check history before trying again.
 
-The phone-only answer index was removed. Startup's best-effort cleanup targets only `answer_versions_v1_*` preferences, leaving drafts and queues intact. The obsolete links are never read, and server chats remain available through Chats.
+A parent-chat link appears when Hermes supplies that relationship. It opens
+within the original connection and profile. Parent links can describe other
+relationships besides branching; they are not a list of previous answer
+versions.
 
-Synchronized superseded answers remain deferred. Recorded live regeneration leaves one durable replacement; Desktop's same-client alternatives do not establish shared server persistence. The rejected version-API experiment was removed and is not a setup prerequisite or supported contract.
+Wing does not offer synchronized history of superseded answers. Regeneration
+leaves the replacement in saved history. Use a branch when you want to keep the
+original conversation and explore an alternative.
+
+See [Conversation actions and reading](CONVERSATION_ACTIONS_AND_READING.md).

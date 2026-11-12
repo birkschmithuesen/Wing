@@ -1,0 +1,86 @@
+{
+  "schema": 1,
+  "source": {
+    "repository": "https://github.com/NousResearch/hermes-agent",
+    "commit": "3251a180f01ad21ae059862997307bf75f3e3f0a",
+    "path": "cron/jobs.py",
+    "sha256": "9f3d52d141e121f6cdb95a3f82d0f29e209ce6a02228df90b382b2d57153e90c",
+    "parser_sha256": "bc957bc81d43c1d778ba49b429490cd04e2a2f047b30972d31b4f9fcd126d875",
+    "license": "MIT; tools/contracts/HERMES_LICENSE.txt",
+    "generation": "Selected upstream parser functions executed without module initialization; fixed UTC _hermes_now and a validator restricted to the listed known-valid cron expressions. This is not full croniter validation."
+  },
+  "clock": "2026-10-03T12:00:00+00:00",
+  "cases_sha256": "f9c50ee809aa46bc3d9647d90665f5cf50529654a3b11ed2a92e18b316d4bb36",
+  "cases": [
+    {
+      "id": "cron-daily",
+      "input": "0 9 * * *",
+      "schedule": {
+        "kind": "cron",
+        "expr": "0 9 * * *",
+        "display": "0 9 * * *"
+      },
+      "schedule_display": "0 9 * * *"
+    },
+    {
+      "id": "cron-quarter-hour",
+      "input": "*/15 * * * *",
+      "schedule": {
+        "kind": "cron",
+        "expr": "*/15 * * * *",
+        "display": "*/15 * * * *"
+      },
+      "schedule_display": "*/15 * * * *"
+    },
+    {
+      "id": "interval",
+      "input": "every 30m",
+      "schedule": {
+        "kind": "interval",
+        "minutes": 30,
+        "display": "every 30m"
+      },
+      "schedule_display": "every 30m"
+    },
+    {
+      "id": "delay",
+      "input": "in 90m",
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-10-03T13:30:00+00:00",
+        "display": "once in 90m"
+      },
+      "schedule_display": "once in 90m"
+    },
+    {
+      "id": "utc-once",
+      "input": "2026-10-04T09:45:00.000Z",
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-10-04T09:45:00+00:00",
+        "display": "once at 2026-10-04 09:45"
+      },
+      "schedule_display": "once at 2026-10-04 09:45"
+    },
+    {
+      "id": "fractional-once",
+      "input": "2026-10-04T09:45:00.123Z",
+      "schedule": {
+        "kind": "once",
+        "run_at": "2026-10-04T09:45:00.123000+00:00",
+        "display": "once at 2026-10-04 09:45"
+      },
+      "schedule_display": "once at 2026-10-04 09:45"
+    },
+    {
+      "id": "offset-once",
+      "input": "2046-10-03T09:45:00+08:00",
+      "schedule": {
+        "kind": "once",
+        "run_at": "2046-10-03T09:45:00+08:00",
+        "display": "once at 2046-10-03 09:45"
+      },
+      "schedule_display": "once at 2046-10-03 09:45"
+    }
+  ]
+}

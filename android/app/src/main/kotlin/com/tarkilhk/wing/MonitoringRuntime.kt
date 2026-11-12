@@ -28,6 +28,7 @@ object MonitoringRuntime {
         if (engine === flutterEngine) return
         engine = flutterEngine
         ChatNotifications.attach(context, flutterEngine)
+        LiveVoiceRuntime.attach(context, flutterEngine)
         val app = context.applicationContext
         channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -35,10 +36,12 @@ object MonitoringRuntime {
         ).apply {
             setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "batteryUnrestricted" -> result.success(batteryUnrestricted(app))
                     "start" -> {
                         val values = call.arguments as? Map<*, *>
                         val next = mapOf("title" to (values?.get("title") as? String ?: "Watching chats"),
-                            "text" to (values?.get("text") as? String ?: "Connecting to Hermes"))
+                            "text" to (values?.get("text") as? String ?: "Connecting to Hermes"),
+                            "payload" to (values?.get("payload") as? String ?: ""))
                         if (next != summary) {
                             summary = next
                             BackgroundMonitoringService.instance?.updateSummary()
@@ -113,18 +116,21 @@ object MonitoringRuntime {
 
     private fun status(context: Context): Map<String, Boolean> = mapOf(
         "running" to running,
-        "batteryUnrestricted" to
-            context.getSystemService(PowerManager::class.java)
-                .isIgnoringBatteryOptimizations(context.packageName),
+        "batteryUnrestricted" to batteryUnrestricted(context),
     )
 
-    private fun releaseIfUnused() {
+    private fun batteryUnrestricted(context: Context): Boolean =
+        context.getSystemService(PowerManager::class.java)
+            .isIgnoringBatteryOptimizations(context.packageName)
+
+    fun releaseIfUnused() {
         // Allow an in-flight method result or replacement activity to complete.
         Handler(Looper.getMainLooper()).post {
-            if (!activityAttached && !running && starting.isEmpty()) {
+            if (!activityAttached && !running && !LiveVoiceRuntime.active && starting.isEmpty()) {
                 channel?.setMethodCallHandler(null)
                 channel = null
                 ChatNotifications.detach()
+                LiveVoiceRuntime.detach()
                 engine?.destroy()
                 engine = null
             }

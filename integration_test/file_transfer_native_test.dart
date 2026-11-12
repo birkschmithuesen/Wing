@@ -6,9 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/config_backup_io.dart';
-import 'package:wing/core/services/connection_manager.dart';
 
 /// Run with scripts/test_native_file_transfer.py on a disposable emulator.
 /// The host selects fixture files and dismisses native dialogs at the markers.
@@ -18,13 +16,73 @@ void main() {
   const contents = '{"probe":"Wing native file transfer — ✓"}';
   late ConfigBackupIo backupIo;
 
+  Future<({Set<String> files, Set<String> stages})>
+  fixtureCacheInventory() async {
+    final cache = await getTemporaryDirectory();
+    final files = <String>{};
+    final stages = <String>{};
+    for (final stage
+        in cache.listSync(followLinks: false).whereType<Directory>()) {
+      if (!stage.uri.pathSegments
+          .where((segment) => segment.isNotEmpty)
+          .last
+          .startsWith('wing-backup-')) {
+        continue;
+      }
+      stages.add(stage.path);
+      for (final file
+          in stage
+              .listSync(recursive: true, followLinks: false)
+              .whereType<File>()) {
+        files.add(file.path);
+      }
+    }
+    for (final name in ['file_picker', 'share_plus']) {
+      final directory = Directory('${cache.path}/$name');
+      if (!await directory.exists()) continue;
+      for (final file
+          in directory
+              .listSync(recursive: true, followLinks: false)
+              .whereType<File>()) {
+        final filename = file.uri.pathSegments.last;
+        if ((name == 'share_plus' && filename.startsWith('wing-config-')) ||
+            (name == 'file_picker' &&
+                [
+                  'wing-native-probe.json',
+                  'wing-native-probe.png',
+                ].contains(filename))) {
+          files.add(file.path);
+        }
+      }
+    }
+    return (files: files, stages: stages);
+  }
+
   setUp(() async {
-    SharedPreferences.setMockInitialValues({});
-    backupIo = ConfigBackupIo(
-      connectionManager: ConnectionManager(
-        await SharedPreferences.getInstance(),
-      ),
-    );
+    backupIo = ConfigBackupIo();
+    final previous = await fixtureCacheInventory();
+    addTearDown(() async {
+      final current = await fixtureCacheInventory();
+      for (final path in current.files.difference(previous.files)) {
+        await File(path).delete();
+      }
+      for (final path in current.stages.difference(previous.stages)) {
+        await Directory(path).delete(recursive: true);
+      }
+      final remaining = await fixtureCacheInventory();
+      expect(
+        remaining.files.difference(previous.files),
+        isEmpty,
+        reason: 'Owned export and picker copies must be removed.',
+      );
+      expect(
+        remaining.stages.difference(previous.stages),
+        isEmpty,
+        reason: 'Owned export stages must be removed.',
+      );
+      expect(remaining.files.containsAll(previous.files), isTrue);
+      expect(remaining.stages.containsAll(previous.stages), isTrue);
+    });
   });
 
   testWidgets('native metadata identifies the installed debug app', (_) async {
@@ -80,16 +138,31 @@ void main() {
   testWidgets('backup export opens Android sharing and handles dismissal', (
     _,
   ) async {
+    final previous = await fixtureCacheInventory();
     debugPrint('FILE_TRANSFER:share-cancel');
-    expect(await backupIo.deliverExport(contents), isNull);
-    final directory = await getTemporaryDirectory();
-    final exports = directory.listSync().whereType<File>().where(
-      (file) => file.uri.pathSegments.last.startsWith('wing-config-'),
+    expect(
+      await backupIo.deliverExport(contents, canDispatch: () => true),
+      isNull,
     );
-    expect(exports, isNotEmpty);
-    expect(await exports.last.readAsString(), contents);
-    for (final file in exports) {
-      await file.delete();
-    }
+    final current = await fixtureCacheInventory();
+    final ownedStages = current.stages.difference(previous.stages);
+    expect(
+      ownedStages,
+      isEmpty,
+      reason:
+          'Android share handoff releases Wing\'s source even on dismissal.',
+    );
+    final exports = current.files
+        .difference(previous.files)
+        .map(File.new)
+        .where(
+          (file) =>
+              file.uri.pathSegments.last.startsWith('wing-config-') &&
+              !previous.files.contains(file.path),
+        )
+        .toList();
+    expect(exports, hasLength(1));
+    expect(exports.single.parent.path, endsWith('/share_plus'));
+    expect(await exports.single.readAsString(), contents);
   });
 }

@@ -1,35 +1,59 @@
 # Subagent supervision
 
-Open a chat's three-dot menu and choose **Subagents** to refresh its active children. Received subagent events also show a compact expandable roster in the transcript. Chats without known subagents gain no extra transcript row.
+While Hermes works, tap **Subagents** above your draft to inspect known children.
+Only populated categories appear; swipe between Subagents, Tasks and Background when they
+are available. The drawer keeps its summary visible while longer lists scroll.
+Swipe up on the Subagents bar to open it at its compact height, then swipe up
+again to maximize. Swipe anywhere in the drawer up to expand or down to close;
+at full height, scroll rows back to their
+top before continuing downward to close. Diagonal swipes follow their larger
+component, switching categories when mostly sideways. The smaller top handle
+toggles height on tap. Reopening by tap starts compact. Tap the selected tab,
+outside or Back to close it without leaving the conversation.
 
-The detail sheet displays the child goal, status and available activity information, plus selectable live output. It refreshes the tail every two seconds while open and the app is active. After three consecutive failures, automatic refresh stops and Retry remains available. Closing the sheet stops its timer. Roster refresh is manual after the initial read; live events update known progress.
+The header shows completed out of total, then running and queued counts. Failed,
+interrupted and unconfirmed agents are counted separately when present. Zero
+status counts are omitted; unconfirmed agents are not also counted as running
+or queued.
 
-Steer appears when the backend says the child accepts guidance. Accepted steering is queued; the backend can still report missed delivery if the child finishes first. Rejected or failed steering retains the typed text. Interrupt reports an acknowledged request and waits for the backend to publish terminal state.
+Received events update progress automatically. Close and reopen Subagents to
+fetch a fresh snapshot or retry a failed read. Past answers retain
+**Activity → Agents** with received goals, status, output and available timings.
+Historical results do not offer live controls.
+Completed agents leave the drawer when their parent turn ends. Their saved
+results stay under that answer's Activity, while unfinished background
+agents remain in the drawer until they finish.
 
-Every read and control uses the originating profile gateway, parent runtime and exact child ID. A later profile selection cannot redirect it. List replies cannot overwrite newer events or revive terminal rows, and controls require matching acknowledgement IDs. Replaced runtimes invalidate pending results.
+Open a child's details to read its own conversation when Hermes supplies its
+session identity. It uses the same message and Activity timeline as the main
+chat, including saved tool results, available reasoning and live tool previews.
+Expand **Task** for its goal and metadata. Eligible guidance and Send controls
+stay below the conversation, with Interrupt in the status row. Nested read-only viewers do not offer those controls.
 
-## Server limits
+Use Refresh in the header to reread the child. Updates continue while the viewer is open and
+Wing is active. After three consecutive failures, automatic refresh stops; use
+Retry. Closing the sheet stops its reads. The parent chat and draft stay selected.
 
-The installed backend lists active children only and exposes up to the final 16 KiB of live output. Finished children disappear from that list and their tails may be unavailable. Completion events received by the open client retain a summary in that chat for the current runtime. There is no local subagent history, new execution engine or cross-session agent tree.
-
-The view uses the backend's existing `subagent.list`, `subagent.tail`, `subagent.steer` and `subagent.interrupt` methods. See [Testing](TESTING.md) for live versus fixture acceptance.
+**Steer** appears when the child accepts guidance. Accepted guidance is queued,
+so delivery can still be missed if the child finishes first. Failed or rejected
+steering keeps your text. **Interrupt** confirms the interruption request, then
+waits for the child to report its final state.
 
 ## Refresh and unavailable output
 
-A roster response can omit children that live events previously reported.
-Refresh now retains those entries with an unconfirmed status and their last
-known activity. It does not treat absence as completion. A subsequent event or
-snapshot for the same child confirms its state again. Controls are disabled
-while its status is unconfirmed. Runtime replacement clears that uncertainty
-with the old roster.
+If a known child disappears from a refresh without a confirmed final state,
+Wing marks it unconfirmed and disables controls. Later activity or another
+refresh can confirm it again. Absence does not mean completion.
 
-The detail sheet keeps the latest received transcript when a subsequent read
-fails or returns unavailable. It also displays up to 40 recent tool/progress
-entries, including tool previews and event output tails, following Desktop's
-activity stream. Snapshot refreshes do not overwrite that event trail with a
-single tool name. Repeated adjacent entries are collapsed.
+Received content remains visible when a later refresh fails. Live tool previews
+may omit full arguments and results; saved receipts can provide those details.
+Live tool completion can be inferred by Hermes when the next tool starts, so
+Wing does not show an exact duration from that boundary.
 
-When Hermes returns no live transcript, Android says so and shows the received
-activity instead. This does not create transcript content that the server has
-not exposed. Terminal summaries and known children remain bound to the original
-chat and profile.
+If Hermes supplies no child session, the details show received activity and any
+available live-output excerpt. That excerpt is limited to the latest 16 KiB and
+may become unavailable after completion. Recent activity remains inspectable
+without live-output access. Hermes' live list contains active children only;
+Wing does not provide a complete cross-session agent tree or transcript archive.
+
+See [Tool activity](TOOL_ACTIVITY.md) for saved and live activity views.

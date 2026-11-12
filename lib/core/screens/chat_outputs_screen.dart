@@ -1,26 +1,26 @@
+import '../widgets/studio_form_actions.dart';
+import '../widgets/selection_viewport.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../widgets/wing_app_bar.dart';
 import '../widgets/studio_error.dart';
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/services.dart';
 
 import '../models/chat_output.dart';
-import '../services/android_file_delivery_service.dart';
+import '../models/app_preferences.dart';
+import '../services/chat_outputs_session.dart';
 import '../services/file_open_error_message.dart';
-import '../services/media_preview_service.dart';
-import '../services/profile_gateway.dart';
 import '../services/remote_files_client.dart';
-import '../services/remote_file_saver.dart';
-import '../services/web_preview.dart';
 import '../widgets/chat_image_preview.dart';
 import '../widgets/read_recovery.dart';
-import '../services/workspace_connection_failure.dart';
+import '../widgets/resource_filename.dart';
+import '../theme/wing_theme.dart';
 import '../widgets/markdown_code_block.dart';
 import '../widgets/markdown_message_content.dart';
 import '../widgets/web_output_preview.dart';
+import '../widgets/web_link_scope.dart';
 import 'pdf_preview_screen.dart';
 import 'html_preview_screen.dart';
 
@@ -28,23 +28,13 @@ enum _FileAction { share, save, open, play }
 
 class ChatOutputsScreen extends StatefulWidget {
   final String chatTitle;
-  final Future<ProfileHistoryPage> Function(int offset) loadHistory;
-  final Future<RemoteFileDownload> Function(String path) download;
-  final Future<RemoteTextPreview> Function(String path) readText;
-  final Future<void> Function(RemoteFileDownload)? deliver;
-  final AndroidFileDeliveryService fileDelivery;
-  final MediaPreviewService mediaPreview;
+  final ChatOutputsSession Function() createSession;
   final ChatOutput? initialOutput;
 
   const ChatOutputsScreen({
     super.key,
     required this.chatTitle,
-    required this.loadHistory,
-    required this.download,
-    required this.readText,
-    this.deliver,
-    this.fileDelivery = const AndroidFileDeliveryService(),
-    this.mediaPreview = const MediaPreviewService(),
+    required this.createSession,
     this.initialOutput,
   });
 
@@ -53,19 +43,16 @@ class ChatOutputsScreen extends StatefulWidget {
 }
 
 class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
-  final _outputs = <String, ChatOutput>{};
-  int? _nextOffset = 0;
-  bool _loading = false;
-  String? _loadError;
+  late final ChatOutputsSession _session;
+  ChatOutputsObservation get _observation => _session.observation;
   String? _initialError;
   bool _initialOpening = false;
-  bool _retryRefresh = false;
-  bool _retryable = false;
   bool _working = false;
 
   @override
   void initState() {
     super.initState();
+    _session = widget.createSession()..addListener(_changed);
     final initialOutput = widget.initialOutput;
     if (initialOutput == null) {
       _load();
@@ -99,57 +86,46 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
 
   void _error(BuildContext context, Object error, {VoidCallback? onRetry}) {
     if (!context.mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: StudioError(fileOpenErrorMessage(error)),
-        action: onRetry == null
-            ? null
-            : SnackBarAction(label: 'Retry', onPressed: onRetry),
+    final message = fileOpenErrorMessage(error);
+    if (onRetry == null) {
+      showStudioError(context, message);
+      return;
+    }
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (dialogContext) => StudioDialog(
+          content: StudioError(message),
+          actions: [
+            const StudioButtonPress(child: CloseButton()),
+            StudioButtonPress(
+              child: IconButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop();
+                  onRetry();
+                },
+                tooltip: 'Retry',
+                icon: const Icon(Icons.refresh),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 
-  Future<void> _load({bool refresh = false}) async {
-    if (_loading || !refresh && _nextOffset == null) return;
-    final offset = refresh ? 0 : _nextOffset!;
-    setState(() {
-      _loading = true;
-      _loadError = null;
-      _retryable = false;
-    });
-    try {
-      final page = await widget.loadHistory(offset);
-      if (!mounted) return;
-      final outputs = extractChatOutputs(page.rows.reversed);
-      setState(() {
-        if (refresh) _outputs.clear();
-        for (final output in outputs) {
-          _outputs.putIfAbsent(output.target, () => output);
-        }
-        _nextOffset = page.nextOffset;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _retryable = isTemporaryWorkspaceFailure(error);
-        _retryRefresh = refresh;
-        _loadError = _outputs.isEmpty
-            ? "Couldn't load this chat's files and links. Check the Hermes connection, then try again."
-            : "Couldn't load more outputs. Your current results are still here. Check the Hermes connection, then try again.";
-      });
-    } finally {
-      if (mounted) setState(() => _loading = false);
-    }
+  void _changed() {
+    if (mounted) setState(() {});
   }
 
-  Future<void> _share(RemoteFileDownload download) async {
-    if (widget.deliver != null) return widget.deliver!(download);
-    final directory = await (await getTemporaryDirectory()).createTemp(
-      'hermes-output-',
-    );
-    final file = File('${directory.path}/${download.filename}');
-    await file.writeAsBytes(download.bytes, flush: true);
-    await SharePlus.instance.share(ShareParams(files: [XFile(file.path)]));
+  Future<void> _load({bool refresh = false}) => _session.load(refresh: refresh);
+  Future<void> _share(RemoteFileDownload file) => _session.share(file);
+
+  @override
+  void dispose() {
+    _session.removeListener(_changed);
+    _session.dispose();
+    super.dispose();
   }
 
   Future<void> _run(
@@ -175,61 +151,44 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
     }
   }
 
-  Future<void> _openLink(String target) async {
-    final uri = externalWebLink(target);
-    if (uri == null || !await openWebPreview(uri)) {
-      throw StateError('Could not open link');
-    }
-  }
-
   Future<void> _preview(ChatOutput output) async {
+    final prepared = await _session.prepare(output);
+    if (!mounted) return;
     final path = output.path;
-    if (output.kind == ChatOutputKind.image) {
-      RemoteFileDownload? download;
-      Uri? uri;
-      if (path == null &&
-          !output.url!.startsWith('data:image/') &&
-          _isSvgName(output.label, output.url!)) {
-        return _openLink(output.url!);
-      }
-      if (path != null) {
-        download = await widget.download(path);
-      } else if (output.url!.startsWith('data:image/')) {
-        final data = UriData.parse(output.url!);
-        final extension =
-            const {
-              'image/png': 'png',
-              'image/jpeg': 'jpg',
-              'image/gif': 'gif',
-              'image/webp': 'webp',
-              'image/svg+xml': 'svg',
-            }[data.mimeType] ??
-            'img';
-        download = RemoteFileDownload(
-          filename: 'image.$extension',
-          bytes: data.contentAsBytes(),
-        );
-      } else {
-        uri = externalWebLink(output.url!);
-        if (uri == null) throw StateError('Invalid image link');
-      }
-      if (!mounted) return;
-      final imageFile = download;
-      if (imageFile != null &&
-          _isSvgName(imageFile.filename, path ?? output.url ?? '')) {
-        final source = utf8.decode(imageFile.bytes);
+    if (prepared.kind == OutputPreviewKind.external) {
+      return _session.openLink(
+        output.url!,
+        WebLinkScope.destinationOf(context),
+      );
+    }
+    if (prepared.kind == OutputPreviewKind.image ||
+        prepared.kind == OutputPreviewKind.svg) {
+      final imageFile = prepared.file;
+      final uri = prepared.uri;
+      if (prepared.kind == OutputPreviewKind.svg) {
+        final source = prepared.svgSource!;
         await Navigator.of(context).push(
           MaterialPageRoute<void>(
-            builder: (previewContext) => WebOutputPreview(
+            builder: (_) => WebOutputPreview(
               source: source,
               format: WebOutputFormat.svg,
               title: output.label,
+              resourceTarget: path,
               actionLabel: 'Save or share',
-              onAction: () async {
+              onAction: (anchor) async {
+                const key = 'share-svg-output';
+                dismissTransientError(anchor, errorKey: key);
                 try {
-                  await _share(imageFile);
+                  await _share(imageFile!);
                 } catch (error) {
-                  if (previewContext.mounted) _error(previewContext, error);
+                  if (anchor.mounted) {
+                    showTransientError(
+                      anchor,
+                      fileOpenErrorMessage(error),
+                      errorKey: key,
+                      icon: Icons.share_outlined,
+                    );
+                  }
                 }
               },
             ),
@@ -239,22 +198,30 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
       }
       await Navigator.of(context).push(
         MaterialPageRoute<void>(
-          builder: (previewContext) => ChatImagePreview(
+          builder: (_) => ChatImagePreview(
             uri: uri,
             bytes: imageFile?.bytes,
             title: output.label,
+            resourceTarget: path,
             actionLabel: imageFile == null
                 ? 'Open in browser'
                 : 'Save or share',
+            actionIcon: imageFile == null
+                ? Icons.open_in_new
+                : Icons.share_outlined,
             onOpenExternal: () async {
               try {
                 if (imageFile != null) {
                   await _share(imageFile);
                 } else {
-                  await _openLink(output.url!);
+                  await _session.openLink(
+                    output.url!,
+                    WebLinkDestination.externalBrowser,
+                  );
                 }
+                return null;
               } catch (error) {
-                if (previewContext.mounted) _error(previewContext, error);
+                return fileOpenErrorMessage(error);
               }
             },
           ),
@@ -262,31 +229,16 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
       );
       return;
     }
-    if (path == null) return _openLink(output.url!);
-    // Known HTML files need the full download, not a text-preview request with
-    // its own truncation and source-size restrictions.
-    if (_hasHtmlExtension(path) || _hasHtmlExtension(output.label)) {
-      return _previewHtml(output, path);
+    if (prepared.kind == OutputPreviewKind.html) {
+      return _previewHtml(output, path!);
     }
-    final preview = await widget.readText(path);
-    if (!mounted) return;
-    if (_isHtmlPreview(output, preview)) {
-      return _previewHtml(output, path);
-    }
-    final canOpen = widget.fileDelivery.supportsType(
-      output.label,
-      mimeType: preview.mimeType,
-    );
-    final canPlay = widget.mediaPreview.supportsType(
-      output.label,
-      mimeType: preview.mimeType,
-    );
-    final isPdf =
-        preview.mimeType.split(';').first.trim().toLowerCase() ==
-            'application/pdf' ||
-        output.label.toLowerCase().endsWith('.pdf');
-    final isMarkdown = _isMarkdownPreview(output, preview);
+    final preview = prepared.text!;
+    final canOpen = prepared.canOpen;
+    final canPlay = prepared.canPlay;
+    final isPdf = prepared.isPdf;
+    final isMarkdown = prepared.isMarkdown;
     var delivering = false;
+    String? deliveryError;
     var showMarkdownSource = false;
     await Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -294,37 +246,37 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
           builder: (previewContext, setPreviewState) {
             Future<void> deliverFile(_FileAction action) async {
               if (!mounted || delivering) return;
-              setPreviewState(() => delivering = true);
+              setPreviewState(() {
+                delivering = true;
+                deliveryError = null;
+              });
               try {
-                final file = await widget.download(path);
+                final file = await _session.download(path!);
                 if (!mounted || !previewContext.mounted) return;
                 switch (action) {
                   case _FileAction.share:
                     await _share(file);
                   case _FileAction.save:
-                    final saved = await saveRemoteFile(file);
+                    final saved = await _session.save(file);
                     if (saved && previewContext.mounted) {
                       ScaffoldMessenger.of(previewContext).showSnackBar(
                         const SnackBar(content: Text('File saved')),
                       );
                     }
                   case _FileAction.open:
-                    final opened = await widget.fileDelivery.openInApp(
+                    final opened = await _session.open(
                       file,
                       mimeType: preview.mimeType,
                     );
                     if (!opened && previewContext.mounted) {
-                      ScaffoldMessenger.of(previewContext).showSnackBar(
-                        const SnackBar(
-                          content: StudioError(
+                      setPreviewState(
+                        () => deliveryError =
                             'No compatible app was found. Use Save or share instead.',
-                          ),
-                        ),
                       );
                     }
                   case _FileAction.play:
                     final theme = Theme.of(previewContext);
-                    final opened = await widget.mediaPreview.open(
+                    final opened = await _session.play(
                       file,
                       title: output.label,
                       mimeType: preview.mimeType,
@@ -338,28 +290,19 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
                       },
                     );
                     if (!opened && previewContext.mounted) {
-                      ScaffoldMessenger.of(previewContext).showSnackBar(
-                        const SnackBar(
-                          content: StudioError(
+                      setPreviewState(
+                        () => deliveryError =
                             'Media playback is unavailable on this device. Try Open in app or Save or share.',
-                          ),
-                        ),
                       );
                     }
                 }
               } catch (error) {
                 if (previewContext.mounted) {
-                  if (action == _FileAction.play) {
-                    ScaffoldMessenger.of(previewContext).showSnackBar(
-                      const SnackBar(
-                        content: StudioError(
-                          'This media could not be played on this device.',
-                        ),
-                      ),
-                    );
-                  } else {
-                    _error(previewContext, error);
-                  }
+                  setPreviewState(
+                    () => deliveryError = action == _FileAction.play
+                        ? 'This media could not be played on this device.'
+                        : fileOpenErrorMessage(error),
+                  );
                 }
               } finally {
                 if (previewContext.mounted) {
@@ -368,123 +311,196 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
               }
             }
 
-            return Scaffold(
-              appBar: AppBar(
-                title: Text(
-                  output.label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                actions: [
-                  IconButton(
-                    tooltip: 'Download',
-                    icon: const Icon(Icons.download_outlined),
-                    onPressed: delivering
-                        ? null
-                        : () => deliverFile(_FileAction.save),
+            final actions = <Widget>[
+              if (isMarkdown) ...[
+                ResourceViewerAction(
+                  label: showMarkdownSource
+                      ? 'Show formatted content'
+                      : 'Show Raw content',
+                  icon: showMarkdownSource
+                      ? Icons.notes_outlined
+                      : Icons.code_rounded,
+                  onPressed: () => setPreviewState(
+                    () => showMarkdownSource = !showMarkdownSource,
                   ),
-                ],
-                bottom: isMarkdown
-                    ? PreferredSize(
-                        preferredSize: Size.fromHeight(
-                          MediaQuery.textScalerOf(previewContext).scale(14) +
-                              48,
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                          child: SegmentedButton<bool>(
-                            showSelectedIcon: false,
-                            segments: const [
-                              ButtonSegment(
-                                value: false,
-                                label: Text('Rendered'),
-                              ),
-                              ButtonSegment(value: true, label: Text('Source')),
-                            ],
-                            selected: {showMarkdownSource},
-                            onSelectionChanged: (selection) => setPreviewState(
-                              () => showMarkdownSource = selection.single,
-                            ),
-                          ),
-                        ),
-                      )
-                    : null,
+                ),
+              ],
+              ResourceViewerAction(
+                label: 'Download',
+                icon: Icons.download_outlined,
+                onPressed: delivering
+                    ? null
+                    : () => deliverFile(_FileAction.save),
+              ),
+              if (isMarkdown) ...[
+                ResourceViewerAction(
+                  label: 'Share file',
+                  icon: Icons.share_outlined,
+                  onPressed: delivering
+                      ? null
+                      : () => deliverFile(_FileAction.share),
+                ),
+                Builder(
+                  builder: (anchor) => ResourceViewerAction(
+                    label: 'Copy content',
+                    icon: Icons.copy_outlined,
+                    onPressed: () async {
+                      dismissTransientError(anchor, errorKey: 'copy-output');
+                      try {
+                        await Clipboard.setData(
+                          ClipboardData(text: preview.text),
+                        );
+                      } catch (_) {
+                        if (anchor.mounted) {
+                          showTransientError(
+                            anchor,
+                            'Could not copy this text. Try again.',
+                            errorKey: 'copy-output',
+                            icon: Icons.copy_outlined,
+                          );
+                        }
+                      }
+                    },
+                  ),
+                ),
+              ],
+            ];
+
+            return Scaffold(
+              appBar: ResourceViewerAppBar(
+                context: previewContext,
+                title: output.label,
+                target: preview.path,
+                actions: actions,
               ),
               body: ListView(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(WingSpacing.sm),
                 children: [
+                  if (deliveryError case final error?)
+                    StudioError(error, icon: Icons.insert_drive_file_outlined),
                   if (preview.binary)
                     Text(
                       canOpen
                           ? 'Open this file in a compatible app, or save/share a copy.'
                           : 'Use Save or share to open this file in another app.',
                     )
-                  else ...[
+                  else if (!isMarkdown) ...[
                     if (preview.truncated)
                       const Text(
                         'Preview shortened by Hermes. Save the file to read it all.',
                       ),
-                    if (isMarkdown && !showMarkdownSource)
-                      MarkdownMessageContent(
-                        data: preview.text,
-                        documentPath: preview.path,
-                        initialFragment: output.fragment,
-                        onOpenRemoteFile: _preview,
-                      )
-                    else
-                      MarkdownCodeBlock(
-                        code: preview.text,
-                        language: preview.language,
+                    MarkdownCodeBlock(
+                      code: preview.text,
+                      language: preview.language,
+                    ),
+                  ] else
+                    DecoratedBox(
+                      key: const ValueKey('resource-document-sheet'),
+                      decoration: BoxDecoration(
+                        color: WingTokens.of(previewContext).raised,
+                        borderRadius: WingRadius.card,
+                        border: Border.all(
+                          color: WingTokens.of(previewContext).border,
+                        ),
                       ),
-                  ],
-                  if (isPdf)
-                    FilledButton.icon(
-                      icon: const Icon(Icons.picture_as_pdf_outlined),
-                      label: const Text('Read PDF'),
-                      onPressed: delivering
-                          ? null
-                          : () async {
-                              if (delivering) return;
-                              setPreviewState(() => delivering = true);
-                              try {
-                                await Navigator.of(previewContext).push(
-                                  MaterialPageRoute<void>(
-                                    builder: (_) => PdfPreviewScreen(
-                                      title: output.label,
-                                      download: () => widget.download(path),
+                      child: Padding(
+                        padding: const EdgeInsets.all(WingSpacing.sm),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (preview.truncated)
+                              const Text(
+                                'Preview shortened by Hermes. Save the file to read it all.',
+                              ),
+                            if (!showMarkdownSource)
+                              MarkdownMessageContent(
+                                data: preview.text,
+                                documentPath: preview.path,
+                                initialFragment: output.fragment,
+                                onOpenRemoteFile: _preview,
+                                loadImage: (path) async =>
+                                    (await _session.download(path)).bytes,
+                                onDownloadRemoteFile: (output) async =>
+                                    _session.save(
+                                      await _session.download(output.path!),
                                     ),
-                                  ),
-                                );
-                              } finally {
-                                if (previewContext.mounted) {
-                                  setPreviewState(() => delivering = false);
-                                }
-                              }
-                            },
+                              )
+                            else
+                              viewportSelection(
+                                SelectableText(
+                                  preview.text,
+                                  style: WingTokens.of(
+                                    previewContext,
+                                  ).typography.mono,
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
                     ),
-                  if (canPlay)
-                    FilledButton.icon(
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Play media'),
-                      onPressed: delivering
-                          ? null
-                          : () => deliverFile(_FileAction.play),
+                  if (isPdf || canPlay || canOpen || !isMarkdown)
+                    Wrap(
+                      spacing: WingSpacing.sm,
+                      runSpacing: WingSpacing.sm,
+                      children: [
+                        if (isPdf)
+                          ResourceViewerAction(
+                            icon: Icons.picture_as_pdf_outlined,
+                            label: 'Read PDF',
+                            onPressed: delivering
+                                ? null
+                                : () async {
+                                    if (delivering) return;
+                                    setPreviewState(() {
+                                      delivering = true;
+                                      deliveryError = null;
+                                    });
+                                    try {
+                                      await Navigator.of(previewContext).push(
+                                        MaterialPageRoute<void>(
+                                          builder: (_) => PdfPreviewScreen(
+                                            title: output.label,
+                                            resourceTarget: path,
+                                            download: () =>
+                                                _session.download(path!),
+                                          ),
+                                        ),
+                                      );
+                                    } finally {
+                                      if (previewContext.mounted) {
+                                        setPreviewState(
+                                          () => delivering = false,
+                                        );
+                                      }
+                                    }
+                                  },
+                          ),
+                        if (canPlay)
+                          ResourceViewerAction(
+                            icon: Icons.play_arrow,
+                            label: 'Play media',
+                            onPressed: delivering
+                                ? null
+                                : () => deliverFile(_FileAction.play),
+                          ),
+                        if (canOpen)
+                          ResourceViewerAction(
+                            icon: Icons.open_in_new,
+                            label: 'Open in app',
+                            onPressed: delivering
+                                ? null
+                                : () => deliverFile(_FileAction.open),
+                          ),
+                        if (!isMarkdown)
+                          ResourceViewerAction(
+                            icon: Icons.share_outlined,
+                            label: 'Save or share',
+                            onPressed: delivering
+                                ? null
+                                : () => deliverFile(_FileAction.share),
+                          ),
+                      ],
                     ),
-                  if (canOpen)
-                    FilledButton.icon(
-                      icon: const Icon(Icons.open_in_new),
-                      label: const Text('Open in app'),
-                      onPressed: delivering
-                          ? null
-                          : () => deliverFile(_FileAction.open),
-                    ),
-                  FilledButton.icon(
-                    icon: const Icon(Icons.ios_share),
-                    label: const Text('Save or share'),
-                    onPressed: delivering
-                        ? null
-                        : () => deliverFile(_FileAction.share),
-                  ),
                 ],
               ),
             );
@@ -499,7 +515,8 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
       MaterialPageRoute<void>(
         builder: (_) => HtmlPreviewScreen(
           title: output.label,
-          download: () => widget.download(path),
+          resourceTarget: path,
+          download: () => _session.download(path),
           share: _share,
         ),
       ),
@@ -509,15 +526,22 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
   @override
   Widget build(BuildContext context) => ReadRecovery(
     shouldRetry: () =>
-        widget.initialOutput == null && !_working && !_loading && _retryable,
-    retry: () => _load(refresh: _retryRefresh),
+        widget.initialOutput == null &&
+        !_working &&
+        !_observation.loading &&
+        _observation.retryable,
+    retry: () => _load(refresh: _observation.retryRefresh),
     child: _buildContent(context),
   );
 
   Widget _buildContent(BuildContext context) {
     if (widget.initialOutput != null) {
       return Scaffold(
-        appBar: AppBar(title: Text(widget.initialOutput!.label)),
+        appBar: ResourceViewerAppBar(
+          context: context,
+          title: widget.initialOutput!.label,
+          target: widget.initialOutput!.path,
+        ),
         body: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16),
@@ -525,20 +549,25 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 if (_initialError == null)
-                  const CircularProgressIndicator()
+                  const StudioPageLoading.waiting(label: 'Loading outputs')
                 else ...[
                   StudioError(_initialError!),
                   const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: _initialOpening
-                        ? null
-                        : () => unawaited(_openInitial(widget.initialOutput!)),
-                    child: const Text('Try again'),
+                  StudioButtonPress(
+                    child: TextButton(
+                      onPressed: _initialOpening
+                          ? null
+                          : () =>
+                                unawaited(_openInitial(widget.initialOutput!)),
+                      child: const Text('Try again'),
+                    ),
                   ),
                 ],
-                TextButton(
-                  onPressed: () => Navigator.of(context).maybePop(),
-                  child: const Text('Back to chat'),
+                StudioButtonPress(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).maybePop(),
+                    child: const Text('Back to chat'),
+                  ),
                 ),
               ],
             ),
@@ -546,168 +575,152 @@ class _ChatOutputsScreenState extends State<ChatOutputsScreen> {
         ),
       );
     }
-    final outputs = _outputs.values.toList();
+    final outputs = _observation.outputs;
     return Scaffold(
-      appBar: AppBar(
+      appBar: WingAppBar(
+        context: context,
         title: Text(
           'Outputs · ${widget.chatTitle}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
-          IconButton(
-            tooltip: 'Refresh outputs',
-            icon: const Icon(Icons.refresh),
-            onPressed: _working || _loading ? null : () => _load(refresh: true),
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Refresh outputs',
+              icon: const Icon(Icons.refresh),
+              onPressed: _working || _observation.loading
+                  ? null
+                  : () => _load(refresh: true),
+            ),
           ),
         ],
       ),
-      body: Column(
-        children: [
-          if (_working || _loading && outputs.isNotEmpty)
-            const LinearProgressIndicator(),
-          const Padding(
-            padding: EdgeInsets.all(16),
-            child: Text('Open a file or link shared in this chat.'),
-          ),
-          Expanded(
-            child: _loading && outputs.isEmpty
-                ? const Center(child: CircularProgressIndicator())
-                : outputs.isEmpty
-                ? Center(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.all(24),
-                      child: _loadError != null
-                          ? StudioError(_loadError!)
-                          : Text(
-                              (_nextOffset == null
-                                  ? 'No files or links found in this chat.'
-                                  : 'No outputs found in the recent part of this chat. Load older outputs to look further back.'),
+      body: StudioLoadingRegion(
+        available: _observation.hasObservation && !_working,
+        busy: _working,
+        label: _working ? 'Opening output' : 'Loading outputs',
+        child: Column(
+          children: [
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text('Open a file or link shared in this chat.'),
+            ),
+            Expanded(
+              child: _observation.loading && !_observation.hasObservation
+                  ? StudioPageLoading.waiting(label: 'Loading outputs')
+                  : outputs.isEmpty
+                  ? Center(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.all(24),
+                        child: _observation.error != null
+                            ? StudioError(_observation.error!)
+                            : Text(
+                                (!_observation.hasMore
+                                    ? 'No files or links found in this chat.'
+                                    : 'No outputs found in the recent part of this chat. Load older outputs to look further back.'),
+                              ),
+                      ),
+                    )
+                  : ListView.builder(
+                      itemCount: outputs.length,
+                      itemBuilder: (context, index) {
+                        final output = outputs[index];
+                        return StudioButtonPress(
+                          child: ListTile(
+                            leading: Icon(switch (output.kind) {
+                              ChatOutputKind.image => Icons.image_outlined,
+                              ChatOutputKind.file =>
+                                Icons.insert_drive_file_outlined,
+                              ChatOutputKind.link => Icons.link,
+                            }),
+                            title: Text(
+                              output.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              overflow: TextOverflow.ellipsis,
                             ),
+                            subtitle: Text(
+                              output.target,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            onTap: _working
+                                ? null
+                                : () => _run(
+                                    () => _preview(output),
+                                    offerRetry: true,
+                                  ),
+                            trailing: output.path == null
+                                ? null
+                                : StudioButtonPress(
+                                    child: IconButton(
+                                      tooltip: 'Save or share ${output.label}',
+                                      icon: const Icon(Icons.ios_share),
+                                      onPressed: _working
+                                          ? null
+                                          : () => _run(
+                                              () async => _share(
+                                                await _session.download(
+                                                  output.path!,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                          ),
+                        );
+                      },
                     ),
-                  )
-                : ListView.builder(
-                    itemCount: outputs.length,
-                    itemBuilder: (context, index) {
-                      final output = outputs[index];
-                      return ListTile(
-                        leading: Icon(switch (output.kind) {
-                          ChatOutputKind.image => Icons.image_outlined,
-                          ChatOutputKind.file =>
-                            Icons.insert_drive_file_outlined,
-                          ChatOutputKind.link => Icons.link,
-                        }),
-                        title: Text(
-                          output.label,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Text(
-                          output.target,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        onTap: _working
-                            ? null
-                            : () => _run(
-                                () => _preview(output),
-                                offerRetry: true,
+            ),
+            if (!_observation.loading || outputs.isNotEmpty)
+              SafeArea(
+                top: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (outputs.isNotEmpty &&
+                          (_observation.error != null || _observation.hasMore))
+                        _observation.error != null
+                            ? StudioError(_observation.error!)
+                            : Text(
+                                'Recent outputs shown. Load older outputs to look further back.',
                               ),
-                        trailing: output.path == null
-                            ? null
-                            : IconButton(
-                                tooltip: 'Save or share ${output.label}',
-                                icon: const Icon(Icons.ios_share),
-                                onPressed: _working
-                                    ? null
-                                    : () => _run(
-                                        () async => _share(
-                                          await widget.download(output.path!),
-                                        ),
-                                      ),
-                              ),
-                      );
-                    },
+                      if (_observation.error != null)
+                        StudioButtonPress(
+                          child: TextButton(
+                            onPressed: _working || _observation.loading
+                                ? null
+                                : () =>
+                                      _load(refresh: _observation.retryRefresh),
+                            child: const Text('Try again'),
+                          ),
+                        )
+                      else if (_observation.hasMore)
+                        StudioButtonPress(
+                          child: TextButton(
+                            onPressed: _working || _observation.loading
+                                ? null
+                                : () => _load(),
+                            child: const Text('Load older outputs'),
+                          ),
+                        ),
+                      if (_observation.error != null && outputs.isEmpty)
+                        StudioButtonPress(
+                          child: TextButton(
+                            onPressed: () => Navigator.of(context).maybePop(),
+                            child: const Text('Back to chat'),
+                          ),
+                        ),
+                    ],
                   ),
-          ),
-          if (!_loading || outputs.isNotEmpty)
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    if (outputs.isNotEmpty &&
-                        (_loadError != null || _nextOffset != null))
-                      _loadError != null
-                          ? StudioError(_loadError!)
-                          : Text(
-                              'Recent outputs shown. Load older outputs to look further back.',
-                            ),
-                    if (_loadError != null)
-                      TextButton(
-                        onPressed: _working || _loading
-                            ? null
-                            : () => _load(refresh: _retryRefresh),
-                        child: const Text('Try again'),
-                      )
-                    else if (_nextOffset != null)
-                      TextButton(
-                        onPressed: _working || _loading ? null : () => _load(),
-                        child: Text(
-                          _loading
-                              ? 'Loading older outputs…'
-                              : 'Load older outputs',
-                        ),
-                      ),
-                    if (_loadError != null && outputs.isEmpty)
-                      TextButton(
-                        onPressed: () => Navigator.of(context).maybePop(),
-                        child: const Text('Back to chat'),
-                      ),
-                  ],
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }
 }
-
-bool _isMarkdownPreview(ChatOutput output, RemoteTextPreview preview) {
-  if (preview.binary) return false;
-  final language = preview.language.trim().toLowerCase();
-  final mimeType = preview.mimeType.split(';').first.trim().toLowerCase();
-  final label = output.label.toLowerCase();
-  final path = preview.path.toLowerCase();
-  return language == 'markdown' ||
-      language == 'md' ||
-      mimeType == 'text/markdown' ||
-      label.endsWith('.md') ||
-      label.endsWith('.markdown') ||
-      path.endsWith('.md') ||
-      path.endsWith('.markdown');
-}
-
-bool _isHtmlPreview(ChatOutput output, RemoteTextPreview preview) {
-  if (preview.binary) return false;
-  final mimeType = preview.mimeType.split(';').first.trim().toLowerCase();
-  final label = output.label.toLowerCase();
-  final path = preview.path.toLowerCase();
-  return mimeType == 'text/html' ||
-      label.endsWith('.html') ||
-      label.endsWith('.htm') ||
-      path.endsWith('.html') ||
-      path.endsWith('.htm');
-}
-
-bool _hasHtmlExtension(String name) {
-  final lower = name.toLowerCase();
-  return lower.endsWith('.html') || lower.endsWith('.htm');
-}
-
-bool _isSvgName(String filename, String target) =>
-    filename.toLowerCase().endsWith('.svg') ||
-    Uri.tryParse(target)?.path.toLowerCase().endsWith('.svg') == true;

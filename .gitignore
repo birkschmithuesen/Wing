@@ -59,3 +59,16 @@ key.properties
 # Generated local analysis and design output
 /graphify-out/
 /output/
+
+# Independent private notes repository, cloned into the app checkout.
+/internal/
+
+# Private engineering records and disposable design studies
+/plans/
+/tools/prototypes/
+/docs/design/images/connection-notification-proof.png
+/docs/design/images/icon-production-proof.png
+/docs/design/images/notification-identity-board.svg
+/docs/design/images/wing-identity-board.png
+/docs/design/images/wing-readme-hero-slim-w.png
+/docs/design/images/wing-welcome-light.png

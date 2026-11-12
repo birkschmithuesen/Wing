@@ -1,3 +1,6 @@
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -13,10 +16,14 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 
-/// Real Android UI and local gateway. One short Luna turn in a disposable chat.
+/// Real Android UI and local gateway. One short Luna turn in a new branch.
+/// HERMES_FORK_SEED_SESSION_ID must name an operator-prepared, idle canonical
+/// Luna chat in android-qa-a with the six visible messages asserted below.
+/// The seed is only read/branched: no import, rewind, deletion, or seed cleanup.
 void main() {
   final binding = IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   const port = int.fromEnvironment('HERMES_TEST_PORT');
+  const seedId = String.fromEnvironment('HERMES_FORK_SEED_SESSION_ID');
   testWidgets(
     'fork buttons copy exact boundaries and continue independently',
     (tester) async {
@@ -30,57 +37,60 @@ void main() {
         dashboardPortOverride: port,
         apiKey: '',
       );
+      final fixturePreferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(fixturePreferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
+        appPreferences: appPreferences,
         connectionIdentity: 'fork-qa-settings',
-        connection: connection,
-        preferences: await SharedPreferences.getInstance(),
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: fixturePreferences,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
       await controller.switchProfile('android-qa-a');
       expect(controller.error, isNull);
       final resource = controller.current!;
-      final parents = await resource.gateway.sessions();
-      expect(parents.rows, isNotEmpty);
-      final seed = await resource.gateway.call('session.create', {
-        'parent_session_id': parents.rows.first['id'],
-        'source': 'desktop',
-        'title': 'Android fork device QA',
-        'messages': [
-          {
-            'role': 'user',
-            'content': 'Remember my test token JADE-42. Reply Saved.',
-          },
-          {'role': 'assistant', 'content': 'Saved.'},
-          {'role': 'user', 'content': '[System: model changed for QA]'},
-          {'role': 'user', 'content': 'What is my test token?'},
-          {'role': 'assistant', 'content': 'JADE-42'},
-          {'role': 'user', 'content': 'Change my test token to AMBER-99.'},
-          {'role': 'assistant', 'content': 'Your token is now AMBER-99.'},
-        ],
-      });
-      // A seeded session may still be finishing its asynchronous agent startup.
-      for (var attempt = 0; attempt < 30; attempt++) {
-        final result = await resource.gateway.call('session.resume', {
-          'session_id': seed['stored_session_id'],
-        });
-        if (result['info']?['profile_name'] == resource.scope.profileName) {
-          break;
-        }
-        await Future<void>.delayed(const Duration(milliseconds: 200));
-      }
-      await controller.openSession(
-        ProfileSessionKey(resource.scope, seed['stored_session_id'] as String),
+      expect(
+        seedId,
+        isNotEmpty,
+        reason: 'Provide an existing operator-prepared canonical seed chat.',
       );
+      final seed = await resource.gateway.resume(seedId);
+      expect(resource.gateway.resumeDurableId(seed), seedId);
+      expect(seed['running'], isFalse, reason: 'The seed must be idle.');
+      expect(
+        seed['pending'],
+        isEmpty,
+        reason: 'The seed must have no queued work.',
+      );
+      expect(
+        seed['info']['launch_request'],
+        isA<Map>(),
+        reason: 'The seed must have a canonical local execution policy.',
+      );
+      expect(seed['info']['model'], 'gpt-5.6-luna');
+      await controller.openSession(ProfileSessionKey(resource.scope, seedId));
       final source = resource.chat!;
       final original = jsonEncode(
-        await resource.gateway.fullHistory(source.runtimeId),
+        await resource.gateway.fullHistory(source.runtime.runtimeId),
       );
-      final expected = source.messages
+      final expected = source.reading.messages
           .where((m) => !isHiddenAnswerMessage(m))
           .map(answerMessageText)
           .toList();
-      expect(expected.length, 6);
+      expect(
+        expected,
+        const [
+          'Remember my test token JADE-42. Reply Saved.',
+          'Saved.',
+          'What is my test token?',
+          'JADE-42',
+          'Change my test token to AMBER-99.',
+          'Your token is now AMBER-99.',
+        ],
+        reason: 'The supplied seed must match the documented boundary fixture.',
+      );
       await tester.pumpWidget(
         MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
       );
@@ -105,7 +115,7 @@ void main() {
       for (final answer in [0, 2, 1]) {
         await controller.openSession(source.key);
         await tester.pumpAndSettle();
-        final selectedRow = source.messages
+        final selectedRow = source.reading.messages
             .where((m) => m['role'] == 'assistant')
             .elementAt(answer);
         final button = find.descendant(
@@ -125,7 +135,7 @@ void main() {
               .first,
         );
         await tester.tap(button);
-        await until(() => !source.changingAnswer);
+        await until(() => !source.runtime.changingAnswer);
         expect(
           find.byType(SnackBar),
           findsNothing,
@@ -135,18 +145,20 @@ void main() {
         expect(child.key, isNot(source.key));
         expect(children.add(child.key.sessionId), isTrue);
         expect(
-          child.messages
+          child.reading.messages
               .where((m) => !isHiddenAnswerMessage(m))
               .map(answerMessageText),
           expected.take((answer + 1) * 2),
         );
         expect(
-          jsonEncode(await resource.gateway.fullHistory(source.runtimeId)),
+          jsonEncode(
+            await resource.gateway.fullHistory(source.runtime.runtimeId),
+          ),
           original,
         );
         // Open via a fresh socket to check what was saved, beyond the UI cache.
         final verifier = ProfileGateway.forConnection(
-          connection,
+          ConnectionAccess(connection: connection, dashboardOAuth: null),
           resource.scope,
         );
         try {
@@ -175,41 +187,52 @@ void main() {
         'What is my test token? Reply with only the token. Do not use tools.',
       );
       await tester.pumpAndSettle();
-      expect(child.draft, contains('What is my test token?'));
+      expect(
+        child.composer.observation.text,
+        contains('What is my test token?'),
+      );
       debugPrint('fork-qa: continuation entered; tapping Send');
       await tester.tap(find.byTooltip('Send'));
       await tester.pump();
-      expect(child.busy, isTrue, reason: 'Send must start the continuation');
-      await until(() => !child.busy);
-      expect(child.error, isNull);
-      expect(child.messages.length, greaterThan(4));
-      final response = answerMessageText(child.messages.last);
+      expect(
+        child.runtime.blocksTurnAdmission,
+        isTrue,
+        reason: 'Send must start the continuation',
+      );
+      await until(() => !child.runtime.blocksTurnAdmission);
+      expect(child.runtime.error, isNull);
+      expect(child.reading.messages.length, greaterThan(4));
+      final response = answerMessageText(child.reading.messages.last);
       expect(response, contains('JADE-42'));
       expect(response, isNot(contains('AMBER-99')));
       expect(find.text('[System: model changed for QA]'), findsNothing);
       expect(
-        jsonEncode(await resource.gateway.fullHistory(source.runtimeId)),
+        jsonEncode(
+          await resource.gateway.fullHistory(source.runtime.runtimeId),
+        ),
         original,
       );
       FocusManager.instance.primaryFocus?.unfocus();
       await screenshot('fork-independent-continuation');
-      final continued = child.messages
+      final continued = child.reading.messages
           .where((m) => !isHiddenAnswerMessage(m))
           .map(answerMessageText)
           .toList();
       final rebranch = find.descendant(
         of: find.byKey(
-          ValueKey('answer-actions-${answerMessageId(child.messages.last)}'),
+          ValueKey(
+            'answer-actions-${answerMessageId(child.reading.messages.last)}',
+          ),
         ),
         matching: find.byTooltip('Branch in new session'),
       );
       await tester.ensureVisible(rebranch);
       await tester.tap(rebranch);
-      await until(() => !child.changingAnswer);
+      await until(() => !child.runtime.changingAnswer);
       expect(find.byType(SnackBar), findsNothing);
       expect(resource.chat!.key, isNot(child.key));
       expect(
-        resource.chat!.messages
+        resource.chat!.reading.messages
             .where((m) => !isHiddenAnswerMessage(m))
             .map(answerMessageText),
         continued,
@@ -217,7 +240,7 @@ void main() {
       await controller.openSession(source.key);
       await tester.pumpAndSettle();
       expect(
-        source.messages
+        source.reading.messages
             .where((m) => !isHiddenAnswerMessage(m))
             .map(answerMessageText),
         expected,

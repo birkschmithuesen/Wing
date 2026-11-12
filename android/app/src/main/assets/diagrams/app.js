@@ -6,6 +6,7 @@
   const MAX_SVG_DIMENSION = 8_192;
   const diagram = document.getElementById('diagram');
   const status = document.getElementById('status');
+  const statusMessage = document.getElementById('status-message');
   let renderSequence = 0;
   let activeObjectUrl = null;
   let cancelPendingSvg = null;
@@ -24,14 +25,6 @@
     document.documentElement.dataset.theme = dark ? 'dark' : 'light';
   }
 
-  window.setStudioTheme = (dark, palette) => {
-    setTheme(dark);
-    for (const role of ['canvas', 'panel', 'text', 'muted', 'border', 'error', 'accent']) {
-      if (!/^#[0-9a-f]{6}$/i.test(palette[role])) throw new Error('Invalid Studio palette');
-      document.documentElement.style.setProperty(`--${role}`, palette[role]);
-    }
-  };
-
   function revokeObjectUrl(url = activeObjectUrl) {
     if (!url) return;
     URL.revokeObjectURL(url);
@@ -49,7 +42,7 @@
 
   function showStatus(message) {
     clearPreview();
-    status.textContent = String(message || 'The diagram could not be rendered.');
+    statusMessage.textContent = String(message || 'The diagram could not be rendered.');
     status.hidden = false;
   }
 

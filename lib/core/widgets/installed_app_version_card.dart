@@ -1,8 +1,9 @@
+import 'package:wing/core/theme/wing_theme.dart';
 import 'studio_error.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
-import '../services/web_preview.dart';
+import 'web_link_scope.dart';
 import 'playful_portrait.dart';
 
 const _changelogUrl = 'https://github.com/tarkilhk/Wing/blob/main/CHANGELOG.md';
@@ -24,11 +25,18 @@ class InstalledAppVersionCard extends StatefulWidget {
 class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
   late final Future<PackageInfo> _info = PackageInfo.fromPlatform();
 
-  Future<void> _open(String href) async {
-    final opened = await (widget.openLink ?? openWebPreview)(Uri.parse(href));
-    if (!opened && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: StudioError('Could not open this link.')),
+  Future<void> _open(BuildContext anchor, String href) async {
+    final key = ('open-version-link', href);
+    dismissTransientError(anchor, errorKey: key);
+    final uri = Uri.parse(href);
+    final opened =
+        await (widget.openLink?.call(uri) ?? WebLinkScope.open(anchor, uri));
+    if (!opened && anchor.mounted) {
+      showTransientError(
+        anchor,
+        'Could not open this link.',
+        errorKey: key,
+        icon: Icons.open_in_new,
       );
     }
   }
@@ -39,32 +47,6 @@ class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
       future: _info,
       builder: (context, snapshot) {
         final info = snapshot.data;
-        if (snapshot.hasError ||
-            (snapshot.connectionState == ConnectionState.done &&
-                info == null)) {
-          return const Material(
-            type: MaterialType.transparency,
-            child: ListTile(
-              leading: Icon(Icons.info_outline),
-              title: Text('App version'),
-              subtitle: Text('Version information is unavailable.'),
-            ),
-          );
-        }
-        if (info == null) {
-          return const Material(
-            type: MaterialType.transparency,
-            child: ListTile(
-              leading: SizedBox(
-                width: 24,
-                height: 24,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ),
-              title: Text('App version'),
-              subtitle: Text('Loading version information…'),
-            ),
-          );
-        }
         return Material(
           type: MaterialType.transparency,
           child: Column(
@@ -73,24 +55,39 @@ class _InstalledAppVersionCardState extends State<InstalledAppVersionCard> {
               ListTile(
                 leading: const PlayfulPortrait(),
                 title: Text(
-                  info.appName.trim().isEmpty ? 'Android app' : info.appName,
+                  info == null || info.appName.trim().isEmpty
+                      ? 'Wing'
+                      : info.appName,
                 ),
-                subtitle: Text('Version ${info.version}'),
+                subtitle: snapshot.hasError
+                    ? null
+                    : Text(
+                        info == null ? 'Version —' : 'Version ${info.version}',
+                      ),
               ),
+              if (snapshot.hasError)
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(12, 0, 12, 8),
+                  child: StudioError('Version information is unavailable.'),
+                ),
               Padding(
                 padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
                 child: Wrap(
                   alignment: WrapAlignment.end,
                   spacing: 4,
                   children: [
-                    TextButton(
-                      onPressed: () => _open(_changelogUrl),
-                      child: const Text("What's new"),
-                    ),
-                    TextButton(
-                      onPressed: () => _open(_releasesUrl),
-                      child: const Text('Releases'),
-                    ),
+                    for (final (label, href) in [
+                      ("What's new", _changelogUrl),
+                      ('Releases', _releasesUrl),
+                    ])
+                      Builder(
+                        builder: (anchor) => StudioButtonPress(
+                          child: TextButton(
+                            onPressed: () => _open(anchor, href),
+                            child: Text(label),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),

@@ -7,7 +7,6 @@ class RecordingTurnNotificationSink implements TurnNotificationSink {
   final List<int> cancelled = <int>[];
 
   int initializeCount = 0;
-  int cancelAllCount = 0;
   int permissionRequestCount = 0;
 
   /// Result [requestPermission] returns: true granted, false denied, null when
@@ -47,10 +46,5 @@ class RecordingTurnNotificationSink implements TurnNotificationSink {
   @override
   Future<void> cancel(int id) async {
     cancelled.add(id);
-  }
-
-  @override
-  Future<void> cancelAll() async {
-    cancelAllCount++;
   }
 }

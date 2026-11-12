@@ -1,0 +1,4041 @@
+{
+  "schema": 2,
+  "property": "Explicit retired declarations do not reappear in their canonical authored library; this is not a liveness test.",
+  "entries": [
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiClient",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "GatewayChatClient",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ToolProgressCallback",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session.dart",
+      "symbol": "Session",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.sendStreaming",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.submitPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.interruptSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.respondToApproval",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.respondToSudo",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.respondToSecret",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.respondToClarify",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._respondToSensitivePrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.resumeSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.setSessionTitle",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.branchSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.sendMessageStreaming",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.sendMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.attachFile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.createSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.createOrResumeSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.setSessionModel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.getSessionReasoning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.setSessionReasoning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._streams",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._sessionStreams",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._connectionClosedListeners",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._nextConnectionClosedListenerToken",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._addConnectionClosedListener",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._removeConnectionClosedListener",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient._dispatchStreamEvent",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "RemoteFileAttachment",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "_ConnectionClosedListener",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "_gatewayResponseError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.onGatewayReady",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "WsClient.isConnected",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewayInterimTransition",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewayNotificationLevel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewayNotification",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayTurnStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "WingStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "WingTokens.colorForStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "GatewayReadyCallback",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/model_chooser.dart",
+      "symbol": "ModelChoice",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/model_chooser.dart",
+      "symbol": "ModelSelection",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/model_chooser.dart",
+      "symbol": "ModelSpecialChoice",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_intelligence_picker.dart",
+      "symbol": "ChatIntelligenceSelection",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_diagnostics_panel.dart",
+      "symbol": "ProfileDiagnosticsController",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_diagnostics_panel.dart",
+      "symbol": "_AccessResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_diagnostics_panel.dart",
+      "symbol": "_Recovery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "AttachmentDraftMode",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "maxRestImageBytes",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "allowsMultipleImageSelection",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "AttachmentDraftService.validateRestDrafts",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_providers_page.dart",
+      "symbol": "_AdminProvidersPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "AdminFieldKind",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "AdminField",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "memoryFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "executionFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "approvalFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "compressionFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "reachFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_settings_page.dart",
+      "symbol": "voiceFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_repository.dart",
+      "symbol": "setting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_repository.dart",
+      "symbol": "setSetting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_repository.dart",
+      "symbol": "sameSetting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/scheduled_tasks_controller.dart",
+      "symbol": "ScheduledTasksController.preferences",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealthStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealthFinding",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationProfileHealthObservation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/health_snapshot.dart",
+      "symbol": "healthObservationSnapshot",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/health_snapshot.dart",
+      "symbol": "restoreHealthObservation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/dashboard_oauth_session.dart",
+      "symbol": "DashboardOAuthSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/dashboard_oauth_session.dart",
+      "symbol": "CloudAccessException",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/voice_preferences.dart",
+      "symbol": "VoicePreferences",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/voice_preferences.dart",
+      "symbol": "VoiceProcessing",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_action.dart",
+      "symbol": "ComposerAction.fromPreference",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_visibility.dart",
+      "symbol": "SessionVisibility.fromStored",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/text_size_preference.dart",
+      "symbol": "TextSizePreferenceStore",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/text_size_preference.dart",
+      "symbol": "TextSizePreference",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/text_size_preference.dart",
+      "symbol": "_MultiplierTextScaler",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/config_backup_service.dart",
+      "symbol": "ConfigBackupService.exactPreferenceKeys",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/config_backup_service.dart",
+      "symbol": "ConfigBackupService.isBackedUpKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/config_backup_card.dart",
+      "symbol": "ConfigBackupCard",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/config_backup_card.dart",
+      "symbol": "_ConfigBackupCardState",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState.setTextSizePreference",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_color_store.dart",
+      "symbol": "ProfileColorStore",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileSessionKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_selection_store.dart",
+      "symbol": "ProfileSelectionStore",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_HermesAdministrationContentState._overviewRevision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_HermesAdministrationContentState._overviewKeys",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_HermesAdministrationContentState._refreshAfter",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_HermesAdministrationContentState._health",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_HermesAdministrationContentState._observeOverview",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/administration_content.dart",
+      "symbol": "_Destination.summaryKeys",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.revision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.refreshKeys",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.createSession",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.onOverviewChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.onTasksChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "AdminProfileOverview.onRefreshCompleted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "_AdminProfileOverviewState._notificationPending",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "_AdminProfileOverviewState._publishObservations",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_profile_overview.dart",
+      "symbol": "_AdminProfileOverviewState._refresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_overview_session.dart",
+      "symbol": "ProfileOverviewSession._completionGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_repository.dart",
+      "symbol": "AdministrationAction",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdminDiagnosticObservation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.beginDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.observeDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.trackDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.finishDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.diagnosticGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.beginServerRefresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.recordDiagnosticAttempt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth._diagnostics",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth._diagnosticTimers",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth._pendingScopes",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth._refreshDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "startAdminOperation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "AdminActionPage.server",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "AdminActionPage.action",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "AdminActionPage.onObservation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "AdminActionPage.initialObservation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "AdminActionPage.chatController",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._status",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._timer",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._check",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._preparedChat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._preparedPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_operations_page.dart",
+      "symbol": "_AdminActionPageState._openingFinding",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_runtime_health.dart",
+      "symbol": "_startDiagnostic",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_runtime_health.dart",
+      "symbol": "runAllHealthDiagnostics",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_runtime_health.dart",
+      "symbol": "refreshHealthDiagnostics",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.draft",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.draftSubmissionUncertain",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._outgoingPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.attachments",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queuedPrompts",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.editingQueuedPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queuedEditText",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.composerText",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queuePaused",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.steering",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.draftRestored",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queueMutating",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queueDraftChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.queueDraining",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._attachmentPreparations",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._imagePreparationGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._imageJobs",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.preparingAttachments",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._submissionInFlight",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.sendingPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._draftWrites",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._draftRevision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolSetupList",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolSetupPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolSetupPage.name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._base",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._canSelectProvider",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._notice",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._noticeIsError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._selectedLabel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._provider",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolSetupPageState._toolSetup",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolModelsPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolModelsPage.tool",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "AdminToolModelsPage.provider",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._pendingModel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._base",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._readCatalog",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._choices",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart",
+      "symbol": "_AdminToolModelsPageState._select",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_tool_activity.dart",
+      "symbol": "ProfileToolActivity.messages",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillLibraryPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillLibraryPageState._usage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillDetail.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillDetail.row",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillDetailState._name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillDetailState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillEditor.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillEditor.name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillEditor.initial",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillEditorState._saved",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillEditorState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillEditorState._leave",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillEditorState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillHubPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillHubPageState._query",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillHubPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillPreview.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "AdminSkillPreview.identifier",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_skills_page.dart",
+      "symbol": "_AdminSkillPreviewState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "ChatHistoryPageLoader",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "ChatFindResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindRow",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "ChatFindSheet.loadHistory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._history",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._nextOffset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._retryOffset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._loadError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._load",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._matches",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._rowText",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_find_sheet.dart",
+      "symbol": "_ChatFindSheetState._rowKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._findResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._findOwner",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._findHistoryGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._findRequestGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._activeFindResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._backToLatest",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._readingWindow",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/mcp_setup.dart",
+      "symbol": "McpSetup.save",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/mcp_setup.dart",
+      "symbol": "McpSetupUnconfirmed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminConnectorsPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "_AdminConnectorsPageState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "_AdminConnectorsPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminConnectorDetail.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminConnectorDetail.name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminConnectorDetail.signInOnOpen",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminMcpSignIn.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminMcpSignIn.name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminMcpSignIn.bindLoopback",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "AdminReloadConnectorsButton.server",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "_AdminReloadConnectorsButtonState",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/mcp_oauth.dart",
+      "symbol": "McpOAuth.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.loadHistory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.download",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.readText",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.deliver",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.fileDelivery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "ChatOutputsScreen.mediaPreview",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._outputs",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._nextOffset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._loadError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._retryRefresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_ChatOutputsScreenState._retryable",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_isMarkdownPreview",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_isHtmlPreview",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_hasHtmlExtension",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/chat_outputs_screen.dart",
+      "symbol": "_isSvgName",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_mcp_setup_page.dart",
+      "symbol": "AdminMcpSetupPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_mcp_setup_page.dart",
+      "symbol": "_AdminMcpSetupPageState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_mcp_setup_page.dart",
+      "symbol": "_AdminMcpSetupPageState._inputs",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_mcp_setup_page.dart",
+      "symbol": "_AdminMcpSetupPageState._dirty",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connectors_page.dart",
+      "symbol": "_AdminConnectorDetailState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_logs_page.dart",
+      "symbol": "AdminLogsPage.server",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_logs_page.dart",
+      "symbol": "_AdminLogsPageState._file",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_logs_page.dart",
+      "symbol": "_AdminLogsPageState._level",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_logs_page.dart",
+      "symbol": "_AdminLogsPageState._search",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_logs_page.dart",
+      "symbol": "_AdminLogsPageState._version",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._streaming",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._streamingMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._lastInterimMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._lastInterimTurn",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._messagePresentations",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._confirmedPresentations",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.streaming",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.streamingMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.messagePresentationId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._appendAssistantMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._retainMessagePresentations",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._commandNoticeSequence",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.addCommandMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.messages",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historySessionId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.nextHistoryOffset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historyGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historyLoading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historyError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historyUnavailable",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.historyScrollOffset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_voice_page.dart",
+      "symbol": "AdminVoicePage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "AdminSpeechSynthesisPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "AdminSpeechSynthesisPage.device",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._voices",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._player",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._providers",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._confirmed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._base",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._provider",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._stop",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._play",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._read",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart",
+      "symbol": "_AdminSpeechSynthesisPageState._run",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.repository",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.settings",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.choices",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.selected",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.catalogueError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.saving",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.fresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_voice_repository.dart",
+      "symbol": "ProfileVoiceRepository.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_voice_repository.dart",
+      "symbol": "speechProviderRoute",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_plugins_page.dart",
+      "symbol": "AdminPluginsPage.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_plugins_page.dart",
+      "symbol": "_AdminPluginsPageState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_plugins_page.dart",
+      "symbol": "_AdminPluginsPageState._toggle",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_tool_activity.dart",
+      "symbol": "ProfileTranscriptSection",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_tool_activity.dart",
+      "symbol": "groupTranscriptRows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_tool_activity.dart",
+      "symbol": "groupTranscriptSections",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_tool_activity.dart",
+      "symbol": "ProfileToolActivitySection.groups",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_execution_activity.dart",
+      "symbol": "profileMessageReasoning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_transcript.dart",
+      "symbol": "ProfileTranscript.nearbyMessages",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._hasAnswerActions",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreen.profileController",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._autoNavigated",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._lastConnectionKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._maybeAutoNavigate",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "UsageDashboard.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._reader",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._cache",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._pending",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._year",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._yearError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._yearLoading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._yearRetryable",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._loadYear",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._refresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._load",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._data",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._needsRecovery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart",
+      "symbol": "_UsageDashboardState._recover",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/usage_cost.dart",
+      "symbol": "ModelUsageCost.usage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileTurnStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileMainActivity",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.mainActivity",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.mainToolActivity",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.opening",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.offlineSnapshot",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.openingError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.runtimeId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.tool",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.toolActivities",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.reasoning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.reasoningVerbose",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.changingAnswer",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.commandRunning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._commandDispatchPending",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._commandPreflightSensitivePrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._commandPreflightReturnStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.approvals",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.approval",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._approvalReadGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.approvalResponding",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.notificationActionError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.notificationActionErrorRequestId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.clarification",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.sensitivePrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.sensitivePromptResponding",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._turnGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._resumeGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._resumeReadGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat._liveEventRevision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.status",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.pendingQuestion",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.activityState",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._updateApprovalStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._upsertToolActivity",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._hydrateSensitivePrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_sensitive_prompt_panel.dart",
+      "symbol": "_GatewaySensitivePromptPanelState._canSubmit",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_sensitive_prompt_panel.dart",
+      "symbol": "_GatewaySensitivePromptPanelState._normalizedCode",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_sensitive_prompt_panel.dart",
+      "symbol": "_GatewaySensitivePromptPanelState._responseValue",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "AdminLoad",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "_AdminLoadState",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_clarify_dialog.dart",
+      "symbol": "_GatewayClarifyDialogState._answer",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_headers_editor.dart",
+      "symbol": "_HeaderRow.keepsSavedValue",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_headers_editor.dart",
+      "symbol": "_GatewayHeadersEditorState._nameError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_headers_editor.dart",
+      "symbol": "_GatewayHeadersEditorState._valueError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_headers_editor.dart",
+      "symbol": "_GatewayHeadersEditorState._changed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._reviewingShare",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._discardingShare",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._startupExternalNavigationReady",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._deferredShareId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._enableStartupExternalNavigation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "HomeScreenState._onShareError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReview.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReview.payload",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReview.initialChat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReview.recoverableDraft",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReview.destinationNotice",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._newChat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._recoverDraft",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._profileName",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._destination",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._createdTarget",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._recoveryTarget",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._recoveryApplied",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._initialChatValid",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._working",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._controllerChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._message",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._selectProfile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/shared_draft_review.dart",
+      "symbol": "_SharedDraftReviewState._loadMore",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderDetail.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderDetail.providerId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._id",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._access",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._message",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderDetailState._renewing",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderInstructions.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderInstructions.access",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderInstructions.removal",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderFileRemoval.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "AdminProviderFileRemoval.access",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._before",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._file",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._confirmedLocation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._deleted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_provider_detail.dart",
+      "symbol": "_AdminProviderFileRemovalState._result",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/provider_recovery.dart",
+      "symbol": "ProviderRecovery.profile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/slash_command_suggestions.dart",
+      "symbol": "SlashCommandSuggestions.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/slash_command_suggestions.dart",
+      "symbol": "SlashCommandSuggestions.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/slash_command_suggestions.dart",
+      "symbol": "_SlashCommandSuggestionsState._items",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/slash_command_suggestions.dart",
+      "symbol": "_SlashCommandSuggestionsState._warning",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/slash_command_suggestions.dart",
+      "symbol": "_SlashCommandSuggestionsState._replaceFrom",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.notificationFocus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.notificationReadTarget",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.notificationFocusGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/native_notification_sink.dart",
+      "symbol": "NativeNotificationSink.channel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/native_notification_sink.dart",
+      "symbol": "NativeNotificationSink.channelStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationPermissionRequestedKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationPoll",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._pollingNotifications",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationDeliveries",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._pendingNotificationKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._pendingNotificationFocus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._pendingNotificationOpen",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationOpenGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._openingNotificationController",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._isCurrentNotificationOpen",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._openProfileNotificationTarget",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._restoreChatNotifications",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._receiveProfileNotice",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._restoreNotificationReadTarget",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationInteraction",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._notificationActionStatus",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._monitoringStateChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._reconcileNotices",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._monitoringActivityChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._requestStartupNotificationPermission",
+      "kind": "any"
+    },
+    {
+      "library": "lib/main.dart",
+      "symbol": "WingAppState._syncBackgroundMonitoring",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_notification_coordinator.dart",
+      "symbol": "NotificationInput",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._file",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._source",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._sharing",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/html_preview_screen.dart",
+      "symbol": "_HtmlPreviewScreenState._load",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._file",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._document",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._pageImage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._page",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._failed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._errorMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._load",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/pdf_preview_screen.dart",
+      "symbol": "_PdfPreviewScreenState._showPage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/chat_inline_image.dart",
+      "symbol": "_ChatInlineImageState._load",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/user_message_attachment.dart",
+      "symbol": "_UserMessageAttachmentTileState._loadImage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "OwnedRemoteFiles",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.new",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService._sink",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService._initialized",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService._permissionGranted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.permissionGranted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.ensureInitialized",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.showTurnCompleted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.cancelTurnCompleted",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationService.cancelAll",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewaySubagentActivity.isComplete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "JsonRpcError.safeToResubmit",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "ProfileSubagentPanel.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "ProfileSubagentPanel.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheet.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheet.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheet.subagentId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheet.initialActivity",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._tailTimer",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._tail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._tailError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._controlMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._controlFailed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._tailFailures",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._loadingTail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._steering",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._interrupting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._lastAvailableTail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._startTail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._refreshTail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._retryTail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_SubagentDetailSheetState._interrupt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_subagent_panel.dart",
+      "symbol": "_summary",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "ProfileGoalPanel.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "ProfileGoalPanel.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "_ProfileGoalPanelState._sameCriteria",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "_AddCriterionDialog.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "_AddCriterionDialog.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "_AddCriterionDialog.ownsDestination",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_goal_panel.dart",
+      "symbol": "_AddCriterionDialogState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "ProfileBackgroundWorkPanel.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "ProfileBackgroundWorkPanel.chat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "_ProfileBackgroundWorkPanelState._actionBusy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "_ProfileBackgroundWorkPanelState._stopping",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "_ProfileBackgroundWorkPanelState._actionError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "_ProfileBackgroundWorkPanelState._processErrors",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_background_work_panel.dart",
+      "symbol": "_ProfileBackgroundWorkPanelState._summary",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._voiceOwner",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._voiceWorkspaceChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._dictate",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._readAloud",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_screen.dart",
+      "symbol": "ProfileWorkspaceScreenState._composerActions",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/voice_input_controller.dart",
+      "symbol": "VoiceInputController.createRemote",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "chatUpdated",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "chatTokens",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "chatCost",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.errors",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.rowsChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.resetArrangement",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.projectRows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.includesSavedDraft",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "ProfileWorkspaceBrowser.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._archived",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._started",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._busy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._chatOpenGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._openingChat",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._controllerState",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._refreshing",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._refreshingArchived",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._refreshGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._controllerChanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState._loadRefresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_project_actions.dart",
+      "symbol": "_ProjectAction",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_project_actions.dart",
+      "symbol": "_ProjectSubmit",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_project_actions.dart",
+      "symbol": "_ProjectDialog.submit",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_project_actions.dart",
+      "symbol": "_ProjectDialogState._submitting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_project_actions.dart",
+      "symbol": "_ProjectDialogState._error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheet.projects",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheet.currentProject",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheet.profileName",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheet.move",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ScopedPatch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ProfileGateway._patch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "ChatListEntry.row",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.rows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.projects",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.complete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.searchRows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.searchMatches",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.loading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.searching",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.searchLimited",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.searchError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.archived",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheetState.moving",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_row_actions.dart",
+      "symbol": "_ChatProjectSheetState.error",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/profile_workspace_browser.dart",
+      "symbol": "_ProfileWorkspaceBrowserState.controller",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.commandCatalog",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.retry",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.reconnectFuture",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "CredentialStore.readCached",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "FlutterSecureCredentialStore.readCached",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "FlutterSecureCredentialStore._cache",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.userMessage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.getModelOptions",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.getSkills",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.setModel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesCapability",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesRepository.probe",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "probeProfilesForConnection",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFilesDataSource.defaultDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFilesDataSource.listDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFilesClient.defaultDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFilesClient.listDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController.profileName",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_health_page.dart",
+      "symbol": "AdminHealthContent.server",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/profile_workspace_theme.dart",
+      "symbol": "WorkspaceAccent.preferenceKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "WingSpacing.xxl",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "WingRadius.lg",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "WingMotion.emphasized",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "contrastRatio",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/theme/wing_theme.dart",
+      "symbol": "_relativeLuminance",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_message.dart",
+      "symbol": "ProfileMessage.externalLink",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult.supported",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult.failure",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult.capability",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult.discovery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult.message",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profiles_repository.dart",
+      "symbol": "ProfilesProbeResult._",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteDirectory.path",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteDirectory.branch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteDirectory.new",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry.name",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry.path",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry.isDirectory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry.new",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteFileEntry.fromJson",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/administration_operation.dart",
+      "symbol": "AdminDiagnosticObservation.nextStep",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/answer_versions.dart",
+      "symbol": "AnswerTarget.messageIndex",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferenceIssueKind",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferenceIssue.kind",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesRead.snapshot",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesSchema.keys",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_browser_preferences.dart",
+      "symbol": "ChatBrowserPreferences.hasFilters",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_browser_preferences.dart",
+      "symbol": "BrowserPreferencesFact.canReset",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_action.dart",
+      "symbol": "ComposerAction.preferenceKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_approval.dart",
+      "symbol": "GatewayApprovalQueue.first",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_clarify.dart",
+      "symbol": "GatewayClarifyRequest.identityKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewayNotice.title",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_identity_edit.dart",
+      "symbol": "ProfileIdentityEditIntent.withoutFields",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_identity_edit.dart",
+      "symbol": "ProfileIdentityEditResolution.blocked",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/provider_access.dart",
+      "symbol": "ProviderAccess.lastRefresh",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/provider_access.dart",
+      "symbol": "ProviderAccess.label",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/provider_recovery.dart",
+      "symbol": "ProviderRenewal.candidates",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/scheduled_task.dart",
+      "symbol": "ScheduledTask.hasExecution",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/backend_update.dart",
+      "symbol": "BackendUpdateReceipt.finishedAt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_plugins.dart",
+      "symbol": "ProfilePluginAcknowledgement.unchanged",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_plugins.dart",
+      "symbol": "ProfilePluginAcknowledgement.gatewayReloaded",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/retained_memory.dart",
+      "symbol": "RetainedMemoryDetail.label",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_control.dart",
+      "symbol": "SessionLoop.until",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_control.dart",
+      "symbol": "SessionLoop.createdAt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_control.dart",
+      "symbol": "SessionLoop.lastFiredAt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_control.dart",
+      "symbol": "SessionHeartbeat.createdAt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/session_control.dart",
+      "symbol": "SessionHeartbeat.lastFiredAt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerObservation.key",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerSubmission.key",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerSubmission.revision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerSubmission.queued",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerSavedWork.submissionUncertain",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerUpload.id",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerAttachmentObservation.byteLength",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerAttachmentObservation.imagePath",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerAttachmentObservation.attachedSessionId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerTransfer.key",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/composer_work.dart",
+      "symbol": "ComposerTransfer.revision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_reading.dart",
+      "symbol": "ChatReadingFocus.key",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupCredential.url",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupCredential.defaultValue",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupProvider.badge",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupProvider.tag",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupProvider.active",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupReadiness.hasCategory",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolModelsObservation.tool",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolModelsObservation.defaultModel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/transcript_timeline.dart",
+      "symbol": "TranscriptTimeline.groups",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/usage_cost.dart",
+      "symbol": "OpenAiModelPrice.verifiedOn",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/usage_cost.dart",
+      "symbol": "OpenAiModelPrice.source",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_runtime.dart",
+      "symbol": "ChatRuntimeObservation.reasoningVerbose",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_runtime.dart",
+      "symbol": "ChatRuntime._reasoningVerbose",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_insight.dart",
+      "symbol": "GatewayReasoningUpdate.verbose",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_voice.dart",
+      "symbol": "ProfileVoiceState.acknowledgement",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/controllers/profile_voice_controller.dart",
+      "symbol": "ProfileVoiceController._acknowledgement",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserProfileRead.rows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserProfileRead.searchRows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserReadState.errorByProfile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserReadState.completedProfiles",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserReadPage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserStoredRow",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "_BrowserPage.facts",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/usage_cost.dart",
+      "symbol": "ModelUsageCost.price",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/health_finding.dart",
+      "symbol": "AdministrationHealthFinding.stale",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferenceIssueKind.invalidSavedValue",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserStoredRow.fromWire",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserStoredRow.id",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserStoredRow.title",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserStoredRow.snippet",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserReadPage.new",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/chat_list_view.dart",
+      "symbol": "BrowserReadPage.rows",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.statusLabel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.diagnosticCoverage",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.overview",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_health.dart",
+      "symbol": "AdministrationHealth.isDisposed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/administration_repository.dart",
+      "symbol": "AdministrationRepository.write",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/app_preferences.dart",
+      "symbol": "AppPreferenceSaveException.field",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "AttachmentDraftService.moveDraft",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "AttachmentDraftSendCoordinator.retryFailed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_image_preflight.dart",
+      "symbol": "AttachmentImageInspection.allocationDriversAudited",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_browser_data.dart",
+      "symbol": "ChatBrowserData.projectsFor",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_outputs_session.dart",
+      "symbol": "OutputPreview.output",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ConnectionManager.updateDashboardAuth",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ConnectionManager.updateApiKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.getModelInfo",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_setup_session.dart",
+      "symbol": "ConnectionSetupSession.closed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/dashboard_oauth_session.dart",
+      "symbol": "CloudAccessException.signInRequired",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/dashboard_read_transport.dart",
+      "symbol": "DashboardReadTooLarge.maxBytes",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/mcp_oauth.dart",
+      "symbol": "McpLoopback.redirectUri",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ProfileGateway.deleteResource",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ProfileGateway.put",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_identity_edit_session.dart",
+      "symbol": "ProfileIdentityEditState.profileName",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_identity_edit_session.dart",
+      "symbol": "ProfileIdentityEditSession.hasConfirmedChanges",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_model_defaults_session.dart",
+      "symbol": "PendingHelperChange.task",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_model_defaults_session.dart",
+      "symbol": "HelperChangeConfirmation.current",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_model_defaults_session.dart",
+      "symbol": "HelperChangeConfirmation.pending",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.reconnecting",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.showArchived",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.cancelAttachmentPreparation",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.pendingProfile",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.activityLoaded",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.activityAvailableProfiles",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.editQueuedPrompt",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.contextGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileChat.subagentsRevision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/provider_inventory_session.dart",
+      "symbol": "ProviderInventorySession.retryable",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/provider_inventory_session.dart",
+      "symbol": "ProviderInventorySession.query",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/remote_files_client.dart",
+      "symbol": "RemoteTextPreview.byteSize",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/settings_edit_session.dart",
+      "symbol": "SettingsEditSession.scopeLabel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "completionNotificationsKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "attentionNotificationsKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "notificationPreviewsKey",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "TurnNotificationSink.cancelAll",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/workspace_entry_session.dart",
+      "symbol": "WorkspaceEntryState.remembered",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "StreamEvent.isComplete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "StreamEvent.turnId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "StreamEvent.seq",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/ws_client.dart",
+      "symbol": "StreamEvent.messageId",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ScopedDelete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ProfileGateway._delete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_gateway.dart",
+      "symbol": "ProfileGateway._put",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_identity_edit_session.dart",
+      "symbol": "ProfileIdentityEditSession._anyApplied",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._activityLoaded",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._activityAvailableProfiles",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/turn_notification_service.dart",
+      "symbol": "PluginTurnNotificationSink.cancelAll",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/native_notification_sink.dart",
+      "symbol": "NativeNotificationSink.cancelAll",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.searchChats",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController.clearSearch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceController._clearSearch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.searchQuery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData._searchQuery",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.searchResults",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData._searchResults",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.searchLoading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData._searchLoading",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.searchError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData._searchError",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData.searchGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_workspace_controller.dart",
+      "symbol": "ProfileWorkspaceData._searchGeneration",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesSchema._snapshot",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesSnapshot.==",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesSnapshot.hashCode",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesRead.isValid",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/app_preferences.dart",
+      "symbol": "AppPreferencesValues.snapshot",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupAcknowledgement.capability",
+      "kind": "field"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupAcknowledgement.provider",
+      "kind": "field"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupAcknowledgement.model",
+      "kind": "field"
+    },
+    {
+      "library": "lib/core/models/profile_tool_setup.dart",
+      "symbol": "ToolSetupAcknowledgement.setupKey",
+      "kind": "field"
+    },
+    {
+      "library": "lib/core/models/provider_recovery.dart",
+      "symbol": "ProviderRecoveryObservation.id",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_connector_routes.dart",
+      "symbol": "profileConnectorDetail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/workspace_profile_navigation.dart",
+      "symbol": "WorkspaceProfileNavigation.canSwitch",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/profile_selection.dart",
+      "symbol": "ProfileSelectionRepairRequired.toString",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.isHealthy",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.endpoint",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.statusCode",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult._",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.success",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.httpFailure",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "ApiHealthCheckResult.networkFailure",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/app_preferences.dart",
+      "symbol": "_ProfileSelectionPreferences.fact",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_image_worker.dart",
+      "symbol": "_BudgetedVP8L.input",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_draft_service.dart",
+      "symbol": "AttachmentDraftService.retryFailed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "AdminSectionLabel",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "AdminSectionLabel.new",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "AdminSectionLabel.label",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/screens/administration/admin_widgets.dart",
+      "symbol": "AdminSectionLabel.build",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.apiGetList",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_image_preflight.dart",
+      "symbol": "AttachmentImageException.toString",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardResponseTooLargeException.toString",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_connectors_session.dart",
+      "symbol": "ProfileConnectorsSession.openOwnedDetail",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/profile_chat_indicator.dart",
+      "symbol": "ProfileChatIndicator.row",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/app_preferences.dart",
+      "symbol": "AppPreferences._sameRaw",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/gateway_clarify_dialog.dart",
+      "symbol": "GatewayClarifyDialog.inline",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/backend_version_card.dart",
+      "symbol": "BackendVersionCard.gateway",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/widgets/backend_version_card.dart",
+      "symbol": "_BackendVersionCardState._ownsController",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/profile_supervision_session.dart",
+      "symbol": "SubagentSupervisionDetail._revision",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/attachment_image_worker.dart",
+      "symbol": "_BudgetedWebPAlpha._alphaNoCompression",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayToolActivityPhase.progress",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayToolActivityPhase.failed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayToolActivity.emoji",
+      "kind": "field"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayToolActivity.isFailed",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/models/gateway_activity.dart",
+      "symbol": "GatewayToolActivity._phaseFor",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/connection_manager.dart",
+      "symbol": "DashboardClient.apiDelete",
+      "kind": "any"
+    },
+    {
+      "library": "lib/core/services/chat_runtime.dart",
+      "symbol": "ChatRuntime.refuseOperation",
+      "kind": "any"
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import 'provider_access.dart';
+import 'provider_inventory.dart';
 
 class ProviderRecoveryFailure implements Exception {
   const ProviderRecoveryFailure(this.message);
@@ -62,9 +63,6 @@ class ProviderRenewal {
       _ => null,
     };
   }
-
-  List<ProviderCredential> candidates(String output) =>
-      ProviderCredential.parseList(pool, output).where(accepts).toList();
 }
 
 class ProviderCredential {
@@ -205,4 +203,82 @@ class ProviderCredentialFile {
       modified: row['mtime'] as num,
     );
   }
+}
+
+/// Readonly facts for the account route. Wire maps and credential previews stay
+/// private to ProviderRecovery; these values confer no mutation authority.
+class ProviderRecoveryObservation {
+  ProviderRecoveryObservation(ProviderAccess access)
+    : name = access.name,
+      reportedName = access.row['name']?.toString(),
+      statusLabel = providerInventoryStatus(access),
+      detail = access.detail,
+      sourceLabel = access.status['source_label']?.toString() ?? 'Not reported',
+      state = access.state,
+      checkedAt = access.checkedAt,
+      expiresAt = access.expiresAt,
+      external = access.external,
+      hasCredential = access.hasCredential,
+      canRefresh = access.canRefresh,
+      canRenew = ProviderRenewal.forAccess(access) != null,
+      managesKeys = access.status['source'] == 'env_var',
+      canRemove =
+          access.row['disconnectable'] == true &&
+          access.hasCredential &&
+          access.state != ProviderAccessState.unknown,
+      canReviewFile = ProviderCredentialFile.supports(access),
+      signIn = access.row['flow'] == 'device_code'
+          ? ProviderSignInTarget.fromAccess(access)
+          : null,
+      signInLabel = access.row['flow'] == 'device_code'
+          ? access.signInLabel
+          : 'Sign-in options';
+  final String name, statusLabel, detail, sourceLabel, signInLabel;
+  final String? reportedName;
+  final ProviderAccessState state;
+  final DateTime checkedAt;
+  final DateTime? expiresAt;
+  final bool external, hasCredential, canRefresh, canRenew, managesKeys;
+  final bool canRemove, canReviewFile;
+  final ProviderSignInTarget? signIn;
+  bool get expired => state == ProviderAccessState.expired;
+  bool get hasRemovalInstructions => external && !managesKeys;
+  String get expiryPrefix => expired ? 'Expired' : 'Expires';
+}
+
+class ProviderRecoveryInstructions {
+  const ProviderRecoveryInstructions({
+    required this.scope,
+    required this.name,
+    required this.description,
+    required this.removal,
+    required this.claude,
+    this.command,
+    this.hint,
+  });
+  final String scope, name, description;
+  final bool removal, claude;
+  final String? command, hint;
+}
+
+class ProviderRecoveryState {
+  const ProviderRecoveryState({
+    required this.inspectingFile,
+    this.observation,
+    this.busy = false,
+    this.renewing = false,
+    this.error,
+    this.message,
+    this.filePath = '~/.claude/.credentials.json',
+    this.fileConfirmed = false,
+    this.file,
+    this.deleted = false,
+  });
+  final ProviderRecoveryObservation? observation;
+  final bool busy, renewing, inspectingFile, fileConfirmed, deleted;
+  final String? error, message;
+  final String filePath;
+  final ProviderCredentialFile? file;
+  bool get canInspectFile => !busy && fileConfirmed && !deleted;
+  bool get canDeleteFile => canInspectFile && file != null;
 }

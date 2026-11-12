@@ -2,12 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../fork/inline_media_thumbnail.dart';
 import '../models/chat_output.dart';
 import '../services/file_open_error_message.dart';
 import '../theme/wing_theme.dart';
-import 'studio_action_label.dart';
 import 'studio_error.dart';
+import 'chat_inline_image.dart';
 
 /// Desktop's Download / Open preview actions adapted to a phone's width.
 class DeliverableAttachment extends StatefulWidget {
@@ -16,13 +15,13 @@ class DeliverableAttachment extends StatefulWidget {
     required this.output,
     required this.onOpen,
     required this.onDownload,
-    this.onLoadImage,
+    this.loadImage,
   });
 
   final ChatOutput output;
   final Future<void> Function(ChatOutput)? onOpen;
   final Future<bool> Function(ChatOutput)? onDownload;
-  final Future<Uint8List> Function(ChatOutput)? onLoadImage;
+  final Future<Uint8List> Function(String path)? loadImage;
 
   @override
   State<DeliverableAttachment> createState() => _DeliverableAttachmentState();
@@ -84,33 +83,60 @@ class _DeliverableAttachmentState extends State<DeliverableAttachment> {
     }
   }
 
+  Widget _actionIcon(
+    IconData icon, {
+    required bool pending,
+    required String label,
+  }) => SizedBox.square(
+    dimension: 20,
+    child: pending
+        ? CircularProgressIndicator(
+            strokeWidth: 2,
+            backgroundColor: Theme.of(context).colorScheme.outlineVariant,
+            value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
+            semanticsLabel: label,
+          )
+        : Icon(icon, size: 20),
+  );
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final actions = Wrap(
-      alignment: WrapAlignment.center,
-      spacing: WingSpacing.sm,
-      runSpacing: WingSpacing.xs,
-      children: [
-        OutlinedButton(
-          onPressed: widget.onDownload == null || _downloading
-              ? null
-              : () => _run(download: true),
-          child: StudioActionLabel.compact(
-            'Download',
-            busy: _downloading,
-            icon: Icons.download_outlined,
-          ),
+    if (widget.output.kind == ChatOutputKind.image) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: WingSpacing.xs),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ChatInlineImage(
+              target: widget.output.target,
+              title: widget.output.label,
+              loadImage: widget.loadImage,
+              downloadAction: StudioButtonPress(
+                child: IconButton.filledTonal(
+                  tooltip: _downloading ? 'Saving image' : 'Download image',
+                  style: IconButton.styleFrom(minimumSize: const Size(48, 48)),
+                  onPressed: widget.onDownload == null || _downloading
+                      ? null
+                      : () => _run(download: true),
+                  icon: _actionIcon(
+                    Icons.download_outlined,
+                    pending: _downloading,
+                    label: 'Saving image',
+                  ),
+                ),
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: WingSpacing.xs),
+              StudioError(_error!),
+            ],
+          ],
         ),
-        OutlinedButton(
-          onPressed: widget.onOpen == null || _opening
-              ? null
-              : () => _run(download: false),
-          child: const Text('Open preview', textAlign: TextAlign.center),
-        ),
-      ],
-    );
-    final card = Container(
+      );
+    }
+    return Container(
       margin: const EdgeInsets.symmetric(vertical: WingSpacing.xs),
       padding: const EdgeInsets.all(WingSpacing.sm),
       decoration: BoxDecoration(
@@ -123,7 +149,7 @@ class _DeliverableAttachmentState extends State<DeliverableAttachment> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               Icon(
                 Icons.insert_drive_file_outlined,
@@ -137,10 +163,43 @@ class _DeliverableAttachmentState extends State<DeliverableAttachment> {
                   style: theme.textTheme.bodyMedium,
                 ),
               ),
+              const SizedBox(width: WingSpacing.xs),
+              StudioButtonPress(
+                child: IconButton(
+                  tooltip: 'Download',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
+                  onPressed: widget.onDownload == null || _downloading
+                      ? null
+                      : () => _run(download: true),
+                  icon: _actionIcon(
+                    Icons.download_outlined,
+                    pending: _downloading,
+                    label: 'Saving file',
+                  ),
+                ),
+              ),
+              StudioButtonPress(
+                child: IconButton(
+                  tooltip: 'Open preview',
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(48, 48),
+                    foregroundColor: theme.colorScheme.primary,
+                  ),
+                  onPressed: widget.onOpen == null || _opening
+                      ? null
+                      : () => _run(download: false),
+                  icon: _actionIcon(
+                    Icons.visibility_outlined,
+                    pending: _opening,
+                    label: 'Opening preview',
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: WingSpacing.xs),
-          actions,
           if (_error != null) ...[
             const SizedBox(height: WingSpacing.xs),
             StudioError(_error!),
@@ -148,19 +207,5 @@ class _DeliverableAttachmentState extends State<DeliverableAttachment> {
         ],
       ),
     );
-    final load = widget.onLoadImage;
-    if (load != null &&
-        widget.output.kind == ChatOutputKind.image &&
-        InlineMediaThumbnail.handles(widget.output.target)) {
-      return InlineMediaThumbnail(
-        path: widget.output.target,
-        label: widget.output.label,
-        load: (_) => load(widget.output),
-        card: card,
-        actions: actions,
-        error: _error,
-      );
-    }
-    return card;
   }
 }

@@ -52,6 +52,7 @@ void main() {
       firstService.dispose();
 
       final replayedService = AndroidShareIntentService();
+      addTearDown(replayedService.dispose);
       await replayedService.initialize();
       final first = replayedService.pendingShare.value!;
       expect(first.id, 'share-1');
@@ -62,7 +63,6 @@ void main() {
       expect(second.target?['session'], 'session-a');
       expect(await replayedService.acknowledgeShare(second), isTrue);
       expect(replayedService.pendingShare.value, isNull);
-      replayedService.dispose();
     },
   );
 
@@ -93,6 +93,7 @@ void main() {
         });
 
     final service = AndroidShareIntentService();
+    addTearDown(service.dispose);
     await service.initialize();
     final pending = service.pendingShare.value!;
 
@@ -101,7 +102,6 @@ void main() {
     expect(service.intakeError.value, isNull);
     expect(await service.acknowledgeShare(pending), isFalse);
     expect(service.pendingShare.value, same(pending));
-    service.dispose();
   });
 
   test('warm duplicates cannot replace the item under review', () async {
@@ -117,6 +117,7 @@ void main() {
           return second;
         });
     final service = AndroidShareIntentService();
+    addTearDown(service.dispose);
     await service.initialize();
     final reviewed = service.pendingShare.value!;
 
@@ -131,7 +132,6 @@ void main() {
     expect(service.pendingShare.value?.id, 'share-2');
     expect(await service.acknowledgeShare(reviewed), isFalse);
     expect(acknowledgeCalls, 1);
-    service.dispose();
   });
 
   test('invalid intake and native share errors are exposed safely', () async {
@@ -152,6 +152,7 @@ void main() {
           },
         );
     final service = AndroidShareIntentService();
+    addTearDown(service.dispose);
     await service.initialize();
     expect(service.pendingShare.value, isNull);
     expect(service.intakeError.value, 'Shared content could not be imported.');
@@ -168,10 +169,16 @@ void main() {
       service.intakeError.value,
       'The shared file is no longer available.',
     );
-    service.dispose();
   });
 
-  test('camera launch validates ownership and reports safe failures', () async {
+  const target = {
+    'connection': 'connection-a',
+    'connection_identity': 'identity-a',
+    'profile': 'work',
+    'session': 'session-a',
+  };
+
+  test('camera launch sends the complete destination', () async {
     MethodCall? captured;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -179,32 +186,50 @@ void main() {
           return null;
         });
     final service = AndroidShareIntentService();
-    const target = {
-      'connection': 'connection-a',
-      'connection_identity': 'identity-a',
-      'profile': 'work',
-      'session': 'session-a',
-    };
-
+    addTearDown(service.dispose);
     await service.capturePhoto(target);
     expect(captured?.method, 'capturePhoto');
     expect(captured?.arguments, {'target': target});
-    await expectLater(
-      service.capturePhoto({...target, 'session': ''}),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'message',
-          'Camera destination is unavailable.',
-        ),
-      ),
-    );
+  });
 
+  for (final field in target.keys) {
+    test(
+      'camera launch rejects a missing $field before calling native code',
+      () async {
+        var calls = 0;
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (_) async {
+              calls++;
+              return null;
+            });
+        final service = AndroidShareIntentService();
+        addTearDown(service.dispose);
+        await expectLater(
+          service.capturePhoto({...target, field: ''}),
+          throwsA(
+            isA<StateError>().having(
+              (error) => error.message,
+              'message',
+              'Camera destination is unavailable.',
+            ),
+          ),
+        );
+        expect(calls, 0);
+      },
+    );
+  }
+
+  test('native camera failure exposes only the safe message', () async {
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(
           channel,
-          (_) => throw PlatformException(code: 'camera_busy'),
+          (_) => throw PlatformException(
+            code: 'camera_busy',
+            message: 'private native detail',
+          ),
         );
+    final service = AndroidShareIntentService();
+    addTearDown(service.dispose);
     await expectLater(
       service.capturePhoto(target),
       throwsA(
@@ -215,17 +240,52 @@ void main() {
         ),
       ),
     );
-
-    final untargeted = AndroidSharePayload.fromPlatform({
-      'id': 'share-3',
-      'text': 'Keep this content',
-      'files': const [],
-      'target': {'connection': 'connection-a'},
-    });
-    expect(untargeted?.text, 'Keep this content');
-    expect(untargeted?.target, isNull);
-    service.dispose();
   });
+
+  test(
+    'group camera captures an exact room and rejects mixed destinations',
+    () async {
+      const target = {
+        'connection': 'host',
+        'connection_identity': 'instance-1',
+        'room': 'room-1',
+      };
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            expect(call.method, 'capturePhoto');
+            expect(call.arguments, {'target': target});
+            return null;
+          });
+      final service = AndroidShareIntentService();
+      addTearDown(service.dispose);
+      await service.capturePhoto(target);
+      final payload = AndroidSharePayload.fromPlatform({
+        'id': 'photo-1',
+        'text': 'photo',
+        'files': [],
+        'target': target,
+      });
+      expect(payload!.target, target);
+      await expectLater(
+        service.capturePhoto({...target, 'profile': 'default'}),
+        throwsStateError,
+      );
+    },
+  );
+
+  test(
+    'incomplete target metadata preserves the share as untargeted content',
+    () {
+      final untargeted = AndroidSharePayload.fromPlatform({
+        'id': 'share-3',
+        'text': 'Keep this content',
+        'files': const [],
+        'target': {'connection': 'connection-a'},
+      });
+      expect(untargeted?.text, 'Keep this content');
+      expect(untargeted?.target, isNull);
+    },
+  );
 }
 
 Future<void> _sendPlatformCall(MethodChannel channel, MethodCall call) {

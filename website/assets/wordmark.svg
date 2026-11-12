@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 500 250" fill="none">
+  <!-- The same paths as lib/core/widgets/wing_wordmark.dart. -->
+  <g stroke="#FFF9EB" stroke-width="32" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M20 72 L53 173 Q57 183 61 173 L96 83 L131 173 Q135 183 139 173 L174 72"/>
+    <path d="M216 92 V175 M259 175 V130 C259 74 333 74 333 130 V175"/>
+    <ellipse cx="426" cy="131" rx="52" ry="45"/>
+    <path d="M478 130 V187 C478 233 423 246 394 218"/>
+  </g>
+  <path fill="#FFF9EB" d="M222 66 C204 60 189 49 188 29 C203 39 221 41 222 66Z"/>
+  <path fill="#C6EED5" d="M226 68 C232 22 272 26 282 3 C282 43 247 39 226 68Z M231 69 C246 44 273 48 286 32 C282 58 253 58 231 69Z"/>
+</svg>

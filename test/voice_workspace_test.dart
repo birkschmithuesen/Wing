@@ -1,3 +1,7 @@
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -10,6 +14,7 @@ import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 import 'support/profile_browser_fixture.dart';
 import 'support/voice_fixture.dart';
 
@@ -31,9 +36,16 @@ class _Fixture extends ProfileBrowserFixture {
   ];
 }
 
+class _CaptureBinding extends AutomatedTestWidgetsFlutterBinding {
+  @override
+  bool get disableShadows => false;
+}
+
 void main() {
+  if (const bool.fromEnvironment('VOICE_REVIEW')) _CaptureBinding();
   late _Fixture fixture;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   late VoiceDeviceFixture device;
   const capture = bool.fromEnvironment('VOICE_REVIEW');
   const frame = Key('voice-frame');
@@ -59,16 +71,22 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     fixture = _Fixture();
     device = VoiceDeviceFixture();
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'voice-fixture',
-        label: 'Voice test server',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'voice-fixture',
+          label: 'Voice test server',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'voice-fixture',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
     );
     await controller.initialize();
@@ -78,6 +96,7 @@ void main() {
   });
   tearDown(() async {
     controller.dispose();
+    appPreferences.dispose();
     await device.stream.close();
   });
   Future<void> show(
@@ -89,18 +108,19 @@ void main() {
     tester.view.physicalSize = const Size(320, 900);
     addTearDown(tester.view.reset);
     await tester.pumpWidget(
-      MaterialApp(
-        theme: wingTheme(brightness),
-        home: MediaQuery(
-          data: MediaQueryData(
-            size: const Size(320, 900),
-            textScaler: TextScaler.linear(scale),
-          ),
-          child: RepaintBoundary(
-            key: frame,
+      RepaintBoundary(
+        key: frame,
+        child: MaterialApp(
+          theme: wingTheme(brightness),
+          home: MediaQuery(
+            data: MediaQueryData(
+              size: const Size(320, 900),
+              textScaler: TextScaler.linear(scale),
+            ),
             child: ProfileWorkspaceScreen(
               controller: controller,
               voiceDevice: device,
+              createBotsSession: () => BotsSession((_) async => []),
             ),
           ),
         ),
@@ -125,23 +145,30 @@ void main() {
     });
   }
 
+  testWidgets('completed dictation inserts editable text without sending', (
+    tester,
+  ) async {
+    final chat = controller.current!.chat!;
+    await controller.updateDraft(chat, 'Existing draft');
+    await show(tester);
+    await tester.tap(find.byTooltip('Dictate message'));
+    await tester.pump();
+    expect(find.textContaining('Recording ·'), findsOneWidget);
+    device.stream.add({
+      'id': device.recording,
+      'text': 'new words',
+      'final': true,
+    });
+    await tester.pumpAndSettle();
+    expect(chat.composer.observation.text, 'Existing draft new words');
+    expect(fixture.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
+  });
   testWidgets(
-    'dictation inserts editable text without sending and cancellation preserves draft',
+    'cancelling dictation discards partial text and preserves the draft',
     (tester) async {
       final chat = controller.current!.chat!;
       await controller.updateDraft(chat, 'Existing draft');
       await show(tester);
-      await tester.tap(find.byTooltip('Dictate message'));
-      await tester.pump();
-      expect(find.textContaining('Recording ·'), findsOneWidget);
-      device.stream.add({
-        'id': device.recording,
-        'text': 'new words',
-        'final': true,
-      });
-      await tester.pumpAndSettle();
-      expect(chat.draft, 'Existing draft new words');
-      expect(fixture.calls.where((c) => c.$2 == 'session.prompt'), isEmpty);
       await tester.tap(find.byTooltip('Dictate message'));
       await tester.pump();
       device.stream.add({
@@ -150,9 +177,10 @@ void main() {
         'final': false,
       });
       await tester.pump();
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await tester.pumpAndSettle();
-      expect(chat.draft, 'Existing draft new words');
+      expect(chat.composer.observation.text, 'Existing draft');
+      expect(fixture.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
     },
   );
   testWidgets(
@@ -167,7 +195,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(device.cancelled, contains(old));
       expect(find.text('wrong profile'), findsNothing);
-      expect(controller.current!.chat?.draft ?? '', isEmpty);
+      expect(
+        controller.current!.chat?.composer.observation.text ?? '',
+        isEmpty,
+      );
     },
   );
   testWidgets('read aloud uses reply prose and stops before dictation', (
@@ -185,7 +216,7 @@ void main() {
     expect(device.playing, isNull);
     expect(device.recording, isNotNull);
     device.playbackDelay!.complete();
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await tester.pumpAndSettle();
   });
   testWidgets('backgrounding cancels capture without changing draft', (
@@ -195,17 +226,57 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     final id = device.recording;
+    addTearDown(() {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    });
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.pump();
     device.stream.add({'id': id, 'text': 'late', 'final': true});
     await tester.pump();
     expect(device.cancelled, contains(id));
-    expect(controller.current!.chat!.draft, isEmpty);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    expect(controller.current!.chat!.composer.observation.text, isEmpty);
   });
   for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'no-speech capsule preserves draft and expires in $brightness at $scale',
+        (tester) async {
+          final chat = controller.current!.chat!;
+          await controller.updateDraft(chat, 'Keep this draft');
+          await show(tester, brightness: brightness, scale: scale);
+          final composer = find.byKey(const Key('profile-message-composer'));
+          final originalBounds = tester.getRect(composer);
+          await tester.tap(find.byTooltip('Dictate message'));
+          await tester.pump();
+          device.stream.add({
+            'id': device.recording,
+            'error': 'Native localized message',
+            'code': 'no_speech',
+          });
+          await tester.pumpAndSettle();
+          expect(find.text('No speech detected'), findsOneWidget);
+          final capsule = find.ancestor(
+            of: find.text('No speech detected'),
+            matching: find.byType(StudioErrorFrame),
+          );
+          expect(
+            tester.getRect(capsule).overlaps(tester.getRect(composer)),
+            isFalse,
+          );
+          expect(tester.getRect(composer), originalBounds);
+          expect(chat.composer.observation.text, 'Keep this draft');
+          await screenshot(tester, 'no-speech-${brightness.name}-$scale');
+          await tester.pump(const Duration(seconds: 4));
+          await tester.pumpAndSettle();
+          expect(find.text('No speech detected'), findsNothing);
+          expect(chat.composer.observation.text, 'Keep this draft');
+          expect(fixture.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
     testWidgets('recording composer fits 320dp at 200% text in $brightness', (
       tester,
     ) async {
@@ -220,7 +291,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 200));
       expect(tester.takeException(), isNull);
       await screenshot(tester, 'composer-${brightness.name}-200');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await tester.pumpAndSettle();
     });
   }

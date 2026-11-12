@@ -7,6 +7,11 @@
 /// Build only as debug; never install this entry point in Wing.
 library;
 
+import 'package:wing/core/models/profile_session_key.dart';
+
+import 'package:wing/core/services/app_preferences.dart';
+
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -37,7 +42,11 @@ Future<void> main() async {
     port: 1,
     apiKey: '',
   );
-  await manager.importConnections([connection], replaceExisting: true);
+  await manager.importConnections(
+    [connection],
+    replaceExisting: true,
+    canCommit: () => true,
+  );
   await preferences.setString('last_connection_id', connection.id);
   final fixture = RoadmapEmulatorFixture();
   const notificationNonce = String.fromEnvironment(
@@ -49,12 +58,14 @@ Future<void> main() async {
       preferences.getString(notificationMarker) != notificationNonce;
   final notificationSink = PluginTurnNotificationSink();
   if (postNotification) await notificationSink.initialize();
+  final appPreferences = AppPreferences(preferences);
   final registry = ProfileWorkspaceRegistry(
     identities: ProfileConnectionIdentity(),
     create: (saved, identity) => ProfileWorkspaceController(
-      connection: saved,
+      access: ConnectionAccess(connection: saved, dashboardOAuth: null),
       connectionIdentity: identity,
       preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
       onAttention: postNotification
           ? (chat) async {
@@ -107,6 +118,7 @@ Future<void> main() async {
   final appKey = GlobalKey<WingAppState>();
   runApp(
     WingApp(
+      appPreferences: appPreferences,
       key: appKey,
       connManager: manager,
       profileControllers: registry,
@@ -123,7 +135,7 @@ Future<void> main() async {
           jsonEncode(workTarget.toJson()),
         );
         await Future<void>.delayed(const Duration(seconds: 2));
-        fixture.requestApproval('personal', target.runtimeId);
+        fixture.requestApproval('personal', target.runtime.runtimeId);
       }),
     );
   }

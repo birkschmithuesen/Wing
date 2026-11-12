@@ -1,136 +1,53 @@
 # MCP connector setup and sign-in
 
-Wing targets unmodified upstream Hermes main, verified at
-`d177b119e9c56c9ddc0b7379ffce52341ec06584` on 18 September 2026.
-Hermes runtime, CLI and remote-client capabilities differ. The controls below
-describe what Wing can offer through the stock remote API.
+Open **Hermes administration → MCP connectors** for the selected connection and profile.
 
-## Setup
+## Add a connector
 
-MCP connectors has an Add connector form bound to the selected connection and
-profile. Remote services offer browser sign-in, bearer token, no authentication,
-or custom headers. Programs running on Hermes accept a command, one argument per
-line, and optional environment credentials. The form starts empty and has no
-service-specific presets. Each field includes guidance, and connection and
-authentication selections explain when to use them. Bearer-token help distinguishes
-the automatically added prefix from custom headers, whose values are sent exactly
-as entered. Advanced fields explain OAuth registration, client authentication,
-permissions, callbacks and server-local certificate files.
+Remote services support browser sign-in, bearer tokens, no authentication or custom headers. Programs running on Hermes accept a command, one argument per line and optional environment credentials. Fields explain their format; custom-header values are sent exactly as entered, while bearer-token setup adds the authentication prefix.
 
-Advanced fields support pre-registered OAuth clients, token endpoint client
-authentication, scopes, exact registered callbacks, and server-local certificate,
-private-key and CA paths. Certificate upload, program installation, arbitrary
-configuration import and existing authentication-mode conversion are not part
-of this form. Creating a connector saves configuration; explicit testing starts
-its process or connects to the service. Browser setup proceeds to sign-in.
+Advanced settings support pre-registered OAuth clients, authentication methods, scopes, registered callbacks and certificate/key/CA paths on the server. The form does not upload certificates, install programs, import arbitrary configuration or convert an existing connector's authentication mode.
 
-New connectors use `mcp.servers.add`. Bearer secrets use its `bearer_token` field.
-Custom header/environment values and OAuth client secrets use profile `PUT
-/api/env` and random unique variable references in the connector configuration.
-Secrets are not put inline in config.yaml or persisted on Android. A duplicate
-name is rejected before secret writes. If a provisioning write is unconfirmed,
-Wing preserves the draft and directs the user back to the list before retrying;
-some profile credentials may already have been saved. There is no cross-request
-transaction in stock Hermes, and Wing does not delete credentials speculatively.
+Creating a connector saves its configuration. **Test connection** connects to the service or starts the configured program. Browser authentication proceeds to sign-in.
+
+The open form keeps its draft, including entered credentials, while you edit. Leaving or changing profiles asks for discard confirmation. Draft credentials are not saved on the phone. If setup is unconfirmed, review the connector list before retrying: some credentials may already have been saved on Hermes.
 
 ## Browser sign-in
 
-Wing uses `mcp.servers.oauth.start`, `.callback`, `.poll` and `.cancel` over the
-profile gateway. It binds an HTTP loopback listener on the phone and supplies
-`client_redirect_uri`. Its default port is stable for the saved connection ID,
-profile name and connector name, so ordinary repeated sign-ins reuse the same
-address. An occupied port produces an actionable error rather than silently
-selecting a new callback for a cached registration.
+Start sign-in opens the service's browser authorization page. Wing can receive a supported callback on the phone, or you can paste the full callback URL into the sign-in screen. A received callback is not success until Hermes confirms authorization.
 
-Start sign-in opens the returned browser URL. Automatic loopback receipt and
-manual full-URL paste use the same validation and relay: exact callback
-destination, state, a single code or error, and no duplicate security parameters.
-The optional issuer is relayed to Hermes for validation. Callback receipt is
-not successful authorization; only Hermes's `approved` poll result confirms the
-token exchange. Tokens and refresh remain owned by Hermes. Cancel and route
-disposal cancel the captured session and close the listener; a late poll cannot
-resurrect a cancelled flow. Unknown methods produce update guidance, with no
-REST compatibility path or automatic server upgrade.
+A configured callback remains authoritative. If the phone's callback port is occupied, resolve the displayed error before retrying. Providers can reject callback addresses or client registration. Tokens and renewal are managed by Hermes.
 
-An existing `oauth.redirect_uri` remains authoritative. A configured HTTP
-loopback URI is bound exactly. An explicit non-loopback HTTP(S) callback uses
-manual URL relay, validated against that exact configured destination; it does
-not require Wing to host that address. The authorization URL must advertise the
-expected redirect before Wing opens it. A provider can still reject a callback,
-client identity or registration. Previously cached registrations, a changed
-connection identity, and first-time registration require live verification.
+Cancel closes the sign-in flow. If Hermes lacks the required sign-in support, Wing provides update guidance without upgrading the server automatically. Device-code and other unsupported remote sign-in methods provide instructions to complete login on the same server and profile.
 
-Device-code configuration produces same-host/same-profile terminal guidance.
-The other-sign-in disclosure also explains the CLI path for CIMD-only providers.
-Neither is presented as native remote sign-in support. Users return to Test
-connection after external login, then use **Reconnect MCP tools** to apply
-settings and sign-ins to existing chats. This server-wide action sits below
-the connector list with a short explanation. Its single confirmation explains
-that it affects all profiles and may increase token usage on the next message.
+After external login, return to **Test connection**. Use **Reconnect MCP tools** below the list to apply configuration and sign-ins to existing chats. Its confirmation explains that it affects all server profiles and may increase token usage on the next message.
 
-Verified against stock Hermes main `045eb44363464072637a4661d02bf1d6ce9b9c38`
-on 18 September 2026: `reload.mcp` accepts `confirm: true` on the first request.
-Wing sends that only after the user confirms; cancel sends no RPC. The former
-two-dialog flow asked locally then sent an unconfirmed request, causing Hermes
-to ask again. No `always` flag or approval-setting change is needed.
+## Cached runtime status
 
-## Connection results
+Connector rows and details also show Hermes' last runtime observation, including
+connection and authentication status. Refresh reads this cache without starting
+a connector or testing it. **Sign in again** identifies a reported authentication
+problem. Cached status and an explicit test have separate check times and results;
+a failed refresh keeps the last known observation labelled as such.
 
-Connector detail shows a neutral untested state, a spinner while testing, and a
-green tick with Connected or a red cross with Connection failed afterward. Available tools (count)
-expands the returned tool names and descriptions; failure reasons are retained
-under Failure details. Each fresh test clears the previous result and starts
-with disclosures collapsed. These are explicit test observations, not cached
-runtime health. The screen no longer repeats cached configuration status or
-prompt/resource counts beside the test result.
+## Connected apps
 
-A separate result card was compared with inline status above the actions. Inline
-status keeps Test connection and Sign in close, avoids a second context card,
-and leaves tools one tap away. The tool and failure disclosures are inspected
-in both themes at normal size and at 320 dp with 200% text.
+Hosted app accounts have a separate destination at **Administration → Access and
+connectors → Connected apps**, when supported by your Hermes setup. Add a named
+account, open its authorization link, then use **Check authorization** to confirm
+it. Accounts for the same app can be named, reconnected or removed separately.
 
-## Design and validation
+A chat can ask you to sign in, enable a disabled MCP server or install a
+connector. Use the browser icon for sign-in, the power icon for Enable or the
+download icon for Install. Review the command or address shown in the card and
+enter any credentials requested by Hermes. Return from browser sign-in to see
+Hermes' result or open **More connection actions** to check status or skip a
+target. **Retry** appears on a failed or expired target. The **Close connection
+request** icon (×) closes the card and returns the results so far to Hermes.
+For directory requests, **Browse apps** opens Connected apps with suggestions first.
 
-The task is to add a connector and authorize access for the selected profile.
-A multi-step wizard was compared with a single growing form. The latter keeps
-name/address/authentication together and places provider-specific settings in
-Advanced. Sign-in has one screen with a primary browser action, secondary manual
-completion, status and cancellation. Both use Studio spacing, theme, controls
-and fixed ownership labels. Callback instructions were shortened after reviewing
-the actual enlarged-text render.
+## Check the result
 
-`mcp_oauth_test.dart` covers callback validation/relay, token-confirmation gating,
-repeat login ports, explicit loopback and HTTPS callbacks, wrong overrides,
-device-code handoff, missing RPC, cancellation/disposal races, and a real local
-HTTP callback. `mcp_setup_test.dart` covers profile ownership, separate credential
-storage, duplicate rejection, input validation and user-entered connector setup.
-`administration_mcp_test.dart` retains probe/error/reload regressions.
-`mcp_setup_layout_test.dart` renders both new screens at 390 dp and at 320 dp with
-200% text in both themes, checking action reachability across all authentication
-choices, program setup, populated credential rows and expanded Advanced settings.
+A connector starts untested, shows progress while testing, then reports Connected or Connection failed. Expand **Available tools** for returned names and descriptions, or **Failure details** for the reported reason. A fresh test replaces the previous result.
 
-The 18 September setup guidance revision compares two arrangements: a separate
-help sheet, and explanations beside the active controls. Inline help keeps advice
-with the field it explains and needs no extra taps; optional technical settings
-remain collapsed under Advanced. Help uses Studio secondary text and grows with
-text scaling without a line limit. The primary action remains Add connector, or
-Add and sign in for browser authentication; profile context stays passive.
-
-Guidance was checked against latest upstream main
-`77ecc72bcdd5da0163cca21c8af0e95b26ba3426` on 18 September 2026, verified with
-`git ls-remote`. Inspected the stock
-[configuration reference](https://github.com/NousResearch/hermes-agent/blob/77ecc72bcdd5da0163cca21c8af0e95b26ba3426/website/docs/reference/mcp-config-reference.md),
-[MCP RPC implementation](https://github.com/NousResearch/hermes-agent/blob/77ecc72bcdd5da0163cca21c8af0e95b26ba3426/tui_gateway/methods_tools.py)
-and [OAuth metadata implementation](https://github.com/NousResearch/hermes-agent/blob/77ecc72bcdd5da0163cca21c8af0e95b26ba3426/tools/mcp_oauth.py).
-This revision changes the client form and guidance, with no backend or wire changes.
-Validation: all 36 setup/viewport tests pass, alongside the 40 OAuth and connector
-regressions; targeted static analysis reports no issues. Actual Flutter renders
-under `build/mcp-review/` were inspected in light/dark at 390 dp and at 320 dp with
-200% text. Long field labels move above the input at enlarged text sizes, and
-help text wraps without truncation. These are widget renders, not a new native
-device or live-service acceptance run.
-
-These tests establish client behavior against the verified wire contract. On
-18 September 2026, the user confirmed successful Aspire sign-in and connection
-testing on their deployed Hermes and phone. Aspire advertises PKCE and dynamic
-registration; its callback allowlist is not public.
+A connection check establishes access at that time, rather than proving that every tool action will succeed. Per-tool configuration changes are unavailable. See [Administration](ADMINISTRATION.md) for related profile settings and health checks.

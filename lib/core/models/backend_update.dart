@@ -16,6 +16,9 @@ class BackendUpdateCheck {
   final int? behind;
   final bool? updateAvailable;
   final bool? canApply;
+  final String? message;
+  final String? rollbackTo;
+  final bool failed;
   final List<BackendUpdateCommit> commits;
 
   const BackendUpdateCheck({
@@ -24,6 +27,9 @@ class BackendUpdateCheck {
     required this.behind,
     required this.updateAvailable,
     required this.canApply,
+    required this.message,
+    required this.rollbackTo,
+    required this.failed,
     required this.commits,
   });
 
@@ -37,22 +43,66 @@ class BackendUpdateCheck {
     return BackendUpdateCheck(
       currentVersion: text('current_version'),
       installMethod: text('install_method'),
-      behind: rawBehind is num && rawBehind.isFinite && rawBehind >= 0
-          ? rawBehind.toInt()
-          : null,
+      behind: rawBehind is int && rawBehind >= 0 ? rawBehind : null,
       updateAvailable: value['update_available'] is bool
           ? value['update_available'] as bool
           : null,
       canApply: value['can_apply'] is bool ? value['can_apply'] as bool : null,
+      message: text('message'),
+      rollbackTo: text('rollback_to'),
+      failed:
+          value['can_apply'] == true && (rawBehind is! int || rawBehind < -1),
       commits: List.unmodifiable([
         if (value['commits'] case final List rows)
-          for (final row in rows.take(20))
-            ?BackendUpdateCommit.fromJson(row),
+          for (final row in rows.take(20)) ?BackendUpdateCommit.fromJson(row),
       ]),
     );
   }
 
-  bool get canStart => canApply == true && updateAvailable == true;
+  bool get canStart => !failed && canApply == true && updateAvailable == true;
+}
+
+/// One stock source-check observation, bound to a single install and profile home.
+class BackendUpdateChannel {
+  const BackendUpdateChannel({
+    required this.installId,
+    required this.installPath,
+    required this.home,
+    required this.name,
+    required this.branch,
+    required this.currentSha,
+    required this.targetSha,
+    required this.targetVersion,
+    required this.error,
+    required this.aheadOfRelease,
+    required this.rollback,
+    required this.fetchedAt,
+  });
+
+  final String installId, installPath, home, name, currentSha;
+  final String? branch, targetSha, targetVersion, error;
+  final bool aheadOfRelease, rollback;
+  final int fetchedAt;
+
+  String get label => name == 'main' && branch != null && branch != 'main'
+      ? 'Branch: $branch'
+      : 'Channel: $name';
+
+  bool get canSelect => name != 'main' || branch == 'main';
+
+  bool sameInstallation(BackendUpdateChannel other) =>
+      installId == other.installId &&
+      installPath == other.installPath &&
+      home == other.home &&
+      currentSha == other.currentSha;
+
+  /// Main follows the approved branch's moving tip. Release targets are fixed.
+  bool sameUpdateIntent(BackendUpdateChannel other) =>
+      sameInstallation(other) &&
+      name == other.name &&
+      branch == other.branch &&
+      (name == 'main' || targetSha == other.targetSha) &&
+      rollback == other.rollback;
 }
 
 class BackendUpdateCommit {
@@ -92,13 +142,8 @@ class BackendUpdateCommit {
 class BackendUpdateReceipt {
   final String outcome;
   final int pid;
-  final String finishedAt;
 
-  const BackendUpdateReceipt({
-    required this.outcome,
-    required this.pid,
-    required this.finishedAt,
-  });
+  const BackendUpdateReceipt({required this.outcome, required this.pid});
 
   static BackendUpdateReceipt? fromJson(dynamic value) {
     if (value is! Map ||
@@ -112,11 +157,7 @@ class BackendUpdateReceipt {
     final pid = value['pid'] as int;
     return outcome.isEmpty || pid <= 0 || DateTime.tryParse(finishedAt) == null
         ? null
-        : BackendUpdateReceipt(
-            outcome: outcome,
-            pid: pid,
-            finishedAt: finishedAt,
-          );
+        : BackendUpdateReceipt(outcome: outcome, pid: pid);
   }
 }
 

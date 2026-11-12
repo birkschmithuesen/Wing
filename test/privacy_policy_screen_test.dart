@@ -1,3 +1,6 @@
+import 'package:wing/core/services/voice_preferences_session.dart';
+import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -42,6 +45,8 @@ void main() {
       );
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       tester.view.physicalSize = const Size(320, 780);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
@@ -59,7 +64,14 @@ void main() {
             ),
             home: Scaffold(
               body: AppSettingsContent(
-                preferences: preferences,
+                pluginServer: null,
+                preferences: appPreferences,
+                createVoiceSession: () => VoicePreferencesSession(
+                  preferences: appPreferences,
+                  device: AndroidVoice.instance,
+                  hermesProfileLabel: null,
+                  openHermesSettings: null,
+                ),
                 onChanged: () {},
               ),
             ),

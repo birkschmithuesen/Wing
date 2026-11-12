@@ -1,3 +1,5 @@
+import 'composer_reference.dart';
+
 enum SideQuestionDeliveryState { pending, completed, failed }
 
 enum SideQuestionDeliveryKind { sideQuestion, backgroundTask }
@@ -28,7 +30,9 @@ class SideQuestionDelivery {
   }) => SideQuestionDelivery(
     kind: kind,
     taskId: taskId,
-    question: question?.isNotEmpty == true ? question! : this.question,
+    question: this.question.isNotEmpty && !questionTruncated
+        ? this.question
+        : question ?? this.question,
     state: failed
         ? SideQuestionDeliveryState.failed
         : SideQuestionDeliveryState.completed,
@@ -79,14 +83,25 @@ class SideQuestionDelivery {
         _ => null,
       };
       if (kind == null || state == null) return const [];
+      final prepared = PreparedComposerMessage.parse(prompt);
+      final original =
+          prepared?.message ??
+          (promptTruncated
+              ? PreparedComposerMessage.truncatedMessage(prompt)
+              : null);
       deliveries.add(
         SideQuestionDelivery(
           kind: kind,
           taskId: taskId,
-          question: prompt,
+          question:
+              original ??
+              (promptTruncated &&
+                      prompt.startsWith(PreparedComposerMessage.header)
+                  ? 'Question text is unavailable in this snapshot.'
+                  : prompt),
           state: state,
           result: result is String ? result : '',
-          questionTruncated: promptTruncated,
+          questionTruncated: original == null && promptTruncated,
           resultTruncated: resultTruncated,
         ),
       );

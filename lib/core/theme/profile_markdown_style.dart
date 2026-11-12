@@ -60,14 +60,6 @@ MarkdownStyleSheet profileMarkdownStyle(
       color: colors.surfaceContainerLow,
       borderRadius: WingRadius.card,
     ),
-    // The Markdown renderer scrolls intrinsic tables horizontally rather than
-    // crushing every column into the phone's width.
-    tableColumnWidth: const IntrinsicColumnWidth(),
-    tableScrollbarThumbVisibility: true,
-    // Reserve a gutter so the thumb never paints over the last row.
-    tablePadding: const EdgeInsets.only(bottom: 12),
-    tableBorder: TableBorder.all(color: colors.outlineVariant),
-    tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
     horizontalRuleDecoration: BoxDecoration(
       border: Border(top: BorderSide(color: colors.outlineVariant)),
     ),

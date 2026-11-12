@@ -1,3 +1,6 @@
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/answer_versions.dart';
 import 'package:wing/core/services/connection_manager.dart';
@@ -11,17 +14,24 @@ void main() {
     'live fork preserves the chosen answer across hidden gateway rows',
     () async {
       SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
         connectionIdentity: 'fork-qa-settings',
-        connection: SavedConnection(
-          id: 'fork-qa',
-          label: 'Fork QA',
-          host: '127.0.0.1',
-          port: port,
-          dashboardPortOverride: port,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'fork-qa',
+            label: 'Fork QA',
+            host: '127.0.0.1',
+            port: port,
+            dashboardPortOverride: port,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
-        preferences: await SharedPreferences.getInstance(),
+        preferences: preferences,
+        appPreferences: appPreferences,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -63,7 +73,7 @@ void main() {
       );
       final source = resource.chat!;
       expect(
-        source.messages
+        source.reading.messages
             .where((m) => !isHiddenAnswerMessage(m))
             .map(answerMessageText),
         [
@@ -77,12 +87,12 @@ void main() {
       );
       final child = (await controller.branchAnswer(
         source,
-        source.messages.indexWhere(
+        source.reading.messages.indexWhere(
           (m) => answerMessageText(m) == 'Second QA answer',
         ),
       ))!;
       expect(
-        child.messages
+        child.reading.messages
             .where((m) => !isHiddenAnswerMessage(m))
             .map(answerMessageText),
         [
@@ -92,7 +102,10 @@ void main() {
           'Second QA answer',
         ],
       );
-      expect(source.messages.where((m) => !isHiddenAnswerMessage(m)).length, 6);
+      expect(
+        source.reading.messages.where((m) => !isHiddenAnswerMessage(m)).length,
+        6,
+      );
     },
     skip: port == 0,
     timeout: const Timeout(Duration(minutes: 2)),

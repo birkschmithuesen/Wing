@@ -1,3 +1,7 @@
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -56,83 +60,99 @@ token=not-for-alerts
     );
   });
 
-  test('chat title and ownership survive preview hiding and per-chat ID stability', () {
-    TurnNotification alert(
-      String profile,
-      ChatNotificationContent content, {
-      bool preview = true,
-    }) => TurnNotification.chat(
-      payload: jsonEncode({
-        'connection': 'host',
-        'profile': profile,
-        'session': 'same',
-      }),
-      title: 'Same chat name',
-      scopeLabel: 'Home / $profile',
-      content: content,
-      showPreview: preview,
-    );
-    final reply = alert('a', ChatNotificationContent.reply('Actual result'));
-    final input = alert('a', ChatNotificationContent.input('Which target?'));
-    final hidden = alert(
-      'a',
-      ChatNotificationContent.reply('Actual result'),
-      preview: false,
-    );
-    expect(reply.id, input.id);
-    expect(
-      reply.id,
-      isNot(alert('b', ChatNotificationContent.reply('Other')).id),
-    );
-    expect(reply.id, hidden.id);
-    expect(hidden.title, 'Same chat name');
-    expect(hidden.body, 'Reply ready');
-    expect(hidden.expandedBody, 'Reply ready');
-    expect(reply.scopeLabel, 'Home / a');
-    expect(
-      reply.payload,
-      isNot(alert('b', ChatNotificationContent.updated).payload),
-    );
-    expect(
-      TurnNotification.chat(
-        payload: 'target',
-        title: '  ',
-        scopeLabel: '',
-        content: ChatNotificationContent.updated,
-        showPreview: true,
-      ).title,
-      'Untitled chat',
-    );
-  });
+  test(
+    'chat title and ownership survive preview hiding and per-chat ID stability',
+    () {
+      TurnNotification alert(
+        String profile,
+        ChatNotificationContent content, {
+        bool preview = true,
+      }) => TurnNotification.chat(
+        payload: jsonEncode({
+          'connection': 'host',
+          'profile': profile,
+          'session': 'same',
+        }),
+        title: 'Same chat name',
+        scopeLabel: 'Home / $profile',
+        content: content,
+        showPreview: preview,
+      );
+      final reply = alert('a', ChatNotificationContent.reply('Actual result'));
+      final input = alert('a', ChatNotificationContent.input('Which target?'));
+      final hidden = alert(
+        'a',
+        ChatNotificationContent.reply('Actual result'),
+        preview: false,
+      );
+      expect(reply.id, input.id);
+      expect(
+        reply.id,
+        isNot(alert('b', ChatNotificationContent.reply('Other')).id),
+      );
+      expect(reply.id, hidden.id);
+      expect(hidden.title, 'Same chat name');
+      expect(hidden.body, 'Reply ready');
+      expect(hidden.expandedBody, 'Reply ready');
+      expect(reply.scopeLabel, 'Home / a');
+      expect(
+        reply.payload,
+        isNot(alert('b', ChatNotificationContent.updated).payload),
+      );
+      expect(
+        TurnNotification.chat(
+          payload: 'target',
+          title: '  ',
+          scopeLabel: '',
+          content: ChatNotificationContent.updated,
+          showPreview: true,
+        ).title,
+        'Untitled chat',
+      );
+    },
+  );
 
   group('controller event content', () {
     late fixture.Host host;
     late ProfileWorkspaceController controller;
+    late AppPreferences appPreferences;
     late ProfileChat chat;
     late List<ProfileNotification> alerts;
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       host = fixture.Host();
       alerts = [];
+      final preferences = await SharedPreferences.getInstance();
+      appPreferences = AppPreferences(preferences);
       controller = ProfileWorkspaceController(
         connectionIdentity: 'identity',
-        connection: SavedConnection(
-          id: 'host',
-          label: 'Home',
-          host: 'localhost',
-          port: 1,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'host',
+            label: 'Home',
+            host: 'localhost',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
-        preferences: await SharedPreferences.getInstance(),
+        preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: host.gateway,
         onAttention: (notification) async => alerts.add(notification),
       );
       await controller.initialize();
-      chat = await controller.createChat();
-      chat.title = 'Original title';
-      chat.status = ProfileTurnStatus.running;
+      chat = await controller.createChat(canDispatch: () => true);
+      emitChatEvent(controller, chat, 'session.title', {
+        'session_id': chat.key.sessionId,
+        'title': 'Original title',
+      });
+      emitChatEvent(controller, chat, 'message.start');
     });
-    tearDown(() => controller.dispose());
+    tearDown(() {
+      controller.dispose();
+      appPreferences.dispose();
+    });
 
     test('visible approval still alerts when action is required', () {
       controller.setRouteVisibility(controller, true);
@@ -155,24 +175,24 @@ token=not-for-alerts
             'choices': ['once', 'deny'],
           });
         }
-        expect(chat.approval?['request_id'], 'first');
+        expect(chat.runtime.approval?.requestId, 'first');
         await controller.approve(
           chat,
           'once',
-          requestId: chat.approval!['request_id'] as String,
+          requestId: chat.runtime.approval!.requestId,
         );
-        expect(chat.approval?['request_id'], 'second');
-        expect(chat.status, ProfileTurnStatus.attention);
+        expect(chat.runtime.approval?.requestId, 'second');
+        expect(chat.runtime.needsInput, isTrue);
         await controller.approve(
           chat,
           'deny',
-          requestId: chat.approval!['request_id'] as String,
+          requestId: chat.runtime.approval!.requestId,
         );
-        expect(chat.approval, isNull);
+        expect(chat.runtime.approval, isNull);
         expect(
           host.calls
               .where((c) => c.$2 == 'approval.respond')
-              .map((c) => c.$3['request_id']),
+              .map((c) => c.$3['prompt_id']),
           ['first', 'second'],
         );
       },
@@ -186,8 +206,11 @@ token=not-for-alerts
           'text': 'This turn result',
           'mobile_push_event_id': 'event',
         });
-        chat.title = 'Renamed while awaiting history';
-        chat.streaming = 'Newer text';
+        emitChatEvent(controller, chat, 'session.title', {
+          'session_id': chat.key.sessionId,
+          'title': 'Renamed while awaiting history',
+        });
+        chat.reading.updateStreaming('Newer text');
         host.historyMessages = [
           {'role': 'assistant', 'content': 'Unrelated history'},
         ];
@@ -206,29 +229,32 @@ token=not-for-alerts
       expect(alerts.single.content.preview, 'Open the chat to read the reply.');
     });
 
-    test('delivered turns retain setup, A, B and identical C reply text', () async {
-      for (final text in [
-        'Round setup',
-        'WING-N02-A: First result',
-        'WING-N02-B: Replacement result',
-        'WING-N02-B: Replacement result',
-      ]) {
-        host.event('a', 'message.start');
-        host.event('a', 'message.complete', {'text': text});
-        await Future<void>.delayed(Duration.zero);
-      }
-      expect(alerts.map((notice) => notice.content.preview), [
-        'Round setup',
-        'WING-N02-A: First result',
-        'WING-N02-B: Replacement result',
-        'WING-N02-B: Replacement result',
-      ]);
-    });
+    test(
+      'delivered turns retain setup, A, B and identical C reply text',
+      () async {
+        for (final text in [
+          'Round setup',
+          'WING-N02-A: First result',
+          'WING-N02-B: Replacement result',
+          'WING-N02-B: Replacement result',
+        ]) {
+          host.event('a', 'message.start');
+          host.event('a', 'message.complete', {'text': text});
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(alerts.map((notice) => notice.content.preview), [
+          'Round setup',
+          'WING-N02-A: First result',
+          'WING-N02-B: Replacement result',
+          'WING-N02-B: Replacement result',
+        ]);
+      },
+    );
 
     test(
       'side and background results use their own content while main runs',
       () {
-        chat.streaming = 'Main reply';
+        chat.reading.updateStreaming('Main reply');
         host.event('a', 'btw.complete', {
           'text': 'Side answer',
           'task_id': 'side',
@@ -242,7 +268,7 @@ token=not-for-alerts
           'Background answer',
         ]);
         expect(alerts.every((e) => e.content.status == 'Reply ready'), isTrue);
-        expect(chat.status, ProfileTurnStatus.running);
+        expect(chat.runtime.execution, ChatExecution.running);
       },
     );
 
@@ -302,7 +328,7 @@ token=not-for-alerts
         );
         expect(
           alerts.single.content.status,
-          status == 'error' ? 'Failed' : 'Stopped',
+          status == 'error' ? 'Turn failed' : 'Stopped',
         );
         expect(
           alerts.single.content.preview,

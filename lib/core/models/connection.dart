@@ -1,7 +1,5 @@
-import 'dashboard_oauth_session.dart';
+import 'dashboard_oauth_grant.dart';
 import 'connection_icon.dart';
-
-export 'dashboard_oauth_session.dart';
 
 export 'connection_icon.dart';
 
@@ -62,6 +60,91 @@ Map<String, String> validateGatewayHeaders(Map<String, String> headers) {
     validated[entry.key] = entry.value;
   }
   return Map<String, String>.unmodifiable(validated);
+}
+
+/// Raw local header text, including the identity of a hidden saved value.
+class GatewayHeaderDraft {
+  const GatewayHeaderDraft({
+    required this.savedName,
+    required this.name,
+    required this.value,
+  });
+  final String? savedName;
+  final String name, value;
+
+  bool get keepsSavedValue =>
+      savedName != null &&
+      name.trim().toLowerCase() == savedName!.toLowerCase() &&
+      value.isEmpty;
+}
+
+/// A captured header edit. Null update values retain case-insensitive saved rows;
+/// omitted rows remove them. Invalid local text produces no publishable update.
+class GatewayHeaderEdit {
+  GatewayHeaderEdit(Iterable<GatewayHeaderDraft> rows)
+    : rows = List.unmodifiable(rows);
+
+  GatewayHeaderEdit.retaining(Iterable<String> names)
+    : rows = List.unmodifiable(
+        names.map(
+          (name) => GatewayHeaderDraft(savedName: name, name: name, value: ''),
+        ),
+      );
+
+  final List<GatewayHeaderDraft> rows;
+
+  String? nameError(int index) {
+    final name = rows[index].name.trim();
+    if (name.isEmpty) return 'Header name is required';
+    if (rows.indexed.any(
+      (entry) =>
+          entry.$1 != index &&
+          entry.$2.name.trim().toLowerCase() == name.toLowerCase(),
+    )) {
+      return 'Header names must be unique.';
+    }
+    try {
+      validateGatewayHeaders({name: 'value'});
+      return null;
+    } on FormatException catch (error) {
+      return error.message;
+    }
+  }
+
+  String? valueError(int index) {
+    final row = rows[index];
+    if (row.keepsSavedValue) return null;
+    if (row.value.isEmpty) return 'Value is required';
+    try {
+      validateGatewayHeaders({'X-Hermes-Validation': row.value});
+      return null;
+    } on FormatException catch (error) {
+      return error.message;
+    }
+  }
+
+  Map<String, String?>? get update {
+    final names = <String>{};
+    final result = <String, String?>{};
+    for (final row in rows) {
+      final name = row.name.trim();
+      if (name.isEmpty || !names.add(name.toLowerCase())) return null;
+      final value = row.keepsSavedValue ? null : row.value;
+      try {
+        validateGatewayHeaders({name: value ?? 'value'});
+      } on FormatException {
+        return null;
+      }
+      result[name] = value;
+    }
+    return Map.unmodifiable(result);
+  }
+
+  Map<String, String> resolve(Map<String, String> existing) {
+    final edited = update;
+    if (edited == null) throw const FormatException('Invalid header edits.');
+    return resolveGatewayHeaderUpdate(existing, edited);
+  }
 }
 
 /// Resolves an authoritative editor snapshot against existing secret values.
@@ -143,8 +226,23 @@ class SavedConnection {
   final String? dashboardPassword;
   final String? cloudInstanceId;
   final String? cloudOrganization;
-  final DashboardOAuthSession? dashboardOAuth;
+  final DashboardOAuthGrant? dashboardGrant;
   bool get isCloud => cloudInstanceId != null;
+
+  /// Update ownership also covers a Cloud instance entered as a direct URL.
+  /// This does not change how a saved connection authenticates.
+  bool get cloudManagedUpdates {
+    if (isCloud) return true;
+    final endpoint = desktopGatewayUrl ?? host;
+    final hostname = Uri.tryParse(
+      endpoint.contains('://') ? endpoint : 'https://$endpoint',
+    )?.host.toLowerCase();
+    return hostname != null &&
+        const [
+          '.agents.nousresearch.com',
+          '.agents.staging-nousresearch.com',
+        ].any(hostname.endsWith);
+  }
 
   SavedConnection({
     required this.id,
@@ -164,7 +262,7 @@ class SavedConnection {
     this.dashboardPassword,
     this.cloudInstanceId,
     this.cloudOrganization,
-    this.dashboardOAuth,
+    this.dashboardGrant,
   }) : gatewayHeaders = validateGatewayHeaders(gatewayHeaders);
 
   String get baseUrl {
@@ -279,6 +377,16 @@ class SavedConnection {
       return (s == null || s.isEmpty) ? null : s;
     }
 
+    if (const {
+      'api_key',
+      'dashboard_password',
+      'gateway_headers',
+      'dashboard_oauth',
+    }.any(map.containsKey)) {
+      throw const FormatException(
+        'Connection metadata cannot contain credentials.',
+      );
+    }
     return SavedConnection(
       id: map['id'] as String,
       cloudInstanceId: nonEmpty(map['cloud_instance_id']),
@@ -287,9 +395,7 @@ class SavedConnection {
       icon: ConnectionIcon.fromStored(map['icon']),
       host: map['host'] as String,
       port: (map['port'] as int?) ?? 8642,
-      // Legacy plaintext fields are accepted only so ConnectionManager can
-      // migrate existing installs before rewriting sanitized metadata.
-      apiKey: (map['api_key'] as String?) ?? '',
+      apiKey: '',
       useHttps: (map['use_https'] as bool?) ?? false,
       gatewayPrefix: map['gateway_prefix'] as String?,
       dashboardPrefix: map['dashboard_prefix'] as String?,
@@ -297,7 +403,6 @@ class SavedConnection {
       desktopGatewayUrl: nonEmpty(map['desktop_gateway_url']),
       dashboardPortOverride: map['dashboard_port'] as int?,
       dashboardUsername: nonEmpty(map['dashboard_username']),
-      dashboardPassword: nonEmpty(map['dashboard_password']),
     );
   }
 
@@ -320,7 +425,7 @@ class SavedConnection {
     String? dashboardPassword,
     String? cloudInstanceId,
     String? cloudOrganization,
-    DashboardOAuthSession? dashboardOAuth,
+    DashboardOAuthGrant? dashboardGrant,
     Map<String, String>? gatewayHeaders,
     bool clearGatewayPrefix = false,
     bool clearDashboardPrefix = false,
@@ -333,7 +438,7 @@ class SavedConnection {
       id: id,
       cloudInstanceId: cloudInstanceId ?? this.cloudInstanceId,
       cloudOrganization: cloudOrganization ?? this.cloudOrganization,
-      dashboardOAuth: dashboardOAuth ?? this.dashboardOAuth,
+      dashboardGrant: dashboardGrant ?? this.dashboardGrant,
       label: label ?? this.label,
       icon: icon ?? this.icon,
       host: host ?? this.host,

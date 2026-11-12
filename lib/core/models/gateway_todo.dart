@@ -2,6 +2,41 @@ import 'dart:convert';
 
 enum GatewayTodoStatus { pending, inProgress, completed, cancelled }
 
+/// Session task observations and their membership in the current work dock.
+/// Saved Activity reads its own receipts independently of this live state.
+class GatewayTodoState {
+  List<GatewayTodo> _todos = const [];
+  int? _revision;
+  int? _completionTurn;
+
+  List<GatewayTodo> get todos => _todos;
+  int? get revision => _revision;
+
+  List<GatewayTodo> current({required bool active, required int turn}) =>
+      _todos.any(
+            (todo) =>
+                todo.status == GatewayTodoStatus.pending ||
+                todo.status == GatewayTodoStatus.inProgress,
+          ) ||
+          active && _completionTurn == turn
+      ? _todos
+      : const [];
+
+  /// Only a new live receipt can associate completion with an active turn.
+  /// Hydration and replay of the same revision cannot revive finished work.
+  bool observe(GatewayTodoSnapshot snapshot, {int? liveTurn}) {
+    if (_revision != null &&
+        snapshot.revision != null &&
+        snapshot.revision! <= _revision!) {
+      return false;
+    }
+    _todos = List.unmodifiable(snapshot.todos);
+    _revision = snapshot.revision;
+    _completionTurn = liveTurn;
+    return true;
+  }
+}
+
 class GatewayTodo {
   final String id;
   final String content;

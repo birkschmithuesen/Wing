@@ -1,3 +1,4 @@
+import 'connection_access.dart';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'connection_manager.dart';
@@ -26,10 +27,8 @@ class HermesVoice implements RemoteVoice {
     required this.closeClient,
   });
 
-  factory HermesVoice.forConnection(
-    SavedConnection connection,
-    String profile,
-  ) {
+  factory HermesVoice.forConnection(ConnectionAccess access, String profile) {
+    final connection = access.connection;
     final client = DashboardClient(
       host: connection.host,
       port: connection.dashboardPort,
@@ -38,9 +37,10 @@ class HermesVoice implements RemoteVoice {
       proxied: connection.dashboardProxied,
       username: connection.dashboardUsername,
       password: connection.dashboardPassword,
-      dashboardOAuth: connection.dashboardOAuth,
+      dashboardOAuth: access.dashboardOAuth,
       requiresOAuth: connection.isCloud,
       gatewayHeaders: connection.gatewayHeaders,
+      authentication: access.dashboardAuthentication,
     );
     return HermesVoice(
       profile: profile,

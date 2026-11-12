@@ -1,0 +1,287 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "name": "direct-file",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { File('x').delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "prefix-file",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io' as io;\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { io.File('x').delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "directory",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { Directory('x').delete(recursive: true); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "link",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { Link('x').deleteSync(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "typed-variable",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(File file) { file.delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "constructor-tearoff",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { final make = File.new; make(\"x\"); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "alias",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\ntypedef Cache = File;\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { Cache('x').delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "alias-chain",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\ntypedef Cache = File; typedef Cache2 = Cache;\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { Cache2('x').delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "reexport",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'exported.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { File('x').delete(); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/exported.dart": {
+          "source": "export 'dart:io';",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "general-remove",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'attachment_draft_service.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(AttachmentDraftService service) { service.removeAll([]); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/attachment_draft_service.dart": {
+          "source": "class AttachmentDraftService { void removeAll(Object value) {} void removeCachedFile(Object value) {} Object validateDeletedDraftCleanup(Object value) => value; void removeDeletedDraftCleanup(Object value) {} }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "remove-cascade",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'attachment_draft_service.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(AttachmentDraftService service) { service..removeCachedFile(1); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/attachment_draft_service.dart": {
+          "source": "class AttachmentDraftService { void removeAll(Object value) {} void removeCachedFile(Object value) {} Object validateDeletedDraftCleanup(Object value) => value; void removeDeletedDraftCleanup(Object value) {} }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "remove-tearoff",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'attachment_draft_service.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(AttachmentDraftService service) { final remove = service.removeAll; remove([]); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/attachment_draft_service.dart": {
+          "source": "class AttachmentDraftService { void removeAll(Object value) {} void removeCachedFile(Object value) {} Object validateDeletedDraftCleanup(Object value) => value; void removeDeletedDraftCleanup(Object value) {} }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "strict-batch",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'attachment_draft_service.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(AttachmentDraftService service) { final batch = service.validateDeletedDraftCleanup([]); service.removeDeletedDraftCleanup(batch); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/attachment_draft_service.dart": {
+          "source": "class AttachmentDraftService { void removeAll(Object value) {} void removeCachedFile(Object value) {} Object validateDeletedDraftCleanup(Object value) => value; void removeDeletedDraftCleanup(Object value) {} }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "unrelated-names",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class File { void delete() {} void removeAll(Object value) {} }\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { File().delete(); File().removeAll([]); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "other-controller-method",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\nclass ProfileWorkspaceController { void upload() { File('x').delete(); } void _cleanupDeletedDraft() {} }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "unrelated-store-helper",
+      "exit": 0,
+      "files": {
+        "lib/core/services/deleted_draft_cleanup_store.dart": {
+          "source": "import 'dart:io';\nclass Other { void clean() { File('x').delete(); } }\nclass DeletedDraftCleanupStore {}",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "store-file",
+      "exit": 1,
+      "files": {
+        "lib/core/services/deleted_draft_cleanup_store.dart": {
+          "source": "import 'dart:io';\nclass DeletedDraftCleanupStore { void complete() { File('x').delete(); } }",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft(dynamic service) { service.removeAll([]); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "unresolved-file",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { File('x').delete(); }\n}\n",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "part-provenance",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'dart:io';\npart 'cleanup_part.dart';",
+          "role": "application"
+        },
+        "lib/core/services/cleanup_part.dart": {
+          "source": "part of 'profile_workspace_controller.dart';\nclass ProfileWorkspaceController { void _cleanupDeletedDraft() { File('x').delete(); } }",
+          "role": "application",
+          "library": "lib/core/services/profile_workspace_controller.dart"
+        }
+      }
+    },
+    {
+      "name": "conditional-is-unverifiable",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "import 'exported.dart' if (dart.library.io) 'alternate.dart';\nclass ProfileWorkspaceController {\n  void _cleanupDeletedDraft() { File('x').delete(); }\n}\n",
+          "role": "application"
+        },
+        "lib/core/services/exported.dart": {
+          "source": "export 'dart:io';",
+          "role": "application"
+        },
+        "lib/core/services/alternate.dart": {
+          "source": "export 'dart:io';",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "malformed-source",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileWorkspaceController {",
+          "role": "application"
+        }
+      }
+    },
+    {
+      "name": "unrelated-extension",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "role": "application",
+          "source": "extension Nearby on List<int> { void removeAll(Object value) {} }\nclass ProfileWorkspaceController { void _cleanupDeletedDraft() { <int>[1].removeAll([]); } }"
+        }
+      }
+    },
+    {
+      "name": "definition-part-removal",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "role": "application",
+          "source": "import 'attachment_draft_service.dart';\nclass ProfileWorkspaceController { void _cleanupDeletedDraft(AttachmentDraftService s) { s.removeAll([]); } }"
+        },
+        "lib/core/services/attachment_draft_service.dart": {
+          "role": "application",
+          "source": "part 'attachment_part.dart';"
+        },
+        "lib/core/services/attachment_part.dart": {
+          "role": "application",
+          "library": "lib/core/services/attachment_draft_service.dart",
+          "source": "part of 'attachment_draft_service.dart';\nclass AttachmentDraftService { void removeAll(Object value) {} }"
+        }
+      }
+    }
+  ]
+}

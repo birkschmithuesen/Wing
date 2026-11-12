@@ -6,10 +6,6 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import '../models/chat_notification_content.dart';
 import '../models/notification_focus.dart';
 
-const completionNotificationsKey = 'completion_notifications';
-const attentionNotificationsKey = 'attention_notifications';
-const notificationPreviewsKey = 'notification_message_previews';
-
 /// The Android/iOS notification channel a [TurnNotification] belongs to.
 ///
 /// Describing the channel as data keeps platform delivery testable.
@@ -91,7 +87,6 @@ class TurnNotification {
     required String scopeLabel,
     required ChatNotificationContent content,
     required bool showPreview,
-    String? eventId,
     String? chatIdentity,
     NotificationFocus? focus,
     String? revision,
@@ -154,8 +149,6 @@ abstract class TurnNotificationSink {
   Future<void> show(TurnNotification notification);
 
   Future<void> cancel(int id);
-
-  Future<void> cancelAll();
 }
 
 /// Default sink backed by `flutter_local_notifications`.
@@ -312,18 +305,10 @@ class PluginTurnNotificationSink implements TurnNotificationSink {
 
   @override
   Future<void> cancel(int id) => _plugin.cancel(id: id);
-
-  @override
-  Future<void> cancelAll() => _plugin.cancelAll();
 }
 
-/// Delivers Android notifications when a gateway turn completes while the app
-/// is backgrounded, mirroring the Hermes Desktop tray notification behaviour.
-///
-/// The service owns completion and action-required notification channels and exposes
-/// one idempotent [ensureInitialized] method safe to call from any lifecycle
-/// point (including before the Flutter engine binding is ready).
-class TurnNotificationService {
+/// Canonical notification channels and cross-process notification identifiers.
+abstract final class TurnNotificationService {
   static const turnChannel = TurnNotificationChannel(
     id: 'wing_turn_notifications',
     name: 'Wing Turns',
@@ -336,87 +321,6 @@ class TurnNotificationService {
     description:
         'Approvals, questions and failed turns that need your attention',
   );
-
-  final TurnNotificationSink _sink;
-
-  bool _initialized = false;
-  bool _permissionGranted = true;
-
-  TurnNotificationService({
-    TurnNotificationSink? sink,
-    FlutterLocalNotificationsPlugin? plugin,
-  }) : _sink = sink ?? PluginTurnNotificationSink(plugin: plugin);
-
-  /// Whether the platform currently allows Wing to post notifications.
-  ///
-  /// `false` means Android 13+ denied POST_NOTIFICATIONS: turns still complete
-  /// but the OS drops every notification, so the UI can surface that instead of
-  /// leaving the user wondering why nothing arrives.
-  bool get permissionGranted => _permissionGranted;
-
-  /// One-shot initialisation of the Wing notification channel.
-  ///
-  /// Safe to call repeatedly — once it has succeeded, subsequent calls are
-  /// no-ops. A failed attempt (platform channel unavailable, e.g. in tests)
-  /// degrades to a silent no-op and may be retried later.
-  Future<void> ensureInitialized() async {
-    if (_initialized) return;
-
-    try {
-      await _sink.initialize();
-      _initialized = true;
-    } catch (_) {
-      // Platform not available (e.g. test environment) — notifications
-      // silently degrade to no-op.
-      return;
-    }
-
-    // Android 13+ denies POST_NOTIFICATIONS until it is requested at runtime,
-    // even though the manifest declares it. Without this, every notification
-    // is dropped by the OS with no error surfaced anywhere.
-    try {
-      final granted = await _sink.requestPermission();
-      _permissionGranted = granted ?? true;
-    } catch (_) {
-      // A failing permission channel must not break the app; assume the
-      // platform imposes no runtime gate rather than blocking notifications.
-      _permissionGranted = true;
-    }
-  }
-
-  /// Posts a notification when a gateway turn completes while the app is
-  /// backgrounded.
-  ///
-  /// [turnSummary] is a short description (e.g. session title or prompt
-  /// excerpt); [turnId] ensures the notification is stable and replaceable.
-  Future<void> showTurnCompleted({
-    required String turnSummary,
-    required String turnId,
-  }) async {
-    if (!_initialized) return;
-
-    await _sink.show(
-      TurnNotification(
-        id: notificationIdFor(turnId),
-        title: 'Wing response ready',
-        body: turnSummary,
-        payload: turnId,
-        channel: turnChannel,
-      ),
-    );
-  }
-
-  /// Cancels a specific turn notification.
-  Future<void> cancelTurnCompleted(String turnId) async {
-    if (!_initialized) return;
-    await _sink.cancel(notificationIdFor(turnId));
-  }
-
-  /// Removes all Wing turn notifications.
-  Future<void> cancelAll() async {
-    if (!_initialized) return;
-    await _sink.cancelAll();
-  }
 
   /// Stable, non-negative Android notification id derived from [turnId].
   ///

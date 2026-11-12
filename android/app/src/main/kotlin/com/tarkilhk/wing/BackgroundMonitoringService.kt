@@ -2,7 +2,6 @@ package com.tarkilhk.wing
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -18,7 +17,9 @@ class BackgroundMonitoringService : Service() {
     private var builder: NotificationCompat.Builder? = null
     fun updateSummary() {
         val notification = builder ?: return
-        notification.setContentTitle(MonitoringRuntime.summary["title"])
+        notification.setContentIntent(ChatNotifications.monitoringIntent(
+            this, notificationId, MonitoringRuntime.summary["payload"].orEmpty()))
+            .setContentTitle(MonitoringRuntime.summary["title"])
             .setContentText(MonitoringRuntime.summary["text"])
             .setStyle(NotificationCompat.BigTextStyle().bigText(MonitoringRuntime.summary["text"]))
         val manager = getSystemService(NotificationManager::class.java)
@@ -47,21 +48,13 @@ class BackgroundMonitoringService : Service() {
                 })
                 check(manager.getNotificationChannel(channelId).importance != NotificationManager.IMPORTANCE_NONE)
             }
-            val open = PendingIntent.getActivity(
-                this, notificationId,
-                Intent(this, MainActivity::class.java).apply {
-                    action = Intent.ACTION_MAIN
-                    addCategory(Intent.CATEGORY_LAUNCHER)
-                    this.flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP
-                },
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
             val builder = NotificationCompat.Builder(this, channelId)
                 .setSmallIcon(R.drawable.ic_stat_monitoring)
                 .setContentTitle(MonitoringRuntime.summary["title"])
                 .setContentText(MonitoringRuntime.summary["text"])
                 .setStyle(NotificationCompat.BigTextStyle().bigText(MonitoringRuntime.summary["text"]))
-                .setContentIntent(open)
+                .setContentIntent(ChatNotifications.monitoringIntent(
+                    this, notificationId, MonitoringRuntime.summary["payload"].orEmpty()))
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
@@ -75,8 +68,6 @@ class BackgroundMonitoringService : Service() {
             } else {
                 startForeground(notificationId, notification)
             }
-            // The foreground service owns exactly one monitoring card.
-            manager.cancel(summaryId)
             if (wakeLock == null) {
                 wakeLock = getSystemService(PowerManager::class.java)
                     .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "$packageName:hermes-monitoring")
@@ -97,7 +88,6 @@ class BackgroundMonitoringService : Service() {
         wakeLock?.let { if (it.isHeld) it.release() }
         wakeLock = null
         stopForeground(STOP_FOREGROUND_REMOVE)
-        getSystemService(NotificationManager::class.java).cancel(summaryId)
         MonitoringRuntime.serviceDestroyed()
         super.onDestroy()
     }
@@ -107,6 +97,5 @@ class BackgroundMonitoringService : Service() {
             private set
         private const val channelId = "hermes_monitoring"
         private const val notificationId = 214601
-        private const val summaryId = 214602
     }
 }

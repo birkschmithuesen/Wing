@@ -1,3 +1,8 @@
+import 'package:wing/core/models/model_catalog.dart';
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
+import 'package:wing/core/models/model_choice.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -12,7 +17,6 @@ import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
-import 'package:wing/core/widgets/model_chooser.dart';
 import 'package:wing/core/widgets/gateway_approval_panel.dart';
 
 /// Opt-in device test. Supply an explicitly authorized connection JSON in the
@@ -34,7 +38,16 @@ void main() {
         final fixture = File('${support.path}/approval-connection.json');
         final map =
             jsonDecode(await fixture.readAsString()) as Map<String, dynamic>;
-        final connection = SavedConnection.fromMap(map).copyWith(
+        // This opt-in fixture has explicit private credentials; the metadata
+        // reader never accepts secrets. Parse its current fields separately.
+        final metadata = Map<String, dynamic>.of(map)
+          ..remove('api_key')
+          ..remove('dashboard_password')
+          ..remove('gateway_headers')
+          ..remove('dashboard_oauth');
+        final connection = SavedConnection.fromMap(metadata).copyWith(
+          apiKey: map['api_key'] as String? ?? '',
+          dashboardPassword: map['dashboard_password'] as String?,
           gatewayHeaders: Map<String, String>.from(
             map['gateway_headers'] as Map? ?? {},
           ),
@@ -43,12 +56,22 @@ void main() {
         final wireRequests = <String>{};
         String? runtime;
         ModelChoice? luna;
+        final fixturePreferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(fixturePreferences);
+        addTearDown(appPreferences.dispose);
         final controller = ProfileWorkspaceController(
+          appPreferences: appPreferences,
           connectionIdentity: 'approval-device-qa',
-          connection: connection,
-          preferences: await SharedPreferences.getInstance(),
+          access: ConnectionAccess(
+            connection: connection,
+            dashboardOAuth: null,
+          ),
+          preferences: fixturePreferences,
           gatewayFactory: (scope) {
-            final wire = ProfileGateway.forConnection(connection, scope);
+            final wire = ProfileGateway.forConnection(
+              ConnectionAccess(connection: connection, dashboardOAuth: null),
+              scope,
+            );
             final gateway = ProfileGateway(
               scope: scope,
               discover: wire.discover,
@@ -61,8 +84,8 @@ void main() {
                   if (method == 'session.create') ...{
                     'model': luna!.model,
                     'provider': luna.provider,
-                    'reasoning_effort': 'low',
-                    'fast': false,
+                    'reasoning': 'low',
+                    'service_tier': 'normal',
                     'title': 'Wing approval queue device QA',
                   },
                 });
@@ -98,16 +121,16 @@ void main() {
         if (profile.isNotEmpty) {
           expect(await controller.switchProfile(profile), isTrue);
         }
-        final options = ModelChoice.fromOptions(
+        final options = ModelCatalog.fromOptions(
           await controller.current!.gateway.read('model/options'),
-        );
+        ).choices;
         luna = options.firstWhere((choice) => choice.model == 'gpt-5.6-luna');
-        final chat = await controller.createChat();
-        runtime = chat.runtimeId;
+        final chat = await controller.createChat(canDispatch: () => true);
+        runtime = chat.runtime.runtimeId;
         addTearDown(() async {
-          if (chat.busy) await controller.stop(chat);
+          if (chat.runtime.blocksTurnAdmission) await controller.stop(chat);
           await controller.current!.gateway.call('session.close', {
-            'session_id': chat.runtimeId,
+            'session_id': chat.runtime.runtimeId,
           });
         });
         expect(
@@ -148,7 +171,7 @@ void main() {
         Future<void> restoreApprovalMode() async {
           if (!restoreMode) return;
           await controller.current!.gateway.call('config.set', {
-            'session_id': chat.runtimeId,
+            'session_id': chat.runtime.runtimeId,
             'key': 'approvals.mode',
             'value': originalMode,
           });
@@ -160,7 +183,7 @@ void main() {
           restoreMode = true;
           addTearDown(restoreApprovalMode);
           await controller.current!.gateway.call('config.set', {
-            'session_id': chat.runtimeId,
+            'session_id': chat.runtime.runtimeId,
             'key': 'approvals.mode',
             'value': 'manual',
           });
@@ -173,7 +196,7 @@ void main() {
                   'Wait for both results, then reply DONE.\n${scripts.join('\n')}';
         await controller.updateDraft(chat, prompt);
         await controller.send(chat);
-        expect(chat.error, isNull);
+        expect(chat.runtime.error, isNull);
 
         Future<void> until(bool Function() ready, String reason) async {
           final deadline = DateTime.now().add(const Duration(seconds: 90));
@@ -181,7 +204,7 @@ void main() {
             await tester.pump(const Duration(milliseconds: 200));
           }
           debugPrint(
-            'APPROVAL_QA $reason wire=${wireRequests.length} queue=${chat.approvals.requests.length} status=${chat.status.name}',
+            'APPROVAL_QA $reason wire=${wireRequests.length} queue=${chat.runtime.approvals.length} status=${chat.runtime.execution.name}',
           );
           expect(ready(), isTrue, reason: reason);
         }
@@ -189,12 +212,15 @@ void main() {
         final answered = <String>{};
         for (var index = 0; index < 2; index++) {
           await until(
-            () => chat.approval != null || !chat.busy,
+            () =>
+                chat.runtime.approval != null ||
+                !chat.runtime.blocksTurnAdmission,
             'approval_${index + 1}_visible',
           );
           if (parallel && index == 0) {
             await until(
-              () => wireRequests.length == 2 || !chat.busy,
+              () =>
+                  wireRequests.length == 2 || !chat.runtime.blocksTurnAdmission,
               'two_live_requests_received',
             );
             expect(
@@ -209,18 +235,18 @@ void main() {
             await tester.pump(const Duration(milliseconds: 200));
           }
           expect(
-            chat.approval,
+            chat.runtime.approval,
             isNotNull,
             reason: 'A pending read must not erase an unanswered live request',
           );
-          final request = chat.approval!;
+          final request = chat.runtime.approval!;
           expect(
             commands,
-            contains(request['command']),
+            contains(request.request.command),
             reason:
                 'Only the two exact disposable test commands may be approved',
           );
-          expect(answered.add(request['request_id'] as String), isTrue);
+          expect(answered.add(request.requestId), isTrue);
           final panel = find.byType(GatewayApprovalPanel);
           expect(panel, findsOneWidget);
           final button = find.descendant(
@@ -243,15 +269,15 @@ void main() {
           ).writeAsBytes(screenshot);
           await tester.tap(button);
           await until(
-            () => !chat.approvalResponding,
+            () => !chat.runtime.approvalResponding,
             'approval_${index + 1}_answered',
           );
-          expect(chat.error, isNull);
+          expect(chat.runtime.error, isNull);
         }
         await restoreApprovalMode();
-        await until(() => !chat.busy, 'turn_finished');
-        expect(chat.status, ProfileTurnStatus.completed);
-        expect(chat.approval, isNull);
+        await until(() => !chat.runtime.blocksTurnAdmission, 'turn_finished');
+        expect(chat.runtime.execution, ChatExecution.completed);
+        expect(chat.runtime.approval, isNull);
         expect(answered.length, 2);
         expect(chat.model, 'gpt-5.6-luna');
         debugPrint(

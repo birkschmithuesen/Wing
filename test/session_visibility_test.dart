@@ -1,3 +1,8 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/chat_browser_data.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -20,6 +25,7 @@ class FilterHost extends Host {
     {'id': 'subagent', 'title': 'Delegate run', 'source': 'subagent'},
     {'id': 'kanban', 'title': 'Worker run', 'source': 'kanban'},
     {'id': 'oneshot', 'title': 'Technical run', 'source': 'oneshot'},
+    {'id': 'room-worker', 'title': 'Group: room-uuid', 'source': 'bot_room'},
     {'id': 'chat', 'title': 'My conversation', 'source': 'desktop'},
     {'id': 'wing', 'title': 'Phone conversation', 'source': 'wing'},
     {'id': 'unknown', 'title': 'Old conversation', 'source': 'unknown'},
@@ -39,12 +45,17 @@ class FilterHost extends Host {
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
     final base = super.gateway(scope);
-    final gateway = ProfileGateway(
+    late final ProfileGateway gateway;
+    gateway = ProfileGateway(
       scope: scope,
       discover: discover,
-      connect: base.connect,
+      connect: () async {
+        if (gateway.onEvent != null) gateways[scope.profileName] = gateway;
+        await base.connect();
+      },
       close: base.close,
       rpc: (method, params) async {
+        if (method == 'session.list') return {'sessions': []};
         final result = await base.call(method, params);
         if (method == 'session.resume') {
           result['stored_session_id'] = params['session_id'];
@@ -56,6 +67,15 @@ class FilterHost extends Host {
         return result;
       },
       get: (path, params) async {
+        if (path != 'sessions/search' &&
+            RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+          final id = Uri.decodeComponent(path.split('/')[1]);
+          return {
+            ...rows.singleWhere((row) => row['id'] == id),
+            'profile': scope.profileName,
+            'hidden': false,
+          };
+        }
         if (path != 'sessions' && path != 'sessions/search') {
           return base.read(path, params);
         }
@@ -95,7 +115,6 @@ class FilterHost extends Host {
         };
       },
     );
-    gateways[scope.profileName] = gateway;
     return gateway;
   }
 }
@@ -104,34 +123,67 @@ void main() {
   late FilterHost host;
   late SharedPreferences prefs;
   late ProfileWorkspaceController controller;
+  late ChatBrowserData browser;
+  late AppPreferences appPreferences;
   ProfileWorkspaceController makeController([
     String identity = 'host-identity',
+    String connectionId = 'host',
   ]) => ProfileWorkspaceController(
-    connection: SavedConnection(
-      id: 'host',
-      label: 'Host',
-      host: 'localhost',
-      port: 1,
-      apiKey: '',
+    access: ConnectionAccess(
+      connection: SavedConnection(
+        id: connectionId,
+        label: 'Host',
+        host: 'localhost',
+        port: 1,
+        apiKey: '',
+      ),
+      dashboardOAuth: null,
     ),
     connectionIdentity: identity,
     preferences: prefs,
+    appPreferences: appPreferences,
     gatewayFactory: host.gateway,
   );
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(prefs);
     host = FilterHost();
     controller = makeController();
     await controller.initialize();
+    browser = ChatBrowserData(controller);
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    browser.dispose();
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
-  test('missing and retired automated-only preferences default to chats', () {
-    expect(SessionVisibility.fromStored(null), SessionVisibility.chats);
-    expect(SessionVisibility.fromStored('automated'), SessionVisibility.chats);
-    expect(SessionVisibility.fromStored('all'), SessionVisibility.all);
-  });
+  test(
+    'missing visibility defaults to chats and malformed presence requires repair',
+    () async {
+      final key = SessionVisibility.preferenceKey('host');
+      expect(prefs.containsKey(key), isFalse);
+      expect(
+        appPreferences.visibilityFor('host').selected,
+        SessionVisibility.chats,
+      );
+      await prefs.setString(key, 'automated');
+      await appPreferences.reload();
+      expect(prefs.getString(key), 'automated');
+      expect(appPreferences.visibilityFor('host').selected, isNull);
+      expect(appPreferences.visibilityFor('host').notice, isNotNull);
+      await appPreferences.setConnectionVisibility(
+        'host',
+        SessionVisibility.all,
+      );
+      expect(prefs.getString(key), 'all');
+      expect(
+        appPreferences.visibilityFor('host').selected,
+        SessionVisibility.all,
+      );
+    },
+  );
 
   test(
     'Chats excludes automation before pagination and retains unknowns and branches',
@@ -146,7 +198,7 @@ void main() {
       ]);
       expect(
         host.listRequests.single.$2['exclude_sources'],
-        'cron,tool,subagent,kanban,oneshot',
+        'cron,tool,subagent,kanban,oneshot,bot_room',
       );
       expect(controller.current!.nextSessionOffset, isNull);
     },
@@ -167,41 +219,88 @@ void main() {
   });
 
   test(
-    'search uses the same exclusion and inclusion filters with profile ownership',
+    'browser search reads every profile and applies current source visibility in its projection',
     () async {
-      await controller.searchChats('run');
-      expect(controller.current!.searchResults, isEmpty);
+      await browser.search('run');
+      final requests = host.listRequests
+          .where((read) => read.$1 == 'sessions/search')
+          .toList();
+      expect(requests, hasLength(2));
       expect(
-        host.listRequests.last.$2['exclude_sources'],
-        'cron,tool,subagent,kanban,oneshot',
+        requests.map((read) => read.$2['profile']),
+        containsAll(['a', 'b']),
       );
+      expect(
+        requests.every(
+          (read) =>
+              !read.$2.containsKey('exclude_sources') &&
+              !read.$2.containsKey('sources'),
+        ),
+        isTrue,
+      );
+      for (final profile in ['a', 'b']) {
+        expect(browser.state.profiles[profile]!.searchMatches, {
+          'tool',
+          'subagent',
+          'kanban',
+          'oneshot',
+        });
+      }
+      expect(browser.project('run').entries, isEmpty);
       await controller.setSessionVisibility(SessionVisibility.all);
-      expect(controller.current!.searchResults.map((r) => r['id']), [
-        'tool',
-        'subagent',
-        'kanban',
-        'oneshot',
-      ]);
-      expect(host.listRequests.last.$2.containsKey('exclude_sources'), isFalse);
-      expect(host.listRequests.last.$2['profile'], 'a');
+      final visible = browser.project('run').entries;
+      expect(visible, hasLength(8));
+      for (final profile in ['a', 'b']) {
+        final scoped = visible.where((entry) => entry.profile == profile);
+        expect(
+          scoped.map((entry) => entry.id),
+          containsAll(['tool', 'subagent', 'kanban', 'oneshot']),
+        );
+        expect(
+          scoped.every((entry) => entry.scope.profileName == profile),
+          isTrue,
+        );
+      }
+      expect(
+        host.listRequests.where((read) => read.$1 == 'sessions/search'),
+        hasLength(2),
+      );
     },
   );
 
   test(
-    'selection persists per verified connection and across profiles and archives',
+    'selection follows saved connection across authentication, profiles and archives',
     () async {
       await controller.setSessionVisibility(SessionVisibility.all);
       await controller.navigateProfile('b');
       expect(host.listRequests.last.$2['profile'], 'b');
       expect(host.listRequests.last.$2.containsKey('exclude_sources'), isFalse);
-      await controller.showArchived(true);
-      expect(host.listRequests.last.$2['archived'], 'only');
-      expect(host.listRequests.last.$2.containsKey('exclude_sources'), isFalse);
+      final browser = ChatBrowserData(controller);
+      addTearDown(browser.dispose);
+      await browser.refresh(archivedOnly: true);
+      expect(
+        host.listRequests
+            .where((request) => request.$1 == 'sessions')
+            .last
+            .$2['archived'],
+        'only',
+      );
+      expect(
+        host.listRequests
+            .where((request) => request.$1 == 'sessions')
+            .last
+            .$2
+            .containsKey('exclude_sources'),
+        isFalse,
+      );
       final restored = makeController();
-      final other = makeController('another-server');
+      final reauthenticated = makeController('new-grant');
+      final other = makeController('another-server', 'other-connection');
       addTearDown(restored.dispose);
+      addTearDown(reauthenticated.dispose);
       addTearDown(other.dispose);
       expect(restored.sessionVisibility, SessionVisibility.all);
+      expect(reauthenticated.sessionVisibility, SessionVisibility.all);
       expect(other.sessionVisibility, SessionVisibility.chats);
     },
   );
@@ -236,12 +335,18 @@ void main() {
           await gate.future;
         }
       };
-      final search = controller.searchChats('run');
+      final search = browser.search('run');
       await controller.setSessionVisibility(SessionVisibility.chats);
       gate.complete();
       await search;
-      expect(controller.current!.searchResults, isEmpty);
-      expect(controller.current!.searchLoading, isFalse);
+      expect(browser.project('run').entries, isEmpty);
+      expect(browser.state.searching, isFalse);
+      expect(
+        browser.state.profiles.values.every(
+          (profile) => profile.searchMatches.isNotEmpty,
+        ),
+        isTrue,
+      );
     },
   );
 
@@ -281,7 +386,10 @@ void main() {
             data: MediaQuery.of(context).copyWith(disableAnimations: true),
             child: child!,
           ),
-          home: ProfileWorkspaceScreen(controller: controller),
+          home: ProfileWorkspaceScreen(
+            createBotsSession: () => BotsSession((_) async => const []),
+            controller: controller,
+          ),
         ),
       );
       await tester.pumpAndSettle();

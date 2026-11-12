@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
@@ -7,18 +8,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/gateway_approval.dart';
 import 'package:wing/core/widgets/notification_approval_review.dart';
+import 'package:wing/core/widgets/gateway_approval_panel.dart';
 
 const capture = bool.fromEnvironment('CAPTURE_REVIEW');
 void main() {
   setUpAll(() async {
     if (!capture) return;
     for (final font in {
-      'Roboto': 'Roboto-Regular.ttf',
+      WingTypography.sans: 'Roboto-Regular.ttf',
       'MaterialIcons': 'MaterialIcons-Regular.otf',
     }.entries) {
       await (FontLoader(font.key)..addFont(
             File(
-              '/tmp/approval-fonts/${font.value}',
+              '${const String.fromEnvironment('CAPTURE_FONT_DIR')}/${font.value}',
             ).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
@@ -30,6 +32,7 @@ void main() {
     final changes = ChangeNotifier();
     addTearDown(changes.dispose);
     var attempts = 0;
+    final gate = Completer<void>();
     await tester.pumpWidget(
       MaterialApp(
         home: Builder(
@@ -47,7 +50,10 @@ void main() {
                 pending: () => true,
                 submit: () async {
                   attempts++;
-                  if (attempts == 1) throw StateError('offline');
+                  if (attempts == 1) {
+                    await gate.future;
+                    throw StateError('offline');
+                  }
                 },
               ),
             ),
@@ -58,9 +64,23 @@ void main() {
     );
     await tester.tap(find.text('Open'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Allow once'));
+    await tester.tap(find.byTooltip('Allow once'));
+    await tester.pump();
+    expect(find.bySemanticsLabel('Sending approval decision'), findsOneWidget);
+    expect(
+      find
+          .descendant(
+            of: find.byType(NotificationApprovalReview),
+            matching: find.byType(CircularProgressIndicator),
+          )
+          .hitTestable(),
+      findsOneWidget,
+    );
+    expect(find.text('Sending decision…'), findsNothing);
+    gate.complete();
     await tester.pumpAndSettle();
     expect(find.text('Review command'), findsOneWidget);
+    expect(find.byType(ApprovalCommandDetails), findsOneWidget);
     expect(
       find.text('Decision not confirmed. Check the connection, then retry.'),
       findsOneWidget,
@@ -68,7 +88,7 @@ void main() {
     changes.notifyListeners();
     await tester.pumpAndSettle();
     expect(attempts, 1);
-    await tester.tap(find.text('Allow once'));
+    await tester.tap(find.byTooltip('Allow once'));
     await tester.pumpAndSettle();
     expect(attempts, 2);
     expect(find.text('Review command'), findsNothing);
@@ -86,6 +106,7 @@ void main() {
         final changes = ChangeNotifier();
         addTearDown(changes.dispose);
         final frame = GlobalKey();
+        var submitted = 0;
         await tester.pumpWidget(
           MaterialApp(
             theme: wingTheme(brightness),
@@ -115,7 +136,9 @@ void main() {
                     changes: changes,
                     offline: () => false,
                     pending: () => true,
-                    submit: () async {},
+                    submit: () async {
+                      submitted++;
+                    },
                   ),
                 ),
                 child: const Text('Open'),
@@ -133,16 +156,14 @@ void main() {
         );
         expect(find.text('Backend says this is one-shot.'), findsNothing);
         expect(
-          tester
-              .getRect(
-                find.text(
-                  'Permanently allow matching commands, including in future chats.',
-                ),
+          find
+              .text(
+                'Permanently allow matching commands, including in future chats.',
               )
-              .bottom,
-          lessThan(915),
+              .hitTestable(),
+          findsOneWidget,
         );
-        expect(tester.getRect(find.text('Always allow')).bottom, lessThan(915));
+        expect(find.byTooltip('Always allow').hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         if (capture) {
           await tester.runAsync(() async {
@@ -153,12 +174,18 @@ void main() {
             final bytes = await image.toByteData(
               format: ui.ImageByteFormat.png,
             );
-            await File(
-              '/tmp/wing-notification-fixes/review-${brightness.name}-$scale.png',
-            ).writeAsBytes(bytes!.buffer.asUint8List());
+            final file = File(
+              'build/design-previews/approval-review/notification-${brightness.name}-$scale.png',
+            );
+            await file.parent.create(recursive: true);
+            await file.writeAsBytes(bytes!.buffer.asUint8List());
             image.dispose();
           });
         }
+        await tester.tap(find.byTooltip('Always allow'));
+        await tester.pumpAndSettle();
+        expect(submitted, 1);
+        expect(find.byType(NotificationApprovalReview), findsNothing);
       });
     }
   }

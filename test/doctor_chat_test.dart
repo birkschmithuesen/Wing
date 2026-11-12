@@ -1,3 +1,11 @@
+import 'support/canonical_gateway_fixture.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/doctor_finding_draft_session.dart';
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -6,10 +14,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
 import 'package:wing/core/screens/administration/administration_content.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
-import 'package:wing/core/services/administration_health.dart';
-import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/doctor_diagnostic.dart';
+import 'package:wing/core/services/composer_draft_store.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
@@ -31,6 +38,7 @@ class _Fixture {
   final admin = AdministrationFixture();
   final browser = ProfileBrowserFixture();
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   Completer<void>? creationGate;
   bool failCreation = false;
   bool failOpening = false;
@@ -39,16 +47,22 @@ class _Fixture {
 
   Future<void> initialize() async {
     SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: admin.server.connectionId,
-        label: admin.id,
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: admin.server.connectionId,
+          label: admin.id,
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: admin.server.connectionIdentity,
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: (scope) {
         final source = browser.gateway(scope);
         return ProfileGateway(
@@ -62,6 +76,7 @@ class _Fixture {
               await creationGate?.future;
               if (failCreation) throw StateError('Chat connection unavailable');
               return {
+                ...canonicalSnapshotFields,
                 'session_id': 'runtime-$number',
                 'stored_session_id': 'doctor-$number',
                 'info': {'profile_name': scope.profileName},
@@ -75,22 +90,34 @@ class _Fixture {
     await controller.initialize();
     admin.override = (method, path, query, body) async =>
         path.startsWith('actions/')
-        ? {'pid': 7, 'running': false, 'exit_code': 0, 'lines': _lines}
+        ? {
+            'name': 'doctor',
+            'pid': 7,
+            'running': false,
+            'exit_code': 0,
+            'lines': _lines,
+          }
         : AdministrationFixture(admin.id).send(method, path, query, body);
   }
 
-  Widget page() => AdminActionPage(
-    server: admin.server,
-    action: const AdministrationAction('doctor', 7),
-    title: 'Doctor',
-    scope: admin.id,
-    chatController: controller,
-    onOpenSession: (key) async {
-      if (failOpening) throw StateError('History unavailable');
-      opened.add(key);
-      await controller.openSession(key);
-    },
-  );
+  Widget page() {
+    final operation = fixtureOperation(
+      admin.server,
+      const AdministrationAction('doctor', 7),
+    );
+    return AdminActionPage(
+      operation: operation,
+      title: 'Doctor',
+      scope: admin.id,
+      createDraftSession: () =>
+          DoctorFindingDraftSession(operation, controller),
+      onOpenSession: (key) async {
+        if (failOpening) throw StateError('History unavailable');
+        opened.add(key);
+        await controller.openSession(key);
+      },
+    );
+  }
 
   Future<void> pump(WidgetTester tester) async {
     await tester.pumpWidget(
@@ -138,7 +165,37 @@ void main() {
     fixture = _Fixture();
     await fixture.initialize();
   });
-  tearDown(() => fixture.controller.dispose());
+  tearDown(() {
+    fixture.controller.dispose();
+    fixture.appPreferences.dispose();
+  });
+
+  test(
+    'retirement during draft notification prevents later preparation',
+    () async {
+      final operation = fixtureOperation(
+        fixture.admin.server,
+        const AdministrationAction('doctor', 7),
+      );
+      await operation.refresh();
+      final draft = DoctorFindingDraftSession(operation, fixture.controller);
+      await draft.openFinding(
+        0,
+        navigate: (key) async => fixture.opened.add(key),
+        isRouteCurrent: () => false,
+      );
+      expect(fixture.creates, isEmpty);
+      expect(fixture.opened, isEmpty);
+      draft.addListener(draft.dispose);
+      await draft.openFinding(
+        0,
+        navigate: (key) async => fixture.opened.add(key),
+        isRouteCurrent: () => true,
+      );
+      expect(fixture.creates, isEmpty);
+      expect(fixture.opened, isEmpty);
+    },
+  );
 
   testWidgets(
     'each finding creates an editable unsent draft on the selected profile',
@@ -151,7 +208,7 @@ void main() {
       final existing = controller.current!.chat!;
       await controller.updateDraft(existing, 'Keep my existing draft');
       // A health diagnosis must not inherit the last browsed project's cwd.
-      controller.current!.selectedProject = controller.current!.projects.first;
+      await controller.selectProject(controller.current!.projects.first);
       await fixture.pump(tester);
       expect(find.text('Ask Hermes'), findsNWidgets(3));
       for (var index = 0; index < 3; index++) {
@@ -164,18 +221,18 @@ void main() {
         expect(chat.key.sessionId, 'doctor-${index + 1}');
         expect(chat.projectId, isNull);
         expect(
-          chat.draft,
+          chat.composer.observation.text,
           DoctorDiagnostic.fromLines(
             _lines,
           )!.findings[index].chatPrompt(_lines.join('\n')),
         );
-        expect(chat.messages, isEmpty);
-        expect(chat.queuedPrompts, isEmpty);
+        expect(chat.reading.messages, isEmpty);
+        expect(chat.composer.observation.queue, isEmpty);
         expect(fixture.creates.last['profile'], 'work');
         expect(fixture.creates.last.containsKey('cwd'), isFalse);
         expect(fixture.creates.last.containsKey('messages'), isFalse);
       }
-      expect(existing.draft, 'Keep my existing draft');
+      expect(existing.composer.observation.text, 'Keep my existing draft');
       expect(fixture.opened.length, 3);
       expect(
         fixture.browser.calls.where(
@@ -192,24 +249,32 @@ void main() {
         isEmpty,
       );
       expect(fixture.admin.requests.first.$3['lines'], '2000');
-      expect(
-        controller.preferences.getString(
-          'composer_drafts_v1_${controller.connectionIdentity}',
-        ),
-        contains('web workspace'),
-      );
+      final savedDraft =
+          await ComposerDraftStore(
+            controller.preferences,
+            connectionIdentity: controller.connectionIdentity,
+          ).read(
+            profileName: controller.current!.chat!.key.workspace.profileName,
+            sessionId: controller.current!.chat!.key.sessionId,
+          );
+      expect(savedDraft!.text, contains('web workspace'));
 
       await tester.pumpWidget(
         MaterialApp(
           theme: wingTheme(Brightness.dark),
-          home: ProfileWorkspaceScreen(controller: controller),
+          home: ProfileWorkspaceScreen(
+            createBotsSession: () => BotsSession((_) async => const []),
+            controller: controller,
+          ),
         ),
       );
       await tester.pumpAndSettle();
       final fields = tester.widgetList<EditableText>(find.byType(EditableText));
       expect(
         fields.any(
-          (field) => field.controller.text == controller.current!.chat!.draft,
+          (field) =>
+              field.controller.text ==
+              controller.current!.chat!.composer.observation.text,
         ),
         isTrue,
       );
@@ -233,7 +298,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(fixture.controller.current!.scope.profileName, 'work');
       expect(fixture.controller.current!.chat, isNull);
-      expect(original.chats['doctor-1']!.draft, contains('state.db is large'));
+      expect(
+        original.chats['doctor-1']!.composer.observation.text,
+        contains('state.db is large'),
+      );
       expect(fixture.creates.single['profile'], 'personal');
       expect(fixture.opened, isEmpty);
       expect(
@@ -268,7 +336,7 @@ void main() {
       await tester.tap(find.text('Ask Hermes').first);
       await tester.pumpAndSettle();
       final chat = fixture.controller.current!.chat!;
-      expect(chat.draft, contains('state.db is large'));
+      expect(chat.composer.observation.text, contains('state.db is large'));
       expect(find.textContaining('Could not open the chat.'), findsOneWidget);
       fixture.failOpening = false;
       await tester.tap(find.text('Ask Hermes').first);
@@ -291,7 +359,7 @@ void main() {
     expect(find.text('Elsewhere'), findsOneWidget);
     expect(fixture.opened, isEmpty);
     expect(
-      fixture.controller.current!.chats['doctor-1']!.draft,
+      fixture.controller.current!.chats['doctor-1']!.composer.observation.text,
       contains('state.db is large'),
     );
     expect(tester.takeException(), isNull);
@@ -307,7 +375,10 @@ void main() {
         home: StatefulBuilder(
           builder: (context, setState) => Scaffold(
             body: chatDestination
-                ? ProfileWorkspaceScreen(controller: fixture.controller)
+                ? ProfileWorkspaceScreen(
+                    createBotsSession: () => BotsSession((_) async => const []),
+                    controller: fixture.controller,
+                  )
                 : HermesHealthContent(
                     controller: fixture.controller,
                     repository: fixture.admin.server,
@@ -323,17 +394,15 @@ void main() {
     );
     await tester.pumpAndSettle();
     final health = fixture.controller.healthSession().health;
-    final generation = health.beginDiagnostic('ops/doctor')!;
-    health.observeDiagnostic(
+    restoreDiagnostic(
+      health,
       'ops/doctor',
       AdminDiagnosticObservation(const AdministrationAction('doctor', 7), {
         'running': false,
         'exit_code': 0,
         'lines': _lines,
       }, DateTime.now()),
-      generation: generation,
     );
-    health.finishDiagnostic('ops/doctor', generation);
     await tester.pumpAndSettle();
     await tester.tap(find.text('Doctor'));
     await tester.pumpAndSettle();
@@ -343,7 +412,7 @@ void main() {
     expect(find.byType(AdminActionPage), findsNothing);
     expect(find.byType(ProfileWorkspaceScreen), findsOneWidget);
     expect(
-      fixture.controller.current!.chat!.draft,
+      fixture.controller.current!.chat!.composer.observation.text,
       contains('state.db is large'),
     );
     expect(tester.takeException(), isNull);

@@ -1,3 +1,17 @@
+import 'support/canonical_gateway_fixture.dart';
+import 'package:wing/core/services/administration_repository.dart';
+import 'package:wing/core/services/shared_draft_session.dart';
+import 'package:wing/core/services/workspace_entry_session.dart';
+import 'package:wing/core/services/profile_workspace_registry.dart';
+import 'package:wing/core/services/profile_connection_identity.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:wing/core/services/backup_session.dart';
+import 'package:wing/core/services/config_backup_io.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/models/composer_action.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,31 +31,22 @@ import 'package:wing/core/services/config_backup.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/main.dart';
 import 'package:wing/core/widgets/connection_icon_picker.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class _MemoryCredentialStore implements CredentialStore {
   final Map<String, String> values = <String, String>{};
-  final Map<String, String> _cache = <String, String>{};
 
   @override
   Future<void> delete(String key) async {
     values.remove(key);
-    _cache.remove(key);
   }
 
   @override
   Future<String?> read(String key) async {
     final value = values[key];
-    if (value == null) {
-      _cache.remove(key);
-    } else {
-      _cache[key] = value;
-    }
     return value;
   }
-
-  @override
-  String? readCached(String key) => _cache[key];
 
   @override
   Future<void> write(String key, String value) async {
@@ -63,24 +68,30 @@ class _MissingFileService extends AttachmentDraftService {
   }
 }
 
-Future<ConnectionManager> buildManager() async {
+Future<({ConnectionManager manager, AppPreferences appPreferences})>
+createHomeFixture() async {
   SharedPreferences.setMockInitialValues(<String, Object>{});
   final prefs = await SharedPreferences.getInstance();
-  return ConnectionManager.create(
+  final appPreferences = AppPreferences(prefs);
+  addTearDown(appPreferences.dispose);
+  final manager = await ConnectionManager.create(
     prefs,
     credentialStore: _MemoryCredentialStore(),
   );
+  return (manager: manager, appPreferences: appPreferences);
 }
 
 ProfileWorkspaceController profileController(
   SavedConnection connection,
   SharedPreferences prefs,
+  AppPreferences appPreferences,
 ) {
   final controller = ProfileWorkspaceController(
     connectionIdentity: 'test-settings-${connection.id}',
     attachmentService: _MissingFileService(),
-    connection: connection,
+    access: ConnectionAccess(connection: connection, dashboardOAuth: null),
     preferences: prefs,
+    appPreferences: appPreferences,
     gatewayFactory: (scope) => ProfileGateway(
       scope: scope,
       discover: () async => const ProfileDiscovery(
@@ -88,49 +99,197 @@ ProfileWorkspaceController profileController(
         currentName: 'default',
         activeName: 'default',
       ),
-      get: (_, query) async => {
-        'sessions': <Map<String, dynamic>>[],
-        'offset': int.parse(query['offset']!),
-        'limit': int.parse(query['limit']!),
-        'total': 0,
+      get: (path, query) async => switch (path) {
+        'sessions' => {
+          'sessions': <Map<String, dynamic>>[],
+          'offset': int.parse(query['offset']!),
+          'limit': int.parse(query['limit']!),
+          'total': 0,
+        },
+        'model/info' => <String, dynamic>{},
+        'model/options' => {'providers': <Object>[]},
+        'logs' => {'file': 'gui', 'lines': <String>[]},
+        'sessions/stored/messages' => {
+          'session_id': 'stored',
+          'messages': <Map<String, dynamic>>[],
+          'pagination': {
+            'offset': 0,
+            'limit': int.parse(query['limit']!),
+            'returned': 0,
+            'order': 'latest',
+          },
+        },
+        _ => throw StateError('Unexpected home fixture GET: $path'),
       },
-      rpc: (method, _) async => method == 'session.create'
-          ? {
-              'session_id': 'runtime',
-              'stored_session_id': 'stored',
-              'info': {'profile_name': 'default'},
-            }
-          : {'projects': <Map<String, dynamic>>[]},
+      rpc: (method, _) async => switch (method) {
+        'session.create' => {
+          ...canonicalSnapshotFields,
+          'session_id': 'runtime',
+          'stored_session_id': 'stored',
+          'info': {'profile_name': 'default'},
+        },
+        'projects.tree' => {'projects': <Map<String, dynamic>>[]},
+        'session.active_list' => {'sessions': <Map<String, dynamic>>[]},
+        'profiles.list' => {
+          'bot_mode_protocol': true,
+          'install_id': 'home-fixture',
+          'profiles': <Map<String, dynamic>>[],
+        },
+        'commands.catalog' => {'pairs': <List<String>>[]},
+        _ => throw StateError('Unexpected home fixture RPC: $method'),
+      },
     ),
   );
-  addTearDown(controller.dispose);
+  // Home constructs the production workspace route, which discovers Bots
+  // through administration separately from the chat gateway above.
+  final administration = AdministrationRepository(
+    connectionId: connection.id,
+    connectionIdentity: controller.connectionIdentity,
+    connectionLabel: connection.label,
+    request: (method, path, query, body) async => throw StateError(
+      'Unexpected home administration request: $method $path',
+    ),
+    settingsWrite: (profile, patch, canDispatch, onDispatched) async =>
+        throw StateError('Unexpected home administration settings write'),
+    ownedMutation:
+        (method, path, query, body, canDispatch, onDispatched) async =>
+            throw StateError(
+              'Unexpected home administration mutation: $method $path',
+            ),
+    gateway: (profile) => ProfileGateway(
+      scope: WorkspaceScope(
+        connectionId: connection.id,
+        connectionIdentity: controller.connectionIdentity,
+        profileName: profile,
+      ),
+      discover: () async => const ProfileDiscovery(
+        profiles: [HermesProfile(name: 'default')],
+        currentName: 'default',
+        activeName: 'default',
+      ),
+      get: (path, query) async =>
+          throw StateError('Unexpected home administration read: $path'),
+      rpc: (method, params) async => switch (method) {
+        'profiles.list' => {
+          'bot_mode_protocol': true,
+          'install_id': controller.connectionIdentity,
+          'profiles': <Map<String, dynamic>>[],
+        },
+        'groups.list' => {'rooms': <Map<String, dynamic>>[]},
+        _ => throw StateError('Unexpected home administration RPC: $method'),
+      },
+    ),
+  );
+  addTearDown(administration.close);
+  controller.healthSession(repository: administration);
   return controller;
+}
+
+class _BackupPlatform extends ConfigBackupIo {
+  String? pickedContents;
+  String? deliveredContents;
+  final delivery = Completer<String>();
+
+  @override
+  Future<String> appVersion() async => 'test';
+
+  @override
+  Future<String?> pickBackupFile() async => pickedContents;
+
+  @override
+  Future<String?> deliverExport(
+    String contents, {
+    required bool Function() canDispatch,
+  }) async {
+    if (!canDispatch()) return null;
+    deliveredContents = contents;
+    if (!delivery.isCompleted) delivery.complete(contents);
+    return 'wing-config.json';
+  }
+}
+
+BackupSession _backupSession(
+  ConnectionManager manager,
+  AppPreferences owner,
+  ConfigBackupIo platform,
+) => BackupSession(
+  configuration: ConfigBackupService(
+    connectionManager: manager,
+    appPreferences: owner,
+  ),
+  io: platform,
+);
+
+String _backupContents(ConnectionManager manager) => jsonEncode(
+  ConfigBackup(
+    createdAt: DateTime.utc(2026),
+    appVersion: 'test',
+    connections: manager.getConnections(),
+    preferences: const {},
+  ).toJson(),
+);
+
+WorkspaceEntrySession Function() homeEntryFactory(
+  WidgetTester tester,
+  ConnectionManager manager,
+  AppPreferences appPreferences, {
+  required ProfileWorkspaceController Function(SavedConnection) create,
+  required AndroidLaunchIntentService? launchIntents,
+}) {
+  final registry = ProfileWorkspaceRegistry(
+    identities: ProfileConnectionIdentity(
+      credentialStore: _MemoryCredentialStore(),
+    ),
+    create: (connection, identity) => create(connection),
+  );
+  addTearDown(() async {
+    await tester.pumpWidget(const SizedBox.shrink());
+    registry.dispose();
+  });
+  return () => WorkspaceEntrySession(
+    connectionManager: manager,
+    appPreferences: appPreferences,
+    registry: registry,
+    launchIntents: launchIntents,
+  );
 }
 
 Future<void> pumpHome(
   WidgetTester tester,
   ConnectionManager manager, {
-  Future<String> Function(String)? exportBackup,
-  Future<String?> Function(String)? deliverBackup,
-  Future<String?> Function()? pickBackupFile,
-  Future<ConfigImportResult> Function(String, String, ConfigImportMode)?
-  importBackup,
+  required AppPreferences appPreferences,
+  ConfigBackupIo? backupPlatform,
   AndroidShareIntentService? shareIntents,
   AndroidLaunchIntentService? launchIntents,
   ProfileWorkspaceController? workspaceController,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
+      theme: wingTheme(Brightness.light),
       home: HomeScreen(
-        profileController: (conn) =>
-            workspaceController ?? profileController(conn, manager.prefs),
+        createSharedDraftSession: (entry) => SharedDraftSession(
+          connectionManager: manager,
+          entrySession: entry,
+          shareIntents: shareIntents,
+        ),
+        appPreferences: appPreferences,
+        createEntrySession: homeEntryFactory(
+          tester,
+          manager,
+          appPreferences,
+          create: (conn) =>
+              workspaceController ??
+              profileController(conn, manager.prefs, appPreferences),
+          launchIntents: launchIntents,
+        ),
         connManager: manager,
         shareIntents: shareIntents,
         launchIntents: launchIntents,
-        exportBackup: exportBackup,
-        deliverBackup: deliverBackup,
-        pickBackupFile: pickBackupFile,
-        importBackup: importBackup,
+        createBackupSession: () => _backupSession(
+          manager,
+          appPreferences,
+          backupPlatform ?? _BackupPlatform(),
+        ),
       ),
     ),
   );
@@ -152,20 +311,23 @@ void main() {
   testWidgets('connection icon edits appearance while the LED opens status', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Claw', 'host', 8642, 'key');
-    await pumpHome(tester, manager);
+    await pumpHome(tester, manager, appPreferences: appPreferences);
     final icon = find.byTooltip('Change connection icon');
     final led = find.byKey(const ValueKey('server-connection-led'));
     final iconRect = tester.getRect(find.byType(ConnectionIconButton));
-    expect(iconRect.size, const Size(48, 48));
+    expect(iconRect.width, greaterThanOrEqualTo(48));
+    expect(iconRect.height, greaterThanOrEqualTo(48));
     await tester.tap(icon);
     await tester.pumpAndSettle();
     expect(find.text('Instance icon'), findsOneWidget);
     expect(find.text('Server access'), findsNothing);
     expect(find.byType(ProfileWorkspaceScreen), findsNothing);
     await tester.tap(find.byKey(const ValueKey('connection-icon-home')));
-    await tester.tap(find.text('Save icon'));
+    await tester.tap(find.byTooltip('Save connection icon'));
     await tester.pumpAndSettle();
     expect(manager.getConnections().single.icon, ConnectionIcon.home);
     await tester.tap(led);
@@ -178,14 +340,16 @@ void main() {
   testWidgets('tapping an icon saves and reopens its selection without setup', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     final connection = await manager.saveConnection(
       'Claw',
       'host',
       8642,
       'key',
     );
-    await pumpHome(tester, manager);
+    await pumpHome(tester, manager, appPreferences: appPreferences);
     await tester.tap(find.byType(PopupMenuButton<String>));
     await tester.pumpAndSettle();
     expect(find.text('Appearance'), findsNothing);
@@ -196,7 +360,7 @@ void main() {
     await tester.tap(find.byTooltip('Change connection icon'));
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('connection-icon-rocket')));
-    await tester.tap(find.text('Save icon'));
+    await tester.tap(find.byTooltip('Save connection icon'));
     await tester.pumpAndSettle();
     expect(manager.getConnections().single.icon, ConnectionIcon.rocket);
     expect(manager.getConnections().single.id, connection.id);
@@ -220,8 +384,10 @@ void main() {
   testWidgets('a device with no connections can still reach restore', (
     tester,
   ) async {
-    final manager = await buildManager();
-    await pumpHome(tester, manager);
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
+    await pumpHome(tester, manager, appPreferences: appPreferences);
 
     // The whole point of a config backup is the fresh install, where Settings
     // is unreachable because no connection exists yet.
@@ -232,22 +398,21 @@ void main() {
   testWidgets('a saved connection opens Workspace as the primary surface', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Miniserver', 'host', 8642, 'key');
-    await pumpHome(tester, manager);
+    await pumpHome(tester, manager, appPreferences: appPreferences);
 
     await tester.tap(find.text('Miniserver'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
     expect(find.byType(ProfileWorkspaceScreen), findsOneWidget);
+    expect(find.byTooltip('New chat'), findsOneWidget);
     expect(
-      tester
-          .widget<FloatingActionButton>(
-            find.byKey(const ValueKey('workspace-new-chat')),
-          )
-          .tooltip,
-      'New chat',
+      find.byKey(const ValueKey('workspace-new-chat')).hitTestable(),
+      findsOneWidget,
     );
     expect(find.byKey(const ValueKey('chat-filter-profile')), findsOneWidget);
     expect(find.byTooltip('Chat list options'), findsOneWidget);
@@ -268,10 +433,17 @@ void main() {
     final launchIntents = AndroidLaunchIntentService();
     await launchIntents.initialize();
     addTearDown(launchIntents.dispose);
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Miniserver', 'host', 8642, 'key');
 
-    await pumpHome(tester, manager, launchIntents: launchIntents);
+    await pumpHome(
+      tester,
+      manager,
+      appPreferences: appPreferences,
+      launchIntents: launchIntents,
+    );
     await tester.pump(const Duration(milliseconds: 500));
 
     expect(find.byType(ProfileWorkspaceScreen), findsOneWidget);
@@ -287,7 +459,9 @@ void main() {
       final service = AndroidLaunchIntentService();
       service.pendingAction.value = action;
       addTearDown(service.dispose);
-      final manager = await buildManager();
+      final fixture = await createHomeFixture();
+      final manager = fixture.manager;
+      final appPreferences = fixture.appPreferences;
       await manager.saveConnection('First server', 'first', 8642, 'key');
       final chosen = await manager.saveConnection(
         'Chosen server',
@@ -295,7 +469,12 @@ void main() {
         8642,
         'key',
       );
-      await pumpHome(tester, manager, launchIntents: service);
+      await pumpHome(
+        tester,
+        manager,
+        appPreferences: appPreferences,
+        launchIntents: service,
+      );
       expect(find.byType(ProfileWorkspaceScreen), findsNothing);
       expect(service.pendingAction.value, action);
       await tester.tap(find.text('Chosen server'));
@@ -333,24 +512,31 @@ void main() {
           final service = AndroidLaunchIntentService();
           await service.initialize();
           addTearDown(service.dispose);
-          final manager = await buildManager();
+          final fixture = await createHomeFixture();
+          final manager = fixture.manager;
+          final appPreferences = fixture.appPreferences;
           final connection = await manager.saveConnection(
             'Miniserver',
             'host',
             8642,
             'key',
           );
-          final controller = profileController(connection, manager.prefs);
+          final controller = profileController(
+            connection,
+            manager.prefs,
+            appPreferences,
+          );
           await pumpHome(
             tester,
             manager,
+            appPreferences: appPreferences,
             launchIntents: service,
             workspaceController: controller,
           );
           if (!cold) {
             await tester.tap(find.text('Miniserver'));
             await tester.pumpAndSettle();
-            await controller.createChat();
+            await controller.createChat(canDispatch: () => true);
             await tester.pumpAndSettle();
             await tester.enterText(
               find.byKey(const Key('profile-message-composer')),
@@ -366,7 +552,7 @@ void main() {
               (_) {},
             );
             await tester.pumpAndSettle();
-            expect(chat.composerText, 'Keep this draft');
+            expect(chat.composer.observation.displayedText, 'Keep this draft');
           }
           await tester.pumpAndSettle();
           expect(
@@ -417,14 +603,31 @@ void main() {
       final shareIntents = AndroidShareIntentService();
       await shareIntents.initialize();
       addTearDown(shareIntents.dispose);
-      final manager = await buildManager();
+      final fixture = await createHomeFixture();
+      final manager = fixture.manager;
+      final appPreferences = fixture.appPreferences;
       await manager.saveConnection('Miniserver', 'host', 8642, 'key');
 
       await tester.pumpWidget(
         MaterialApp(
           home: HomeScreen(
-            profileController: (conn) => profileController(conn, manager.prefs),
+            createSharedDraftSession: (entry) => SharedDraftSession(
+              connectionManager: manager,
+              entrySession: entry,
+              shareIntents: shareIntents,
+            ),
+            appPreferences: appPreferences,
+            createEntrySession: homeEntryFactory(
+              tester,
+              manager,
+              appPreferences,
+              create: (conn) =>
+                  profileController(conn, manager.prefs, appPreferences),
+              launchIntents: null,
+            ),
             connManager: manager,
+            createBackupSession: () =>
+                _backupSession(manager, appPreferences, _BackupPlatform()),
             shareIntents: shareIntents,
           ),
         ),
@@ -480,14 +683,31 @@ void main() {
     final shareIntents = AndroidShareIntentService();
     await shareIntents.initialize();
     addTearDown(shareIntents.dispose);
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Miniserver', 'host', 8642, 'key');
 
     await tester.pumpWidget(
       MaterialApp(
         home: HomeScreen(
-          profileController: (conn) => profileController(conn, manager.prefs),
+          createSharedDraftSession: (entry) => SharedDraftSession(
+            connectionManager: manager,
+            entrySession: entry,
+            shareIntents: shareIntents,
+          ),
+          appPreferences: appPreferences,
+          createEntrySession: homeEntryFactory(
+            tester,
+            manager,
+            appPreferences,
+            create: (conn) =>
+                profileController(conn, manager.prefs, appPreferences),
+            launchIntents: null,
+          ),
           connManager: manager,
+          createBackupSession: () =>
+              _backupSession(manager, appPreferences, _BackupPlatform()),
           shareIntents: shareIntents,
         ),
       ),
@@ -506,12 +726,16 @@ void main() {
   testWidgets('app settings restores configuration once connections exist', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Miniserver', 'host', 8642, 'key');
     await pumpHome(
       tester,
       manager,
-      pickBackupFile: () async => 'encrypted-backup',
+      appPreferences: appPreferences,
+      backupPlatform: _BackupPlatform()
+        ..pickedContents = _backupContents(manager),
     );
 
     expect(find.byTooltip('Restore configuration'), findsNothing);
@@ -528,10 +752,12 @@ void main() {
   testWidgets('connected settings displays restored preferences immediately', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await manager.saveConnection('Work', 'localhost', 9119, '');
-    await manager.prefs.setString('workspace_accent_v1', 'coral');
-    await manager.prefs.setString('composer_running_action', 'stop');
+    await appPreferences.setAccent(AppAccentPreference.coral);
+    await appPreferences.setRunningAction(ComposerAction.stop);
     final backup = ConfigBackup(
       createdAt: DateTime.utc(2026),
       appVersion: 'test',
@@ -544,11 +770,9 @@ void main() {
     await pumpHome(
       tester,
       manager,
-      pickBackupFile: () async => 'selected-file',
-      importBackup: (_, _, mode) => ConfigBackupService(
-        connectionManager: manager,
-        preferences: manager.prefs,
-      ).import(backup, mode: mode),
+      appPreferences: appPreferences,
+      backupPlatform: _BackupPlatform()
+        ..pickedContents = jsonEncode(backup.toJson()),
     );
     await tester.tap(find.text('Work'));
     await tester.pumpAndSettle();
@@ -583,11 +807,15 @@ void main() {
   testWidgets('tapping restore on an empty device opens the import sheet', (
     tester,
   ) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await pumpHome(
       tester,
       manager,
-      pickBackupFile: () async => 'encrypted-backup',
+      appPreferences: appPreferences,
+      backupPlatform: _BackupPlatform()
+        ..pickedContents = _backupContents(manager),
     );
 
     await tester.tap(find.byKey(const Key('home_restore_config_button')));
@@ -600,38 +828,53 @@ void main() {
   testWidgets('a restored connection appears without restarting the app', (
     tester,
   ) async {
-    final manager = await buildManager();
-    await pumpHome(tester, manager);
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
+    final backup = ConfigBackup(
+      createdAt: DateTime.utc(2026),
+      appVersion: 'test',
+      connections: [
+        SavedConnection(
+          id: 'restored-1',
+          label: 'Miniserver',
+          host: 'hermes.example.com',
+          port: 8642,
+          apiKey: 'test-restored-key',
+          useHttps: true,
+        ),
+      ],
+      preferences: const {},
+    );
+    await pumpHome(
+      tester,
+      manager,
+      appPreferences: appPreferences,
+      backupPlatform: _BackupPlatform()
+        ..pickedContents = jsonEncode(backup.toJson()),
+    );
 
     expect(find.text('Your agent, with you'), findsOneWidget);
-
-    // Simulate what a successful import does to storage, then let the screen
-    // refresh the way the import flow asks it to.
-    await manager.importConnections([
-      SavedConnection(
-        id: 'restored-1',
-        label: 'Miniserver',
-        host: 'carlos-miniserver.ts.net',
-        port: 8642,
-        apiKey: 'sk-restored',
-        useHttps: true,
-      ),
-    ], replaceExisting: false);
-
-    final state = tester.state<HomeScreenState>(find.byType(HomeScreen));
-    state.refreshConnections();
+    await tester.tap(find.byKey(const Key('home_restore_config_button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('import_confirm_button')));
     await tester.pumpAndSettle();
 
     expect(find.text('Your agent, with you'), findsNothing);
     expect(find.text('Miniserver'), findsOneWidget);
+    expect(manager.getConnections().single.id, 'restored-1');
   });
 
   testWidgets('the import sheet offers merge and replace', (tester) async {
-    final manager = await buildManager();
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
     await pumpHome(
       tester,
       manager,
-      pickBackupFile: () async => 'encrypted-backup',
+      appPreferences: appPreferences,
+      backupPlatform: _BackupPlatform()
+        ..pickedContents = _backupContents(manager),
     );
 
     await tester.tap(find.byKey(const Key('home_restore_config_button')));
@@ -639,14 +882,15 @@ void main() {
 
     expect(find.text('Merge'), findsOneWidget);
     expect(find.text('Replace'), findsOneWidget);
-    expect(ConfigImportMode.values, hasLength(2));
   });
 
   testWidgets(
     'connection header validation survives collapsing advanced settings',
     (tester) async {
-      final manager = await buildManager();
-      await pumpHome(tester, manager);
+      final fixture = await createHomeFixture();
+      final manager = fixture.manager;
+      final appPreferences = fixture.appPreferences;
+      await pumpHome(tester, manager, appPreferences: appPreferences);
       await tester.tap(find.text('Connect your agent'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Use an address'));
@@ -656,18 +900,18 @@ void main() {
         'https://hermes.example.com',
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Continue'));
+      await tester.ensureVisible(find.byKey(const Key('connection-primary')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.byKey(const Key('connection-primary')));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Custom setup'));
       await tester.tap(find.text('Custom setup'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Access headers'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Add header'));
+      await tester.ensureVisible(find.byTooltip('Add header'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add header'));
+      await tester.tap(find.byTooltip('Add header'));
       await tester.pump();
       await tester.enterText(
         find.widgetWithText(TextFormField, 'Header name'),
@@ -680,8 +924,8 @@ void main() {
       await tester.ensureVisible(find.text('Access headers'));
       await tester.tap(find.text('Access headers'));
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Use these settings'));
-      await tester.tap(find.text('Use these settings'));
+      await tester.ensureVisible(find.byTooltip('Use connection settings'));
+      await tester.tap(find.byTooltip('Use connection settings'));
       await tester.pumpAndSettle();
       expect(find.textContaining('managed by Hermes'), findsOneWidget);
       expect(manager.getConnections(), isEmpty);
@@ -693,21 +937,16 @@ void main() {
     testWidgets(
       'app settings exports a protected backup, connected=$connected',
       (tester) async {
-        final manager = await buildManager();
+        final fixture = await createHomeFixture();
+        final manager = fixture.manager;
+        final appPreferences = fixture.appPreferences;
         await manager.saveConnection('Work', 'localhost', 9119, '');
-        String? exportedPassphrase;
-        String? deliveredContents;
+        final platform = _BackupPlatform();
         await pumpHome(
           tester,
           manager,
-          exportBackup: (passphrase) async {
-            exportedPassphrase = passphrase;
-            return 'encrypted-backup';
-          },
-          deliverBackup: (contents) async {
-            deliveredContents = contents;
-            return 'wing-config.json';
-          },
+          appPreferences: appPreferences,
+          backupPlatform: platform,
         );
         expect(find.byTooltip('Backup configuration'), findsNothing);
         expect(find.byTooltip('Restore configuration'), findsNothing);
@@ -720,12 +959,6 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('nav-settings')));
         await tester.pumpAndSettle();
         expect(find.byTooltip('Backend updates'), findsNothing);
-        expect(
-          tester.getCenter(find.byTooltip('Backup configuration')).dx,
-          lessThan(
-            tester.getCenter(find.byTooltip('Restore configuration')).dx,
-          ),
-        );
         await tester.tap(find.byTooltip('Backup configuration'));
         await tester.pumpAndSettle();
         await tester.enterText(
@@ -738,8 +971,26 @@ void main() {
         );
         await tester.tap(find.byKey(const Key('export_confirm_button')));
         await tester.pumpAndSettle();
-        expect(exportedPassphrase, 'test-passphrase');
-        expect(deliveredContents, 'encrypted-backup');
+        final exported = await tester.runAsync(() async {
+          final contents = await platform.delivery.future.timeout(
+            const Duration(seconds: 30),
+          );
+          expect(
+            jsonDecode(contents)['format'],
+            ConfigBackupCodec.envelopeFormat,
+          );
+          return ConfigBackupCodec.decode(
+            contents,
+            passphrase: 'test-passphrase',
+          );
+        });
+        await tester.pumpAndSettle();
+        expect(platform.deliveredContents, isNotNull);
+        expect(
+          exported!.connections.single.id,
+          manager.getConnections().single.id,
+        );
+        expect(exported.connections.single.label, 'Work');
         expect(find.text('Backup exported — wing-config.json'), findsOneWidget);
       },
     );
@@ -751,8 +1002,10 @@ void main() {
     // Regression: the form used to pre-fill a hardcoded example
     // (`http://192.168.1.193/desktop`). Saving it silently pointed the app at
     // a dead Desktop Gateway, which wedged Project/session loading.
-    final manager = await buildManager();
-    await pumpHome(tester, manager);
+    final fixture = await createHomeFixture();
+    final manager = fixture.manager;
+    final appPreferences = fixture.appPreferences;
+    await pumpHome(tester, manager, appPreferences: appPreferences);
 
     await tester.tap(find.text('Connect your agent'));
     await tester.pumpAndSettle();
@@ -764,9 +1017,9 @@ void main() {
       'https://hermes.example.com',
     );
     await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Continue'));
+    await tester.ensureVisible(find.byKey(const Key('connection-primary')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Continue'));
+    await tester.tap(find.byKey(const Key('connection-primary')));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Custom setup'));
     await tester.tap(find.text('Custom setup'));

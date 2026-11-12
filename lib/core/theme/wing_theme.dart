@@ -2,11 +2,12 @@
 ///
 /// One typed token layer that every screen consumes, so spacing, radius,
 /// motion, semantic status colors, and the typography ramp are decided once
-/// instead of per screen. See `docs/DESIGN_SYSTEM.md` for the Studio charter.
+/// instead of per screen. See `internal/docs/DESIGN_SYSTEM.md` for the Studio charter.
 library;
 
-import 'dart:math' as math;
+import 'dart:async';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -17,14 +18,12 @@ abstract final class WingSpacing {
   static const double md = 12;
   static const double lg = 16;
   static const double xl = 24;
-  static const double xxl = 32;
 }
 
 /// Corner radii, growing from small controls to full sheets.
 abstract final class WingRadius {
   static const double sm = 6;
   static const double md = 8;
-  static const double lg = 10;
   static const double xl = 12;
 
   static const BorderRadius control = BorderRadius.all(Radius.circular(sm));
@@ -38,27 +37,11 @@ abstract final class WingRadius {
 abstract final class WingMotion {
   static const Duration fast = Duration(milliseconds: 120);
   static const Duration standard = Duration(milliseconds: 200);
-  static const Duration emphasized = Duration(milliseconds: 320);
+  static const Duration buttonPress = Duration(milliseconds: 120);
+  static const Duration buttonRelease = Duration(milliseconds: 160);
+  static const double buttonPressedScale = .97;
 
   static const Curve curve = Curves.easeOutCubic;
-}
-
-/// Semantic state of a chat, task, or activity item.
-enum WingStatus {
-  /// Work is actively progressing.
-  running,
-
-  /// Wing cannot continue without the user (approval, clarify, secret).
-  blocked,
-
-  /// Work ended in an error.
-  failed,
-
-  /// Work ended successfully.
-  completed,
-
-  /// Nothing is happening.
-  idle,
 }
 
 /// The Wing typography ramp.
@@ -138,6 +121,29 @@ class WingTypography {
 /// The Wing design tokens, carried on [ThemeData.extensions].
 @immutable
 class WingTokens extends ThemeExtension<WingTokens> {
+  /// Studio source palette. Grammar colors never replace diagnostic/diff colors.
+  Color? sourceColor(String? scope) {
+    final dark = brightness == Brightness.dark;
+    return switch (scope?.split('.').first) {
+      'keyword' ||
+      'selector-tag' ||
+      'meta' => dark ? const Color(0xFFD3ACF5) : const Color(0xFF7040A0),
+      'string' || 'regexp' || 'attribute' || 'selector-attr' =>
+        dark ? const Color(0xFFA6D8A8) : const Color(0xFF316B36),
+      'number' ||
+      'literal' ||
+      'symbol' ||
+      'bullet' => dark ? const Color(0xFFF0BD87) : const Color(0xFF8A4A13),
+      'title' || 'built_in' || 'type' || 'name' || 'selector-class' =>
+        dark ? const Color(0xFF91C9F5) : const Color(0xFF285E91),
+      'variable' ||
+      'attr' ||
+      'params' => dark ? const Color(0xFF7DD4C8) : const Color(0xFF226A60),
+      'comment' || 'doctag' || 'wing-line-number' => muted,
+      _ => null,
+    };
+  }
+
   final Brightness brightness;
   final Color surface;
   final Color raised;
@@ -151,6 +157,24 @@ class WingTokens extends ThemeExtension<WingTokens> {
   final Color running;
   final Color blocked;
   final WingTypography typography;
+
+  /// Studio error-family fills, derived from the approved OKLCH palette.
+  Color get warningSurface => brightness == Brightness.dark
+      ? const Color(0xFF2F281B)
+      : const Color(0xFFFDF4E3);
+
+  Color get dangerSurface => brightness == Brightness.dark
+      ? const Color(0xFF352422)
+      : const Color(0xFFFFF1EF);
+
+  /// Shared unread treatment for Recents identity cards and cached viewports.
+  Color recentUnreadTint(Color primaryContainer) =>
+      (brightness == Brightness.dark ? accent : primaryContainer).withValues(
+        alpha: brightness == Brightness.dark ? .14 : .17,
+      );
+
+  Color get recentUnreadBorder =>
+      Color.lerp(border, accent, brightness == Brightness.dark ? .35 : .17)!;
 
   const WingTokens({
     required this.brightness,
@@ -216,21 +240,6 @@ class WingTokens extends ThemeExtension<WingTokens> {
     final theme = Theme.of(context);
     return theme.extension<WingTokens>() ??
         WingTokens.forBrightness(theme.brightness);
-  }
-
-  Color colorForStatus(WingStatus status) {
-    switch (status) {
-      case WingStatus.running:
-        return running;
-      case WingStatus.blocked:
-        return blocked;
-      case WingStatus.failed:
-        return danger;
-      case WingStatus.completed:
-        return success;
-      case WingStatus.idle:
-        return muted;
-    }
   }
 
   @override
@@ -351,7 +360,7 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
       fontSize: 14,
       fontWeight: FontWeight.w600,
     ),
-  );
+  ).copyWith(backgroundBuilder: _studioButtonLayer);
   final fieldBorder = OutlineInputBorder(
     borderRadius: WingRadius.control,
     borderSide: BorderSide(color: tokens.border),
@@ -453,7 +462,10 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
         minimumSize: const Size(48, 48),
         shape: actionShape,
         disabledForegroundColor: tokens.muted,
-      ).copyWith(side: focusBorder),
+      ).copyWith(side: focusBorder, backgroundBuilder: _studioButtonLayer),
+    ),
+    menuButtonTheme: const MenuButtonThemeData(
+      style: ButtonStyle(backgroundBuilder: _studioButtonLayer),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
@@ -474,6 +486,12 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
         fontFamily: WingTypography.sans,
         color: tokens.muted,
       ),
+      errorStyle: tokens.typography.label.copyWith(
+        color: tokens.onSurface,
+        fontWeight: FontWeight.w400,
+        letterSpacing: 0,
+      ),
+      errorMaxLines: 4,
       hintStyle: TextStyle(
         fontFamily: WingTypography.sans,
         color: tokens.muted,
@@ -577,6 +595,12 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
       backgroundColor: tokens.raised,
       surfaceTintColor: Colors.transparent,
       shape: panelShape,
+      titleTextStyle: tokens.typography.section.copyWith(
+        color: tokens.onSurface,
+      ),
+      contentTextStyle: tokens.typography.body.copyWith(
+        color: tokens.onSurface,
+      ),
     ),
     tooltipTheme: TooltipThemeData(
       decoration: BoxDecoration(
@@ -618,11 +642,6 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
             ? tokens.accent
             : tokens.muted,
       ),
-    ),
-    progressIndicatorTheme: ProgressIndicatorThemeData(
-      color: tokens.accent,
-      linearTrackColor: tokens.border,
-      circularTrackColor: tokens.border,
     ),
     textSelectionTheme: TextSelectionThemeData(
       cursorColor: tokens.accent,
@@ -669,26 +688,155 @@ ThemeData wingTheme(Brightness brightness, {Color? accent}) {
   );
 }
 
-/// WCAG 2.1 relative luminance contrast ratio between two opaque colors.
-///
-/// Exposed so accessibility expectations live in tests rather than in review
-/// opinions: body text must clear 4.5:1 and secondary text 3:1.
-double contrastRatio(Color foreground, Color background) {
-  final a = _relativeLuminance(foreground);
-  final b = _relativeLuminance(background);
-  final lighter = math.max(a, b);
-  final darker = math.min(a, b);
-  return (lighter + 0.05) / (darker + 0.05);
+/// One paint-only tap response for Wing controls, including disabled controls.
+/// The child retains activation, semantics, focus and gesture admission.
+class StudioButtonPress extends StatefulWidget {
+  const StudioButtonPress({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  State<StudioButtonPress> createState() => _StudioButtonPressState();
 }
 
-double _relativeLuminance(Color color) {
-  double channel(double value) {
-    return value <= 0.03928
-        ? value / 12.92
-        : math.pow((value + 0.055) / 1.055, 2.4).toDouble();
+class _StudioButtonPressState extends State<StudioButtonPress> {
+  // Hit paths dispatch from the innermost target outwards. A nested action
+  // claims its pointer first, so tapping it never compresses the enclosing row.
+  static final Map<int, _StudioButtonPressState> _targets = {};
+  Timer? _hold;
+  int? _pointer;
+  Offset? _origin;
+  bool _compressed = false;
+
+  void _down(PointerDownEvent event) {
+    if (!mounted ||
+        _pointer != null ||
+        _targets.containsKey(event.pointer) ||
+        event.buttons != kPrimaryButton) {
+      return;
+    }
+    _targets[event.pointer] = this;
+    _pointer = event.pointer;
+    _origin = event.position;
+    _hold?.cancel();
+    setState(() => _compressed = true);
+    // Feedback stays visible for short taps; callbacks run on their own timing.
+    _hold = Timer(WingMotion.buttonPress, () {
+      if (mounted && _pointer == null) setState(() => _compressed = false);
+    });
   }
 
-  return 0.2126 * channel(color.r) +
-      0.7152 * channel(color.g) +
-      0.0722 * channel(color.b);
+  void _move(PointerMoveEvent event) {
+    if (_pointer == event.pointer &&
+        (event.position - _origin!).distance > kTouchSlop) {
+      _release(event.pointer, cancelled: true);
+    }
+  }
+
+  void _release(int pointer, {bool cancelled = false}) {
+    if (!mounted || _pointer != pointer) return;
+    _targets.remove(pointer);
+    _pointer = null;
+    _origin = null;
+    if (cancelled) _hold?.cancel();
+    if (cancelled || !(_hold?.isActive ?? false)) {
+      setState(() => _compressed = false);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (_pointer != null) _targets.remove(_pointer);
+    _pointer = null;
+    _origin = null;
+    _hold?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    return Listener(
+      onPointerDown: _down,
+      onPointerMove: _move,
+      onPointerUp: (event) => _release(event.pointer),
+      onPointerCancel: (event) => _release(event.pointer, cancelled: true),
+      child: TweenAnimationBuilder<double>(
+        tween: Tween(
+          end: _compressed && !reduceMotion ? WingMotion.buttonPressedScale : 1,
+        ),
+        duration: reduceMotion
+            ? Duration.zero
+            : _compressed
+            ? WingMotion.buttonPress
+            : WingMotion.buttonRelease,
+        curve: WingMotion.curve,
+        child: widget.child,
+        builder: (context, scale, child) => Transform.scale(
+          key: const ValueKey('studio-button-press-transform'),
+          scale: scale,
+          transformHitTests: false,
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// Menu entries preserve PopupMenuEntry's value, height and dismissal contract.
+class StudioPopupMenuItem<T> extends PopupMenuItem<T> {
+  const StudioPopupMenuItem({
+    super.key,
+    super.value,
+    super.onTap,
+    super.enabled,
+    super.height,
+    super.padding,
+    super.textStyle,
+    super.labelTextStyle,
+    super.mouseCursor,
+    required super.child,
+  });
+
+  @override
+  PopupMenuItemState<T, StudioPopupMenuItem<T>> createState() =>
+      _StudioPopupMenuItemState<T>();
+}
+
+class _StudioPopupMenuItemState<T>
+    extends PopupMenuItemState<T, StudioPopupMenuItem<T>> {
+  @override
+  Widget build(BuildContext context) =>
+      StudioButtonPress(child: super.build(context));
+}
+
+// Framework-generated Back, dropdown and menu buttons receive the same press.
+// Explicit action wrappers already cover their full control, so do not nest it.
+Widget _studioButtonLayer(
+  BuildContext context,
+  Set<WidgetState> states,
+  Widget? child,
+) {
+  final contents = child ?? const SizedBox.shrink();
+  return context.findAncestorWidgetOfExactType<StudioButtonPress>() != null
+      ? contents
+      : StudioButtonPress(child: contents);
+}
+
+/// Checked menu entries retain their native checkmark and selection behavior.
+class StudioCheckedPopupMenuItem<T> extends PopupMenuEntry<T> {
+  const StudioCheckedPopupMenuItem({super.key, required this.entry});
+  final CheckedPopupMenuItem<T> entry;
+  @override
+  double get height => entry.height;
+  @override
+  bool represents(T? value) => entry.represents(value);
+  @override
+  State<StudioCheckedPopupMenuItem<T>> createState() =>
+      _StudioCheckedMenuState<T>();
+}
+
+class _StudioCheckedMenuState<T> extends State<StudioCheckedPopupMenuItem<T>> {
+  @override
+  Widget build(BuildContext context) => StudioButtonPress(child: widget.entry);
 }

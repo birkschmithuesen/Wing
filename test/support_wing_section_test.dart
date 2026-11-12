@@ -43,14 +43,16 @@ Future<void> _show(
   WidgetTester tester, {
   Brightness brightness = Brightness.light,
   double scale = 1,
+  bool reducedMotion = false,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
       theme: wingTheme(brightness),
       builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(
-          context,
-        ).copyWith(textScaler: TextScaler.linear(scale)),
+        data: MediaQuery.of(context).copyWith(
+          textScaler: TextScaler.linear(scale),
+          disableAnimations: reducedMotion,
+        ),
         child: child!,
       ),
       home: RepaintBoundary(
@@ -107,7 +109,7 @@ void main() {
     const directory = String.fromEnvironment('CAPTURE_FONT_DIR');
     if (directory.isEmpty) return;
     for (final entry in {
-      'Roboto': ['Roboto-Regular.ttf', 'Roboto-Medium.ttf', 'Roboto-Bold.ttf'],
+      'Roboto': ['Roboto-Regular.ttf', 'Roboto-Medium.ttf'],
       'MaterialIcons': ['MaterialIcons-Regular.otf'],
     }.entries) {
       final loader = FontLoader(entry.key);
@@ -214,6 +216,13 @@ void main() {
     await tester.pump();
     expect(tester.getRect(_row(_destinations.first.label)), before);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    expect(
+      find.descendant(
+        of: _row(_destinations.first.label),
+        matching: find.byIcon(Icons.favorite_border),
+      ),
+      findsOneWidget,
+    );
     for (final destination in _destinations) {
       expect(tester.widget<ListTile>(_row(destination.label)).onTap, isNull);
       await tester.tap(_row(destination.label));
@@ -224,6 +233,83 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('browser launch feedback $brightness at ${scale}x', (
+        tester,
+      ) async {
+        tester.view.devicePixelRatio = 1;
+        tester.view.physicalSize = const Size(320, 740);
+        addTearDown(tester.view.reset);
+        final semantics = tester.ensureSemantics();
+        var pending = Completer<bool>();
+        addTearDown(() {
+          if (!pending.isCompleted) pending.complete(false);
+        });
+        browser.result = () => pending.future;
+        try {
+          await _show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            reducedMotion: scale == 2,
+          );
+          final row = _row(_destinations.first.label);
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
+          final before = tester.getRect(row);
+          await tester.tap(row);
+          await tester.pump();
+          final progress = find.descendant(
+            of: row,
+            matching: find.byType(CircularProgressIndicator),
+          );
+          expect(progress, findsOneWidget);
+          expect(tester.getSize(progress).shortestSide, greaterThan(0));
+          expect(before.contains(tester.getCenter(progress)), isTrue);
+          expect(tester.getRect(row), before);
+          expect(
+            find.bySemanticsLabel(RegExp('Opening GitHub Sponsors')),
+            findsOneWidget,
+          );
+          await tester.pump(const Duration(milliseconds: 250));
+          await _captureFrame(tester, '${brightness.name}-$scale-pending');
+          await tester.tap(row);
+          expect(browser.calls, hasLength(1));
+          pending.complete(false);
+          await tester.pumpAndSettle();
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(
+            find.textContaining('Could not open your browser.'),
+            findsOneWidget,
+          );
+          pending = Completer<bool>();
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
+          await tester.tap(row);
+          await tester.pump();
+          expect(progress, findsOneWidget);
+          expect(
+            find.textContaining('Could not open your browser.'),
+            findsNothing,
+          );
+          expect(browser.calls, hasLength(2));
+          pending.complete(true);
+          await tester.pumpAndSettle();
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(
+            find.textContaining('Could not open your browser.'),
+            findsNothing,
+          );
+          expect(tester.widget<ListTile>(row).onTap, isNotNull);
+          expect(tester.takeException(), isNull);
+        } finally {
+          semantics.dispose();
+        }
+      });
+    }
+  }
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {

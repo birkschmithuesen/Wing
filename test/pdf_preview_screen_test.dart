@@ -1,6 +1,14 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/services/server_connection_status.dart';
+import 'package:wing/core/widgets/server_connection_label.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/wing_app_bar.dart';
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -49,6 +57,92 @@ Widget _app(
 );
 
 void main() {
+  const capture = bool.fromEnvironment('CAPTURE_HEADER_LOADING');
+  setUpAll(() async {
+    if (!capture) return;
+    for (final entry in {
+      'Roboto': 'build/studio-roboto.ttf',
+      'MaterialIcons': 'build/studio-icons.otf',
+    }.entries) {
+      await (FontLoader(entry.key)..addFont(
+            File(entry.value).readAsBytes().then(ByteData.sublistView),
+          ))
+          .load();
+    }
+  });
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'PDF loading stays in instance row ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final status = ServerConnectionStatus('Claw')
+            ..accessAvailable()
+            ..liveChanged('fixture', true);
+          addTearDown(status.dispose);
+          final download = Completer<RemoteFileDownload>();
+          final frame = GlobalKey();
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: RepaintBoundary(key: frame, child: child!),
+              ),
+              home: ServerConnectionScope(
+                status: status,
+                child: PdfPreviewScreen(
+                  title: 'Report.pdf',
+                  service: _PdfService(),
+                  download: () => download.future,
+                ),
+              ),
+            ),
+          );
+          await tester.pump();
+          final glyph = tester.getRect(find.byType(StudioLoading));
+          final instance = tester.getRect(find.byType(ServerConnectionLabel));
+          final header = tester.getRect(find.byType(WingAppBar));
+          expect(glyph.center.dy, instance.center.dy);
+          expect(glyph.left, greaterThanOrEqualTo(instance.right));
+          expect(header.contains(glyph.topLeft), isTrue);
+          if (capture) {
+            await tester.runAsync(() async {
+              final boundary =
+                  frame.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary;
+              final image = await boundary.toImage();
+              final bytes = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final directory = Directory(
+                'build/design-previews/header-loading/site/native',
+              )..createSync(recursive: true);
+              await File(
+                '${directory.path}/pdf-${brightness.name}-$scale-pending.png',
+              ).writeAsBytes(bytes!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+          download.complete(
+            RemoteFileDownload(filename: 'report.pdf', bytes: [1]),
+          );
+          await tester.pumpAndSettle();
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(tester.getRect(find.byType(WingAppBar)), header);
+          expect(tester.getRect(find.byType(ServerConnectionLabel)), instance);
+          expect(find.text('Page 1 of 2'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('reads pages from one download and releases document on close', (
     tester,
   ) async {
@@ -157,4 +251,31 @@ void main() {
     expect(service.rendered, [0, 0]);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'closing during render releases only after the native decode settles',
+    (tester) async {
+      final rendering = Completer<Uint8List>();
+      final entered = Completer<void>();
+      final service = _PdfService()
+        ..rendering = (_) {
+          entered.complete();
+          return rendering.future;
+        };
+      await tester.pumpWidget(
+        _app(
+          service,
+          () async => RemoteFileDownload(filename: 'report.pdf', bytes: [1]),
+        ),
+      );
+      await tester.pump();
+      await entered.future;
+      await tester.pumpWidget(const SizedBox.shrink());
+      expect(service.closed, isEmpty);
+      rendering.complete(_png);
+      await tester.pump();
+      expect(service.closed, ['doc']);
+      expect(tester.takeException(), isNull);
+    },
+  );
 }

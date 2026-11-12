@@ -1,17 +1,322 @@
 # Changelog
 
+User-facing changes for Wing. Download published APKs from [GitHub Releases](https://github.com/tarkilhk/Wing/releases/latest); upcoming changes stay under **Unreleased**.
+
 ## Unreleased
 
+## [1.4.1] - 2026-11-09
+
+### New
+
+- **GPT Live voice:** Talk to your agent using your **ChatGPT subscription** or
+  separately billed OpenAI API access. Available in ordinary chats and Bot Chats,
+  not group discussions.
+- **Floating call card:** Keep mute, audio routing and End voice available while
+  navigating. Enter another conversation to reveal captions and Return to voice
+  chat. Calls can continue while switching apps or locking the phone.
+- **Voice selection:** Save separate subscription and API voices for your next
+  call. Preview subscription voices offline without using voice allowance.
+  API voice previews are not available yet.
+- **Wing plugin for Hermes:** Install, enable and update the server plugin per
+  profile from **App settings → Hermes → Wing plugin**. Check installed versions,
+  available updates and results for each profile.
+- **Email draft cards:** Review recipients, subject and body, request revisions,
+  then open the draft in your Android email app to edit and send. The plugin
+  does not send email or need access to your mail account.
+
+### Improvements
+
+- Reply to specific group messages and follow clearer member status, current
+  tools and timing under **Group options → Member activity**.
+- Reopen Bot Chats after history compression. New groups show eligible local bots.
+- Use the same attachment picker, image preview and composer layout across chats
+  and groups. Wide tables now open as grids; stacked rows remain available.
+- Fix email-link handoff, draft text selection, enlarged voice controls and
+  misleading chat-ownership recovery guidance.
+
+### Setup and limitations
+
+- Live voice and email cards require the **Wing plugin for Hermes**, installed
+  and enabled in each profile. Updating the APK does not install it. Use current
+  Hermes with its gateway Webapp (at least 0.23.0) and the current plugin.
+  [Plugin setup](https://github.com/tarkilhk/Wing/blob/v1.4.1/docs/WING_PLUGIN.md).
+- Full spoken conversations remain local until Wing restarts: Hermes lacks the
+  supported recording operation needed to save them to shared history and memory.
+  Delegated task results save normally. Follow
+  [issue #121045](https://github.com/NousResearch/hermes-agent/issues/121045) and
+  related, unmerged [PR #87053](https://github.com/NousResearch/hermes-agent/pull/87053).
+- Ending voice does not cancel accepted Hermes work. Use the chat's Stop control
+  or explicitly ask to stop the task.
+- Private Bot working histories were removed because the current Hermes API
+  does not expose them. Use the shared discussion and Member activity.
+
+## [1.4.0] - 2026-11-07
+
+Keep work moving across bots, scheduled routines and long conversations, with
+more control over what runs and where results go.
+
+### Before updating
+
+Wing uses the current Hermes gateway Webapp for live chats and saved history.
+A standalone dashboard is not sufficient. Update your Hermes setup separately
+if needed, then use **Check connection** to verify the address. See the
+[self-hosting guide](https://github.com/tarkilhk/Wing/blob/v1.4.0/docs/SELF_HOSTING.md).
+Fork now requires an idle source chat.
+
+### Groups and scheduled work
+
+- Give a group a shared purpose and notes. Choose Everyone, Lead or Auto routing,
+  inspect member progress, and grant more rounds with Continue when Hermes allows it.
+- Stop group work while a send is pending, and recover refused or interrupted
+  attempts with clearer Retry and Discard choices.
+- Stop a scheduled task's current run without disabling its schedule, including
+  while Run now is waiting. Recent runs show cancelled and missed outcomes.
+- Set a schedule timezone, late-run window and missed-run catch-up policy.
+  Deliver results into a bot group; member mentions can start a discussion.
+
+### Conversations and supervision
+
+- Let Hermes run accepted queued follow-ups after Wing disconnects. Edit, steer
+  or cancel a still-queued message; editing accepted work moves it to the queue's tail.
+- Review several clarification questions together and submit the set once.
+  Partially confirmed answers remain visible if a later answer needs retrying.
+- Continue eligible cut-off replies, inspect model-plan allowances when supplied,
+  and return a conversation to its profile's default model.
+- Preview conversation compression with `/compress --preview`, then apply it with
+  `/compress` or `/compact`. Context details identify a configured maximum.
+- Discover detached agents and processes in Recents and background monitoring.
+  Follow tool progress and recurring-work wakeup times supplied by Hermes.
+- Open read-only Git review for a supported local workspace, inspect changed or
+  staged files, and copy a line or hunk reference.
+- Swipe Tasks and Subagents drawers up to expand and down to close. Review the
+  exact command in pending approvals and use supported connection requests in chat.
+
+### Profiles, skills and connections
+
+- Lock skills against agent edits while keeping your own editing rights.
+  Manually update installed plugins and inspect updated, skipped or review-needed results.
+- See cached MCP connection and sign-in status separately from explicit tests.
+  Manage named Connected apps accounts where your Hermes setup supports them.
+- Choose a default model for new subagents, or inherit the parent's model.
+  Optionally prepare compression summaries ahead of need; this can consume tokens.
+- Keep settings editable with the server's explanation after a definite refusal.
+  Cloud connections show version information without offering host update controls.
+- Swipe through sliding setup cards with a fixed footer and compact check results.
+  Fields stay in place during checks; completed results remain usable for five
+  minutes across cards unless you edit connection details. Name and save explicitly.
+
+### Organization and reliability
+
+- Create projects under the profile's default folder, replace a project's folder
+  associations, and move a chat out of a project with confirmation.
+- Save large files without Wing's former fixed download-size cap. Keep a chosen
+  table layout through conversation updates.
+- Open reply notifications at the beginning of the answer. Saved steering appears
+  as a normal message, and stream recovery avoids duplicate text and sent bubbles.
+- Keep saved history readable when live attachment is refused, retain reading
+  position across group refreshes, and retire stale background-work indicators.
+- Fix skill-reader opening, compression-result placement, short-screen question
+  recovery and connector alerts after confirmed removal or disabling.
+- Improve image-processing safety checks for unusually large or malformed
+  attachments, and update Flutter, Android build tools and app dependencies.
+
+## [1.3.1] - 2026-10-23
+
+- Bugfixes.
+
+## [1.3.0] - 2026-10-23
+
+Work across bots and group discussions, take over an agent's desktop, and read
+long answers more comfortably on your phone.
+
+### Before updating
+
+This release changes the local draft and outbox format. Earlier v2 records are
+not imported. Finish or copy out unsent messages and queued work before updating;
+configuration backups do not include them. Saved conversations remain on Hermes.
+See [drafts and outgoing messages](https://github.com/tarkilhk/Wing/blob/v1.3.0/docs/DRAFTS_OUTBOX.md).
+
+### Bots, discussions and desktop control
+
+- Find bots across saved Hermes connections, pin favorites and filter by Working
+  or Needs input. Give each bot a name, shape, color or avatar; create or duplicate
+  bots and open their profile settings, including MCP connectors.
+- Open a profile's Bot Chat by holding its icon in Chats. Tap the Bot Chat header
+  to open its settings, or a member's name in Edit group to visit its chat without
+  losing unsaved group edits.
+- Bring 2–6 bots on one connection into a hosted discussion. Mention members,
+  dictate messages, review approvals, stop work or recover an interrupted task.
+  Hermes coordinates accepted work on the server, so it can continue after Wing closes.
+- Create and edit group names, colors and pictures, including transparent images.
+  Default icons combine member avatars. Group drafts survive navigation and restart;
+  shared replies have sender names, avatars and timestamps.
+- Watch a bot's desktop, take confirmed control and hand it back. Tap to click,
+  hold to right-click, double-tap and hold to drag, pinch to zoom, pan with one
+  finger and scroll with two fingers or the side strip.
+- Type with the phone keyboard, use special keys and one-shot modifiers, or paste
+  phone clipboard text without pressing Enter. Clipboard transfer waits for the
+  desktop's format negotiation before Wing reports success.
+- Keep the agent's latest reply or pending request beside the desktop in landscape
+  and below it in portrait. Open its conversation, queue a message or hand control
+  back with a note asking the agent to continue. Failed handback messages remain
+  available to retry after control has been returned.
+
+### Recents, projects and reading
+
+- Switch between chats and discussions with a two-finger sideways swipe from any
+  conversation, including diagonal swipes. Pinch into the circular card stack,
+  browse with momentum and tap a card to open it. Back closes the stack first,
+  then returns to Recents; direct chat entry retains its original list destination.
+- See recent messages, work/input status and unread replies in compact Recents
+  cards. Soft edge ripples announce replies in other conversations, including
+  while typing. Tool activity alone no longer creates a New answer cue.
+- Open cached conversations and swipe between cards while refreshes run. Keep
+  known chats, group messages and artwork available after a failed refresh.
+- Restore reading position by message within the current app session, separately
+  from read progress. Mark unread preserves that position; explicit Mark read
+  advances the read boundary. Opening a chat or tapping Latest alone does not
+  mark its messages read.
+- Read wide tables as stacked header/value rows on narrow screens, or switch to
+  a wrapped grid. A table's full-screen control enters conversation reading mode,
+  hiding the composer without losing its draft. Landscape combines title and
+  context into one header row to leave more room for the conversation.
+- Create or edit projects with a searchable icon tray, color and server folder.
+  Browse existing folders or create one before saving the project. Rename an
+  ordinary chat from its title and ask for an AI title suggestion before saving.
+
+### Live work and Activity
+
+- Follow readable reasoning between collapsed tool runs, with consistent
+  presentation across chats, groups and bot working histories. Expanding a run
+  retains its details as new work arrives; history refreshes no longer duplicate
+  reasoning or discard the active disclosure.
+- Show an increasing elapsed timer on the current streaming Activity run and a
+  fixed duration when the next Reasoning block arrives. Saved replies retain
+  approximate reply time, separately from measured tool durations when supplied.
+- Open current Tasks and Subagents from the bar above the composer. Expand either
+  drawer near full screen while its summary stays visible. Inspect a child's
+  conversation and use supported steering or interruption controls.
+- Move completed children into their parent answer's saved Activity when that
+  turn ends; keep unfinished background agents available. Historical results
+  remain readable without live controls.
+- Keep completed questions and approvals in Activity with their supplied answers
+  and outcomes. Requests answered on another client stop reopening as pending;
+  secret response values are not saved in request history.
+- Inspect tool requests, code, output, file changes, search matches, memory-review
+  notices and messages between agents in shared detail readers. Copy, wrap,
+  preview and full-view actions stay beside the relevant content.
+
+### Composing, models and results
+
+- Choose server files and folders with `@`, including text-file line ranges.
+  Selected references stay with the draft or queued edit and are read when sent;
+  an unavailable reference pauses the message for correction.
+- Choose installed skills with `/` while composing, preview their instructions,
+  refresh suggestions and use full plugin skill names. Read formatted or raw
+  instructions and reference documents from chat or Administration.
+- Edit queued messages, steer text into active work or stop a run. An empty
+  composer shows Stop while work is running; typing restores Send and held actions.
+  Keep uncertain sends and commands paused for review without automatic retries.
+- Edit a saved prompt or restore its checkpoint after confirming replacement of
+  later history. Preserve the separate draft and pause queued follow-ups. Fork
+  from a saved answer even while the original chat continues working.
+- Choose models with provider filters, supplied prices and account usage. Tap or
+  hold the thinking control to select reasoning, toggle supported fast mode, and
+  inspect context composition while a turn is active.
+- Highlight supported source code in replies, Activity and file previews, with
+  exact copying, selection and line wrapping. Keep live code plain until complete.
+  Put download and preview controls beside output filenames; support formatted
+  and source views for Markdown files.
+- Preserve image attachments through sending and navigation, including Samsung
+  screenshots with large discarded metadata. Keep text-selection handles within
+  the visible reader without shortening the copied selection.
+
+### Health, schedules, usage and updates
+
+- Set in-app alerts for host resource pressure and profile problems, with separate
+  warning/recovery thresholds and native Hermes critical-pressure alerts. Check
+  while Wing is open or its background task monitor is active; unavailable
+  readings stay marked as last known.
+- Acknowledge or snooze an issue for 30 minutes and retain that choice across
+  restarts. Open unresolved issues from the header and review acknowledged or
+  snoozed issues in Health alerts. Keep completed diagnostics visible during refresh.
+- Copy failed scheduled-task details or open a profile investigation chat from
+  the failure. Retain recent runs and clear recovered failure alerts.
+- View Analytics for all profiles on an instance or one selected profile, with
+  separate instance and profile pickers. Keep cached sections usable while fresh
+  totals arrive. Show token/model breakdowns and clearly labelled cost estimates,
+  including API-equivalent subscription usage.
+- Choose Stable releases or Main branch for Hermes updates, inspect the confirmed
+  target and explain unavailable comparisons. Show update progress immediately,
+  follow logs automatically with newest lines first, and scroll up to 16 visible
+  log rows without moving the surrounding controls.
+
+### Notifications and recovery
+
+- Open the exact chat or discussion from Android notifications, including cold
+  starts. Keep conversation alerts individually tappable. Watching chats opens
+  its single conversation or Recents when monitoring several.
+- Use Once, Review and Deny for command approvals in Android; broader choices
+  require review in Wing. Keep unresolved input requests when newer replies arrive.
+- Follow shared discussions across pauses between bot turns and replace each
+  group's notification with its latest reply. Keep internal group workers out of
+  the ordinary chat list and reply alerts.
+- Use Wing's feather pulse for confirmed active work and explicit pending actions.
+  Keep action icons visible, screens usable and automatic background refreshes quiet.
+- Reuse dashboard sign-in across screens, retry connection recovery on return,
+  and retain drafts, file offers and known content through interrupted reads.
+
+## [1.2.0] - 2026-10-02
+
+Inline reply images, less Markdown work during streaming, and stronger handling
+of drafts, outgoing messages and connection recovery.
+
+### Conversations and files
+
+- Display reply images inline, following desktop's tap-to-zoom convention, with
+  bounded mobile previews and a compact download control. Keep failed previews
+  retryable and use the original image when zooming or downloading.
+- Reduce repeated Markdown work on the UI thread while replies stream, including
+  code-fence scanning, so typing and scrolling have less parsing work to compete with.
+- Preserve valid text selections, code controls and reading position as streamed
+  answers grow, finish and refresh from saved history. Restore reading position
+  when reopening long chats while their formatting is prepared.
+- Keep one saved draft per conversation and save only the conversation being
+  edited. Save outgoing messages before submission, preserve new composer edits
+  after acknowledgement, and pause uncertain deliveries for review.
+- Move recent-chat snapshot filtering and size preparation off the UI thread.
 - Show command confirmations in the conversation so later messages push them up;
   use a temporary YOLO notification in empty new chats.
-- Fix the command-loading error after selecting a slash command such as
-  `/approvals`; load argument suggestions using the owning chat session.
-- Make plain `.html` and `.htm` file paths in chat clickable, with preview and
-  download actions.
-- Open HTML files directly in the HTML viewer using the complete downloaded
-  document. Keep source behind Show source instead of opening truncated code.
-- Render HTML reports throughout the supported 32 MiB download range. Load the
-  document directly in the isolated viewer and skip text-preview limits for HTML.
+- Fix argument suggestions after selecting slash commands such as `/approvals`.
+- Open `.html` and `.htm` file paths from chat in the HTML viewer, with the full
+  document, source and download actions. Support HTML reports throughout the
+  supported 32 MiB download range.
+
+### Reliability and privacy
+
+- Keep chat-local `/stop` scoped to the selected conversation and its verified
+  processes instead of stopping unrelated server work.
+- Require review when notification previews are disabled, including actions on
+  previously posted approval notifications.
+- Validate external shared-file permissions before reading or copying content.
+- Make configuration restore validate input and recover interrupted writes without
+  leaving a partially restored connection. Keep connector setup edits attached to
+  their profile and confirm before discarding them.
+- Show scheduled script-run results separately from chat runs, and correct usage
+  date handling to preserve the dates returned by Hermes.
+
+### Before updating
+
+- Saved drafts and queues use a new per-conversation format. Earlier saved drafts
+  and queues are not imported; send them or copy their text and files before updating.
+- Configuration backups now use version 2, with or without passphrase protection.
+  Older backups cannot be imported; export a fresh backup after updating.
+  [Current backup format and limits](https://github.com/tarkilhk/Wing/blob/v1.2.0/docs/CONFIGURATION_BACKUPS.md).
+
+### Build and testing tools
+
+- Make custom performance timing, counters and traces an explicit QA build option.
+  Production release builds disable them and always use the production renderer.
 
 ## [1.1.3] - 2026-09-28
 
@@ -29,12 +334,6 @@
   using either the toolbar or Android Back button.
 - Clearly label unknown backend update commit counts and explain when Hermes
   has not provided change details.
-
-Validation: local analysis and 2,835 host tests passed; 12 opt-in tests were
-skipped. The Android task-reentry regression passed on a Samsung SM-S918B.
-Release-tool tests passed. Dependency updates were reviewed; this patch retains
-the tested lockfile. Broader live-server and multi-device smoke tests were not
-repeated. Release CI verifies the signed APKs and uploaded asset checksums.
 
 ## [1.1.2] - 2026-09-27
 
@@ -86,186 +385,60 @@ repeated. Release CI verifies the signed APKs and uploaded asset checksums.
 
 ## [1.1.0] - 2026-09-24
 
-Wing 1.1.0 brings a more capable mobile workspace, clearer server administration,
-and stronger recovery while Hermes works in the background. These notes cover
-changes since the `v1.0.1` source tag.
+A more capable mobile workspace, clearer Hermes administration, and better
+recovery while your agent works in the background. These changes follow `v1.0.1`.
 
-### Highlights
+### Chats, files and voice
 
-- Browse chats with profile and project filters, compact working-state animation,
-  more useful menus, and a steadier reading position while replies stream.
-- Inspect a redesigned analytics dashboard with token trends, a year of daily
-  activity, model breakdowns, and clearly labelled API-equivalent cost estimates.
-- Manage profile scheduled tasks, MCP connections and sign-in, provider access,
-  and server/profile health from the reorganized administration screens.
-- Dictate into editable drafts and read replies aloud using separately chosen
-  on-device or Hermes speech processing. Live provider and speech-quality checks
-  remain pending.
-- Review approval requests from Android notifications, recover missed replies
-  after connection interruptions, and retry uncertain work without resending a
-  draft automatically. Background delivery still depends on Android and the
-  connected Hermes session.
-- Connect through Nous Portal to discover Hermes Cloud instances, with live
-  hosted-instance connection still awaiting acceptance testing. Add launcher
-  shortcuts for Quick Chat, Activity and Search chats; support development
-  voluntarily through GitHub Sponsors or Ko-fi.
-
-### Detailed changes
-
-- Confirm server warnings before switching a chat model, including large-context
+- Filter chats by profile and project, create chats in the selected project, and
+  browse longer lists with Show more. Grouping, sorting and visible details move
+  into the chat menu.
+- Show working-state animation and quieter status transitions with reduced-motion
+  support. Keep fork, retry and background-agent results close to their answers.
+- Open assistant deliverables from Download and Open preview cards. Read Markdown
+  in Rendered or Source mode and save files through Android.
+- Dictate into editable drafts and read replies aloud, with independent Local or
+  Hermes choices. Add offline Android voice/language controls and profile-owned
+  Hermes voice settings with sample playback. Live speech-provider and human
+  speech-quality acceptance checks remain pending.
+- Confirm Hermes warnings before switching a chat model, including large-context
   cost warnings.
 
-- Preserve verified unfinished work through network outages and failed reads,
-  recover the actual missed reply before stopping monitoring, and show
-  reconnecting status while its outcome is uncertain.
+### Administration and analytics
 
-- Keep notification approval review on one screen, show offline/retry state,
-  and keep permission scope visible above long commands and request details.
-- Show one monitoring notification and recover useful reply text after reconnect.
+- Reorganize Administration around profile summaries, focused settings, provider
+  access and capabilities. Edit identity and memory, search settings, and manage
+  scheduled tasks without losing profile context.
+- Add profile-scoped MCP setup and sign-in, clearer connection tests and failure
+  details, and a confirmed server-wide Reconnect MCP tools action.
+- Add provider credential renewal, sign-in recovery and reviewed credential removal.
+- Separate Server and Profile health, with retained results, clearer findings and
+  recovery links. Run Doctor and Security audit from Health; use Ask Hermes to
+  turn a Doctor finding into an editable chat draft.
+- Move usage into Hermes analytics with selectable periods, a scrollable year of
+  daily activity, model/token breakdowns and token trends. Label API-equivalent
+  cost estimates, pricing sources and unavailable dimensions explicitly.
+- Show backend version and update availability under Versions & updates, including
+  commit summaries supplied by Hermes and separate installation progress/logs.
 
-- Recover interrupted profile connections even when their chat list was never
-  opened, so Retry can clear stale connection warnings while another chat works.
+### Connection recovery and Android
 
-- Recover a disconnected chat when an approval notification is tapped, keep the
-  Android action alive through acknowledgement, and show unconfirmed decisions
-  without replaying them after later reconnection.
-
-- Fix first question notifications after restarting Wing with a previously read
-  chat in its local cache. Attach the cached chat to the verified live session
-  while preserving its history and protecting newer events and navigation.
-
-- Prevent a normal empty approval refresh from suppressing the first question
-  notification. Clear restored reply notifications when read after opening them
-  over the chat list; each screen now owns its visibility state.
-
-- Show structured question text, counts and Review in the first notification for
-  an unopened chat. Preserve newer requests and chat navigation during loading.
-- Restore unread chat notifications silently after force-stop and relaunch,
-  while keeping read or dismissed notifications cleared.
-
-- Center deliverable actions, show a Download icon that becomes a spinner while
-  downloading, and keep Open preview as centered text.
-
-- Open assistant deliverables directly from chat with desktop-style Download and
-  Open preview cards, a Rendered/Source Markdown reader, and Android file saving.
-
-- Reveal ten additional chats per tap with Show more, keeping the action until the group is fully shown.
-
-- Align the notice arrow, fork and retry icons at their centers and reduce the shared row height. Expanded background-agent results use the full message width.
-
-- Bring fork and retry closer to each answer and share the following background-agent notice row when available.
-
-- Move chat grouping, sorting and visible details into anchored menus under the
-  ellipsis, freeing the permanent control row for more chats.
-
-- Retry interrupted chats immediately when Wing regains focus or the chat screen
-  reopens. Replace continuous reconnect polling with a short retry burst and
-  focus/network triggers, preserving drafts without resending messages.
-
-- Show desktop's travelling rectangular border around working chats, with
-  reduced-motion support and unchanged row layout and actions.
-
-- Hide idle and cancelled chat status rows. Activity and connection notices now
-  expand and fade smoothly only when needed, with support for reduced motion.
-
-- Add profile-scoped provider credential renewal, sign-in recovery and reviewed credential removal, and remove obsolete shared-account redirects.
-- Clarify connection deadlines, notification recovery, local reading snapshots and configuration-backup limits.
-
-- Restore Send immediately after a chat reopens, automatically retry recoverable session-resume failures, and preserve drafts with a visible retry action when recovery needs attention.
-
-- Add Ask Hermes to each Doctor finding, opening an editable new-chat draft under the selected profile with the finding and available diagnostic log.
-
-- Move configuration backup and restore to App settings. Include accent colour, notification preferences and the default composer action, and apply restored settings immediately.
-
-- Group the menu into everyday use, instance/app setup, and Hermes tools. Rename Connections to Hermes instances and move Usage out of Health into the standalone Hermes analytics destination.
-
-- Explain Health checks in plain language, show tool/connector/task counts, and display check times once per Server and Profile section with incomplete-check status.
-
-- Retry temporary Health connection failures safely. Keep server and per-profile results across navigation and app restarts, reuse them for 24 hours, and resume tracking unfinished diagnostics without duplicating them.
-
-- Scroll the Usage year grid smoothly in either direction, with the visible date range updating during drags and momentum. Replace the earlier/later arrows.
-
-- Show a refresh icon with progress in Health’s Server section, and move Doctor and Security audit reruns to top-bar play buttons.
-
-- Show green, non-interactive health rows when tools, connectors and scheduled tasks pass their checks; retain details and recovery links for other results.
-
-- Refresh all four profile health checks automatically when Health opens or the selected profile changes. Run Doctor and Security audit on opening Health, without rerunning them on profile changes.
-
-- Replace Health’s Server refresh with Run all diagnostics for Doctor and Security audit; remove misleading runtime-profile labels.
-
-- Show model access status directly in Health, with recovery actions only when needed. Remove its separate screen, model picker and routine account-management shortcut; keep configuration in Administration.
-
-- Open the Usage breakdown on models by default, keeping the trend on token types.
-
-- Refine Usage with a profile-only dropdown, toggle icons before chart titles, and one combined row per model across providers. Keep highest-first sorting and make model rows passive, removing the extra details sheet.
-
-- Show Usage activity in one compact band of week columns with earlier/later navigation, retaining the accent-derived period outline and year-wide activity colours.
-
-- Sort Usage breakdowns from highest to lowest for the selected token or cost measure, keeping unknown amounts last and category colours stable.
-
-- Keep a full year of Usage activity visible in two compact week bands. Highlight the selected period with a theme-derived contrasting outline while retaining every day's activity colour. Cache year history separately and allow any date to open its token tooltip and breakdown.
-
-- Summarize Security audit findings in Health and show component totals, expandable severity cards, package/advisory/fix details, and a collapsed raw-output view.
-
-- Keep Doctor and Security audit Run actions on Health, and refresh diagnostic status and Doctor issue counts automatically without opening details. Shorten diagnostic confirmations and emphasize the profile name.
-
-- Remove the duplicate Health profile selector and replace Check profile with a refresh icon beside the Profile heading, using the profile selected in the shared header.
-
-- Open Usage breakdown and trend on token types, and show the exact daily token total in a tooltip when tapping an activity square.
-
-- Replace the confusing MCP action with Reconnect MCP tools below the connector list. Explain its server-wide scope, ask once, and send that confirmation directly to Hermes without a second popup.
-
-- Make the usage activity grid more compact with small, tightly spaced squares and week columns. Fit year-view pages to the available width instead of capping each page at 91 days.
-
-- Redesign Usage with 1D/7D/30D/90D/365D controls, a daily token grid, animated model/token composition and stacked token trends. Keep pricing sources and exact counts accessible, cache local interactions and explain unavailable daily model/cost dimensions.
-
-- Label MCP connection results Connected or Connection failed.
-
-- Remove the service-specific MCP setup preset and explain connector fields, sign-in methods, custom headers and advanced settings, with readable labels at enlarged text sizes.
-
-- Show API-equivalent costs for OpenAI Codex subscription usage, with cached/uncached input and output breakdowns, published price sources, mixed-provider subtotals and explicit unavailable estimates.
-
-- Split screen-header taps: the connection icon and status dot open status details, while the name opens a dropdown matching the displayed scope—connections only in Chats and Activity, with profile choices for connection/profile headers. Preserve the current section and retained chat drafts when switching.
-
-- Distinguish MCP test results from the connection LED with a green tick for success and a red cross for failure.
-
-- Simplify MCP connection tests to a compact pass/fail status, with discovered methods under a collapsed Available tools panel and expandable failure details.
-
-- Add profile-scoped MCP setup for browser sign-in, bearer tokens, custom headers and subprocess credentials, with optional registered-client/TLS configuration. Complete OAuth through a phone-local callback or pasted browser URL using stock Hermes RPC; keep tokens on Hermes and provide terminal guidance for device-code/CIMD login.
-
-- Fix Live chat staying amber after an administration connection drops while chat remains connected. Keep genuine workspace chat interruptions visible.
-
-- Fix MCP connector reload requests rejected by stock Hermes. Show connection-test, sign-in and reload failure reasons with credential redaction, and clear stale successful test results before retesting.
-
-- Redesign Hermes health around Server and Profile: remove the global health verdict, load profile observations directly, consolidate provider access, and add an explicit Check profile action. Keep Usage scoped to profiles and Logs scoped to the server. Refine diagnostic, access, usage and log detail screens for both themes and enlarged text.
-
-- Present Doctor's diagnosis as a grouped findings list with clear titles, supporting details, a compact status heading and expandable full output.
-
-- Move Manage profiles into its own pill after the last profile in Administration's scrolling profile row.
-
-- Open Administration directly on the profile overview without tabs. Add a pharmacy-cross Health action in the top bar with bounded green/amber/red/neutral status, freshness and links to affected settings. Retain runtime diagnostic results across Health visits and profile changes; opening Health runs no diagnostics or writes. Provider configuration observations do not certify inference or runtime health.
-
-- Add a native backend changelog under Changes in this update, using the commit summaries already returned by Hermes. Show dates, optional commit details and partial-history counts without additional backend requests.
-
-- Replace Administration Runtime with Versions & updates, load backend version and upstream update availability automatically, and show an update indicator. Remove Connection from Server, move server-wide connector reload into MCP connectors, and distinguish update checks, installation progress and update logs.
-
-- Fix speech provider selection confusing Nous Subscription with direct OpenAI. Confirm the saved provider route independently of its speech engine, and keep Nous voice edits in the OpenAI voice settings used by Hermes.
-- Combine Hermes speech provider and voice selection in one compact screen, with adjacent Play/Stop and a direct App settings link. Keep the sample sentence hidden and show setup only for the selected provider.
-
-- Add an autosaving profile voice picker with Play/Stop for the Wing sample sentence, Edge suggestions, ElevenLabs account voices and advanced custom IDs, using vanilla Hermes APIs.
-- Keep one Administration refresh button in the header. Refresh overview data and runtime identity together while preserving profile context and diagnostic results; remove the duplicate footer action.
-
-- Complete the administration design refinements: composed profile brief, distinct setup/access warnings, concise scheduled-task summaries, retained runtime diagnostic results, capability-first browsing, visible provider expiry and usage tokens, content-first memory, full search paths and targeted overview refresh.
-
-- Give Administration search and profile navigation consistent spacing and gutters. Select profiles directly with the same profile chips as Chats, replacing the separate Change action and picker sheet.
-- Redesign Administration with profile summaries, focused provider and capability inventories, full-screen identity editing, clearer settings conflicts, read-first memory, actionable health findings and contextual search. Keep Profile, Server and Health ownership visible and apply consistent Studio layouts across themes and enlarged text.
-- Add independent Local/Hermes dictation and read-aloud choices in App settings, offline Android voice/language controls, and a link to profile-owned Hermes speech settings. Request microphone permission after notifications on first launch; preserve editable drafts and cancel audio when leaving the foreground or changing chats. Live-provider and human speech-quality UAT remain pending.
-- Restore the conversation's Unassigned/project selector as a separate action from connection details. Add searchable Studio project selection, refreshed connection status details, accessible header actions and enlarged-text layouts.
-- Filter chats in place by tapping a project, with a selected background shade and tap-again clearing. Keep Recents unchanged, hide empty pinned sections, and create new chats in the selected project.
-- Show the saved connection icon, then the status light and connection name in Chats and conversation headers, matching the other connection rows.
-- Remove the redundant Edit button from the connection address card; use Back to return to the address step.
-- Tap a connection icon on Connections or beside the address during setup to choose from 16 Studio-style icons. Save existing connection icons immediately without a server check; keep new choices with the setup draft. Store each choice locally and include it in configuration exports and imports; existing connections and older backups use the standard server icon. Remove the redundant Appearance menu item and keep the status light's details action separate.
-- Increase spacing between connection status lights and connection names.
+- Retry interrupted chats on return or reopening, preserve drafts and recover
+  missed replies without automatically resending uncertain work.
+- Improve reply, approval and structured-question notifications after restart and
+  reconnect. Keep approval scope visible, show offline/retry states, and avoid
+  replaying unconfirmed decisions.
+- Restore unread notifications silently on relaunch while respecting read and
+  dismissed alerts. Background delivery still requires a connected client and
+  remains subject to Android restrictions.
+- Add Hermes Cloud discovery through Nous Portal. Live hosted-instance connection
+  acceptance testing remains pending.
+- Add launcher shortcuts for Quick Chat, Activity and Search chats, and optional
+  support links for GitHub Sponsors and Ko-fi.
+- Move configuration backup/restore into App settings, including accent color,
+  notification preferences, composer defaults and saved connection icons.
+- Clarify connection/profile header actions and project selection; retain the
+  current workspace and drafts while switching.
 
 ## [1.0.1] - 2026-09-16
 
@@ -438,790 +611,4 @@ Wing 1.0.0 is the first release under the Wing name: an independent Android clie
 
 Wing requires a compatible modern Hermes dashboard and gateway; individual controls depend on the server's capabilities. Accepted work continues on Hermes when the phone leaves, but local queues and alerts need a running, connected client. Firebase push delivery and synchronized older answer alternatives are not part of this release. Configuration exports do not back up drafts or the full app state.
 
-The [full development changelog](https://github.com/tarkilhk/Wing/blob/main/CHANGELOG.md) retains the detailed intermediate entries. See the [v1.0.0 known limitations](https://github.com/tarkilhk/Wing/blob/v1.0.0/docs/KNOWN_LIMITATIONS.md) for recovery, file and backend boundaries.
-
-## [2.36.15+2232] - 2026-09-15
-
-### Fixed
-
-- Stop dashboard HTTP redirects from forwarding session credentials to another endpoint.
-- Prevent Queue from taking attachments while a normal send is awaiting acknowledgement.
-
-### Added
-
-- Offline privacy policy accessible from App settings.
-- First-connection guide, contributor instructions, known limitations and Play Data safety inventory.
-
-### Changed
-
-- Group Workspace options into visible filter switches, project/archive actions and Refresh; omit actions that do not apply to the current view.
-- Anchor project, chat and draft menus beside their ellipsis controls with Studio styling. Replace the project row's compose pencil with New chat inside its menu.
-- Shorten the README, move the detailed feature inventory into docs, correct store claims and release instructions, and archive the inherited F-Droid recipe.
-
-## [2.36.14+2231] - 2026-09-15
-
-### Changed
-- Replace the full-width New chat shelf with a compact floating plus button.
-- Extend the chat list into the freed space, with scroll padding so the final row can clear the button.
-
-## [2.36.13+2230] - 2026-09-15
-
-### Fixed
-- Hide internal task-list reminders injected after context compression from the conversation, search and edit controls.
-- Preserve ordinary lists, quoted reminders, assistant text and durable history IDs.
-
-## [2.36.12+2229] - 2026-09-15
-
-### Changed
-- Deepen the dark-mode Teal accent from pale mint to a richer teal, keeping the existing backgrounds, light theme and other accents.
-
-## [2.36.11+2228] - 2026-09-15
-
-### Changed
-- Refine the default accent to Teal with navy-charcoal dark surfaces and a subtly warm light canvas, inspired by Playful.
-- Preserve saved Mint selections under the new Teal label and move Glacier toward a cooler blue to distinguish the two accents.
-- Keep the existing layouts, portrait artwork and semantic status colors.
-
-## [2.36.10+2227] - 2026-09-15
-
-### Fixed
-- Android Back from a conversation returns to the chat list and preserves the draft. Further Back presses open the menu, then exit.
-- Correct the navigation regression test to require the chat-list step before opening the menu.
-
-## [2.36.9+2226] - 2026-09-15
-
-### Changed
-- Remove profile names from notification headings, including the internal `default` label.
-- Use "Finished working" and "Needs your attention", with the chat title underneath when alert previews are enabled.
-- Use "Tap to open the chat" when chat titles are hidden.
-
-## [2.36.8+2225] - 2026-09-15
-
-### Changed
-- Add the approved Playful portrait to the navigation drawer, empty chat greeting, app settings version card, first connection screen and assistant reply badges.
-- Keep the identity colors in light and dark themes, with a shared portrait widget for future changes.
-- Keep the empty greeting scrollable on short screens and hide it when messages, history loading, errors or active work appear.
-
-## [2.36.7+2224] - 2026-09-15
-
-### Changed
-- Android Back opens the left menu from Chats, Activity, Connections, App settings and Hermes administration. Back with the menu open exits the app.
-- Keep normal Back navigation through stacked detail pages, returning to their original screen before opening the menu.
-- Remove Connections from the Chats Back sequence while retaining its menu entry and preserving chat drafts.
-
-## [2.36.6+2223] - 2026-09-14
-
-### Changed
-- Replace the gold H launcher icon with the selected Playful portrait in navy, cream and mint.
-- Use the matching messenger wing for notifications and Android themed icons.
-- Record the approved icon identity, source assets and repeatable export process in the design documentation.
-
-## [2.36.5+2222] - 2026-09-14
-
-### Fixed
-- Keep administration editor actions accessible above the keyboard and save confirmations.
-- Ignore refresh callbacks after leaving an administration page.
-- Explain managed provider selections that still need account access, verify composed browser selections, and remove provider switches from setup-only integrations.
-
-### Changed
-- Show clearer provider connection and token-expiry status.
-- Use compact selection controls and tighter settings rows while retaining full touch targets.
-- Add repeatable administration acceptance against an Android emulator and the real local Hermes backend.
-
-## [2.36.4+2221] - 2026-09-14
-
-### Changed
-- Make the Intelligence sheet fit its content, with a compact header and two-column reasoning choices.
-- Show context usage in a small animated card anchored above the context ring, preserving composer focus and the keyboard.
-
-## [2.36.3+2220] - 2026-09-14
-
-### Fixed
-- Render background-process batches as one compact notice with collapsed results. Validate the producer's batch structure and reuse Desktop's process parser, preserving failures without exposing internal response instructions.
-
-## [2.36.2+2219] - 2026-09-14
-
-### Fixed
-
-- Keep table scrollbars below the last row, including on phones with a bottom navigation inset.
-- Use a thin, rounded, muted scrollbar with a dedicated gutter beneath Markdown tables.
-
-## [2.36.1+2218] - 2026-09-14
-
-### Changed
-
-- Keep the composer up arrow visible at rest. Animate it into the configured action when held, follow the highlighted choice while sliding, and return to the arrow on release or cancellation.
-- Respect reduced-motion settings by switching icons without animation.
-
-## [2.36.0+2217] - 2026-09-14
-
-### Changed
-
-- Use Steer as the default action during active work, with a device preference in Hermes administration.
-- Hold the composer button to open a vertical selector, slide to Steer, Stop, Queue or Fork, then release to act. Slide away to cancel.
-- Keep unavailable actions visible with an explanation and provide screen reader actions without dragging.
-
-## [2.35.0+2216] - 2026-09-14
-
-### Added
-
-- Tap the conversation title/project header to move the chat to a project, including before its first message.
-
-### Fixed
-
-- Allow idle open chats to move after verifying their profile and runtime ownership. Keep the conversation and unsent draft open.
-- Keep move failures visible in the project picker with retry, and block duplicate submissions.
-
-## [2.34.4+2215] - 2026-09-14
-
-### Fixed
-
-- Recover saved chat titles after restarting the app, including pending chats in background profiles.
-- Refresh Activity titles from server metadata so recovered chats do not remain labelled "Restored chat".
-
-## [2.34.3+2214] - 2026-09-14
-
-### Fixed
-
-- Open valid forks of compacted conversations without incorrectly reporting that the answer boundary was not copied.
-- Validate forks against their complete saved history and clarify when a created fork fails validation but remains available in Chats.
-
-## [2.34.2+2213] - 2026-09-14
-
-### Fixed
-
-- Receive local alerts for observed completion and input requests in unopened chats, including work started by another client in a different Hermes profile, while the app remains connected.
-- Avoid duplicate alerts for opened chats and false completion alerts after failed status reads or disappearing sessions.
-
-## [2.34.1+2212] - 2026-09-14
-
-### Fixed
-
-- Show all staged images as matching thumbnails at the left of the composer, with a remove action, regardless of how they were added.
-- Validate pasted images from their bytes instead of rejecting generic provider MIME types. Explain when Android no longer grants access to a clipboard image.
-
-## [2.34.0+2211] - 2026-09-14
-
-### Added
-
-- Paste clipboard images through the Android keyboard's image insertion action or the message composer's Paste menu.
-- Save pasted JPEG, PNG and WebP images as sanitized, unsent attachments in their originating chat, preserving the existing draft text.
-
-## [2.33.0+2210] - 2026-09-14
-
-### Added
-
-- Change a profile's default model from Hermes administration, with provider groups, search and server-required confirmation.
-- Browse and search installed skills, read their instructions, and enable or disable individual skills.
-- Inspect toolsets, their setup status and included tools, and change enablement for the selected server profile.
-
-### Changed
-
-- Edit queued instructions directly in the composer. Save them in place, steer them into the running turn, or cancel and restore the separate draft and attachments.
-- Confirm queued instruction deletion and pause queue dispatch while an instruction is being edited.
-
-## [2.32.0+2209] - 2026-09-14
-
-### Changed
-
-- Organize activity into slim Tools, Tasks and Agents tabs, with Work available for goals and background processes.
-- Use consistent light text, small icons and inline chevrons for tool results and live activity. Keep expanded details close to the left guide with equal insets.
-- Keep Thinking below a subtle horizontal divider across tabs. Preserve selected categories, open tool details and transcript position while switching tabs or receiving updates.
-
-## [2.31.23+2208] - 2026-09-14
-
-### Fixed
-
-- Render background-process completions and agent deliveries as compact notices with collapsed details, following Hermes Desktop's exact envelope rules.
-- Collapse settled agent replies and reduce expanded skill instructions to the original slash invocation.
-- Apply the same display projection to chat search, and prevent internal deliveries from being edited or replayed as human prompts.
-- Render system and slash-command status without a full message bubble.
-
-## [2.31.22+2207] - 2026-09-14
-
-### Changed
-
-- Match Tasks, Subagents, current tool activity, Goal and Background work to the compact Activity header, with lighter text, small icons, inline counts and chevrons.
-- Reduce spacing in task rows and subagent summaries, while keeping loading indicators, refresh-on-expand and detail controls available.
-
-## [2.31.21+2206] - 2026-09-14
-
-### Fixed
-
-- Keep expandable transcript headers in place while details open or close, including nested tool calls and short conversations.
-- Preserve manual scrolling and the Latest action while transcript content changes.
-- Show one centered steering acknowledgement without a duplicate queued message.
-
-## [2.31.20+2205] - 2026-09-14
-
-### Changed
-
-- Show Activity and Thought as compact metadata with lighter text, small icons and inline chevrons. Keep tool counts on the same line and remove excess padding between messages.
-- Offer Edit and Delete for queued messages. Editing preserves attachments, queue order and the separate composer draft; deleting requires confirmation.
-
-### Fixed
-
-- Reject stale queued-message edits and restore the original message if saving fails.
-
-## [2.31.19+2204] - 2026-09-14
-
-### Fixed
-
-- Use Hermes Desktop's message display types for internal events. Delegation completions show a compact notice with expandable results instead of a user bubble containing agent instructions.
-- Keep hidden messages out of the transcript and internal delivery text out of Find in chat. Model changes, resumed turns and personality changes use compact notices.
-
-## [2.31.18+2203] - 2026-09-14
-
-### Changed
-
-- Add a soft moving highlight to live activity text above the composer. The text stays readable, and the animation pauses for idle chats, input requests and reduced-motion settings.
-
-## [2.31.17+2202] - 2026-09-14
-
-### Fixed
-
-- Group adjacent saved tool calls and current work inside one Activity disclosure, with tool details still accessible.
-- Load back to the latest user prompt when tool calls fill the first history page after reopening a chat.
-
-## [2.31.16+2201] - 2026-09-14
-
-### Fixed
-
-- Replace the persistent review card with a tappable memory icon that opens review details. Older reviews fold into Activity as the conversation continues.
-- Keep received reviews in their conversation position during history refresh without affecting pagination.
-
-### Changed
-
-- Keep live activity at the bottom of the chat, above queued messages and the composer. Show current thinking, writing, tool progress, subagent activity and input waits.
-- Keep status fresh across overlapping tools, new turns and reconnections.
-- Add an actions menu to saved drafts for opening or discarding a draft and its queued messages while preserving sent messages.
-
-## [2.31.13+2198] - 2026-09-14
-
-### Fixed
-
-- Show queued messages as compact italic rows with return arrows above the composer.
-- Confirm accepted steering in the transcript and hide the backend delivery wrapper in saved steering messages.
-- Preserve subagents omitted by refresh as unconfirmed, show their recent tool and progress events, and retain previously received live output.
-
-## [2.31.12+2197] - 2026-09-13
-
-### Fixed
-
-- Keep chats visible in Activities and show the menu spinner while their subagents are still working after the main turn ends.
-
-## [2.31.11+2196] - 2026-09-13
-
-### Fixed
-
-- Continue a skill's message after cancelling or timing out its secret setup instead of leaving the chat stuck working.
-- Group live tool activity, subagents, thinking, tasks and background work under one aligned Activity section that expands only when tapped.
-
-## [2.31.10+2195] - 2026-09-13
-
-### Fixed
-
-- Refresh subagent controls when opening an existing roster so Steer appears when the server supports it.
-- Keep replies from server-started turns separate and refresh their saved history when they finish.
-
-## [2.31.9+2194] - 2026-09-13
-
-### Fixed
-
-- Keep saved attachment prompts readable and prevent file context from multiplying when regenerating or editing a response.
-- Show a readable image label instead of encoded image data when reopening saved chats.
-
-## [2.31.8+2193] - 2026-09-13
-
-### Fixed
-
-- Send photos through the image attachment API, with safe retry and removal after a partial upload.
-- Place file references before the message text when sending attachments.
-- Regenerate answers in the current chat, matching Desktop, while keeping Branch as a separate action.
-
-## [2.31.7+2192] - 2026-09-13
-
-### Fixed
-
-- Find and recover saved unsent drafts from Chats after app restart, including drafts whose original chat is no longer available.
-
-## [2.31.6+2191] - 2026-09-13
-
-### Fixed
-
-- Add and remove attachments for the next draft while Hermes is responding, including queued messages and returning from the file picker during reconnection.
-
-## [2.31.5+2190] - 2026-09-13
-
-### Fixed
-
-- Recover saved draft text, attachments and queued messages when a camera return cannot reopen the original chat after app restart.
-
-## [2.31.4+2189] - 2026-09-13
-
-### Fixed
-
-- Keep captured photos linked to their unsent chat when camera return overlaps reconnection.
-
-## [2.31.3+2188] - 2026-09-13
-
-### Fixed
-
-- Show running tasks only under their verified profile in Activity.
-- Open the notified chat on cold start while keeping pending shared content available for review.
-- Recover expired, unsent chats while preserving drafts, attachments, queued messages and chat settings.
-- Explain rejected regeneration without exposing technical errors or changing the original chat.
-
-## [2.31.2+2187] - 2026-09-13
-
-### Fixed
-
-- Open linked Hermes files from downloaded Markdown previews and return to the source preview.
-- Display SVG previews and embedded images in self-contained HTML files.
-- Mark directly opened chats as read after history loads, even when they are outside the loaded chat list.
-- Keep confirmed subagents and background processes visible when a refresh returns invalid data, with a Retry error.
-
-## [2.31.1+2186] - 2026-09-12
-
-### Fixed
-
-- Explain file-opening failures with specific next steps and offer Retry for temporary failures.
-- Apply saved proxy authentication settings to file previews and downloads.
-- Keep Find results newest-first when loading older matches.
-- Keep View in chat accessible above long expanded search results.
-
-## [2.31.0+2185] - 2026-09-12
-
-### Added
-
-- Choose discovered repository folders when creating a project, with manual path entry available.
-- Open linked files directly from conversation messages using the existing file viewers.
-- Display Hermes review summaries separately from ordinary replies.
-
-### Fixed
-
-- Show Input needed for password and verification requests while reading older messages.
-
-## [2.30.1+2184] - 2026-09-12
-
-### Fixed
-
-- Keep active password requests and background-task cards visible across reconnections to the same session.
-- Remove unavailable answer-version controls while preserving Branch and Regenerate.
-
-## [2.30.0+2183] - 2026-09-12
-
-### Added
-
-- What's new and Releases links in App settings.
-
-### Fixed
-
-- HTML and SVG previews announce the correct format to accessibility services.
-
-## [2.28.0+2181] - 2026-09-12
-
-### Added
-
-- Show background notification availability in App settings.
-
-## [2.27.2+2180] - 2026-09-12
-
-### Fixed
-
-- Notification taps reuse the correct chat screen instead of opening duplicates.
-- The latest notification tap takes priority when switching quickly between chats.
-- Failed notification opens can be retried.
-
-## [2.27.1+2179] - 2026-09-12
-
-### Fixed
-
-- Notifications recover after a temporary startup failure.
-- Alerts for the same chat replace one another consistently across app restarts.
-
-## [2.27.0+2178] - 2026-09-12
-
-### Added
-
-- Queue messages with attachments, including attachment-only drafts, and restore them after interruption.
-
-### Fixed
-
-- Preserve newer composer edits while saving or removing queued messages.
-- Keep failed or uncertain sends paused for review.
-- Remove queued attachment copies when their chat is deleted.
-
-## [2.26.0+2177] - 2026-09-12
-
-### Added
-
-- Open Find matches in their conversation with nearby messages and Back to latest.
-- Automatically expand matching tool results.
-
-## [2.25.1+2176] - 2026-09-12
-
-### Fixed
-
-- Mark an unread chat read on Hermes after its history opens successfully.
-- Preserve unread status after failed loads and provide a retry when the read update fails.
-
-## [2.25.0+2175] - 2026-09-12
-
-### Added
-
-- Show prompts, running status and results for `/bg` and `/background` tasks.
-
-### Fixed
-
-- Keep task results attached to the correct chat when events arrive out of order.
-- Explain completed tasks that return no text.
-
-## [2.24.1+2174] - 2026-09-12
-
-### Fixed
-
-- Find searches recent history first and can load older messages without losing the query or results.
-- Remove the 100-result display limit and duplicate matches from overlapping pages.
-- Keep Find and Outputs working after server history compression.
-
-## [2.24.0+2173] - 2026-09-12
-
-### Added
-
-- Open downloaded, self-contained HTML files with interactive preview, source access and Save or share.
-
-### Fixed
-
-- Large chats open Outputs without loading the entire conversation.
-- Load older outputs adds earlier files; failed batches retain existing results and offer retry.
-
-## [2.23.0+2172] - 2026-09-12
-
-### Added
-
-- Preview SVG code blocks and output files with zoom, source access and copying.
-- Keep source available for incomplete or oversized SVG content.
-
-## [2.22.0+2171] - 2026-09-12
-
-### Added
-
-- Play downloaded audio and video inside Hermes with play, pause and seeking.
-- Offer external playback and Save or share when a format cannot be played in the app.
-
-## [2.21.0+2170] - 2026-09-12
-
-### Added
-
-- Read formatted Markdown output files and switch to their source.
-- Open web links in a browser preview and return to the original chat.
-
-## [2.20.0+2169] - 2026-09-12
-
-### Added
-
-- Read PDFs inside Hermes with page navigation, pinch zoom and retry.
-
-## [2.19.0+2168] - 2026-09-12
-
-### Added
-
-- Open Mermaid diagrams in a zoomable viewer with source access and copying.
-- Keep source readable when a diagram cannot be rendered.
-
-## [2.18.0+2167] - 2026-09-12
-
-### Added
-
-- Open a parent chat when Hermes supplies its relationship.
-
-### Changed
-
-- Remove locally stored answer-version links while retaining Regenerate, Branch, Edit and Fork.
-
-## [2.17.0+2166] - 2026-09-12
-
-### Added
-
-- Open PDF, audio and video outputs in compatible installed apps.
-
-### Changed
-
-- Add thousands separators to usage counts, token counts and costs.
-
-## [2.16.0+2165] - 2026-09-12
-
-### Added
-
-- Check and update selected Hermes connections with separate progress and results for each host.
-
-## [2.15.0+2164] - 2026-09-12
-
-### Added
-
-- Configure securely stored custom access-proxy headers for dashboard and chat connections.
-
-## [2.14.0+2163] - 2026-09-12
-
-### Added
-
-- Add, remove and clear goal criteria, preserving unsaved additions after failures.
-
-## [2.13.0+2162] - 2026-09-12
-
-### Added
-
-- View the selected profile's last 30 days of sessions, API calls, tokens and costs, including per-model usage where available.
-- Show estimated and reported costs separately.
-
-## [2.12.0+2161] - 2026-09-12
-
-### Added
-
-- Start an eligible backend update after confirmation and follow its progress and outcome.
-
-## [2.11.0+2160] - 2026-09-12
-
-### Added
-
-- Edit profile descriptions and SOUL content, retain unapplied changes after partial saves, and confirm before discarding edits.
-
-## [2.10.0+2159] - 2026-09-12
-
-### Added
-
-- Run connection, authentication and provider diagnostics from Hermes administration.
-- View the installed Android version and check backend version and update availability.
-
-## [2.9.0+2158] - 2026-09-12
-
-### Added
-
-- Inspect session loop and heartbeat status with supported controls.
-- View background processes, recent output and exit status; stop a process or dismiss a finished one.
-
-## [2.8.0+2157] - 2026-09-12
-
-### Added
-
-- View goal status, criteria, verification details, turn limits and waiting reasons.
-- Pause, resume or clear goals without losing unsent drafts or queued messages.
-
-## [2.7.0+2156] - 2026-09-12
-
-### Added
-
-- View active subagents and their live output.
-- Steer or interrupt a selected subagent; retain guidance when steering fails.
-
-## [2.6.0+2155] - 2026-09-12
-
-### Added
-
-- Capture a photo from the attachment menu and review it in the originating chat's draft.
-- Preserve the photo if another destination must be chosen; cancellation leaves the draft unchanged.
-
-## [2.5.2+2154] - 2026-09-12
-
-### Fixed
-
-- Delete chats whose existing server session is still open but idle.
-
-## [2.5.1+2153] - 2026-09-12
-
-### Fixed
-
-- Close idle sessions before deleting their history, while protecting chats that are working or awaiting input.
-
-## [2.5.0+2152] - 2026-09-12
-
-### Added
-
-- Preserve incoming shares across app restarts until added to a draft or discarded.
-
-### Fixed
-
-- Report unreadable or oversized shared files without silently omitting them.
-- Keep shared content available when adding or discarding it fails.
-- Load context fullness when reopening a chat without requiring a new message.
-
-## [2.4.0+2151] - 2026-09-12
-
-### Added
-
-- Review incoming shares and choose a connection, profile and new or existing chat.
-- Add photos and files through the attachment menu.
-
-### Fixed
-
-- Validate all shared files before changing the destination draft.
-- Keep later shares from replacing content already under review.
-
-## [2.3.0+2150] - 2026-09-12
-
-### Added
-
-- Running and Needs input filters in Activity, plus Unread only in Chats.
-- Project rename, icon, color and delete actions.
-
-### Changed
-
-- Integrate the context fuse into the composer border with a dot marking current usage.
-
-## [2.2.0+2149] - 2026-09-12
-
-### Added
-
-- Expandable tool details, server todos and available reasoning and timing.
-- Find within a chat and per-chat Outputs for files, images and links.
-- Image zoom, text and code previews, and file downloads with Android save/share.
-
-### Changed
-
-- Load saved history in pages and report incomplete history clearly.
-- Limit downloads to 32 MiB.
-
-## [2.1.5+2148] - 2026-09-12
-
-### Added
-
-- Edit and resend saved messages with confirmation before replacing history.
-- Fork from a saved answer and display separate `/btw` result cards.
-- Improve narrow-screen tables, code blocks and image previews.
-- Display server-reported context usage near the composer.
-
-### Fixed
-
-- Preserve unrelated drafts and attachments during Edit and Fork.
-
-## [2.1.4+2147] - 2026-09-12
-
-### Added
-
-- Discover ongoing work across profiles in Activity.
-- Respond to sudo, secret and vault requests without saving sensitive answers.
-- Configure completion and attention alerts, optional chat titles and sample notifications.
-- Queue, review, remove, pause and resume follow-up messages; steer a running turn.
-
-### Changed
-
-- Send queued messages in order and pause after stop, failure or uncertain delivery.
-
-## [2.1.3+2146] - 2026-09-11
-
-### Added
-
-- Restore unsent drafts and staged attachments by connection, profile and chat.
-- Choose models grouped by technical provider and control session-specific `/yolo`.
-- Use server-supported approval scopes and independent notification preferences.
-
-### Fixed
-
-- Refresh execution and pending-input state when reopening a chat.
-- Preserve newly typed text and prevent duplicate sends after uncertain acknowledgements.
-
-## [2.1.2+2145] - 2026-09-11
-
-### Changed
-
-- Add a shared left drawer for Chats, Activity, Connections, App settings and Hermes administration.
-- Apply a consistent style to connection setup and device settings.
-- Add an administration entry for connection and profile information.
-- Remove unused legacy screens and navigation.
-
-## [2.1.1+2142] - 2026-09-08
-
-### Fixed
-
-- Fork conversations correctly when hidden notices precede the selected answer.
-
-## [2.1.1] - 2026-09-06
-
-### Fixed
-
-- Handle clarification requests containing multiple questions.
-
-## [2.1.0] - 2026-09-03
-
-### Added
-
-- Workspace navigation, attention summaries and Activity.
-- Project browsing, chat assignment, project search and deletion.
-- Chat filters, date grouping and session search with matching excerpts.
-- Encrypted configuration export and import.
-- Quick-chat shortcuts and reviewed sharing into chats.
-- Android notification permission controls.
-- Context display, message actions, code copying and expanded tool output.
-
-### Fixed
-
-- Recover from stalled connections and unresponsive navigation controls.
-
-## [1.0.14-hermesapk.14] - 2026-07-30
-
-### Added
-
-- Show document-intake status for uploaded attachments.
-
-### Fixed
-
-- Keep uploads usable when document catalog registration is temporarily unavailable.
-
-## [1.0.13-hermesapk.13] - 2026-07-30
-
-### Added
-
-- Resumable streaming chats with interruption and reconnect support.
-- Per-chat model and thinking-effort selection.
-- Up to ten attachments per message with upload progress, removal and retry.
-- Markdown, copying, read-aloud, editing, regeneration, chat export, search and branching.
-- Approval, clarification, sensitive-request, tool, background-task and subagent displays.
-- A separate debug app that can coexist with the release app.
-
-### Changed
-
-- Keep text and attachments in the same conversation.
-- Scope model and thinking preferences to individual chats.
-
-### Fixed
-
-- Prevent crashes while opening Branch and dashboard dialogs.
-- Reconcile successful branches after a late server error.
-- Request microphone permission only when starting a microphone action.
-- Handle delayed and duplicate chat events consistently.
-
-## [1.0.13]
-
-### Fixed
-
-- Display the correct installed application version.
-
-## [1.0.12]
-
-### Added
-
-- Filter chats by session source, with separate preferences for each connection.
-
-## [1.0.8]
-
-### Added
-
-- Configure reverse-proxy path prefixes and proxy-managed dashboard authentication.
-- Edit dashboard and proxy settings for saved connections.
-
-### Fixed
-
-- Apply configured path prefixes consistently to history, streaming and connection checks.
-
-## [1.0.7]
-
-### Added
-
-- Connect to password-protected dashboards.
-- Configure and validate dashboard ports and credentials per connection.
-
-### Fixed
-
-- Avoid duplicate simultaneous dashboard logins.
-- Preserve dashboard settings when changing a connection's API key.
+The [earlier development history](https://github.com/tarkilhk/Wing/blob/v1.0.0/docs/DEVELOPMENT_CHANGELOG.md) retains the intermediate entries from before Wing 1.0.0. See the [v1.0.0 known limitations](https://github.com/tarkilhk/Wing/blob/v1.0.0/docs/KNOWN_LIMITATIONS.md) for recovery, file and backend boundaries.

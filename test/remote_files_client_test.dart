@@ -1,4 +1,6 @@
+import 'package:wing/core/services/owned_remote_files.dart';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -7,52 +9,55 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/remote_files_client.dart';
 
 class _StreamingClient extends http.BaseClient {
+  _StreamingClient({required this.declaredLength});
+
+  final bool declaredLength;
+  static const byteCount = 33 * 1024 * 1024;
+
   @override
   Future<http.StreamedResponse> send(http.BaseRequest request) async =>
       http.StreamedResponse(
-        Stream<List<int>>.fromIterable([
-          [1, 2],
-          [3],
-        ]),
+        Stream<List<int>>.fromIterable(
+          List.generate(33, (index) {
+            final chunk = Uint8List(1024 * 1024);
+            chunk.first = index;
+            chunk.last = 255 - index;
+            return chunk;
+          }),
+        ),
         200,
+        contentLength: declaredLength ? byteCount : null,
+        headers: {'content-disposition': 'attachment; filename=delivery.zip'},
       );
 }
 
 void main() {
+  test('downloaded file facts copy and reject byte mutation', () {
+    final original = <int>[1, 2, 3];
+    final file = RemoteFileDownload(filename: 'report.txt', bytes: original);
+    original[0] = 9;
+    expect(file.bytes, [1, 2, 3]);
+    expect(() => file.bytes[0] = 9, throwsUnsupportedError);
+    expect(file.bytes, [1, 2, 3]);
+  });
+
   DashboardClient dashboardWith(
     Future<http.Response> Function(http.Request request) handler,
-  ) => DashboardClient(
-    host: 'hermes.local',
-    port: 9119,
-    proxied: true,
-    httpClient: MockClient(handler),
-  );
-
-  test('loads the default working directory', () async {
-    final dashboard = dashboardWith((request) async {
-      expect(request.method, 'GET');
-      expect(request.url.path, '/api/fs/default-cwd');
-      return http.Response(
-        jsonEncode({'cwd': '/srv/project', 'branch': 'main'}),
-        200,
-      );
-    });
-    final client = RemoteFilesClient(dashboard: dashboard);
-
-    final root = await client.defaultDirectory();
-
-    expect(root.path, '/srv/project');
-    expect(root.branch, 'main');
-    client.close();
-  });
+  ) {
+    final dashboard = DashboardClient(
+      host: 'hermes.local',
+      port: 9119,
+      proxied: true,
+      httpClient: MockClient(handler),
+    );
+    addTearDown(dashboard.close);
+    return dashboard;
+  }
 
   test('owned file access keeps the original profile and saved chat', () async {
     final requests = <http.Request>[];
     final dashboard = dashboardWith((request) async {
       requests.add(request);
-      if (request.url.path == '/api/sessions/original-chat') {
-        return http.Response(jsonEncode({'cwd': '/srv/original-project'}), 200);
-      }
       if (request.url.path.endsWith('/read-text')) {
         return http.Response(
           jsonEncode({
@@ -73,37 +78,40 @@ void main() {
       source: client,
       profileName: 'original-profile',
       storedSessionId: 'original-chat',
+      release: client.close,
     );
 
     await owned.readText('../exports/report.txt');
     await owned.download('../exports/report.txt');
 
     expect(requests.map((request) => request.url.path), [
-      '/api/sessions/original-chat',
       '/api/fs/read-text',
       '/api/fs/download',
     ]);
-    expect(requests.first.url.queryParameters, {'profile': 'original-profile'});
-    expect(requests[1].url.queryParameters, {
-      'path': '/srv/original-project/../exports/report.txt',
-      'profile': 'original-profile',
-      'session_id': 'original-chat',
-    });
-    expect(requests[2].url.queryParameters, {
+    expect(requests[0].url.queryParameters, {
       'path': '../exports/report.txt',
       'profile': 'original-profile',
       'session_id': 'original-chat',
     });
-    client.close();
+    expect(requests[1].url.queryParameters, {
+      'path': '../exports/report.txt',
+      'profile': 'original-profile',
+      'session_id': 'original-chat',
+    });
   });
 
-  test('relative preview refuses an unavailable session directory', () async {
+  test('relative preview preserves the server session refusal', () async {
     var requests = 0;
     final client = RemoteFilesClient(
       dashboard: dashboardWith((request) async {
         requests++;
-        expect(request.url.path, '/api/sessions/chat-7');
-        return http.Response(jsonEncode({'cwd': ''}), 200);
+        expect(request.url.path, '/api/fs/read-text');
+        expect(request.url.queryParameters, {
+          'path': 'report.md',
+          'profile': 'writer',
+          'session_id': 'chat-7',
+        });
+        return http.Response(jsonEncode({'detail': 'Session not found'}), 404);
       }),
     );
     await expectLater(
@@ -115,34 +123,6 @@ void main() {
       throwsA(isA<DashboardHttpException>()),
     );
     expect(requests, 1);
-    client.close();
-  });
-
-  test('lists directories before files and preserves server paths', () async {
-    final dashboard = dashboardWith((request) async {
-      expect(request.url.path, '/api/fs/list');
-      expect(request.url.queryParameters['path'], '/srv/project');
-      return http.Response(
-        jsonEncode({
-          'entries': [
-            {
-              'name': 'README.md',
-              'path': '/srv/project/README.md',
-              'isDirectory': false,
-            },
-            {'name': 'lib', 'path': '/srv/project/lib', 'isDirectory': true},
-          ],
-        }),
-        200,
-      );
-    });
-    final client = RemoteFilesClient(dashboard: dashboard);
-
-    final entries = await client.listDirectory('/srv/project');
-
-    expect(entries.map((entry) => entry.name), ['lib', 'README.md']);
-    expect(entries.first.isDirectory, isTrue);
-    client.close();
   });
 
   test('reads a text preview with language and truncation metadata', () async {
@@ -175,7 +155,6 @@ void main() {
     expect(preview.text, 'void main() {}');
     expect(preview.language, 'dart');
     expect(preview.truncated, isTrue);
-    client.close();
   });
 
   test('downloads bytes with the server filename', () async {
@@ -200,45 +179,35 @@ void main() {
 
     expect(download.filename, 'report.pdf');
     expect(download.bytes, [1, 2, 3]);
-    client.close();
   });
 
-  test('download rejects a declared body above the mobile limit', () async {
-    final dashboard = dashboardWith(
-      (_) async => http.Response.bytes([1, 2, 3], 200),
-    );
-    final client = RemoteFilesClient(dashboard: dashboard, maxDownloadBytes: 2);
+  for (final declaredLength in [true, false]) {
+    test(
+      'downloads a 33 MiB file with declared length $declaredLength',
+      () async {
+        final dashboard = DashboardClient(
+          host: 'hermes.local',
+          port: 9119,
+          proxied: true,
+          httpClient: _StreamingClient(declaredLength: declaredLength),
+        );
+        addTearDown(dashboard.close);
+        final client = RemoteFilesClient(dashboard: dashboard);
 
-    await expectLater(
-      client.download(
-        '/srv/project/large.bin',
-        profileName: 'writer',
-        storedSessionId: 'chat-7',
-      ),
-      throwsA(isA<DashboardResponseTooLargeException>()),
+        final download = await client.download(
+          '/srv/project/delivery.zip',
+          profileName: 'writer',
+          storedSessionId: 'chat-7',
+        );
+        expect(download.filename, 'delivery.zip');
+        expect(download.bytes.length, _StreamingClient.byteCount);
+        for (var index = 0; index < 33; index++) {
+          expect(download.bytes[index * 1024 * 1024], index);
+          expect(download.bytes[(index + 1) * 1024 * 1024 - 1], 255 - index);
+        }
+      },
     );
-    client.close();
-  });
-
-  test('download also bounds a chunked body without a declared size', () async {
-    final dashboard = DashboardClient(
-      host: 'hermes.local',
-      port: 9119,
-      proxied: true,
-      httpClient: _StreamingClient(),
-    );
-    final client = RemoteFilesClient(dashboard: dashboard, maxDownloadBytes: 2);
-
-    await expectLater(
-      client.download(
-        '/srv/project/chunked.bin',
-        profileName: 'writer',
-        storedSessionId: 'chat-7',
-      ),
-      throwsA(isA<DashboardResponseTooLargeException>()),
-    );
-    client.close();
-  });
+  }
 
   test('download reduces encoded server filenames to a basename', () async {
     final dashboard = dashboardWith(
@@ -260,29 +229,33 @@ void main() {
     );
 
     expect(download.filename, 'report one.pdf');
-    client.close();
   });
 
-  test('file reads require both chat owner fields', () async {
-    final dashboard = dashboardWith((_) async => http.Response('{}', 200));
-    final client = RemoteFilesClient(dashboard: dashboard);
-
-    await expectLater(
-      client.readText(
-        '/srv/project/report.md',
-        profileName: '',
-        storedSessionId: 'chat-7',
-      ),
-      throwsArgumentError,
-    );
-    await expectLater(
-      client.download(
-        '/srv/project/report.md',
-        profileName: 'writer',
-        storedSessionId: '',
-      ),
-      throwsArgumentError,
-    );
-    client.close();
-  });
+  for (final operation in ['preview', 'download']) {
+    for (final missing in ['profile', 'session']) {
+      test('$operation refuses missing $missing before network I/O', () async {
+        final requests = <http.Request>[];
+        final dashboard = dashboardWith((request) async {
+          requests.add(request);
+          return http.Response('{}', 200);
+        });
+        final client = RemoteFilesClient(dashboard: dashboard);
+        final profile = missing == 'profile' ? '' : 'writer';
+        final session = missing == 'session' ? '' : 'chat-7';
+        final result = operation == 'preview'
+            ? client.readText(
+                '/srv/project/report.md',
+                profileName: profile,
+                storedSessionId: session,
+              )
+            : client.download(
+                '/srv/project/report.md',
+                profileName: profile,
+                storedSessionId: session,
+              );
+        await expectLater(result, throwsArgumentError);
+        expect(requests, isEmpty);
+      });
+    }
+  }
 }

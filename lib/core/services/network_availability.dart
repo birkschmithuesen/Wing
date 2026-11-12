@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
+import 'connection_diagnostics.dart';
 
 /// A device-network event is a reason to retry, never proof of server access.
 class NetworkAvailability {
@@ -10,6 +11,7 @@ class NetworkAvailability {
   static Listenable get restored => _restored;
   void start(void Function() onAvailable, void Function() onUnavailable) {
     _channel.setMethodCallHandler((call) async {
+      logConnectionDiagnostic('network.${call.method}');
       if (call.method == 'available') {
         onAvailable();
         _restored.value++;

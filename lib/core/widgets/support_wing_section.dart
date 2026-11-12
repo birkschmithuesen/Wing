@@ -1,3 +1,4 @@
+import 'selection_viewport.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -58,33 +59,45 @@ class _SupportWingSectionState extends State<SupportWingSection> {
         : primary
         ? tokens.accent
         : tokens.onSurface;
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      minTileHeight: 48,
-      enabled: enabled,
-      textColor: color,
-      titleTextStyle:
-          (primary
-                  ? theme.textTheme.titleMedium
-                  : theme.listTileTheme.titleTextStyle)
-              ?.copyWith(color: color),
-      title: Semantics(
-        hint: 'Opens $platform in your browser',
-        child: IconTheme(
-          data: IconThemeData(color: primary ? color : tokens.muted),
-          child: StudioActionLabel.row(
-            label,
-            busy: _opening == uri,
-            icon: icon,
+    return StudioButtonPress(
+      child: ListTile(
+        contentPadding: EdgeInsets.zero,
+        minTileHeight: 48,
+        enabled: enabled,
+        textColor: color,
+        titleTextStyle:
+            (primary
+                    ? theme.textTheme.titleMedium
+                    : theme.listTileTheme.titleTextStyle)
+                ?.copyWith(color: color),
+        title: Semantics(
+          hint: 'Opens $platform in your browser',
+          child: IconTheme(
+            data: IconThemeData(color: primary ? color : tokens.muted),
+            child: StudioActionLabel.row(
+              label,
+              busy: _opening == uri,
+              icon: icon,
+            ),
           ),
         ),
+        trailing: SizedBox.square(
+          dimension: 18,
+          child: _opening == uri
+              ? CircularProgressIndicator(
+                  strokeWidth: 2,
+                  backgroundColor: Theme.of(context).colorScheme.outlineVariant,
+                  value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
+                  semanticsLabel: 'Opening $platform',
+                )
+              : Icon(
+                  Icons.open_in_new,
+                  size: 18,
+                  color: primary ? color : tokens.muted,
+                ),
+        ),
+        onTap: enabled ? () => _open(uri) : null,
       ),
-      trailing: Icon(
-        Icons.open_in_new,
-        size: 18,
-        color: primary ? color : tokens.muted,
-      ),
-      onTap: enabled ? () => _open(uri) : null,
     );
   }
 
@@ -133,7 +146,7 @@ class _SupportWingSectionState extends State<SupportWingSection> {
               'Could not open your browser. Please try again or open this link in a browser:',
             ),
             const SizedBox(height: WingSpacing.sm),
-            SelectableText(_failed.toString()),
+            viewportSelection(SelectableText(_failed.toString())),
           ],
         ],
       ),

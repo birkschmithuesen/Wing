@@ -11,6 +11,9 @@ import 'profile_gateway.dart';
 const String wingSessionSource = 'wing';
 const String desktopSessionSource = 'desktop';
 
+/// Upstream's source for sessions created by the browser command (stock fallback).
+const String guiSessionSource = 'gui';
+
 /// Whether this `gateway.ready` frame advertises the `wing` session source.
 /// Any other shape fails closed to today's `desktop` behaviour.
 bool gatewayAdvertisesWingSource(Map<String, dynamic> readyFrame) {

@@ -80,10 +80,9 @@ void main() {
       expect(requests[0].question, 'Which interface?');
       expect(requests[0].choices, ['Compact', 'Detailed']);
       expect(requests[0].multiSelect, isFalse);
-      expect(requests[0].identityKey, 'clarify-batch-1::q1');
       expect(requests[1].questionId, 'q2');
       expect(requests[1].multiSelect, isTrue);
-      expect(requests[1].identityKey, 'clarify-batch-1::q2');
+      expect(requests[1].requestId, 'clarify-batch-1');
     });
 
     test('maps a single-question batch onto the legacy prompt shape', () {
@@ -114,7 +113,7 @@ void main() {
 
       expect(requests, hasLength(1));
       expect(requests.single.questionId, isNull);
-      expect(requests.single.identityKey, 'clarify-flat-1');
+      expect(requests.single.requestId, 'clarify-flat-1');
       expect(requests.single.question, 'Which interface?');
     });
 
@@ -159,12 +158,16 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-123',
-                'question': 'Which interface?',
-                'choices': ['Compact', 'Balanced'],
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-123',
+                  'question': 'Which interface?',
+                  'choices': ['Compact', 'Balanced'],
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
@@ -172,7 +175,7 @@ void main() {
 
       expect(
         tester
-            .widget<FilledButton>(find.byKey(const Key('clarify-continue')))
+            .widget<IconButton>(find.byKey(const Key('clarify-continue')))
             .onPressed,
         isNull,
       );
@@ -181,7 +184,7 @@ void main() {
       expect(sentAnswer, isNull);
 
       await tester.tap(find.byKey(const Key('clarify-continue')));
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(sentAnswer, 'Balanced');
     });
 
@@ -193,27 +196,37 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-multi',
-                'question': 'Choose several',
-                'choices': ['Compact', 'Balanced', 'Detailed'],
-                'multi_select': true,
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-multi',
+                  'question': 'Choose several',
+                  'choices': ['Compact', 'Balanced', 'Detailed'],
+                  'multi_select': true,
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
       );
 
+      await tester.ensureVisible(find.byKey(const Key('clarify-choice-2')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('clarify-choice-2')));
+      await tester.ensureVisible(find.byKey(const Key('clarify-choice-0')));
+      await tester.pump();
       await tester.tap(find.byKey(const Key('clarify-choice-0')));
+      await tester.ensureVisible(find.byKey(const Key('clarify-other-field')));
+      await tester.pump();
       await tester.enterText(
         find.byKey(const Key('clarify-other-field')),
         'Large text',
       );
       await tester.pump();
       await tester.tap(find.byKey(const Key('clarify-continue')));
-      await tester.pumpAndSettle();
+      await tester.pump();
 
       expect(sentAnswer, 'Compact, Detailed, Large text');
     });
@@ -224,33 +237,45 @@ void main() {
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-free',
-                'question': 'Describe the desired interface',
-              })!,
-              onRespond: (answer) async => sentAnswer = answer,
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-free',
+                  'question': 'Describe the desired interface',
+                })!,
+              ],
+              onSkip: () async => sentAnswer = '',
+              onRespond: (answer) async =>
+                  sentAnswer = answer.values.single ?? '',
             ),
           ),
         ),
       );
 
       await tester.tap(find.byKey(const Key('clarify-skip')));
-      await tester.pumpAndSettle();
+      await tester.pump();
       expect(sentAnswer, '');
     });
 
-    testWidgets('keeps the dialog open with a generic transport error', (
+    testWidgets('retains the answer after a transport failure and retries it', (
       tester,
     ) async {
+      final sentAnswers = <String>[];
+      var failResponse = true;
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: GatewayClarifyDialog(
-              request: GatewayClarifyRequest.fromEventData({
-                'request_id': 'clarify-error',
-                'question': 'What should Hermes do?',
-              })!,
-              onRespond: (_) async => throw Exception('raw gateway detail'),
+              requests: [
+                GatewayClarifyRequest.fromEventData({
+                  'request_id': 'clarify-error',
+                  'question': 'What should Hermes do?',
+                })!,
+              ],
+              onSkip: () async {},
+              onRespond: (answer) async {
+                sentAnswers.add(answer.values.single ?? '');
+                if (failResponse) throw Exception('raw gateway detail');
+              },
             ),
           ),
         ),
@@ -271,7 +296,15 @@ void main() {
         ),
       );
       expect(error.data, isNot(contains('raw gateway detail')));
-      expect(find.byKey(const Key('clarify-question')), findsOneWidget);
+      expect(find.text('What should Hermes do?'), findsOneWidget);
+      expect(sentAnswers, ['Try the mobile layout']);
+      failResponse = false;
+      await tester.tap(find.byKey(const Key('clarify-continue')));
+      await tester.pump();
+      expect(sentAnswers, ['Try the mobile layout', 'Try the mobile layout']);
+      expect(find.byKey(const Key('clarify-error')), findsNothing);
+      // The parent retires the accepted request; this panel waits for that update.
+      await tester.pumpWidget(const SizedBox.shrink());
     });
   });
 }

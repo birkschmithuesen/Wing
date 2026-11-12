@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wing/core/models/app_preferences.dart';
 import 'package:wing/core/services/web_preview.dart';
 import 'package:url_launcher_platform_interface/link.dart';
 import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
@@ -8,6 +9,8 @@ class _Browser extends UrlLauncherPlatform {
   bool supported = true;
   bool previewFails = false;
   bool externalFails = false;
+  bool previewAccepted = true;
+  bool externalAccepted = true;
   final calls = <(String, LaunchOptions)>[];
 
   @override
@@ -24,7 +27,9 @@ class _Browser extends UrlLauncherPlatform {
             externalFails) {
       throw PlatformException(code: 'ACTIVITY_NOT_FOUND');
     }
-    return true;
+    return options.mode == PreferredLaunchMode.inAppBrowserView
+        ? previewAccepted
+        : externalAccepted;
   }
 }
 
@@ -44,7 +49,7 @@ void main() {
   test(
     'opens the exact web URL in a titled browser preview without headers',
     () async {
-      expect(await openWebPreview(uri), isTrue);
+      expect(await openWebLink(uri, WebLinkDestination.wing), isTrue);
       expect(browser.calls.single.$1, uri.toString());
       final options = browser.calls.single.$2;
       expect(options.mode, PreferredLaunchMode.inAppBrowserView);
@@ -53,39 +58,69 @@ void main() {
     },
   );
 
-  test('unsupported previews use the external browser', () async {
+  test('an unavailable preview does not switch destinations', () async {
     browser.supported = false;
-    expect(await openWebPreview(uri), isTrue);
+    expect(await openWebLink(uri, WebLinkDestination.wing), isFalse);
+    expect(browser.calls, isEmpty);
+  });
+
+  test('external browser opens the exact URL directly', () async {
+    expect(await openWebLink(uri, WebLinkDestination.externalBrowser), isTrue);
+    expect(browser.calls.single.$1, uri.toString());
     expect(
       browser.calls.single.$2.mode,
       PreferredLaunchMode.externalApplication,
     );
   });
 
-  test('preview failure falls back and total failure is recoverable', () async {
-    browser.previewFails = true;
-    expect(await openWebPreview(uri), isTrue);
-    expect(browser.calls.map((call) => call.$2.mode), [
-      PreferredLaunchMode.inAppBrowserView,
-      PreferredLaunchMode.externalApplication,
-    ]);
-    browser.externalFails = true;
-    expect(await openWebPreview(uri), isFalse);
-  });
+  for (final failure in ['exception', 'refusal']) {
+    test('preview $failure does not switch destinations', () async {
+      browser.previewFails = failure == 'exception';
+      browser.previewAccepted = false;
+      expect(await openWebLink(uri, WebLinkDestination.wing), isFalse);
+      expect(browser.calls.single.$1, uri.toString());
+      expect(
+        browser.calls.single.$2.mode,
+        PreferredLaunchMode.inAppBrowserView,
+      );
+    });
 
-  test('invalid or credential-bearing links never reach the browser', () async {
-    for (final href in [
-      'javascript:alert(1)',
-      'file:///private/file',
-      'content://private/file',
-      '/relative',
-      'https:///missing-host',
-      'https://user:password@example.com/',
-    ]) {
+    test('external $failure reports that no browser opened', () async {
+      browser.supported = false;
+      browser.externalFails = failure == 'exception';
+      browser.externalAccepted = false;
+      expect(
+        await openWebLink(uri, WebLinkDestination.externalBrowser),
+        isFalse,
+      );
+      expect(
+        browser.calls.single.$2.mode,
+        PreferredLaunchMode.externalApplication,
+      );
+    });
+  }
+
+  for (final href in [
+    'javascript:alert(1)',
+    'file:///private/file',
+    'content://private/file',
+    '/relative',
+    'https:///missing-host',
+    'https://user:password@example.com/',
+  ]) {
+    test('unsafe link never reaches the browser: $href', () async {
       expect(externalWebLink(href), isNull);
-      expect(await openWebPreview(Uri.parse(href)), isFalse);
-    }
-    expect(browser.calls, isEmpty);
-    expect(externalWebLink('http://example.com/'), isNotNull);
+      for (final destination in WebLinkDestination.values) {
+        expect(await openWebLink(Uri.parse(href), destination), isFalse);
+      }
+      expect(browser.calls, isEmpty);
+    });
+  }
+
+  test('an ordinary HTTP address is an eligible external link', () {
+    expect(
+      externalWebLink('http://example.com/'),
+      Uri.parse('http://example.com/'),
+    );
   });
 }

@@ -1,4 +1,4 @@
-/// A complete dashboard or chat base URL. Ports and proxy paths have one owner.
+/// A complete gateway Webapp or custom chat base URL. Ports and proxy paths have one owner.
 class ConnectionAddress {
   const ConnectionAddress._(this.uri);
 
@@ -46,7 +46,7 @@ class ConnectionAddress {
     final path = uri.path.replaceFirst(RegExp(r'/+$'), '');
     if (RegExp(r'/(api/ws|v1/chat/completions)$').hasMatch(path)) {
       throw const FormatException(
-        'Use the dashboard base address, without /api/ws or /v1/chat/completions.',
+        'Use the gateway Webapp base address, without /api/ws or /v1/chat/completions.',
       );
     }
     return ConnectionAddress._(uri.replace(path: path));

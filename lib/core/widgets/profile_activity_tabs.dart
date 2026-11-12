@@ -1,3 +1,4 @@
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:flutter/material.dart';
 import 'anchored_expansion_tile.dart';
 
@@ -38,9 +39,9 @@ class ProfileActivityGuide extends StatelessWidget {
 }
 
 class ProfileActivityTabs extends StatefulWidget {
-  const ProfileActivityTabs({super.key, required this.tabs, this.thinking});
+  const ProfileActivityTabs({super.key, required this.tabs, this.initialTabId});
   final List<ProfileActivityTab> tabs;
-  final Widget? thinking;
+  final String? initialTabId;
   @override
   State<ProfileActivityTabs> createState() => _ProfileActivityTabsState();
 }
@@ -70,7 +71,15 @@ class _ProfileActivityTabsState extends State<ProfileActivityTabs> {
   @override
   void initState() {
     super.initState();
-    if (widget.tabs.isNotEmpty) _activate(widget.tabs.first, notify: false);
+    if (widget.tabs.isNotEmpty) {
+      _activate(
+        widget.tabs.firstWhere(
+          (tab) => tab.id == widget.initialTabId,
+          orElse: () => widget.tabs.first,
+        ),
+        notify: false,
+      );
+    }
   }
 
   @override
@@ -140,39 +149,42 @@ class _ProfileActivityTabsState extends State<ProfileActivityTabs> {
                                   ? colors.primaryContainer
                                   : Colors.transparent,
                               borderRadius: BorderRadius.circular(4),
-                              child: InkWell(
-                                key: ValueKey(('activity-tab', tab.id)),
-                                borderRadius: BorderRadius.circular(4),
-                                onTap: () {
-                                  if (tab.id == _selected) return;
-                                  final anchor = _anchor.currentContext;
-                                  if (anchor != null) {
-                                    ExpansionAnchorNotification(
-                                      anchor,
-                                    ).dispatch(context);
-                                  }
-                                  setState(() => _activate(tab));
-                                },
-                                child: ConstrainedBox(
-                                  constraints: const BoxConstraints(
-                                    minHeight: 24,
-                                  ),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 4,
-                                      vertical: 3,
+                              child: StudioButtonPress(
+                                child: InkWell(
+                                  key: ValueKey(('activity-tab', tab.id)),
+                                  borderRadius: BorderRadius.circular(4),
+                                  onTap: () {
+                                    if (tab.id == _selected) return;
+                                    final anchor = _anchor.currentContext;
+                                    if (anchor != null) {
+                                      ExpansionAnchorNotification(
+                                        anchor,
+                                        allowBottomGap: true,
+                                      ).dispatch(context);
+                                    }
+                                    setState(() => _activate(tab));
+                                  },
+                                  child: ConstrainedBox(
+                                    constraints: const BoxConstraints(
+                                      minHeight: 24,
                                     ),
-                                    child: Text(
-                                      tab.label,
-                                      textAlign: TextAlign.center,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        height: 1.25,
-                                        fontWeight: FontWeight.w400,
-                                        letterSpacing: 0,
-                                        color: tab.id == _selected
-                                            ? colors.primary
-                                            : colors.onSurfaceVariant,
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 4,
+                                        vertical: 3,
+                                      ),
+                                      child: Text(
+                                        tab.label,
+                                        textAlign: TextAlign.center,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          height: 1.25,
+                                          fontWeight: FontWeight.w400,
+                                          letterSpacing: 0,
+                                          color: tab.id == _selected
+                                              ? colors.primary
+                                              : colors.onSurfaceVariant,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -200,18 +212,6 @@ class _ProfileActivityTabsState extends State<ProfileActivityTabs> {
                       ),
                 ],
               ),
-            ),
-          ],
-          if (widget.thinking != null) ...[
-            Divider(
-              key: const ValueKey('activity-thinking-divider'),
-              height: 12,
-              thickness: .5,
-              color: colors.outlineVariant,
-            ),
-            Padding(
-              padding: const EdgeInsets.only(left: 24),
-              child: widget.thinking!,
             ),
           ],
         ],

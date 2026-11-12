@@ -1,14 +1,19 @@
+import '../widgets/selection_viewport.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../widgets/wing_app_bar.dart';
+import '../models/profile_session_key.dart';
+import 'package:wing/core/models/chat_list_status.dart';
 import 'dart:async';
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../models/chat_list_view.dart';
-import '../models/hermes_profile.dart';
+import '../models/chat_browser_preferences.dart';
 import '../models/session_visibility.dart';
 import '../services/chat_browser_data.dart';
-import '../services/composer_draft_store.dart';
-import '../services/profile_workspace_controller.dart';
-import '../services/profile_color_store.dart';
+import '../models/browser_actions.dart';
+import '../models/connection.dart';
+import '../services/server_connection_status.dart';
+import '../services/profile_colors_session.dart';
 import '../theme/wing_theme.dart';
 import '../theme/wing_icons.dart';
 import '../widgets/chat_list_menu.dart';
@@ -16,6 +21,8 @@ import '../widgets/read_recovery.dart';
 import '../widgets/chat_profile_bar.dart';
 import '../widgets/chat_status_dot.dart';
 import '../widgets/chat_working_border.dart';
+import '../widgets/bot_avatar.dart';
+import '../widgets/profile_selector.dart';
 import '../widgets/server_connection_label.dart';
 import '../widgets/studio_error.dart';
 import '../widgets/workspace_connection_status.dart';
@@ -23,16 +30,33 @@ import '../widgets/workspace_options_menu.dart';
 import 'profile_row_actions.dart';
 import 'profile_project_actions.dart';
 
+/// Readonly facts from the mounted browser's existing owner.
+abstract interface class BrowserWorkspaceObservation {
+  BrowserWorkspaceState get workspace;
+}
+
 class ProfileWorkspaceBrowser extends StatefulWidget {
   const ProfileWorkspaceBrowser({
     super.key,
-    required this.controller,
+    required this.createData,
+    required this.connectionLabel,
+    required this.connectionIcon,
+    required this.connectionStatus,
+    required this.createColors,
+    required this.deletionRecovery,
     required this.newProject,
+    required this.onOpenBotChat,
     this.drawer,
     this.searchFocusNode,
   });
-  final ProfileWorkspaceController controller;
-  final Future<void> Function() newProject;
+  final ChatBrowserData Function() createData;
+  final String connectionLabel;
+  final ConnectionIcon connectionIcon;
+  final ServerConnectionStatus connectionStatus;
+  final ProfileColorsSession Function() createColors;
+  final Widget deletionRecovery;
+  final Future<void> Function(ChatBrowserData) newProject;
+  final ValueChanged<String> onOpenBotChat;
   final Widget? drawer;
   final FocusNode? searchFocusNode;
   @override
@@ -40,108 +64,61 @@ class ProfileWorkspaceBrowser extends StatefulWidget {
       _ProfileWorkspaceBrowserState();
 }
 
-class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
-  ProfileWorkspaceController get controller => widget.controller;
+class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser>
+    with WidgetsBindingObserver
+    implements BrowserWorkspaceObservation {
+  @override
+  BrowserWorkspaceState get workspace => _data.workspace;
   late final ChatBrowserData _data;
   final _search = TextEditingController();
   final _scaffoldKey = GlobalKey<ScaffoldState>();
   final _optionsKey = GlobalKey();
-  final _statuses = <String>{}, _profiles = <String>{}, _projects = <String>{};
+  BrowserPreferencesFact get _view => _data.viewPreferences;
+  Set<String> get _statuses =>
+      _view.display?.filter(BrowserFilter.status) ?? const {};
+  Set<String> get _profiles => _view.display?.profiles ?? const {};
+  Set<String> get _projects => _view.display?.projects ?? const {};
   final _collapsed = <String>{};
   final _visibleCounts = <String, int>{};
-  final _show = <ChatDetail>{ChatDetail.updated};
-  ChatGrouping _grouping = ChatGrouping.project;
-  ChatOrdering _ordering = ChatOrdering.updated;
-  bool _archived = false, _started = false, _busy = false;
-  int _chatOpenGeneration = 0;
-  String? _openingChat;
+  Set<ChatDetail> get _show => _view.display?.show ?? const {};
+  ChatGrouping? get _grouping => _view.display?.grouping;
+  ChatOrdering? get _ordering => _view.display?.ordering;
+  bool get _archivedOnly => _data.state.archived;
+  bool get _pending => _data.busy;
   String _query = '';
   List<ChatListEntry> _allEntries = [], _visibleEntries = [];
   List<ChatListGroup> _currentGroups = [];
-  final _visibleKeys = <ProfileSessionKey>{};
-  Object? _controllerState;
+
   List<ChatListEntry> get _matches => [
     for (final entry in _visibleEntries) _data.row(entry.sessionKey).value,
   ];
   List<ChatListGroup> get _groups => _currentGroups;
   Timer? _debounce;
-  Future<void>? _refreshing;
-  bool? _refreshingArchived;
-  bool _reorderAfterRefresh = false;
-  int _refreshGeneration = 0;
-  final _arrangement = ChatListArrangement();
-  String get _preferencesKey =>
-      'chat_list_target_${controller.connectionIdentity}';
+  bool _showProjectFab = false;
+
+  void _dismissProjectFab() {
+    if (_showProjectFab) setState(() => _showProjectFab = false);
+  }
 
   @override
   void initState() {
     super.initState();
-    final raw = controller.preferences.getString(_preferencesKey);
-    if (raw != null) {
-      try {
-        final value = jsonDecode(raw) as Map<String, dynamic>;
-        _grouping = ChatGrouping.values.byName(value['grouping'] as String);
-        _ordering = ChatOrdering.values.byName(value['ordering'] as String);
-        _show
-          ..clear()
-          ..addAll(
-            (value['show'] as List).cast<String>().map(
-              ChatDetail.values.byName,
-            ),
-          );
-        for (final (key, set) in [
-          ('status', _statuses),
-          ('profile', _profiles),
-          ('project', _projects),
-        ]) {
-          set.addAll((value[key] as List).cast<String>());
-        }
-      } on Object {
-        /* An invalid device preference does not block chat access. */
-      }
-    }
-    _data = ChatBrowserData(controller)..addListener(_dataChanged);
-    _data.rowsChanged.addListener(_rowsChanged);
-    controller.browserChanges.addListener(_controllerChanged);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _controllerChanged());
-  }
-
-  void _controllerChanged() {
-    if (!mounted) return;
-    if (!_started &&
-        controller.discovery != null &&
-        controller.current != null) {
-      _started = true;
-      unawaited(_refresh());
-    }
-    if (controller.browserChanges.value.chat != null) return;
-    final state = (
-      controller.current,
-      controller.discovery,
-      controller.error,
-      controller.switching,
-      controller.recovering,
-      controller.current?.offlineSnapshot,
-      controller.sessionVisibility,
-      controller.preferences.getString(
-        'composer_drafts_v1_${controller.connectionIdentity}',
-      ),
+    _data = widget.createData()..addListener(_dataChanged);
+    final binding = WidgetsBinding.instance;
+    _data.setReadActive(
+      binding.lifecycleState == null ||
+          binding.lifecycleState == AppLifecycleState.resumed,
     );
-    if (_controllerState != state) {
-      _controllerState = state;
-      setState(() {});
-    }
+    binding.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _data.start();
+    });
   }
 
-  void _rowsChanged() {
-    if (!mounted || _statuses.isEmpty && _query.isEmpty) return;
-    for (final key in _data.rowsChanged.value) {
-      final matches = _filterMatches([_data.row(key).value]).isNotEmpty;
-      if (matches != _visibleKeys.contains(key)) {
-        setState(() {});
-        return;
-      }
-    }
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _data.setReadActive(state == AppLifecycleState.resumed);
+    if (state != AppLifecycleState.resumed) _dismissProjectFab();
   }
 
   void _dataChanged() {
@@ -150,90 +127,27 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _debounce?.cancel();
     _search.dispose();
-    controller.browserChanges.removeListener(_controllerChanged);
-    _data.rowsChanged.removeListener(_rowsChanged);
+
     _data.dispose();
     super.dispose();
   }
 
-  void _change(VoidCallback action) {
-    setState(action);
-    unawaited(_savePreferences());
+  void _chooseView(BrowserPreferenceIntent intent) {
+    unawaited(_data.chooseView(intent));
   }
 
-  Future<void> _savePreferences() async {
-    final saved = await controller.preferences.setString(
-      _preferencesKey,
-      jsonEncode({
-        'grouping': _grouping.name,
-        'ordering': _ordering.name,
-        'show': _show.map((e) => e.name).toList(),
-        'status': _statuses.toList(),
-        'profile': _profiles.toList(),
-        'project': _projects.toList(),
-      }),
-    );
-    if (!saved && mounted) {
-      _notice('The view could not be saved on this device.');
+  void _notice(String message) => showStudioError(context, message);
+  Future<void> _run(Future<void> Function() action) async {
+    await _data.run(action);
+    if (mounted) {
+      if (_data.notice case final notice?) _notice(notice);
     }
   }
 
-  void _notice(String message) => ScaffoldMessenger.of(
-    context,
-  ).showSnackBar(SnackBar(content: Text(message)));
-  Future<void> _run(
-    Future<void> Function() action, {
-    bool refresh = false,
-  }) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await action();
-      if (refresh && mounted) await _refresh(reorder: false);
-    } catch (error) {
-      if (mounted) {
-        _notice(
-          error is StateError
-              ? error.message.toString()
-              : 'Could not complete that action. Please retry.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  Future<void> _refresh({bool reorder = true}) {
-    final active = _refreshing;
-    if (active != null && _refreshingArchived == _archived) {
-      _reorderAfterRefresh |= reorder;
-      return active;
-    }
-    _reorderAfterRefresh = reorder;
-    if (_refreshingArchived != _archived) _arrangement.reset();
-    _refreshingArchived = _archived;
-    late final Future<void> pending;
-    pending = _loadRefresh(_archived, ++_refreshGeneration).whenComplete(() {
-      if (identical(_refreshing, pending)) _refreshing = null;
-    });
-    return _refreshing = pending;
-  }
-
-  Future<void> _loadRefresh(bool archived, int generation) async {
-    await _data.refresh(archivedOnly: archived);
-    if (!mounted) return;
-    if (_archived != archived || generation != _refreshGeneration) return;
-    if (_query.isNotEmpty) unawaited(_data.search(_query));
-    // The loaded list establishes this visit's order. Activity can require
-    // slower per-profile lookups; its eventual completion must not reset
-    // positions after answers have arrived while the user is reading.
-    if (_reorderAfterRefresh) {
-      setState(_arrangement.reset);
-    }
-    unawaited(controller.refreshActivity());
-  }
+  Future<void> _refresh() => _data.refresh(archivedOnly: _archivedOnly);
 
   void _setQuery(String value) {
     _debounce?.cancel();
@@ -247,56 +161,8 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     }
   }
 
-  List<ChatListEntry> _filterMatches(List<ChatListEntry> entries) => entries
-      .where(
-        (e) =>
-            controller.sessionVisibility.includes(e.row['source'] as String?) &&
-            (_statuses.isEmpty || _statuses.contains(e.status.name)) &&
-            (_profiles.isEmpty || _profiles.contains(e.profile)) &&
-            (_projects.isEmpty || _projects.contains(e.projectKey)) &&
-            (_query.isEmpty ||
-                '${e.row['title'] ?? ''} ${e.row['preview'] ?? ''}'
-                    .toLowerCase()
-                    .contains(_query) ||
-                (_data.searchMatches[e.profile]?.contains(e.id) ?? false)),
-      )
-      .toList();
-  List<ChatListGroup> _buildGroups(List<ChatListEntry> matches) {
-    final groups = <ChatListGroup>[];
-    if (_grouping == ChatGrouping.project &&
-        !_archived &&
-        _query.isEmpty &&
-        _statuses.isEmpty) {
-      for (final profile in controller.discovery?.profiles ?? []) {
-        if (_profiles.isNotEmpty && !_profiles.contains(profile.name)) continue;
-        for (final project in _data.projects[profile.name] ?? []) {
-          final key = '${profile.name}/${project['id']}';
-          if (project['isNoProject'] == true ||
-              matches.any((entry) => entry.projectKey == key) ||
-              _projects.isNotEmpty && !_projects.contains(key)) {
-            continue;
-          }
-          groups.add(
-            ChatListGroup(
-              key,
-              project['name'].toString(),
-              [],
-              project: project,
-              owner: controller.browserResource(profile.name),
-            ),
-          );
-        }
-      }
-    }
-    return _arrangement.apply(
-      matches,
-      _grouping,
-      _ordering,
-      emptyGroups: groups,
-    );
-  }
-
-  String _groupKey(ChatListGroup group) => '${_grouping.name}/${group.key}';
+  String _groupKey(ChatListGroup group) =>
+      '${_grouping?.name ?? 'neutral'}/${group.key}';
 
   int _visibleCount(ChatListGroup group) => group.key == 'pinned'
       ? group.entries.length
@@ -307,120 +173,99 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     ChatGrouping.status => Icons.monitor_heart_outlined,
     ChatGrouping.profile => Icons.person_outline,
   };
-  void _toggle(Set<String> values, String id) => _change(() {
-    if (!values.remove(id)) values.add(id);
-  });
-
   Future<void> _filter(BuildContext anchor, String kind) {
-    final selected = switch (kind) {
-      'Status' => _statuses,
-      'Profile' => _profiles,
-      _ => _projects,
+    final filter = switch (kind) {
+      'Status' => BrowserFilter.status,
+      'Profile' => BrowserFilter.profile,
+      _ => BrowserFilter.project,
     };
-    List<ChatMenuChoice> choices() {
-      if (kind == 'Status') {
-        return [
-          for (final status in ChatListStatus.values)
-            ChatMenuChoice(
-              status.name,
-              status.label,
-              ChatStatusDot(status),
-              selected: selected.contains(status.name),
-            ),
-        ];
-      }
-      if (kind == 'Profile') {
-        final profiles = [...?controller.discovery?.profiles]
-          ..sort(HermesProfile.compareForDisplay);
-        return [
-          for (final profile in profiles)
-            ChatMenuChoice(
-              profile.name,
-              profile.label,
-              const Icon(Icons.person_outline),
-              selected: selected.contains(profile.name),
-            ),
-        ];
-      }
-      final recency = <String, num>{};
-      for (final e in _data.entries.where(
-        (e) =>
-            controller.sessionVisibility.includes(e.row['source'] as String?),
-      )) {
-        final time = chatUpdated(e.row);
-        if (time > (recency[e.projectKey] ?? 0)) recency[e.projectKey] = time;
-      }
-      final projects =
-          <(String, String, bool)>[
-            for (final profile in controller.discovery?.profiles ?? []) ...[
-              ('${profile.name}/home', '< ${profile.name} >', true),
-              for (final p in _data.projects[profile.name] ?? [])
-                if (p['isNoProject'] != true)
-                  (
-                    '${profile.name}/${p['id']}',
-                    '${p['name']} · ${profile.label}',
-                    false,
-                  ),
-            ],
-          ]..sort((a, b) {
-            final order = (recency[b.$1] ?? 0).compareTo(recency[a.$1] ?? 0);
-            return order != 0
-                ? order
-                : a.$2.toLowerCase().compareTo(b.$2.toLowerCase());
-          });
-      return [
-        for (final p in projects)
-          ChatMenuChoice(
-            p.$1,
-            p.$2,
-            Icon(p.$3 ? Icons.category_outlined : Icons.folder_outlined),
-            fontStyle: p.$3 ? FontStyle.italic : FontStyle.normal,
-            selected: selected.contains(p.$1),
-          ),
-      ];
-    }
-
     return showChatListMenu(
       anchor,
+      choicesChanges: _data,
       title: kind,
       searchHint: kind == 'Status' ? null : 'Search ${kind.toLowerCase()}s',
-      choices: choices,
+      choices: () => [
+        for (final choice in _data.filterChoices(filter))
+          ChatMenuChoice(
+            choice.id,
+            choice.label,
+            switch (choice.decoration) {
+              BrowserChoiceDecoration.status => ChatStatusDot(choice.status!),
+              BrowserChoiceDecoration.profile => const Icon(
+                Icons.person_outline,
+              ),
+              BrowserChoiceDecoration.project => projectAvatar(
+                context,
+                choice.project!,
+                size: 20,
+              ),
+              BrowserChoiceDecoration.home => const Icon(
+                Icons.category_outlined,
+              ),
+            },
+            fontStyle: choice.decoration == BrowserChoiceDecoration.home
+                ? FontStyle.italic
+                : FontStyle.normal,
+            selected: choice.selected,
+          ),
+      ],
       multiple: true,
-      onSelected: (id) => _toggle(selected, id),
-      onClear: () => _change(selected.clear),
+      onSelected: (id) => _chooseView(
+        _data
+            .filterChoices(filter)
+            .singleWhere((choice) => choice.id == id)
+            .intent,
+      ),
+      onClear: () => _chooseView(BrowserPreferenceIntent.clear(filter)),
     );
   }
 
-  Widget _filterControl(String label, Set<String> selected) => Expanded(
-    child: Builder(
-      builder: (anchor) => Semantics(
-        button: true,
-        label:
-            '$label filter, ${selected.isEmpty ? 'all' : '${selected.length} selected'}',
+  Widget _filterControl(String label, Set<String> selected) => Builder(
+    builder: (anchor) => Semantics(
+      button: true,
+      label:
+          '$label filter, ${selected.isEmpty ? 'all' : '${selected.length} selected'}',
+      child: StudioButtonPress(
         child: InkWell(
           key: ValueKey('chat-filter-${label.toLowerCase()}'),
-          onTap: () => _filter(anchor, label),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: ColoredBox(
-              color: selected.isEmpty
-                  ? Colors.transparent
-                  : Theme.of(context).colorScheme.primaryContainer,
-              child: Center(
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        selected.isEmpty ? label : '$label ${selected.length}',
-                        style: const TextStyle(fontSize: 11),
-                        maxLines: 2,
-                        textAlign: TextAlign.center,
-                      ),
+          onTap: _view.canChoose ? () => _filter(anchor, label) : null,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: selected.isEmpty
+                      ? Colors.transparent
+                      : Theme.of(context).colorScheme.primaryContainer,
+                  borderRadius: WingRadius.control,
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  child: Center(
+                    widthFactor: 1,
+                    heightFactor: 1,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Flexible(
+                          child: Text(
+                            selected.isEmpty
+                                ? label
+                                : '$label ${selected.length}',
+                            style: const TextStyle(fontSize: 11),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                        if (MediaQuery.textScalerOf(context).scale(12) < 18)
+                          const Icon(Icons.expand_more, size: 14),
+                      ],
                     ),
-                    if (MediaQuery.textScalerOf(context).scale(12) < 18)
-                      const Icon(Icons.expand_more, size: 14),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -429,19 +274,40 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
       ),
     ),
   );
+
+  Widget _filterControls() => LayoutBuilder(
+    builder: (context, constraints) {
+      final controls = [
+        _filterControl('Status', _statuses),
+        _filterControl('Profile', _profiles),
+        _filterControl('Project', _projects),
+      ];
+      // Three 80 dp slots keep labels, chevrons and accent padding readable.
+      if (constraints.maxWidth < 240 ||
+          MediaQuery.textScalerOf(context).scale(16) > 20) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: controls,
+        );
+      }
+      return Row(
+        children: [for (final control in controls) Expanded(child: control)],
+      );
+    },
+  );
+
   Widget _filters() => Padding(
     padding: const EdgeInsets.symmetric(horizontal: 16),
     child: SizedBox(
-      height: MediaQuery.textScalerOf(context).scale(12) > 18
-          ? 32 + MediaQuery.textScalerOf(context).scale(24)
-          : 48,
+      width: double.infinity,
       child: Stack(
         children: [
           Positioned(
             left: 0,
             right: 0,
-            top: 5,
-            bottom: 5,
+            top: 4,
+            bottom: 4,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 border: Border.all(color: WingTokens.of(context).border),
@@ -451,46 +317,47 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
           ),
           Row(
             children: [
-              const Padding(
-                padding: EdgeInsets.only(left: 6, right: 2),
+              const SizedBox(
+                width: 48,
+                height: 48,
                 child: Icon(Icons.filter_alt_outlined, size: 19),
               ),
-              _filterControl('Status', _statuses),
-              _filterControl('Profile', _profiles),
-              _filterControl('Project', _projects),
+              Expanded(child: _filterControls()),
               SizedBox(
-                width: 28,
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  tooltip: 'Clear all filters',
-                  color: WingTokens.of(context).onSurface,
-                  icon: const SizedBox.square(
-                    dimension: 22,
-                    child: Stack(
-                      children: [
-                        Positioned(
-                          left: 0,
-                          top: 0,
-                          child: Icon(Icons.filter_alt_outlined, size: 19),
-                        ),
-                        Positioned(
-                          right: 0,
-                          bottom: 1,
-                          child: Icon(Icons.close, size: 9),
-                        ),
-                      ],
+                width: 48,
+                height: 48,
+                child: StudioButtonPress(
+                  child: IconButton(
+                    key: const ValueKey('workspace-clear-filters'),
+                    padding: EdgeInsets.zero,
+                    tooltip: 'Clear all filters',
+                    color: WingTokens.of(context).onSurface,
+                    icon: const SizedBox.square(
+                      dimension: 22,
+                      child: Stack(
+                        children: [
+                          Positioned(
+                            left: 0,
+                            top: 0,
+                            child: Icon(Icons.filter_alt_outlined, size: 19),
+                          ),
+                          Positioned(
+                            right: 0,
+                            bottom: 1,
+                            child: Icon(Icons.close, size: 9),
+                          ),
+                        ],
+                      ),
                     ),
+                    onPressed:
+                        _statuses.isEmpty &&
+                            _profiles.isEmpty &&
+                            _projects.isEmpty
+                        ? null
+                        : () => _chooseView(
+                            const BrowserPreferenceIntent.clearFilters(),
+                          ),
                   ),
-                  onPressed:
-                      _statuses.isEmpty &&
-                          _profiles.isEmpty &&
-                          _projects.isEmpty
-                      ? null
-                      : () => _change(() {
-                          _statuses.clear();
-                          _profiles.clear();
-                          _projects.clear();
-                        }),
                 ),
               ),
             ],
@@ -504,11 +371,13 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
       case 'group-by':
       case 'sort-by':
       case 'show-details':
+        if (!_view.canChoose) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted) return;
           unawaited(
             showChatListMenu(
               _optionsKey.currentContext!,
+              choicesChanges: _data,
               title: switch (id) {
                 'group-by' => 'Group by',
                 'sort-by' => 'Sort by',
@@ -557,33 +426,25 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
                     ),
                 ],
               },
-              onSelected: (choice) => _change(() {
+              onSelected: (choice) {
                 switch (id) {
                   case 'group-by':
-                    _grouping = ChatGrouping.values.byName(choice);
-                    _collapsed.clear();
-                    _visibleCounts.clear();
+                    _chooseView(_data.groupingIntent(choice));
+                    setState(() {
+                      _collapsed.clear();
+                      _visibleCounts.clear();
+                    });
                   case 'sort-by':
-                    _ordering = ChatOrdering.values.byName(choice);
-                    _arrangement.reset();
+                    _chooseView(_data.orderingIntent(choice));
                   case 'show-details':
-                    final value = ChatDetail.values.byName(choice);
-                    if (!_show.remove(value)) _show.add(value);
+                    _chooseView(_data.detailIntent(choice));
                 }
-              }),
+              },
             ),
           );
         });
       case 'include-automated':
-        unawaited(
-          _run(
-            () => controller.setSessionVisibility(
-              controller.sessionVisibility == SessionVisibility.all
-                  ? SessionVisibility.chats
-                  : SessionVisibility.all,
-            ),
-          ),
-        );
+        unawaited(_run(_data.toggleVisibility));
       case 'collapse':
         setState(() {
           final keys = _groups.map(_groupKey).toSet();
@@ -594,48 +455,35 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
           }
         });
       case 'mark-read':
-        final unread = _matches.where((e) => e.row['unread'] == true).toList();
-        unawaited(
-          _run(() async {
-            for (final e in unread) {
-              if (controller.current?.scope != e.owner.scope &&
-                  !await controller.switchProfile(e.profile)) {
-                throw StateError('Could not open ${e.profile}.');
-              }
-              await controller.mutateSession(
-                e.sessionKey,
-                changes: {'unread': false},
-              );
-            }
-          }, refresh: true),
-        );
+        unawaited(_run(() => _data.markVisibleRead(_query)));
       case 'archived':
         setState(() {
-          _archived = !_archived;
           _collapsed.clear();
           _visibleCounts.clear();
         });
-        unawaited(_refresh());
+        unawaited(_data.refresh(archivedOnly: !_archivedOnly));
       case 'new-project':
+        _dismissProjectFab();
         unawaited(
           _run(() async {
-            if (await _chooseOwner()) await widget.newProject();
-          }, refresh: true),
+            final name = await _chooseOwner();
+            if (name != null && await _data.chooseCreationProfile(name)) {
+              await widget.newProject(_data);
+            }
+          }),
         );
     }
   }
 
-  Future<bool> _chooseOwner() async {
-    final profiles = [...?controller.discovery?.profiles]
-      ..sort((a, b) => a.label.toLowerCase().compareTo(b.label.toLowerCase()));
-    String? name;
-    if (_profiles.length == 1) {
-      name = _profiles.single;
-    } else if (profiles.length == 1) {
-      name = profiles.single.name;
+  Future<String?> _chooseOwner() async {
+    final profiles = _data.creationProfiles;
+    String? name = _data.suggestedCreationProfile;
+    if (name != null) {
+      return name;
     } else {
       await showChatListMenu(
         _optionsKey.currentContext!,
+        choicesChanges: _data,
         title: 'Choose profile',
         choices: () => [
           for (final p in profiles)
@@ -644,17 +492,11 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         onSelected: (id) => name = id,
       );
     }
-    if (name == null || !mounted) return false;
-    if (controller.current?.scope.profileName != name &&
-        !await controller.switchProfile(name!)) {
-      return false;
-    }
-    await controller.selectProject(null);
-    return true;
+    return mounted ? name : null;
   }
 
-  String _age(Map<String, dynamic> row) {
-    final time = chatUpdated(row);
+  String _age(ChatListEntry entry) {
+    final time = entry.updatedAt;
     if (time <= 0) return '';
     final age = DateTime.now().difference(
       DateTime.fromMillisecondsSinceEpoch((time * 1000).round()),
@@ -670,38 +512,20 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         : '${age.inDays ~/ 7}w';
   }
 
-  Future<void> _chatActions(BuildContext anchor, ChatListEntry e) async {
-    if (controller.current?.scope != e.owner.scope &&
-        !await controller.switchProfile(e.profile)) {
-      return;
+  Future<void> _chatActions(BuildContext anchor, ChatListEntry entry) async {
+    final actions = await _data.actionsFor(entry);
+    if (actions == null) return;
+    try {
+      if (anchor.mounted) await showChatActions(anchor, actions);
+    } finally {
+      actions.dispose();
     }
-    if (anchor.mounted) await showChatActions(anchor, controller, e.row);
   }
 
   Future<void> _openChat(ChatListEntry entry) async {
-    if (_busy || _openingChat == entry.key) return;
-    final generation = ++_chatOpenGeneration;
-    _openingChat = entry.key;
-    bool isCurrent() => mounted && generation == _chatOpenGeneration;
-    try {
-      if (entry.owner.offlineSnapshot || controller.recovering) {
-        await controller.openNotification(entry.sessionKey);
-      } else {
-        await controller.openSession(
-          entry.sessionKey,
-          isCurrentRequest: isCurrent,
-        );
-      }
-    } catch (error) {
-      if (isCurrent()) {
-        _notice(
-          error is StateError
-              ? error.message.toString()
-              : 'Could not open that chat. Please retry.',
-        );
-      }
-    } finally {
-      if (isCurrent()) _openingChat = null;
+    await _data.open(entry);
+    if (mounted) {
+      if (_data.notice case final notice?) _notice(notice);
     }
   }
 
@@ -715,7 +539,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     final largeText = MediaQuery.textScalerOf(context).scale(16) > 20;
     final showTokens = _show.contains(ChatDetail.tokens);
     final showUpdated = _show.contains(ChatDetail.updated);
-    final age = _age(e.row);
+    final age = _age(e);
     final hasMetrics = showTokens || showUpdated;
     final metricsStyle = TextStyle(
       fontSize: 12,
@@ -725,8 +549,8 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     final metrics = [
       if (showTokens)
         Text(
-          '${compactTokens(chatTokens(e.row))}${largeText ? ' tokens' : ''}',
-          semanticsLabel: '${chatTokens(e.row)} tokens',
+          '${compactTokens(e.tokens)}${largeText ? ' tokens' : ''}',
+          semanticsLabel: '${e.tokens} tokens',
           style: metricsStyle,
           textAlign: TextAlign.right,
         ),
@@ -742,22 +566,41 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
           textAlign: TextAlign.right,
         ),
     ];
-    final title = Text(
-      e.row['title']?.toString().trim().isNotEmpty == true
-          ? e.row['title'].toString()
-          : 'Untitled chat',
+    final titleText = Text(
+      e.title.trim().isNotEmpty ? e.title : 'Untitled chat',
       maxLines: largeText ? 2 : 1,
       overflow: TextOverflow.ellipsis,
       style: TextStyle(
         fontSize: 15,
-        fontWeight: e.row['unread'] == true ? FontWeight.w600 : FontWeight.w400,
+        fontWeight: e.unread ? FontWeight.w600 : FontWeight.w400,
       ),
     );
+    final bot = _data.botAppearance(e.sessionKey);
+    final title = e.isBotChat
+        ? Row(
+            children: [
+              if (bot != null)
+                Semantics(
+                  label: '${bot.title} bot avatar',
+                  image: true,
+                  child: BorrowedBotAvatar(
+                    key: ValueKey('bot-chat-avatar-${e.profile}-${e.id}'),
+                    bot: bot,
+                    name: bot.profile.name,
+                    size: 20,
+                  ),
+                )
+              else
+                const SizedBox.square(dimension: 20),
+              const SizedBox(width: 6),
+              Expanded(child: titleText),
+            ],
+          )
+        : titleText;
     final detail = [
-      if (e.row['archived'] == true) 'Archived',
-      if (e.row['snippet'] != null) e.row['snippet'].toString(),
-      if (_show.contains(ChatDetail.cost))
-        '\$${chatCost(e.row).toStringAsFixed(2)}',
+      if (e.archived) 'Archived',
+      if (e.snippet != null) e.snippet!,
+      if (_show.contains(ChatDetail.cost)) '\$${e.cost.toStringAsFixed(2)}',
       if (_show.contains(ChatDetail.profile)) e.profile,
       if (e.runtimeLabel != null) e.runtimeLabel!,
     ];
@@ -766,56 +609,62 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         padding: const EdgeInsets.only(left: 28, right: 8),
         child: ChatWorkingBorder(
           working: e.status == ChatListStatus.working,
-          child: ListTile(
-            key: ValueKey('chat-${e.profile}-${e.id}'),
-            contentPadding: EdgeInsets.zero,
-            minTileHeight: 48,
-            minVerticalPadding: largeText ? 6 : 0,
-            horizontalTitleGap: 6,
-            minLeadingWidth: 18,
-            leading: ChatStatusDot(e.status),
-            title: largeText || !hasMetrics
-                ? title
-                : Row(
-                    children: [
-                      Expanded(child: title),
-                      const SizedBox(width: 8),
-                      if (showTokens) SizedBox(width: 56, child: metrics.first),
-                      if (showTokens && showUpdated) const SizedBox(width: 8),
-                      if (showUpdated) SizedBox(width: 28, child: metrics.last),
-                    ],
-                  ),
-            subtitle: detail.isEmpty && !(largeText && hasMetrics)
-                ? null
-                : Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (largeText && hasMetrics)
-                        Wrap(spacing: 12, children: metrics),
-                      if (detail.isNotEmpty)
-                        Text(
-                          detail.join(' · '),
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: WingTokens.of(context).muted,
+          child: StudioButtonPress(
+            child: ListTile(
+              key: ValueKey('chat-${e.profile}-${e.id}'),
+              contentPadding: EdgeInsets.zero,
+              minTileHeight: 48,
+              minVerticalPadding: largeText ? 6 : 0,
+              horizontalTitleGap: 6,
+              minLeadingWidth: 18,
+              leading: ChatStatusDot(e.status),
+              title: largeText || !hasMetrics
+                  ? title
+                  : Row(
+                      children: [
+                        Expanded(child: title),
+                        const SizedBox(width: 8),
+                        if (showTokens)
+                          SizedBox(width: 56, child: metrics.first),
+                        if (showTokens && showUpdated) const SizedBox(width: 8),
+                        if (showUpdated)
+                          SizedBox(width: 28, child: metrics.last),
+                      ],
+                    ),
+              subtitle: detail.isEmpty && !(largeText && hasMetrics)
+                  ? null
+                  : Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (largeText && hasMetrics)
+                          Wrap(spacing: 12, children: metrics),
+                        if (detail.isNotEmpty)
+                          Text(
+                            detail.join(' · '),
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: WingTokens.of(context).muted,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
+              trailing: Builder(
+                builder: (button) => StudioButtonPress(
+                  child: IconButton(
+                    tooltip: 'Chat actions',
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onPressed: _pending || workspace.switching
+                        ? null
+                        : () => _run(() => _chatActions(button, e)),
                   ),
-            trailing: Builder(
-              builder: (button) => IconButton(
-                tooltip: 'Chat actions',
-                icon: const Icon(Icons.more_horiz, size: 18),
-                onPressed: _busy || controller.switching
-                    ? null
-                    : () => _run(() => _chatActions(button, e), refresh: true),
+                ),
               ),
+              onLongPress: _pending || workspace.switching
+                  ? null
+                  : () => _run(() => _chatActions(anchor, e)),
+              onTap: _pending ? null : () => _openChat(e),
             ),
-            onLongPress: _busy || controller.switching
-                ? null
-                : () => _run(() => _chatActions(anchor, e), refresh: true),
-            onTap: _busy ? null : () => _openChat(e),
           ),
         ),
       ),
@@ -823,13 +672,12 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
   }
 
   Future<void> _projectActions(BuildContext anchor, ChatListGroup group) async {
-    final owner = group.owner!;
-    if (controller.current?.scope != owner.scope &&
-        !await controller.switchProfile(owner.scope.profileName)) {
-      return;
-    }
-    if (anchor.mounted) {
-      await showProjectActions(anchor, controller, group.project!);
+    final actions = await _data.projectActionsFor(group.scope!, group.project!);
+    if (actions == null) return;
+    try {
+      if (anchor.mounted) await showProjectActions(anchor, actions);
+    } finally {
+      actions.dispose();
     }
   }
 
@@ -849,7 +697,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
                   _data.row(entry.sessionKey).value,
               ],
               project: group.project,
-              owner: group.owner,
+              scope: group.scope,
             ),
           ),
         );
@@ -862,91 +710,93 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         group.key != 'pinned';
     final collapsed = _collapsed.contains(key);
     final tokensReady =
-        (group.owner == null ||
-            _data.complete.contains(group.owner!.scope.profileName)) &&
-        group.entries.every((e) => _data.complete.contains(e.profile));
+        (group.scope == null ||
+            _data.hasCompleteSnapshot(group.scope!.profileName)) &&
+        group.entries.every((e) => _data.hasCompleteSnapshot(e.profile));
     return Builder(
       builder: (headingContext) => Padding(
         key: group.project == null
             ? null
             : ValueKey(
-                'project-${group.owner!.scope.profileName}-${group.project!['id']}',
+                'project-${group.scope!.profileName}-${group.project!.id}',
               ),
         padding: const EdgeInsets.only(top: 2, left: 12, right: 8),
         child: Row(
           children: [
             Expanded(
-              child: InkWell(
-                key: ValueKey('chat-group-$key'),
-                onLongPress: group.project == null || _busy
-                    ? null
-                    : () => _run(
-                        () => _projectActions(headingContext, group),
-                        refresh: true,
-                      ),
-                onTap: () => setState(() {
-                  if (!_collapsed.remove(key)) _collapsed.add(key);
-                }),
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(minHeight: 48),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(4, 16, 0, 0),
-                    child: Row(
-                      children: [
-                        if (group.project != null)
-                          projectAvatar(context, group.project!, size: 20)
-                        else
-                          Icon(
-                            group.key == 'pinned'
-                                ? Icons.push_pin_outlined
-                                : _grouping == ChatGrouping.project
-                                ? Icons.category_outlined
-                                : _groupIcon(_grouping),
-                            size: 18,
-                            color: WingTokens.of(context).muted,
-                          ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            group.project != null &&
-                                    _groups
-                                            .where(
-                                              (g) => g.label == group.label,
-                                            )
-                                            .length >
-                                        1
-                                ? '${group.label} · ${group.owner!.scope.profileName}'
-                                : group.label,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              fontStyle: isUnassigned
-                                  ? FontStyle.italic
-                                  : FontStyle.normal,
+              child: StudioButtonPress(
+                child: InkWell(
+                  key: ValueKey('chat-group-$key'),
+                  onLongPress: group.project == null || _pending
+                      ? null
+                      : () =>
+                            _run(() => _projectActions(headingContext, group)),
+                  onTap: () => setState(() {
+                    if (!_collapsed.remove(key)) _collapsed.add(key);
+                  }),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(4, 16, 0, 0),
+                      child: Row(
+                        children: [
+                          if (group.project != null)
+                            projectAvatar(context, group.project!, size: 20)
+                          else
+                            Icon(
+                              group.key == 'pinned'
+                                  ? Icons.push_pin_outlined
+                                  : _grouping == ChatGrouping.project
+                                  ? Icons.category_outlined
+                                  : _grouping == null
+                                  ? Icons.chat_bubble_outline
+                                  : _groupIcon(_grouping!),
+                              size: 18,
+                              color: WingTokens.of(context).muted,
                             ),
-                          ),
-                        ),
-                        if (_show.contains(ChatDetail.tokens))
-                          Tooltip(
-                            message: tokensReady
-                                ? '${group.tokens} tokens across ${group.entries.length} matching chats'
-                                : 'Loading the complete group total',
+                          const SizedBox(width: 8),
+                          Expanded(
                             child: Text(
-                              tokensReady ? compactTokens(group.tokens) : '…',
+                              group.project != null &&
+                                      _groups
+                                              .where(
+                                                (g) => g.label == group.label,
+                                              )
+                                              .length >
+                                          1
+                                  ? '${group.label} · ${group.scope!.profileName}'
+                                  : group.label,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                fontSize: 11,
-                                color: WingTokens.of(context).muted,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                fontStyle: isUnassigned
+                                    ? FontStyle.italic
+                                    : FontStyle.normal,
                               ),
                             ),
                           ),
-                        const SizedBox(width: 4),
-                        Icon(
-                          collapsed ? Icons.chevron_right : Icons.expand_more,
-                          size: 16,
-                        ),
-                      ],
+                          if (_show.contains(ChatDetail.tokens))
+                            Tooltip(
+                              message: tokensReady
+                                  ? '${group.tokens} tokens across ${group.entries.length} matching chats'
+                                  : 'Loading the complete group total',
+                              child: Text(
+                                tokensReady ? compactTokens(group.tokens) : '…',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: WingTokens.of(context).muted,
+                                ),
+                              ),
+                            ),
+                          const SizedBox(width: 4),
+                          Icon(
+                            collapsed ? Icons.chevron_right : Icons.expand_more,
+                            size: 16,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -954,16 +804,15 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
             ),
             if (group.project != null)
               Builder(
-                builder: (anchor) => IconButton(
-                  padding: const EdgeInsets.only(top: 12),
-                  tooltip: 'Project actions',
-                  icon: const Icon(Icons.more_horiz, size: 18),
-                  onPressed: _busy
-                      ? null
-                      : () => _run(
-                          () => _projectActions(anchor, group),
-                          refresh: true,
-                        ),
+                builder: (anchor) => StudioButtonPress(
+                  child: IconButton(
+                    padding: const EdgeInsets.only(top: 12),
+                    tooltip: 'Project actions',
+                    icon: const Icon(Icons.more_horiz, size: 18),
+                    onPressed: _pending
+                        ? null
+                        : () => _run(() => _projectActions(anchor, group)),
+                  ),
                 ),
               ),
           ],
@@ -976,22 +825,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     final groups = _groups;
     final entries = _allEntries;
     return [
-      if (_data.loading || _data.searching)
-        const LinearProgressIndicator(minHeight: 2),
-      for (final error in _data.errors.values)
-        ListTile(
-          title: StudioError(error),
-          trailing: TextButton(onPressed: _refresh, child: const Text('Retry')),
-        ),
-      if (_data.searchError != null)
-        ListTile(
-          title: StudioError(_data.searchError!),
-          trailing: TextButton(
-            onPressed: () => _data.search(_query),
-            child: const Text('Retry'),
-          ),
-        ),
-      if (_data.searchLimited)
+      if (_data.state.searchLimited)
         const Padding(
           padding: EdgeInsets.all(16),
           child: Text(
@@ -1009,27 +843,29 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
               padding: const EdgeInsets.only(left: 46, right: 16),
               child: Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton(
-                  key: ValueKey('chat-show-more-${_groupKey(group)}'),
-                  onPressed: () => setState(() {
-                    _visibleCounts[_groupKey(group)] =
-                        _visibleCount(group) + 10;
-                  }),
-                  child: const Text(
-                    'Show more',
-                    style: TextStyle(fontSize: 12),
+                child: StudioButtonPress(
+                  child: TextButton(
+                    key: ValueKey('chat-show-more-${_groupKey(group)}'),
+                    onPressed: () => setState(() {
+                      _visibleCounts[_groupKey(group)] =
+                          _visibleCount(group) + 10;
+                    }),
+                    child: const Text(
+                      'Show more',
+                      style: TextStyle(fontSize: 12),
+                    ),
                   ),
                 ),
               ),
             ),
         ],
       ],
-      if (controller.current == null)
+      if (workspace.scope == null && !workspace.repairRequired)
         const Padding(
           padding: EdgeInsets.all(24),
           child: Text('Opening your chats'),
         ),
-      if (controller.current != null && groups.isEmpty && !_data.loading)
+      if (workspace.scope != null && groups.isEmpty && !_data.state.loading)
         Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
@@ -1041,20 +877,20 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
                         _profiles.isNotEmpty ||
                         _projects.isNotEmpty
                     ? 'No matching chats'
-                    : _archived
+                    : _archivedOnly
                     ? 'No archived chats'
                     : 'No chats here yet',
               ),
               if (_projects.isNotEmpty ||
                   _profiles.isNotEmpty ||
                   _statuses.isNotEmpty)
-                TextButton(
-                  onPressed: () => _change(() {
-                    _projects.clear();
-                    _profiles.clear();
-                    _statuses.clear();
-                  }),
-                  child: const Text('Clear filters'),
+                StudioButtonPress(
+                  child: TextButton(
+                    onPressed: () => _chooseView(
+                      const BrowserPreferenceIntent.clearFilters(),
+                    ),
+                    child: const Text('Clear filters'),
+                  ),
                 ),
             ],
           ),
@@ -1062,24 +898,51 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     ];
   }
 
+  String? get _loadingLabel {
+    final submitting = workspace.mutating;
+    final label = submitting
+        ? 'Updating chats…'
+        : _data.state.searching
+        ? 'Searching chats…'
+        : _data.state.loading
+        ? 'Refreshing chats…'
+        : null;
+    return label;
+  }
+
+  Widget _readFailure(String message, VoidCallback retry) {
+    final largeText = MediaQuery.textScalerOf(context).scale(16) > 20;
+    final explanation = DefaultTextStyle(
+      style: Theme.of(context).textTheme.bodySmall!.copyWith(fontSize: 12),
+      child: StudioError(message),
+    );
+    final action = StudioButtonPress(
+      child: TextButton(onPressed: retry, child: const Text('Retry')),
+    );
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: largeText
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                explanation,
+                Align(alignment: Alignment.centerRight, child: action),
+              ],
+            )
+          : Row(
+              children: [
+                Expanded(child: explanation),
+                const SizedBox(width: 12),
+                action,
+              ],
+            ),
+    );
+  }
+
   List<Widget> _draftRows(List<ChatListEntry> entries) {
-    if (_archived ||
-        _query.isNotEmpty ||
-        _statuses.isNotEmpty && !_statuses.contains('draft') ||
-        _projects.isNotEmpty) {
-      return [];
-    }
     final rows = <Widget>[];
-    for (final profile in controller.discovery?.profiles ?? []) {
-      if (_profiles.isNotEmpty && !_profiles.contains(profile.name)) continue;
-      final owner = controller.browserResource(profile.name);
-      for (final draft in controller.savedDrafts(owner.scope)) {
-        if (!entries.any(
-          (e) => e.profile == profile.name && e.id == draft.sessionId,
-        )) {
-          rows.add(_savedDraft(draft, owner));
-        }
-      }
+    for (final draft in _data.savedDrafts(_query, entries)) {
+      rows.add(_savedDraft(draft));
     }
     return [
       if (rows.isNotEmpty)
@@ -1094,10 +957,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     ];
   }
 
-  Widget _savedDraft(
-    ComposerDraftSummary draft,
-    ProfileWorkspaceData resource,
-  ) {
+  Widget _savedDraft(BrowserDraft draft) {
     final preview = draft.text.trim().replaceAll(RegExp(r'\s+'), ' ');
     final attachmentLabel =
         '${draft.attachmentCount} staged attachment${draft.attachmentCount == 1 ? '' : 's'}';
@@ -1118,15 +978,22 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
     return Builder(
       builder: (rowContext) {
         void actions([BuildContext? anchor]) => unawaited(
-          _run(
-            () => showSavedDraftActions(
-              anchor ?? rowContext,
-              controller,
-              resource.scope,
-              draft,
-              title,
-            ),
-          ),
+          _run(() async {
+            final issued = await _data.draftActionsFor(draft);
+            if (issued == null) return;
+            try {
+              if ((anchor ?? rowContext).mounted) {
+                await showSavedDraftActions(
+                  anchor ?? rowContext,
+                  issued,
+                  draft,
+                  title,
+                );
+              }
+            } finally {
+              issued.dispose();
+            }
+          }),
         );
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
@@ -1135,47 +1002,46 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
             borderRadius: WingRadius.card,
             clipBehavior: Clip.antiAlias,
             child: GestureDetector(
-              onSecondaryTap: controller.switching ? null : actions,
-              child: ListTile(
-                key: ValueKey('saved-draft-${draft.sessionId}'),
-                contentPadding: const EdgeInsets.only(left: 16, right: 0),
-                leading: const ChatStatusDot(ChatListStatus.draft),
-                title: Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 16),
-                ),
-                subtitle: Text(
-                  details.isEmpty
-                      ? 'Draft · Tap to continue'
-                      : details.join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
-                ),
-                trailing: Builder(
-                  builder: (buttonContext) => IconButton(
-                    tooltip: 'Draft actions',
-                    style: IconButton.styleFrom(
-                      minimumSize: const Size(48, 48),
-                      visualDensity: VisualDensity.standard,
-                    ),
-                    icon: const Icon(Icons.more_horiz, size: 20),
-                    onPressed: controller.switching
-                        ? null
-                        : () => actions(buttonContext),
+              onSecondaryTap: workspace.switching ? null : actions,
+              child: StudioButtonPress(
+                child: ListTile(
+                  key: ValueKey('saved-draft-${draft.key.sessionId}'),
+                  contentPadding: const EdgeInsets.only(left: 16, right: 0),
+                  leading: const ChatStatusDot(ChatListStatus.draft),
+                  title: Text(
+                    title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 16),
                   ),
-                ),
-                onLongPress: controller.switching ? null : actions,
-                onTap: controller.switching
-                    ? null
-                    : () => _run(
-                        () => controller.openSavedDraft(
-                          resource.scope,
-                          draft.sessionId,
+                  subtitle: Text(
+                    details.isEmpty
+                        ? 'Draft · Tap to continue'
+                        : details.join(' · '),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                  trailing: Builder(
+                    builder: (buttonContext) => StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Draft actions',
+                        style: IconButton.styleFrom(
+                          minimumSize: const Size(48, 48),
+                          visualDensity: VisualDensity.standard,
                         ),
+                        icon: const Icon(Icons.more_horiz, size: 20),
+                        onPressed: workspace.switching
+                            ? null
+                            : () => actions(buttonContext),
                       ),
+                    ),
+                  ),
+                  onLongPress: workspace.switching ? null : actions,
+                  onTap: workspace.switching
+                      ? null
+                      : () => _run(() => _data.openDraft(draft)),
+                ),
               ),
             ),
           ),
@@ -1185,7 +1051,12 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
   }
 
   @override
-  Widget build(BuildContext context) => ReadRecovery(
+  Widget build(BuildContext context) => BotAvatarScope(
+    session: _data.avatarOwner,
+    child: _buildWithAvatars(context),
+  );
+
+  Widget _buildWithAvatars(BuildContext context) => ReadRecovery(
     shouldRetry: () => _data.needsRecovery,
     retry: _data.recover,
     child: _buildContent(context),
@@ -1193,44 +1064,139 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
 
   Widget _buildContent(BuildContext context) {
     _allEntries = _data.entries;
-    _visibleEntries = _filterMatches(_allEntries);
-    _visibleKeys
-      ..clear()
-      ..addAll(_visibleEntries.map((e) => e.sessionKey));
-    final arranged = _buildGroups(
-      _allEntries
-          .where(
-            (e) => controller.sessionVisibility.includes(
-              e.row['source'] as String?,
-            ),
-          )
-          .toList(),
-    );
-    _currentGroups = [
-      for (final group in arranged)
-        if (group.entries.isEmpty ||
-            group.entries.any((e) => _visibleKeys.contains(e.sessionKey)))
-          ChatListGroup(
-            group.key,
-            group.label,
-            group.entries
-                .where((e) => _visibleKeys.contains(e.sessionKey))
-                .toList(),
-            project: group.project,
-            owner: group.owner,
-          ),
-    ];
+    final projection = _data.project(_query);
+    _visibleEntries = projection.entries;
+    _currentGroups = projection.groups;
     final tokens = WingTokens.of(context);
     final enabled =
-        controller.current != null && !controller.switching && !_busy;
+        workspace.scope != null && !workspace.switching && !_pending;
     final groups = _groups;
+    final notices = <Widget>[
+      if (_view.error case final error?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              StudioError(error),
+              Wrap(
+                children: [
+                  if (_view.validity == BrowserPreferencesValidity.invalid)
+                    StudioButtonPress(
+                      child: TextButton(
+                        onPressed: _view.busy
+                            ? null
+                            : () => _chooseView(
+                                const BrowserPreferenceIntent.reset(),
+                              ),
+                        child: const Text('Reset chat view'),
+                      ),
+                    ),
+                  if (_view.validity == BrowserPreferencesValidity.unverified)
+                    StudioButtonPress(
+                      child: TextButton(
+                        onPressed: _view.busy
+                            ? null
+                            : _data.verifyViewPreferences,
+                        child: const Text('Reload chat view'),
+                      ),
+                    ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      WorkspaceConnectionStatus(status: widget.connectionStatus),
+      if (workspace.visibilityNotice case final notice?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(notice),
+              Wrap(
+                children: [
+                  StudioButtonPress(
+                    child: TextButton(
+                      onPressed: !workspace.canChooseVisibility
+                          ? null
+                          : () => _run(
+                              () => _data.chooseVisibility(
+                                SessionVisibility.chats,
+                              ),
+                            ),
+                      child: const Text('Chats only'),
+                    ),
+                  ),
+                  StudioButtonPress(
+                    child: TextButton(
+                      onPressed: !workspace.canChooseVisibility
+                          ? null
+                          : () => _run(
+                              () =>
+                                  _data.chooseVisibility(SessionVisibility.all),
+                            ),
+                      child: const Text('All sessions'),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      if (workspace.visibilityError case final error?)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: StudioError(error),
+        ),
+      widget.deletionRecovery,
+      if (_data.readFailure case final failure?)
+        _readFailure(failure, _refresh),
+      if (_data.state.searchError != null)
+        _readFailure(_data.state.searchError!, () => _data.search(_query)),
+      if (workspace.repairRequired)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (workspace.error case final error?) StudioError(error),
+              const SizedBox(height: 8),
+              ProfileSelector(
+                profiles: workspace.profiles,
+                selectedProfile: workspace.scope?.profileName,
+                createColors: widget.createColors,
+                padding: EdgeInsets.zero,
+                onSelected: workspace.repairBusy
+                    ? null
+                    : (name) => unawaited(
+                        _run(() async {
+                          await _data.selectProfile(name);
+                        }),
+                      ),
+              ),
+            ],
+          ),
+        )
+      else if (workspace.error != null)
+        ListTile(
+          title: StudioError(workspace.error!),
+          trailing: StudioButtonPress(
+            child: TextButton(
+              onPressed: () => _run(_data.retryConnection),
+              child: const Text('Retry'),
+            ),
+          ),
+        ),
+    ];
     return PopScope(
-      canPop: widget.drawer == null && !_archived,
+      canPop: widget.drawer == null && !_archivedOnly && !_showProjectFab,
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
-        if (_archived) {
-          setState(() => _archived = false);
-          unawaited(_refresh());
+        if (_showProjectFab) {
+          _dismissProjectFab();
+        } else if (_archivedOnly) {
+          unawaited(_data.refresh(archivedOnly: false));
         } else if (_scaffoldKey.currentState?.isDrawerOpen == true) {
           unawaited(SystemNavigator.pop());
         } else {
@@ -1241,75 +1207,62 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         key: _scaffoldKey,
         drawer: widget.drawer,
         backgroundColor: tokens.surface,
-        appBar: AppBar(
+        appBar: WingAppBar(
+          context: context,
           backgroundColor: tokens.surface,
           surfaceTintColor: Colors.transparent,
-          toolbarHeight: 88 + (MediaQuery.textScalerOf(context).scale(24) - 24),
+
           centerTitle: false,
-          leading: _archived
-              ? IconButton(
-                  tooltip: 'Back to chats',
-                  icon: const Icon(Icons.arrow_back),
-                  onPressed: () {
-                    setState(() => _archived = false);
-                    unawaited(_refresh());
-                  },
+          leading: _archivedOnly
+              ? StudioButtonPress(
+                  child: IconButton(
+                    tooltip: 'Back to chats',
+                    icon: const Icon(Icons.arrow_back),
+                    onPressed: () {
+                      unawaited(_data.refresh(archivedOnly: false));
+                    },
+                  ),
                 )
               : null,
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          title: Text(_archivedOnly ? 'Archived chats' : 'Chats'),
+          contextRow: Row(
             children: [
-              Text(
-                _archived ? 'Archived chats' : 'Chats',
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w600,
+              SizedBox(
+                width: 104,
+                child: ServerConnectionLabel(
+                  label: widget.connectionLabel,
+                  icon: widget.connectionIcon,
+                  status: widget.connectionStatus,
+                  style: TextStyle(fontSize: 12, color: tokens.muted),
                 ),
               ),
-              Row(
-                children: [
-                  SizedBox(
-                    width: 104,
-                    child: ServerConnectionLabel(
-                      label: controller.connection.label,
-                      icon: controller.connection.icon,
-                      status: controller.connectionStatus,
-                      style: TextStyle(fontSize: 12, color: tokens.muted),
-                    ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: ChatProfileBar(
+                  profiles: workspace.profiles,
+                  createColors: widget.createColors,
+                  selectedProfiles: _profiles,
+                  onOpenBotChat: widget.onOpenBotChat,
+                  onSelected: (name) => _chooseView(
+                    BrowserPreferenceIntent.exclusiveProfile(name),
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: ChatProfileBar(
-                      profiles: controller.discovery?.profiles ?? const [],
-                      colors: ProfileColorStore(
-                        controller.preferences,
-                        controller.connectionIdentity,
-                      ),
-                      selectedProfiles: _profiles,
-                      onSelected: (name) => _change(() {
-                        final selected = _profiles.contains(name);
-                        _profiles.clear();
-                        if (!selected) _profiles.add(name);
-                      }),
-                    ),
-                  ),
-                ],
+                ),
               ),
+              const SizedBox(width: 16),
             ],
           ),
           actions: [
             ValueListenableBuilder<Set<ProfileSessionKey>>(
-              valueListenable: _data.rowsChanged,
+              valueListenable: _data.rowChanges,
               builder: (_, _, _) => WorkspaceOptionsMenu(
                 key: _optionsKey,
                 enabled: enabled,
-                archived: _archived,
-                includeAutomated:
-                    controller.sessionVisibility == SessionVisibility.all,
+                archived: _archivedOnly,
+                includeAutomated: workspace.visibility == SessionVisibility.all,
                 collapsed:
                     groups.isNotEmpty &&
                     groups.every((g) => _collapsed.contains(_groupKey(g))),
-                hasUnread: _matches.any((e) => e.row['unread'] == true),
+                hasUnread: _matches.any((e) => e.unread),
                 onSelected: _menuAction,
               ),
             ),
@@ -1317,66 +1270,134 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser> {
         ),
         body: SafeArea(
           bottom: false,
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-                child: TextField(
-                  key: const ValueKey('workspace-search'),
-                  controller: _search,
-                  focusNode: widget.searchFocusNode,
-                  onChanged: _setQuery,
-                  decoration: const InputDecoration(
-                    hintText: 'Search chats',
-                    prefixIcon: Icon(Icons.search, size: 20),
+          child: StudioLoadingRegion(
+            busy: _loadingLabel != null,
+            available: _data.state.available && !workspace.mutating,
+            label: _loadingLabel ?? 'Loading chats',
+            child: Column(
+              children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+                  child: viewportSelection(
+                    TextField(
+                      key: const ValueKey('workspace-search'),
+                      controller: _search,
+                      focusNode: widget.searchFocusNode,
+                      onChanged: _setQuery,
+                      decoration: const InputDecoration(
+                        hintText: 'Search chats',
+                        prefixIcon: Icon(Icons.search, size: 20),
+                      ),
+                    ),
                   ),
                 ),
-              ),
-              _filters(),
-              WorkspaceConnectionStatus(status: controller.connectionStatus),
-              if (controller.error != null)
-                ListTile(
-                  title: StudioError(controller.error!),
-                  trailing: TextButton(
-                    onPressed: () => _run(controller.retry),
-                    child: const Text('Retry'),
-                  ),
-                ),
-              Expanded(
-                child: RefreshIndicator(
-                  onRefresh: _refresh,
-                  child: Builder(
-                    builder: (context) {
-                      final rows = _tree();
-                      return ListView.builder(
-                        key: ValueKey('chat-list-$_archived'),
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: EdgeInsets.only(
+                _filters(),
+                if (!workspace.repairRequired) ...notices,
+                Expanded(
+                  child: StudioRefresh(
+                    available: _data.state.available,
+                    label: 'Refreshing chats',
+                    onRefresh: _refresh,
+                    child: Builder(
+                      builder: (context) {
+                        final rows = _tree();
+                        final padding = EdgeInsets.only(
                           bottom: 88 + MediaQuery.paddingOf(context).bottom,
-                        ),
-                        itemCount: rows.length,
-                        itemBuilder: (_, index) => rows[index],
-                      );
-                    },
+                        );
+                        if (workspace.repairRequired) {
+                          return CustomScrollView(
+                            key: ValueKey('chat-list-$_archivedOnly'),
+                            physics: const AlwaysScrollableScrollPhysics(),
+                            slivers: [
+                              SliverToBoxAdapter(
+                                child: Column(children: notices),
+                              ),
+                              SliverPadding(
+                                padding: padding,
+                                sliver: SliverList.builder(
+                                  itemCount: rows.length,
+                                  itemBuilder: (_, index) => rows[index],
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return ListView.builder(
+                          key: ValueKey('chat-list-$_archivedOnly'),
+                          physics: const AlwaysScrollableScrollPhysics(),
+                          padding: padding,
+                          itemCount: rows.length,
+                          itemBuilder: (_, index) => rows[index],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        floatingActionButton: TapRegion(
+          onTapOutside: (_) => _dismissProjectFab(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (_showProjectFab) ...[
+                StudioButtonPress(
+                  child: FloatingActionButton(
+                    key: const ValueKey('workspace-new-project'),
+                    heroTag: 'workspace-new-project',
+                    tooltip: 'New project',
+                    elevation: 2,
+                    onPressed:
+                        !enabled || workspace.offline || workspace.recovering
+                        ? null
+                        : () => _menuAction('new-project'),
+                    child: const Icon(Icons.create_new_folder_outlined),
+                  ),
+                ),
+                const SizedBox(height: 12),
+              ],
+              Tooltip(
+                message: 'New chat',
+                triggerMode: TooltipTriggerMode.manual,
+                child: Semantics(
+                  hint: 'Long press to show New project',
+                  child: GestureDetector(
+                    onLongPress:
+                        !enabled || workspace.offline || workspace.recovering
+                        ? null
+                        : () {
+                            unawaited(Feedback.forLongPress(context));
+                            setState(() => _showProjectFab = !_showProjectFab);
+                          },
+                    child: StudioButtonPress(
+                      child: FloatingActionButton(
+                        key: const ValueKey('workspace-new-chat'),
+                        heroTag: 'workspace-new-chat',
+                        elevation: 2,
+                        onPressed:
+                            !enabled ||
+                                workspace.offline ||
+                                workspace.recovering
+                            ? null
+                            : () {
+                                _dismissProjectFab();
+                                unawaited(
+                                  _run(() async {
+                                    final name = await _chooseOwner();
+                                    if (name != null) await _data.newChat(name);
+                                  }),
+                                );
+                              },
+                        child: const Icon(WingIcons.newChat),
+                      ),
+                    ),
                   ),
                 ),
               ),
             ],
           ),
-        ),
-        floatingActionButton: FloatingActionButton(
-          key: const ValueKey('workspace-new-chat'),
-          tooltip: 'New chat',
-          elevation: 2,
-          onPressed:
-              !enabled ||
-                  controller.current?.offlineSnapshot == true ||
-                  controller.recovering
-              ? null
-              : () => _run(() async {
-                  if (await _chooseOwner()) await controller.createChat();
-                }),
-          child: const Icon(WingIcons.newChat),
         ),
       ),
     );

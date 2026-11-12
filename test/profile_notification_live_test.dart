@@ -1,3 +1,7 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -25,18 +29,24 @@ void main() {
         ProfileChat? ownedChat;
         try {
           final preferences = await SharedPreferences.getInstance();
+          final appPreferences = AppPreferences(preferences);
+          addTearDown(appPreferences.dispose);
           ProfileWorkspaceController client(String id, {bool observe = false}) {
             final result = ProfileWorkspaceController(
-              connection: SavedConnection(
-                id: id,
-                label: 'Notification coverage live QA',
-                host: '127.0.0.1',
-                port: port,
-                dashboardPortOverride: port,
-                apiKey: '',
+              access: ConnectionAccess(
+                connection: SavedConnection(
+                  id: id,
+                  label: 'Notification coverage live QA',
+                  host: '127.0.0.1',
+                  port: port,
+                  dashboardPortOverride: port,
+                  apiKey: '',
+                ),
+                dashboardOAuth: null,
               ),
               connectionIdentity: id,
               preferences: preferences,
+              appPreferences: appPreferences,
               onAttention: observe
                   ? (chat) async {
                       final needsInput = chat.content.needsAttention;
@@ -69,7 +79,7 @@ void main() {
           await producer.initialize();
           expect(producer.error, isNull);
           expect(await producer.switchProfile('android-qa-a'), isTrue);
-          final chat = await producer.createChat();
+          final chat = await producer.createChat(canDispatch: () => true);
           ownedChat = chat;
           await producer.updateDraft(
             chat,
@@ -84,7 +94,7 @@ void main() {
           await producer.send(chat);
           if (requestInput) {
             await attention.future.timeout(const Duration(seconds: 45));
-            expect(chat.pendingQuestion, isNotNull);
+            expect(chat.runtime.pendingQuestion, isNotNull);
             await producer.clarify(chat, 'Yes');
           }
           await completion.future.timeout(const Duration(seconds: 105));
@@ -97,11 +107,13 @@ void main() {
           }
           expect(observer.current?.scope.profileName, 'android-qa-b');
           expect(observer.current?.chat, isNull);
-          expect(chat.status, ProfileTurnStatus.completed);
-          expect(chat.error, isNull);
+          expect(chat.runtime.execution, ChatExecution.completed);
+          expect(chat.runtime.error, isNull);
         } finally {
           try {
-            if (ownedChat?.busy == true) await clients.last.stop(ownedChat!);
+            if (ownedChat?.runtime.blocksTurnAdmission == true) {
+              await clients.last.stop(ownedChat!);
+            }
           } finally {
             for (final client in clients) {
               client.dispose();
@@ -127,17 +139,24 @@ void main() {
       ProfileChat? ownedChat;
       Object? cleanupFailure;
       try {
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        addTearDown(appPreferences.dispose);
         final live = ProfileWorkspaceController(
-          connection: SavedConnection(
-            id: 'notification-event-live-qa',
-            label: 'Notification event live QA',
-            host: '127.0.0.1',
-            port: port,
-            dashboardPortOverride: port,
-            apiKey: '',
+          access: ConnectionAccess(
+            connection: SavedConnection(
+              id: 'notification-event-live-qa',
+              label: 'Notification event live QA',
+              host: '127.0.0.1',
+              port: port,
+              dashboardPortOverride: port,
+              apiKey: '',
+            ),
+            dashboardOAuth: null,
           ),
           connectionIdentity: 'notification-event-live-qa',
-          preferences: await SharedPreferences.getInstance(),
+          preferences: preferences,
+          appPreferences: appPreferences,
           onAttention: (chat) async {
             final needsInput = chat.content.needsAttention;
             notifications.add((key: chat.key, needsInput: needsInput));
@@ -150,7 +169,7 @@ void main() {
         expect(await live.switchProfile('android-qa-a'), isTrue);
         expect(live.current?.scope.profileName, 'android-qa-a');
 
-        final chat = await live.createChat();
+        final chat = await live.createChat(canDispatch: () => true);
         ownedChat = chat;
         live.setRouteVisibility(live, false);
         await live.updateDraft(
@@ -165,11 +184,11 @@ void main() {
         expect(notifications.single.key, chat.key);
         expect(notifications.single.key.workspace.profileName, 'android-qa-a');
         expect(notifications.single.needsInput, isFalse);
-        expect(chat.status, ProfileTurnStatus.completed);
-        expect(chat.error, isNull);
+        expect(chat.runtime.execution, ChatExecution.completed);
+        expect(chat.runtime.error, isNull);
       } finally {
         final chat = ownedChat;
-        if (chat != null && chat.busy) {
+        if (chat != null && chat.runtime.blocksTurnAdmission) {
           try {
             await controller?.stop(chat);
           } catch (error) {

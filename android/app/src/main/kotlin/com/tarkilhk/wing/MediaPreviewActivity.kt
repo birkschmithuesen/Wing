@@ -8,6 +8,7 @@ import android.content.res.Configuration
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.InsetDrawable
 import android.graphics.drawable.RippleDrawable
+import androidx.core.graphics.ColorUtils
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.WindowCompat
 import android.os.Build
@@ -42,6 +43,7 @@ internal class MediaPreviewActivity : Activity() {
     private var savedPosition = 0
     private var ownsMediaFile = false
     private var canvasColor = Color.BLACK
+    private var inkColor = Color.WHITE
     private var errorColor = Color.RED
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -104,6 +106,7 @@ internal class MediaPreviewActivity : Activity() {
         val accent = intent.getIntExtra("studio_accent", Color.parseColor(if (dark) "#65C7BC" else "#126D70"))
         val onAccent = intent.getIntExtra("studio_onAccent", Color.parseColor(if (dark) "#102C32" else "#FFFFFF"))
         canvasColor = canvas
+        inkColor = ink
         errorColor = intent.getIntExtra("studio_error", Color.parseColor(if (dark) "#F87171" else "#B3261E"))
         WindowCompat.setDecorFitsSystemWindows(window, false)
         window.statusBarColor = Color.TRANSPARENT
@@ -197,7 +200,10 @@ internal class MediaPreviewActivity : Activity() {
                 addView(status, LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                ))
+                ).apply {
+                    marginStart = dp(16)
+                    marginEnd = dp(16)
+                })
             })
         }
         playerArea.addView(statusContainer, FrameLayout.LayoutParams(
@@ -247,6 +253,8 @@ internal class MediaPreviewActivity : Activity() {
         val generation = ++preparationGeneration
         prepared = false
         controls.hide()
+        status.setBackgroundColor(canvasColor)
+        status.setCompoundDrawables(null, null, null, null)
         if (mimeType.startsWith("audio/")) {
             status.text = "Preparing audio..."
         } else {
@@ -285,8 +293,12 @@ internal class MediaPreviewActivity : Activity() {
         player.visibility = View.GONE
         statusContainer.visibility = View.VISIBLE
         val error = errorColor
-        status.setTextColor(error)
-        status.setBackgroundColor(canvasColor)
+        status.setTextColor(inkColor)
+        status.background = GradientDrawable().apply {
+            cornerRadius = dp(18).toFloat()
+            setColor(ColorUtils.blendARGB(canvasColor, error, .09f))
+            setStroke(dp(1), ColorUtils.blendARGB(canvasColor, error, .42f))
+        }
         val icon = getDrawable(android.R.drawable.ic_dialog_alert)?.mutate()?.apply {
             setTint(error)
             setBounds(0, 0, dp(24), dp(24))

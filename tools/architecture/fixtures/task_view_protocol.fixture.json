@@ -1,0 +1,421 @@
+{
+  "cases": [
+    {
+      "name": "direct",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { repository.runs('id'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefixed-alias",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart' as data;\nvoid f(data.ScheduledTasksRepository repository) { final alias = repository; alias.runs('id'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "cascade",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { repository..runs('id'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "tearoff",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { final request = repository.runs; request('id'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "exported-alias",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\ntypedef Alias = ScheduledTasksRepository;\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../public.dart';\nvoid f(Alias repository) { repository.runs('id'); }\n"
+        },
+        "lib/public.dart": {
+          "role": "utility",
+          "source": "export 'core/services/scheduled_tasks_repository.dart';\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "definition-part",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "part 'task_repository_part.dart';\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { repository.runs('id'); }\n"
+        },
+        "lib/core/services/task_repository_part.dart": {
+          "role": "data",
+          "source": "part of 'scheduled_tasks_repository.dart';\nclass ScheduledTasksRepository { void runs(String id) {} }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "profile-read",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('model/options'); }\n"
+        },
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "owner-command",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "class Session { void load() {} }\nvoid f(Session owner) { owner.load(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-name",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "class LocalIndex { void runs(String id) {} }\nvoid f(LocalIndex index) { index.runs('id'); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "protocol-in-application",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "application",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { repository.runs('id'); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "void f(dynamic value) { value.runs('id'); }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "conditional",
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../alternate.dart' if (dart.library.io) '../core/services/scheduled_tasks_repository.dart';\nvoid f(ScheduledTasksRepository repository) { repository.runs('id'); }\n"
+        },
+        "lib/alternate.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "sdk-unrelated-write",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "void f(StringBuffer buffer) { buffer.write(\"local output\"); }\n"
+        }
+      }
+    },
+    {
+      "name": "same-class-wrong-library",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../local.dart';\nvoid f(ScheduledTasksRepository local) { local.runs('id'); }\n"
+        },
+        "lib/local.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        }
+      }
+    },
+    {
+      "name": "inherited-method",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass View extends ScheduledTasksRepository { void f() { runs('id'); } }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "consumer-part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void runs(String id) {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\npart 'task_part.dart';\n"
+        },
+        "lib/views/task_part.dart": {
+          "role": "view",
+          "source": "part of 'task.dart';\nvoid f(ScheduledTasksRepository repository) { repository.runs('id'); }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task_part.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "bare-inherited-capability",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nclass Page extends ProfileAdministration { Object callback() => read; }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "bare-unrelated-callback",
+      "exit": 0,
+      "files": {
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "Object callback(void Function() read) => read;\n"
+        }
+      }
+    },
+    {
+      "name": "proven-own-field",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page { Object action = Object(); Object callback() => action; }\n"
+        }
+      }
+    },
+    {
+      "name": "proven-own-getter",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page { Object get runs => Object(); Object callback() => runs; }\n"
+        }
+      }
+    },
+    {
+      "name": "proven-local-parameter",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page extends ScheduledTasksRepository { Object callback(void Function() read) => read; }\n"
+        }
+      }
+    },
+    {
+      "name": "proven-closure-parameter",
+      "exit": 0,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page extends ScheduledTasksRepository { Object callback() => (void Function() read) => read; }\n"
+        }
+      }
+    },
+    {
+      "name": "inherited-closure-alias",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page extends ScheduledTasksRepository { Object callback() { final alias = () => read; return alias; } }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "local-field-initializer-keeps-canonical-access",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page { final void Function() read; Page(ScheduledTasksRepository owner) : read = owner.read; Object callback() => read; }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "local-getter-body-keeps-canonical-access",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\nclass Page { final ScheduledTasksRepository owner; Page(this.owner); void Function() get read => owner.read; Object callback() => read; }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/task.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "inherited-bare-part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/scheduled_tasks_repository.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksRepository { void read() {} }\n"
+        },
+        "lib/views/task.dart": {
+          "role": "view",
+          "source": "import '../core/services/scheduled_tasks_repository.dart';\npart 'body.dart';\n"
+        },
+        "lib/views/body.dart": {
+          "role": "view",
+          "library": "lib/views/task.dart",
+          "source": "part of 'task.dart';\nclass Page extends ScheduledTasksRepository { Object callback() => read; }\n"
+        }
+      },
+      "diagnosticFile": "lib/views/body.dart",
+      "diagnosticLine": 2
+    }
+  ]
+}

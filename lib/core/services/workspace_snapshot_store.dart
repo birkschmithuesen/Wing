@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/reading_snapshot_message.dart';
+
 /// Bounded reading snapshots, partitioned by the verified credential identity.
 /// Runtime state, approvals, credentials and pending writes are never restored
 /// from this store. Hermes remains authoritative on every reconnection.
@@ -11,12 +13,75 @@ class WorkspaceSnapshotStore {
   Future<void>? _writeTail;
 
   WorkspaceSnapshotStore(this.preferences, this.identity);
+
   String get _key => 'workspace_reading_v1_$identity';
+
+  String _toolDurationsKey(String profile, String sessionId) =>
+      'workspace_tool_durations_v1_${identity}_${base64Url.encode(utf8.encode(jsonEncode([profile, sessionId])))}';
+
+  /// Small timing records survive transcript and recent-chat cache pruning.
+  /// They contain no result text, input, runtime state or execution authority.
+  List<Map<String, dynamic>> readToolDurations(
+    String profile,
+    String sessionId,
+  ) {
+    final encoded = preferences.getString(
+      _toolDurationsKey(profile, sessionId),
+    );
+    if (encoded == null) return const [];
+    try {
+      final rows = jsonDecode(encoded);
+      if (rows is! List) return const [];
+      return [
+        for (final row in rows.whereType<Map>()) Map<String, dynamic>.from(row),
+      ];
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  Future<void> writeToolDurations(
+    String profile,
+    String sessionId,
+    List<Map<String, dynamic>> rows,
+  ) => _enqueue(() async {
+    final encoded = _isSmallSnapshot(rows)
+        ? jsonEncode(rows)
+        : await compute(_encodeToolDurations, rows);
+    if (!await preferences.setString(
+      _toolDurationsKey(profile, sessionId),
+      encoded,
+    )) {
+      throw StateError('Tool timings could not be stored.');
+    }
+  });
+
+  Future<void> deleteToolDurations(String profile, String sessionId) =>
+      _enqueue(() async {
+        if (!await preferences.remove(_toolDurationsKey(profile, sessionId))) {
+          throw StateError('Tool timings could not be removed.');
+        }
+      });
+
   Map<String, dynamic> read() {
     try {
-      return Map<String, dynamic>.from(
+      final snapshot = Map<String, dynamic>.from(
         jsonDecode(preferences.getString(_key) ?? '{}') as Map,
       );
+      for (final profile
+          in (snapshot['profiles'] as List? ?? []).whereType<Map>()) {
+        for (final chat in (profile['chats'] as List? ?? []).whereType<Map>()) {
+          for (final message
+              in (chat['messages'] as List? ?? []).whereType<Map>()) {
+            if (message['submitted_attachments'] is List) {
+              message['submitted_attachments'] = readingSnapshotAttachments(
+                message['submitted_attachments'],
+              );
+            }
+          }
+        }
+      }
+      return snapshot;
     } catch (_) {
       return {};
     }
@@ -33,7 +98,11 @@ class WorkspaceSnapshotStore {
       await preferences.setString(_key, encoded);
     }
 
-    // A smaller/newer snapshot must not overtake an older background encode.
+    return _enqueue(save);
+  }
+
+  Future<void> _enqueue(Future<void> Function() save) {
+    // A newer snapshot or timing index cannot overtake an older encode.
     final writing = _writeTail == null
         ? save()
         : _writeTail!.then((_) => save());
@@ -44,6 +113,9 @@ class WorkspaceSnapshotStore {
     return writing;
   }
 }
+
+String _encodeToolDurations(List<Map<String, dynamic>> rows) =>
+    jsonEncode(rows);
 
 bool _isSmallSnapshot(Object? value) {
   var budget = 32 * 1024;
@@ -68,6 +140,39 @@ bool _isSmallSnapshot(Object? value) {
 }
 
 String _encodeSnapshot(Map<String, dynamic> snapshot) {
+  // Apply the per-message limit at the encoding boundary, after large inputs
+  // have moved to the worker. Copy the containers so the small synchronous path
+  // also leaves the caller's history untouched.
+  snapshot = {
+    ...snapshot,
+    if (snapshot['profiles'] is List)
+      'profiles': [
+        for (final profile in snapshot['profiles'] as List)
+          if (profile is Map && profile['chats'] is List)
+            {
+              ...profile,
+              'chats': [
+                for (final chat in profile['chats'] as List)
+                  if (chat is Map && chat['messages'] is List)
+                    {
+                      ...chat,
+                      'messages': [
+                        for (final row in chat['messages'] as List)
+                          if (row is Map)
+                            if (projectReadingSnapshotMessage(row)
+                                case final projected
+                                when jsonEncode(projected).length < 32768)
+                              projected,
+                      ],
+                    }
+                  else
+                    chat,
+              ],
+            }
+          else
+            profile,
+      ],
+  };
   const byteLimit = 2 * 1024 * 1024;
   final encoded = jsonEncode(snapshot);
   var bytes = utf8.encode(encoded).length;

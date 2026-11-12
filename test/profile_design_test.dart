@@ -1,21 +1,30 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'support/color_contrast.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/transcript_timeline.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'support/chat_browser_interactions.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
-import 'package:wing/core/models/gateway_activity.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/theme/wing_icons.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/widgets/profile_tool_activity.dart';
+import 'package:wing/core/widgets/profile_live_execution.dart';
 import 'support/profile_actions_fixture.dart';
 import 'profile_connection_identity_test.dart' show identityTestConnection;
+import 'helpers/pump_markdown_widget.dart';
 
 void main() {
   late ProfileActionsFixture host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   setUp(() async {
     PackageInfo.setMockInitialValues(
       appName: 'Hermes',
@@ -27,15 +36,24 @@ void main() {
     );
     SharedPreferences.setMockInitialValues({});
     host = ProfileActionsFixture();
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'design',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   test('workspace status-bar icons contrast with the active theme', () {
     for (final brightness in Brightness.values) {
@@ -51,16 +69,21 @@ void main() {
     tester.view.physicalSize = const Size(360, 800);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(
+    await tester.pumpMarkdownWidget(
       MaterialApp(
         theme: wingTheme(Brightness.light),
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(scale)),
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(scale),
+            disableAnimations: true,
+          ),
           child: child!,
         ),
-        home: ProfileWorkspaceScreen(key: key, controller: controller),
+        home: ProfileWorkspaceScreen(
+          createBotsSession: () => BotsSession((_) async => const []),
+          key: key,
+          controller: controller,
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -137,7 +160,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('accent-iris')));
       await tester.pumpAndSettle();
       expect(
-        controller.preferences.getString(WorkspaceAccent.preferenceKey),
+        controller.preferences.getString(AppPreferenceField.accent.storageKey),
         'iris',
       );
       await controller.navigateProfile('work');
@@ -217,75 +240,301 @@ void main() {
         {'id': 1, 'role': 'user'},
         {'id': 2, 'role': 'tool'},
         {'id': 3, 'role': 'tool'},
-        {'id': 4, 'role': 'assistant'},
+        {'id': 4, 'role': 'assistant', 'content': 'Saved answer'},
         {'id': 5, 'role': 'tool'},
         {'id': 6, 'role': 'system'},
       ];
-      final groups = groupTranscriptRows(rows);
-      expect(groups.map((group) => group.map((row) => row['id']).toList()), [
-        [1],
-        [2, 3],
-        [4],
-        [5],
-        [6],
-      ]);
+      final groups = TranscriptTimeline.project(
+        rows,
+        presentationId: (_) => Object(),
+      ).sections.expand((section) => section.groups).toList();
+      expect(
+        groups.map(
+          (group) => group.messages.map((row) => row.message.id).toList(),
+        ),
+        [
+          [1],
+          [2, 3],
+          [4],
+          [5],
+          [6],
+        ],
+      );
       expect(rows.length, 6);
-      final extended = groupTranscriptRows([
-        {'id': 0, 'role': 'tool'},
-        ...rows.skip(1),
-      ]);
-      expect(extended.first.last['id'], 3);
+      final extended = TranscriptTimeline.project(
+        [
+          {'id': 0, 'role': 'tool'},
+          ...rows.skip(1),
+        ],
+        presentationId: (_) => Object(),
+      ).sections.expand((section) => section.groups).toList();
+      expect(extended.first.messages.last.message.id, 3);
     },
   );
 
-  testWidgets(
-    'current execution stays in one collapsed Activity section per chat',
-    (tester) async {
-      final chat = await controller.createChat();
-      chat.messages.addAll([
+  test(
+    'timeline preserves hidden continuity, empty card boundaries and latest review',
+    () async {
+      final source = <Map<String, dynamic>>[
+        {'id': 1, 'role': 'tool', 'content': 'First'},
+        {
+          'id': 2,
+          'role': 'user',
+          'content': 'Private',
+          'display_kind': 'hidden',
+        },
+        {'id': 3, 'role': 'tool', 'content': 'Second'},
+        {'id': 4, 'role': 'assistant', 'content': ''},
+        {'id': 5, 'role': 'tool', 'content': 'Third'},
+        {'id': 6, 'role': 'system', 'content': 'review: Details'},
+      ];
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.reading.installSavedHistory(source);
+      final rows = chat.reading.messages;
+      final tokens = List<Object>.generate(rows.length, (_) => Object());
+      final timeline = TranscriptTimeline.project(
+        rows,
+        presentationId: (row) => tokens[rows.indexOf(row)],
+      );
+      final section = timeline.sections.single;
+      expect(
+        section.groups.map(
+          (group) => group.messages.map((entry) => entry.message.id).toList(),
+        ),
+        [
+          [1, 3],
+          [5],
+          [6],
+        ],
+      );
+      expect(section.toolCount, 3);
+      expect(section.reviewCount, 1);
+      expect(section.groups.last.reviewText, 'Details');
+      expect(timeline.adjacentCurrentActivity, isNull);
+      expect(section.messages.first.presentationId, same(tokens.first));
+      source.first['content'] = 'Caller rewrite';
+      expect(section.groups.first.toolResults.first.text, 'First');
+      expect(() => timeline.entries.clear(), throwsUnsupportedError);
+      expect(() => section.groups.clear(), throwsUnsupportedError);
+      expect(
+        () => section.groups.first.messages.clear(),
+        throwsUnsupportedError,
+      );
+      expect(
+        () => section.groups.first.toolResults.clear(),
+        throwsUnsupportedError,
+      );
+    },
+  );
+
+  test(
+    'timeline joins saved tools and reasoning without swallowing reviews',
+    () {
+      for (final entry in [
+        ({'role': 'tool', 'content': 'Result'}, true),
+        (
+          {'role': 'assistant', 'content': '', 'reasoning': 'Native text'},
+          true,
+        ),
+        ({'role': 'system', 'content': 'review: Details'}, false),
+        ({'role': 'assistant', 'content': 'Answer'}, false),
+      ]) {
+        final timeline = TranscriptTimeline.project([
+          entry.$1,
+        ], presentationId: (_) => Object());
+        expect(
+          timeline.adjacentCurrentActivity != null,
+          entry.$2,
+          reason: '${entry.$1}',
+        );
+      }
+    },
+  );
+
+  for (final activity in ['tool', 'reasoning']) {
+    testWidgets('latest review retains reachable live $activity activity', (
+      tester,
+    ) async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.reading.installSavedHistory([
         {
           'id': 1,
           'role': 'tool',
           'tool_name': 'Saved read',
-          'content': 'Saved tool result',
+          'content': 'Result',
         },
-        {'id': 2, 'role': 'assistant', 'content': 'Visible saved reply'},
+        {'id': 2, 'role': 'system', 'content': 'review: Saved review context'},
       ]);
-      chat.toolActivities.add(
-        const GatewayToolActivity(
-          name: 'terminal',
-          phase: GatewayToolActivityPhase.running,
+      emitChatEvent(controller, chat, 'message.start');
+      if (activity == 'tool') {
+        emitChatEvent(controller, chat, 'tool.start', {
+          'name': 'terminal',
+          'tool_id': 'live-after-review',
+        });
+      } else {
+        emitChatEvent(controller, chat, 'reasoning.delta', {
+          'text': 'Native reasoning after the saved review',
+        });
+      }
+      await show(tester);
+      await tester.openLiveActivity();
+      expect(find.text('Memory and skills review'), findsNothing);
+      final live = find.byType(ProfileLiveExecution);
+      expect(live, findsOneWidget);
+      expect(
+        find.text(
+          activity == 'tool'
+              ? 'Running command'
+              : 'Native reasoning after the saved review',
+        ),
+        findsOneWidget,
+      );
+      if (activity == 'reasoning') {
+        expect(
+          find.text('Native reasoning after the saved review'),
+          findsOneWidget,
+        );
+      }
+      final saved = find.byType(ProfileToolActivitySection);
+      await tester.tap(
+        find.descendant(
+          of: saved,
+          matching: find.textContaining(
+            RegExp(r'^Activity(?: · \d+ tools?)?$'),
+          ),
         ),
       );
-      chat.reasoning = 'Current private reasoning';
+      await tester.pumpAndSettle();
+      expect(find.text('Memory and skills review'), findsOneWidget);
+      await Scrollable.ensureVisible(
+        tester.element(find.text('Memory and skills review')),
+        alignment: .5,
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Memory and skills review'));
+      await tester.pumpAndSettle();
+      expect(find.text('Reported changes'), findsOneWidget);
+      expect(find.byType(BottomSheet), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  test('nearby timeline selects nine source rows before hidden grouping', () {
+    final source = List<Map<String, dynamic>>.generate(
+      15,
+      (id) => {
+        'id': id,
+        'role': 'tool',
+        'content': 'Result $id',
+        if (id.isEven) 'display_kind': 'hidden',
+      },
+    );
+    final timeline = TranscriptTimeline.project(
+      source,
+      presentationId: (_) => Object(),
+    );
+    final nearby = timeline.nearby(7)!;
+    expect(nearby.entries.map((entry) => entry.sourceIndex), [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+    ]);
+    expect(nearby.sections.single.messages.map((entry) => entry.message.id), [
+      3,
+      5,
+      7,
+      9,
+      11,
+    ]);
+    expect(nearby.nearby(6), isNull);
+    expect(timeline.nearby(99), isNull);
+    expect(timeline.entries, hasLength(15));
+  });
+
+  testWidgets(
+    'live Activity opens and collapses independently of saved Activity',
+    (tester) async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.reading.installSavedHistory([
+        ...chat.reading.messages,
+        ...[
+          {
+            'id': 1,
+            'role': 'tool',
+            'tool_name': 'Saved read',
+            'content': 'Saved tool result',
+          },
+          {'id': 2, 'role': 'assistant', 'content': 'Visible saved reply'},
+        ],
+      ]);
+      emitChatEvent(controller, chat, 'message.start');
+      emitChatEvent(controller, chat, 'tool.start', {
+        'name': 'terminal',
+        'tool_id': 'live',
+      });
+      emitChatEvent(controller, chat, 'reasoning.delta', {
+        'text': 'Current private reasoning',
+      });
 
       await show(tester);
-      expect(find.text('Activity'), findsNWidgets(2));
-      expect(find.text('Current tools'), findsNothing);
-      expect(find.text('Current private reasoning'), findsNothing);
-      expect(find.text('Activity'), findsNWidgets(2));
-      expect(find.text('Visible saved reply'), findsOneWidget);
+      await tester.openLiveActivity();
       expect(
-        tester.getTopLeft(find.text('Activity').first).dx,
-        closeTo(tester.getTopLeft(find.text('Activity').last).dx, 0.1),
+        find.byType(ProfileToolActivitySection),
+        findsOneWidget,
       );
-
-      await tester.tap(find.text('Activity').first);
+      expect(find.text('Running command', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Current private reasoning', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(ProfileLiveExecution),
+          matching: find.byType(ProfileActivitySection),
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Visible saved reply'), findsOneWidget);
+      final savedHeader = find.descendant(
+        of: find.byType(ProfileToolActivitySection),
+        matching: find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
+      );
+      await tester.ensureVisible(savedHeader);
+      await tester.tap(savedHeader);
       await tester.pumpAndSettle();
-      expect(find.text('Current tools'), findsOneWidget);
-      expect(find.text('Thought'), findsOneWidget);
+      expect(find.text('Running command', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Current private reasoning', skipOffstage: false),
+        findsOneWidget,
+      );
 
       await tester.enterText(
         find.byKey(const Key('profile-message-composer')),
         'Typing must not collapse current activity',
       );
       await tester.pump();
-      expect(find.text('Current tools'), findsOneWidget);
+      expect(find.text('Running command', skipOffstage: false), findsOneWidget);
 
-      await tester.tap(find.text('Activity').first);
+      // The floating Back to latest control can cover the middle of a long
+      // header in the test font. Tap the leading title outside that control.
+      await tester.tapAt(tester.getTopLeft(savedHeader) + const Offset(8, 8));
       await tester.pumpAndSettle();
-      expect(find.text('Current tools'), findsNothing);
-      expect(find.text('Activity'), findsNWidgets(2));
+      expect(find.text('Running command', skipOffstage: false), findsOneWidget);
+      expect(
+        find.text('Current private reasoning', skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(
+        find.byType(ProfileLiveExecution, skipOffstage: false),
+        findsOneWidget,
+      );
+      expect(chat.reading.messages.any((row) => row['id'] == 1), isTrue);
       expect(find.text('Visible saved reply'), findsOneWidget);
     },
   );
@@ -293,35 +542,53 @@ void main() {
   testWidgets(
     'conversation groups contiguous tools without hiding the answer',
     (tester) async {
-      final chat = await controller.createChat();
-      chat.messages.addAll([
-        {'id': 1, 'role': 'user', 'content': 'Check the project'},
-        {
-          'id': 2,
-          'role': 'tool',
-          'tool_name': 'Read',
-          'content': 'Private tool detail A',
-        },
-        {
-          'id': 3,
-          'role': 'tool',
-          'tool_name': 'Search',
-          'content': 'Private tool detail B',
-        },
-        {'id': 4, 'role': 'assistant', 'content': 'Here is the answer.'},
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.reading.installSavedHistory([
+        ...chat.reading.messages,
+        ...[
+          {'id': 1, 'role': 'user', 'content': 'Check the project'},
+          {
+            'id': 2,
+            'role': 'tool',
+            'tool_name': 'Read',
+            'content': 'Private tool detail A',
+          },
+          {
+            'id': 3,
+            'role': 'tool',
+            'tool_name': 'Search',
+            'content': 'Private tool detail B',
+          },
+          {'id': 4, 'role': 'assistant', 'content': 'Here is the answer.'},
+        ],
       ]);
       await show(tester);
-      expect(find.text('Activity'), findsOneWidget);
-      expect(find.text('2 tool results'), findsNothing);
+      expect(
+        find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
+        findsOneWidget,
+      );
+      expect(find.text('Read'), findsNothing);
       expect(find.text('Private tool detail A'), findsNothing);
       expect(find.text('Here is the answer.'), findsOneWidget);
-      await tester.tap(find.text('Activity'));
+      await tester.tap(
+        find.textContaining(RegExp(r'^Activity(?: · \d+ tools?)?$')),
+      );
       await tester.pumpAndSettle();
-      expect(find.text('2 tool results'), findsOneWidget);
+      expect(find.text('Read'), findsOneWidget);
       expect(find.text('Private tool detail A'), findsNothing);
-      await tester.tap(find.text('2 tool results'));
+      // The expanded title's center can sit beneath the floating Latest button.
+      final readTitle = find.text('Read');
+      expect(readTitle.hitTestable(at: Alignment.centerLeft), findsOneWidget);
+      await tester.tapAt(tester.getRect(readTitle).centerLeft);
       await tester.pumpAndSettle();
       expect(find.text('Private tool detail A'), findsOneWidget);
+      expect(find.text('Private tool detail B'), findsNothing);
+      await tester.ensureVisible(find.text('Search'));
+      await tester.pumpAndSettle();
+      final searchTitle = find.text('Search');
+      expect(searchTitle.hitTestable(at: Alignment.centerLeft), findsOneWidget);
+      await tester.tapAt(tester.getRect(searchTitle).centerLeft);
+      await tester.pumpAndSettle();
       expect(find.text('Private tool detail B'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

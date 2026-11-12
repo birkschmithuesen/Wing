@@ -1,3 +1,6 @@
+import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/core/services/connection_access.dart';
+import 'package:wing/core/models/settings_edit.dart';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/profile_voice_controller.dart';
@@ -15,20 +18,25 @@ void main() {
     () async {
       final status = ServerConnectionStatus('Local review');
       final server = AdministrationRepository.forConnection(
-        SavedConnection(
-          id: 'review',
-          label: 'Local review',
-          host: '127.0.0.1',
-          port: port,
-          dashboardPortOverride: port,
-          apiKey: '',
+        ConnectionAccess(
+          connection: SavedConnection(
+            id: 'review',
+            label: 'Local review',
+            host: '127.0.0.1',
+            port: port,
+            dashboardPortOverride: port,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
         'review',
         connectionStatus: status,
       );
       final profile = server.profile('voice_review');
+      final repository = ProfileVoiceRepository(profile);
       final controller = ProfileVoiceController(
-        ProfileVoiceRepository(profile),
+        repository,
+        device: AndroidVoice.instance,
       );
       addTearDown(() {
         controller.dispose();
@@ -36,16 +44,19 @@ void main() {
         status.dispose();
       });
       await controller.load();
-      expect(controller.error, isNull);
-      expect(controller.settings!.provider, 'edge');
-      expect(controller.settings!.key, 'tts.edge.voice');
-      final target = controller.settings!.voice == 'en-GB-SoniaNeural'
+      expect(controller.state.error, isNull);
+      expect(controller.state.settings!.provider, 'edge');
+      expect(controller.state.settings!.key, 'tts.edge.voice');
+      final target = controller.state.settings!.voice == 'en-GB-SoniaNeural'
           ? 'en-US-AriaNeural'
           : 'en-GB-SoniaNeural';
       await controller.select(target);
-      expect(controller.error, isNull);
+      expect(controller.state.error, isNull);
       expect(setting(await profile.config(), 'tts.edge.voice'), target);
-      final speech = controller.repository.speech(controller.settings!);
+      final speech = repository.speech(
+        controller.state.settings!,
+        canDispatch: () => controller.state.fresh,
+      );
       addTearDown(speech.close);
       final audio = await speech.synthesize(voiceSampleText);
       expect(audio.length, greaterThan(1000));

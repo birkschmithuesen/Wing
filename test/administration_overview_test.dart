@@ -5,6 +5,129 @@ import 'support/administration_fixture.dart';
 
 void main() {
   test(
+    'overview registries and nested observations cannot be changed by readers',
+    () async {
+      final fixture = AdministrationFixture();
+      fixture.override = (_, _, _, _) async => {
+        'memory': {'memory_enabled': true},
+        'items': [
+          {'value': 'confirmed'},
+        ],
+      };
+      final overview = AdministrationOverview(fixture.server.profile('work'));
+      addTearDown(overview.dispose);
+      await overview.refresh(keys: {'config'});
+      expect(() => overview.observations.clear(), throwsUnsupportedError);
+      expect(
+        () => overview.connectorChecks['invented'] = true,
+        throwsUnsupportedError,
+      );
+      final data = overview.observations['config']!.data!;
+      expect(() => data.clear(), throwsUnsupportedError);
+      expect(
+        () => (data['memory'] as Map)['memory_enabled'] = false,
+        throwsUnsupportedError,
+      );
+      expect(() => (data['items'] as List).clear(), throwsUnsupportedError);
+      expect(
+        () => ((data['items'] as List).first as Map)['value'] = 'changed',
+        throwsUnsupportedError,
+      );
+    },
+  );
+
+  test(
+    'retained overview inputs and older snapshots do not alias refreshes',
+    () async {
+      final fixture = AdministrationFixture();
+      final response = <String, dynamic>{
+        'memory': {'memory_enabled': true},
+      };
+      final pending = Completer<Map<String, dynamic>>();
+      var calls = 0;
+      fixture.override = (_, _, _, _) async =>
+          ++calls == 1 ? response : pending.future;
+      final overview = AdministrationOverview(fixture.server.profile('work'));
+      addTearDown(overview.dispose);
+      await overview.refresh(keys: {'config'});
+      final confirmed = overview.observations['config']!;
+      (response['memory'] as Map)['memory_enabled'] = false;
+      expect(confirmed.data!['memory']['memory_enabled'], true);
+      final refresh = overview.refresh(keys: {'config'});
+      expect(overview.observations['config']!.loading, isTrue);
+      expect(confirmed.loading, isFalse);
+      pending.complete({
+        'memory': {'memory_enabled': false},
+      });
+      await refresh;
+      expect(
+        overview.observations['config']!.data!['memory']['memory_enabled'],
+        false,
+      );
+      expect(confirmed.data!['memory']['memory_enabled'], true);
+      expect(confirmed.error, isNull);
+    },
+  );
+
+  test(
+    'restored overview collections are independent of their input snapshot',
+    () {
+      final fixture = AdministrationFixture();
+      final overview = AdministrationOverview(fixture.server.profile('work'));
+      addTearDown(overview.dispose);
+      final saved = <String, dynamic>{
+        'observations': {
+          'config': {
+            'data': {
+              'nested': [1],
+            },
+            'checkedAt': null,
+            'error': null,
+          },
+        },
+        'connectorChecks': {'example': true},
+      };
+      overview.restoreHealth(saved);
+      saved['observations']['config']['data']['nested'].add(2);
+      saved['connectorChecks']['example'] = false;
+      expect(overview.observations['config']!.data!['nested'], [1]);
+      expect(overview.connectorChecks, {'example': true});
+      expect(() => overview.connectorChecks.clear(), throwsUnsupportedError);
+    },
+  );
+
+  test('retired overview cannot start another transport read', () async {
+    final fixture = AdministrationFixture();
+    final overview = AdministrationOverview(fixture.server.profile('work'));
+    overview.dispose();
+    await overview.refresh();
+    expect(fixture.requests, isEmpty);
+  });
+  test(
+    'malformed model refresh retains the last confirmed selection',
+    () async {
+      final fixture = AdministrationFixture();
+      var malformed = false;
+      fixture.override = (_, path, _, _) async => {
+        'provider': 'openai',
+        'model': malformed ? ['invalid'] : 'gpt-5.6-sol',
+      };
+      final overview = AdministrationOverview(fixture.server.profile('work'));
+      addTearDown(overview.dispose);
+      await overview.refresh(keys: {'model'});
+      final checked = overview.observations['model']!.checkedAt;
+      malformed = true;
+      await overview.refresh(keys: {'model'});
+      expect(overview.observations['model']!.data!['model'], 'gpt-5.6-sol');
+      expect(overview.observations['model']!.checkedAt, checked);
+      expect(overview.observations['model']!.error, isNotNull);
+      expect(overview.modelAccess.model!.model, 'gpt-5.6-sol');
+      expect(overview.modelAccess.unavailable, isTrue);
+      expect(overview.modelAccess.loading, isFalse);
+    },
+  );
+
+  test(
     'independent reads retain good observations after a failed refresh',
     () async {
       final fixture = AdministrationFixture();
@@ -63,31 +186,44 @@ void main() {
     },
   );
 
-  test(
-    'older refresh and disposed observers cannot publish late results',
-    () async {
-      final fixture = AdministrationFixture();
-      final pending = Completer<Map<String, dynamic>>();
-      var reads = 0;
-      fixture.override = (_, path, _, _) async {
-        if (path == 'config') {
-          if (++reads == 1) return pending.future;
-          return {'version': 2};
+  for (final retireBeforeCompletion in [false, true]) {
+    test(
+      retireBeforeCompletion
+          ? 'retired overview ignores an older pending refresh'
+          : 'newer overview remains authoritative when an older refresh finishes',
+      () async {
+        final fixture = AdministrationFixture();
+        addTearDown(fixture.server.close);
+        final pending = Completer<Map<String, dynamic>>();
+        var reads = 0;
+        fixture.override = (_, path, _, _) async {
+          if (path == 'config') {
+            if (++reads == 1) return pending.future;
+            return {'version': 2};
+          }
+          if (path == 'providers/oauth') return {'providers': []};
+          if (path == 'mcp/servers') return {'servers': []};
+          return {'data': []};
+        };
+        final overview = AdministrationOverview(fixture.server.profile('work'));
+        var retired = false;
+        addTearDown(() {
+          if (!retired) overview.dispose();
+          if (!pending.isCompleted) pending.complete({'version': 1});
+        });
+        final old = overview.refresh();
+        await overview.refresh();
+        expect(overview.observations['config']!.data, {'version': 2});
+        if (retireBeforeCompletion) {
+          overview.dispose();
+          retired = true;
         }
-        if (path == 'providers/oauth') return {'providers': []};
-        if (path == 'mcp/servers') return {'servers': []};
-        return {'data': []};
-      };
-      final overview = AdministrationOverview(fixture.server.profile('work'));
-      final old = overview.refresh();
-      await overview.refresh();
-      expect(overview.observations['config']!.data, {'version': 2});
-      overview.dispose();
-      pending.complete({'version': 1});
-      await old;
-      expect(overview.observations['config']!.data, {'version': 2});
-    },
-  );
+        pending.complete({'version': 1});
+        await old;
+        expect(overview.observations['config']!.data, {'version': 2});
+      },
+    );
+  }
 
   test('malformed collection does not erase last confirmed data', () async {
     final fixture = AdministrationFixture();

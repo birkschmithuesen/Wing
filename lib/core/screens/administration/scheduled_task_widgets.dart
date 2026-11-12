@@ -1,5 +1,6 @@
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../../widgets/wing_app_bar.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../services/administration_repository.dart';
 
 import '../../models/scheduled_task.dart';
@@ -39,26 +40,11 @@ class TaskPage extends StatelessWidget {
   final Widget? bottom;
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final titleStyle =
-        theme.appBarTheme.titleTextStyle ?? theme.textTheme.titleLarge!;
-    final available =
-        MediaQuery.sizeOf(context).width -
-        32 -
-        (Navigator.of(context).canPop() ? 56 : 0) -
-        actions.length * 48;
-    final painter = TextPainter(
-      text: TextSpan(text: title, style: titleStyle),
-      textDirection: Directionality.of(context),
-      textScaler: MediaQuery.textScalerOf(context),
-      maxLines: 3,
-    )..layout(maxWidth: available.clamp(80, double.infinity));
-    final toolbarHeight = (painter.height + 16).clamp(56.0, double.infinity);
-    painter.dispose();
     return Scaffold(
-      appBar: AppBar(
-        toolbarHeight: toolbarHeight,
-        title: Text(title, style: titleStyle, maxLines: 3),
+      appBar: WingAppBar(
+        context: context,
+
+        title: Text(title, maxLines: 6),
         actions: actions,
       ),
       bottomNavigationBar: bottom == null
@@ -145,7 +131,8 @@ class TaskSurface extends StatelessWidget {
 }
 
 class TaskStatus extends StatelessWidget {
-  const TaskStatus(this.task, {super.key});
+  const TaskStatus(this.task, {super.key, required this.confirmed});
+  final bool confirmed;
   final ScheduledTask task;
   @override
   Widget build(BuildContext context) {
@@ -158,17 +145,24 @@ class TaskStatus extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          task.running
-              ? Icons.play_arrow_rounded
-              : task.paused
-              ? Icons.pause_rounded
-              : task.needsAttention
-              ? Icons.error_outline
-              : Icons.schedule_outlined,
-          size: 15,
-          color: color,
-        ),
+        if (confirmed && task.running)
+          StudioWorkingIndicator.independent(
+            label: 'Scheduled task running',
+            size: 15,
+            color: color,
+          )
+        else
+          Icon(
+            task.running
+                ? Icons.play_arrow_rounded
+                : task.paused
+                ? Icons.pause_rounded
+                : task.needsAttention
+                ? Icons.error_outline
+                : Icons.schedule_outlined,
+            size: 15,
+            color: color,
+          ),
         const SizedBox(width: 4),
         Flexible(
           child: Text(
@@ -212,38 +206,45 @@ Future<void> performTaskAction(
   BuildContext context,
   ScheduledTasksController controller,
   ScheduledTask task,
-  String action,
+  TaskAction action,
 ) async {
-  if (controller.blocked(task.id)) return;
-  if (action == 'delete' &&
+  final choice = controller.actionChoice(task, action);
+  if (choice?.enabled != true) return;
+  final prompt = choice!.confirmation;
+  if (prompt != null &&
       !await adminConfirm(
         context,
-        'Delete ${task.title}?',
-        'Remove this schedule from ${controller.repository.profile.label}. This does not stop work that is already running.',
-        action: 'Delete task',
+        prompt.title,
+        prompt.message,
+        action: prompt.buttonLabel,
+
+        actionIcon: action == TaskAction.remove
+            ? Icons.delete_outline
+            : Icons.play_arrow_outlined,
+        destructive: action == TaskAction.remove,
       )) {
     return;
   }
   if (!context.mounted) return;
-  if (action == 'trigger' &&
-      !task.enabled &&
-      !await adminConfirm(
-        context,
-        'Resume and run?',
-        'This runs ${task.title} now and resumes its schedule on the server.',
-        action: 'Resume and run',
-      )) {
-    return;
-  }
   try {
-    if (action == 'delete') {
-      await controller.delete(task);
-    } else {
-      await controller.act(task, action);
-    }
+    await controller.perform(task, action);
   } catch (_) {
-    /* The controller retains the operation-specific result. */
+    /* The retained owner publishes the result. */
   }
+}
+
+class TaskStopProgress extends StatelessWidget {
+  const TaskStopProgress({super.key});
+
+  @override
+  Widget build(BuildContext context) => SizedBox.square(
+    dimension: 18,
+    child: CircularProgressIndicator(
+      strokeWidth: 2,
+      semanticsLabel: 'Stopping run',
+      value: MediaQuery.disableAnimationsOf(context) ? .75 : null,
+    ),
+  );
 }
 
 class TaskMenu extends StatelessWidget {
@@ -252,50 +253,60 @@ class TaskMenu extends StatelessWidget {
     required this.task,
     required this.controller,
     required this.onEdit,
+    this.showStopProgress = true,
   });
   final ScheduledTask task;
   final ScheduledTasksController controller;
   final VoidCallback onEdit;
+  final bool showStopProgress;
   @override
   Widget build(BuildContext context) => Builder(
-    builder: (anchor) => IconButton(
-      tooltip: 'Actions for ${task.title}',
-      icon: const Icon(Icons.more_horiz),
-      onPressed: controller.blocked(task.id)
-          ? null
-          : () async {
-              final result = await showWorkspaceActionMenu(
-                anchor,
-                task.title,
-                controller.repository.profile.label,
-                [
-                  ('edit', 'Edit task', Icons.edit_outlined, true),
-                  if (task.canPause)
-                    ('pause', 'Pause schedule', Icons.pause_rounded, true),
-                  if (task.canResume)
-                    (
-                      'resume',
-                      'Resume schedule',
-                      Icons.play_arrow_rounded,
-                      true,
+    builder: (anchor) => StudioButtonPress(
+      child: IconButton(
+        tooltip: 'Actions for ${task.title}',
+        icon: showStopProgress && controller.stopping(task.id)
+            ? const TaskStopProgress()
+            : const Icon(Icons.more_horiz),
+        onPressed: !controller.actions(task).any((choice) => choice.enabled)
+            ? null
+            : () async {
+                final result = await showWorkspaceActionMenu(
+                  anchor,
+                  task.title,
+                  controller.repository.profile.label,
+                  [
+                    for (final choice in controller.actions(task))
+                      (
+                        choice.kind.name,
+                        choice.label,
+                        switch (choice.kind) {
+                          TaskAction.edit => Icons.edit_outlined,
+                          TaskAction.pause => Icons.pause_rounded,
+                          TaskAction.resume => Icons.play_arrow_rounded,
+                          TaskAction.trigger => Icons.bolt_outlined,
+                          TaskAction.cancel => Icons.stop_rounded,
+                          TaskAction.remove => Icons.delete_outline,
+                        },
+                        choice.enabled,
+                      ),
+                  ],
+                  keyPrefix: 'task',
+                );
+                if (!context.mounted || result == null) return;
+                if (result == 'edit') {
+                  onEdit();
+                } else {
+                  await performTaskAction(
+                    context,
+                    controller,
+                    task,
+                    TaskAction.values.singleWhere(
+                      (action) => action.name == result,
                     ),
-                  (
-                    'trigger',
-                    task.enabled ? 'Run now' : 'Resume and run',
-                    Icons.bolt_outlined,
-                    task.canRun,
-                  ),
-                  ('delete', 'Delete task', Icons.delete_outline, true),
-                ],
-                keyPrefix: 'task',
-              );
-              if (!context.mounted || result == null) return;
-              if (result == 'edit') {
-                onEdit();
-              } else {
-                await performTaskAction(context, controller, task, result);
-              }
-            },
+                  );
+                }
+              },
+      ),
     ),
   );
 }
@@ -310,35 +321,37 @@ class TaskUncertainty extends StatelessWidget {
   final String id;
   @override
   Widget build(BuildContext context) {
-    if (!controller.uncertain.containsKey(id) || controller.busy.contains(id)) {
-      return const SizedBox.shrink();
-    }
+    final notice = controller.pendingNotice(id);
+    if (notice == null) return const SizedBox.shrink();
     return TaskMessage(
-      controller.uncertain[id]?['action'] == 'registration'
-          ? 'Your task was saved, but scheduler registration failed. Review the saved task before creating another.'
-          : 'A previous request has an unknown outcome. Review the tasks and recent runs before making another request.',
+      notice,
       error: true,
-      action: TextButton(
-        child: const Text('Review request'),
-        onPressed: () async {
-          await controller.refresh();
-          if (!context.mounted || !controller.uncertain.containsKey(id)) return;
-          final acknowledged = await adminConfirm(
-            context,
-            'Have you reviewed the result?',
-            'The previous request may have reached Hermes. Allowing another request can create duplicate work. This only clears the pending notice; it does not repeat the request.',
-            action: 'I have reviewed it',
-          );
-          if (acknowledged) {
-            try {
-              await controller.acknowledgeUncertainty(id);
-            } catch (e) {
-              if (context.mounted) {
-                adminMessage(context, taskFailure(e), isError: true);
+      action: StudioButtonPress(
+        child: TextButton(
+          child: const Text('Review request'),
+          onPressed: () async {
+            final prompt = await controller.reviewPrompt(id);
+            if (!context.mounted || prompt == null) return;
+            final acknowledged = await adminConfirm(
+              context,
+              prompt.title,
+              prompt.message,
+              action: prompt.buttonLabel,
+
+              actionIcon: Icons.rule,
+              destructive: false,
+            );
+            if (acknowledged) {
+              try {
+                await controller.acknowledgeUncertainty(id);
+              } catch (e) {
+                if (context.mounted) {
+                  adminMessage(context, taskFailure(e), isError: true);
+                }
               }
             }
-          }
-        },
+          },
+        ),
       ),
     );
   }
@@ -350,13 +363,13 @@ class AdminTaskRoute extends StatefulWidget {
   const AdminTaskRoute({
     super.key,
     required this.profile,
-    required this.preferences,
+    required this.acquireController,
     required this.title,
     required this.builder,
     this.taskId,
   });
   final ProfileAdministration profile;
-  final SharedPreferences preferences;
+  final ScheduledTasksController Function() acquireController;
   final String title;
   final String? taskId;
   final Widget Function(ScheduledTasksController, ScheduledTask?) builder;
@@ -365,10 +378,7 @@ class AdminTaskRoute extends StatefulWidget {
 }
 
 class _AdminTaskRouteState extends State<AdminTaskRoute> {
-  late final controller = ScheduledTasksController.acquire(
-    widget.profile,
-    widget.preferences,
-  );
+  late final controller = widget.acquireController();
   @override
   void initState() {
     super.initState();
@@ -396,18 +406,30 @@ class _AdminTaskRouteState extends State<AdminTaskRoute> {
       return TaskPage(
         title: widget.title,
         scope: widget.profile.label,
+        actions: [
+          if (controller.stopping(widget.taskId!))
+            const Padding(
+              padding: EdgeInsets.all(12),
+              child: TaskStopProgress(),
+            ),
+        ],
         child: controller.loading
-            ? const Center(child: CircularProgressIndicator())
+            ? StudioPageLoading.waiting(label: 'Loading task history')
             : ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  AdminNotice(
-                    controller.error ??
-                        'This task is not available in this profile.',
-                  ),
-                  TextButton(
-                    onPressed: controller.refresh,
-                    child: const Text('Refresh'),
+                  TaskUncertainty(controller: controller, id: widget.taskId!),
+                  if (controller.error case final error?)
+                    AdminNotice.error(error)
+                  else
+                    const AdminNotice(
+                      'This task is not available in this profile.',
+                    ),
+                  StudioButtonPress(
+                    child: TextButton(
+                      onPressed: controller.refresh,
+                      child: const Text('Refresh'),
+                    ),
                   ),
                 ],
               ),

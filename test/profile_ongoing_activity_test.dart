@@ -1,3 +1,11 @@
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/services/workspace_recents_session.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/profile_live_activity.dart';
@@ -14,27 +22,49 @@ void main() {
   late Host host;
   late ProfileWorkspaceController controller;
   late ProfileChat chat;
+  late AppPreferences appPreferences;
+  late BotsSession bots;
+  late WorkspaceRecentsSession recents;
 
   setUp(() async {
+    bots = BotsSession((_) async => []);
     SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     host = Host()..running = false;
     controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'ongoing-activity',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
-    chat = await controller.createChat();
-    chat.title = 'Delegated research';
-    chat.messages.add({
-      'role': 'user',
-      'content': 'Research this',
-      'timestamp': DateTime.now().millisecondsSinceEpoch / 1000,
+    chat = await controller.createChat(canDispatch: () => true);
+    emitChatEvent(controller, chat, 'session.title', {
+      'session_id': chat.key.sessionId,
+      'title': 'Delegated research',
     });
+    chat.reading.installSavedHistory([
+      ...chat.reading.messages,
+      {
+        'role': 'user',
+        'content': 'Research this',
+        'timestamp': DateTime.now().millisecondsSinceEpoch / 1000,
+      },
+    ]);
+    recents = WorkspaceRecentsSession(controller, bots, foreground: true);
   });
 
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    recents.dispose();
+    bots.dispose();
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   void startChild() => host.event('a', 'subagent.start', {
     'subagent_id': 'child',
@@ -45,15 +75,17 @@ void main() {
     tester,
   ) async {
     startChild();
-    expect(chat.status, ProfileTurnStatus.idle);
+    expect(chat.runtime.execution, ChatExecution.idle);
     expect(chat.subagents.single.isTerminal, isFalse);
     await controller.refreshActivity();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: WorkspaceActivityContent(
-            controller: controller,
-            onOpen: (_) {},
+            visible: false,
+            onOpenGroup: (_) async {},
+            recents: recents,
+            onOpen: (_, displayed) {},
           ),
         ),
       ),
@@ -61,18 +93,23 @@ void main() {
     expect(find.text('Delegated research'), findsOneWidget);
   });
 
-  testWidgets('idle parent with active child has a menu spinner', (
+  testWidgets('idle parent with active child uses the Wing pulse', (
     tester,
   ) async {
     startChild();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ProfileChatIndicator(chat: chat, row: const {}),
+          body: ProfileChatIndicator(
+            runtime: chat.runtime,
+            subagents: chat.subagents,
+            unconfirmedSubagentIds: chat.unconfirmedSubagentIds,
+          ),
         ),
       ),
     );
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.pump();
+    expect(find.byType(StudioLoading), findsOneWidget);
   });
 
   for (final terminalStatus in [
@@ -84,7 +121,11 @@ void main() {
     testWidgets('last child $terminalStatus clears ongoing indicators', (
       tester,
     ) async {
-      chat.status = ProfileTurnStatus.completed;
+      emitChatEvent(controller, chat, 'message.start');
+      emitChatEvent(controller, chat, 'session.info', {
+        'open_requests': [],
+        'running': false,
+      });
       startChild();
       await tester.pumpWidget(
         MaterialApp(
@@ -93,11 +134,17 @@ void main() {
               listenable: controller,
               builder: (context, _) => Column(
                 children: [
-                  ProfileChatIndicator(chat: chat, row: const {}),
+                  ProfileChatIndicator(
+                    runtime: chat.runtime,
+                    subagents: chat.subagents,
+                    unconfirmedSubagentIds: chat.unconfirmedSubagentIds,
+                  ),
                   Expanded(
                     child: WorkspaceActivityContent(
-                      controller: controller,
-                      onOpen: (_) {},
+                      visible: false,
+                      onOpenGroup: (_) async {},
+                      recents: recents,
+                      onOpen: (_, displayed) {},
                     ),
                   ),
                 ],
@@ -106,20 +153,29 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
       expect(find.text('Delegated research'), findsOneWidget);
-      expect(find.byType(CircularProgressIndicator), findsOneWidget);
-      expect(chat.busy, isFalse);
+      expect(
+        find.descendant(
+          of: find.byType(ProfileChatIndicator),
+          matching: find.byType(StudioLoading),
+        ),
+        findsOneWidget,
+      );
+      expect(chat.runtime.blocksTurnAdmission, isFalse);
 
       host.event('a', 'subagent.complete', {
         'subagent_id': 'child',
         'status': terminalStatus,
       });
       await tester.pump();
+      await tester.pump();
       expect(find.text('Delegated research'), findsOneWidget);
-      expect(find.text('Last 24 hours'), findsOneWidget);
+      expect(find.text('Last 24 hours'), findsNothing);
+      expect(find.text('Read'), findsOneWidget);
       expect(find.text('Ongoing'), findsNothing);
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-      expect(chat.status, ProfileTurnStatus.completed);
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(chat.runtime.execution, ChatExecution.completed);
     });
   }
 
@@ -140,7 +196,10 @@ void main() {
     tester,
   ) async {
     startChild();
-    host.event('a', 'clarify', {'question': 'Which folder?'});
+    host.event('a', 'clarify', {
+      'request_id': 'folder-request',
+      'question': 'Which folder?',
+    });
     expect(
       controller.liveActivity.single.state,
       ProfileLiveActivityState.needsInput,
@@ -148,16 +207,20 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: ProfileChatIndicator(chat: chat, row: const {}),
+          body: ProfileChatIndicator(
+            runtime: chat.runtime,
+            subagents: chat.subagents,
+            unconfirmedSubagentIds: chat.unconfirmedSubagentIds,
+          ),
         ),
       ),
     );
     expect(find.byTooltip('Input needed'), findsOneWidget);
-    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byType(StudioLoading), findsNothing);
   });
 
   test('main turn appears before the server snapshot catches up', () async {
-    chat.draft = 'Start research';
+    chat.composer.editText('Start research');
     await controller.send(chat);
     await controller.refreshActivity();
     expect(
@@ -189,16 +252,20 @@ void main() {
     controller.dispose();
     final snapshotHost = ActivityHost();
     controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'ongoing-activity',
       preferences: await SharedPreferences.getInstance(),
+      appPreferences: appPreferences,
       gatewayFactory: snapshotHost.gateway,
     );
     await controller.initialize();
-    final local = await controller.createChat();
-    local.status = ProfileTurnStatus.running;
+    final local = await controller.createChat(canDispatch: () => true);
+    emitChatEvent(controller, local, 'message.start');
     snapshotHost.live.add({
-      'id': local.runtimeId,
+      'id': local.runtime.runtimeId,
       'session_key': local.key.sessionId,
       'status': 'working',
       'side_tasks_running': 2,

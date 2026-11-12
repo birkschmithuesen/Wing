@@ -1,3 +1,7 @@
+import 'package:wing/core/services/profile_supervision_session.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -57,10 +61,14 @@ class _ControlHost extends Host {
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
     final base = super.gateway(scope);
-    return gateways[scope.profileName] = ProfileGateway(
+    late final ProfileGateway gateway;
+    gateway = ProfileGateway(
       scope: scope,
       discover: base.discover,
-      connect: base.connect,
+      connect: () async {
+        if (gateway.onEvent != null) gateways[scope.profileName] = gateway;
+        await base.connect();
+      },
       close: base.close,
       get: base.read,
       rpc: (method, params) {
@@ -73,96 +81,153 @@ class _ControlHost extends Host {
         return base.call(method, params);
       },
     );
+    return gateway;
   }
 }
 
 void main() {
   late _ControlHost host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   late ProfileChat chat;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     host = _ControlHost();
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'session-control-test',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
-    chat = await controller.createChat();
+    chat = await controller.createChat(canDispatch: () => true);
   });
 
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
-  test(
-    'ready event hydrates once and a newer event wins a late read',
-    () async {
-      host.event('a', 'session.info');
-      await Future<void>.delayed(Duration.zero);
-      host.event('a', 'session.info');
-      await Future<void>.delayed(Duration.zero);
+  test('supervision retains detached readonly goal observations', () async {
+    final supervision = ProfileSupervisionSession(
+      controller: controller,
+      chat: chat,
+    );
+    try {
+      await supervision.refreshControl();
+      final retained = supervision.state;
       expect(
-        host.calls.where((call) => call.$2 == 'session.control.read'),
-        hasLength(1),
+        () => retained.sessionControl!.goal!.subgoals.add('local'),
+        throwsUnsupportedError,
       );
-
-      host.pendingRead = Completer<Map<String, dynamic>>();
-      final refresh = controller.refreshSessionControl(chat);
-      host.event('a', 'session.control.update', {
-        'control': _control('event-new'),
-      });
-      host.pendingRead!.complete({'control': _control('read-old')});
-      await refresh;
-      expect(chat.sessionControl!.revision, 'event-new');
-    },
-  );
+      final next = _control('next');
+      (next['goal'] as Map<String, dynamic>)['subgoals'] = ['From server'];
+      host.readResponse = {'control': next};
+      await supervision.refreshControl();
+      expect(supervision.state.sessionControl!.goal!.subgoals, ['From server']);
+      expect(retained.sessionControl!.goal!.subgoals, isEmpty);
+    } finally {
+      supervision.dispose();
+    }
+  });
 
   test(
-    'action rejects a stale continuation and accepts the same event revision',
+    'supervision retirement during pending publication prevents control dispatch',
     () async {
-      host.pendingAction = Completer<Map<String, dynamic>>();
-      final action = controller.controlSession(
-        chat,
-        SessionControlAction.goalPause,
+      final supervision = ProfileSupervisionSession(
+        controller: controller,
+        chat: chat,
       );
-      host.event('a', 'session.control.update', {
-        'control': _control('event-new', status: 'paused'),
+      supervision.addListener(() {
+        if (supervision.state.actionBusy) supervision.dispose();
       });
-      host.pendingAction!.complete(
-        _actionResponse(
-          'response-old',
-          type: 'send',
-          message: 'Continue stale goal',
-          output: null,
-        ),
-      );
-      expect(await action, isFalse);
-      expect(chat.sessionControl!.revision, 'event-new');
-      expect(chat.sessionControlError, contains('state changed'));
-      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
-
-      host.pendingAction = Completer<Map<String, dynamic>>();
-      final same = controller.controlSession(
-        chat,
-        SessionControlAction.goalResume,
-      );
-      host.event('a', 'session.control.update', {
-        'control': _control('shared'),
-      });
-      host.pendingAction!.complete(_actionResponse('shared'));
-      expect(await same, isTrue);
-      expect(chat.sessionControl!.revision, 'shared');
-      expect(chat.sessionControlNotice, 'Goal updated on the server.');
-      expect(host.calls.last.$3, {
-        'session_id': 'a-runtime',
-        'action': 'goal.resume',
-        'args': <String, dynamic>{},
-        'profile': 'a',
-      });
+      try {
+        expect(
+          await supervision.control(SessionControlAction.goalPause),
+          isFalse,
+        );
+        expect(
+          host.calls.where((call) => call.$2 == 'session.control'),
+          isEmpty,
+        );
+      } finally {
+        supervision.dispose();
+      }
     },
   );
+
+  test('ready events hydrate control once', () async {
+    host.event('a', 'session.info');
+    await Future<void>.delayed(Duration.zero);
+    host.event('a', 'session.info');
+    await Future<void>.delayed(Duration.zero);
+    expect(
+      host.calls.where((call) => call.$2 == 'session.control.read'),
+      hasLength(1),
+    );
+  });
+
+  test('a newer event wins a late control read', () async {
+    host.pendingRead = Completer<Map<String, dynamic>>();
+    final refresh = controller.refreshSessionControl(chat);
+    host.event('a', 'session.control.update', {
+      'control': _control('event-new'),
+    });
+    host.pendingRead!.complete({'control': _control('read-old')});
+    await refresh;
+    expect(chat.sessionControl!.revision, 'event-new');
+  });
+
+  test('action rejects a stale continuation', () async {
+    host.pendingAction = Completer<Map<String, dynamic>>();
+    final action = controller.controlSession(
+      chat,
+      SessionControlAction.goalPause,
+      canDispatch: () => true,
+    );
+    host.event('a', 'session.control.update', {
+      'control': _control('event-new', status: 'paused'),
+    });
+    host.pendingAction!.complete(
+      _actionResponse(
+        'response-old',
+        type: 'send',
+        message: 'Continue stale goal',
+        output: null,
+      ),
+    );
+    expect(await action, isFalse);
+    expect(chat.sessionControl!.revision, 'event-new');
+    expect(chat.sessionControlError, contains('state changed'));
+    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+  });
+
+  test('action accepts the same event revision', () async {
+    host.pendingAction = Completer<Map<String, dynamic>>();
+    final same = controller.controlSession(
+      chat,
+      SessionControlAction.goalResume,
+      canDispatch: () => true,
+    );
+    host.event('a', 'session.control.update', {'control': _control('shared')});
+    host.pendingAction!.complete(_actionResponse('shared'));
+    expect(await same, isTrue);
+    expect(chat.sessionControl!.revision, 'shared');
+    expect(chat.sessionControlNotice, 'Goal updated on the server.');
+    expect(host.calls.last.$3, {
+      'session_id': 'a-runtime',
+      'action': 'goal.resume',
+      'args': <String, dynamic>{},
+      'profile': 'a',
+    });
+  });
 
   test(
     'continuation preserves composer state and reports partial failure',
@@ -176,8 +241,16 @@ void main() {
         mediaType: 'text/plain',
         kind: AttachmentDraftKind.genericFile,
       );
-      chat.attachments.add(attachment);
-      chat.queuedPrompts.add(QueuedPromptDraft(text: 'Later prompt'));
+      await restoreComposerFixture(
+        chat: chat,
+        preferences: controller.preferences,
+        appendAttachments: [attachment],
+      );
+      await restoreComposerFixture(
+        chat: chat,
+        preferences: controller.preferences,
+        appendQueued: [QueuedPromptDraft(text: 'Later prompt')],
+      );
       host.actionResponse = _actionResponse(
         'continued',
         type: 'send',
@@ -186,15 +259,21 @@ void main() {
       );
 
       expect(
-        await controller.controlSession(chat, SessionControlAction.goalResume),
+        await controller.controlSession(
+          chat,
+          SessionControlAction.goalResume,
+          canDispatch: () => true,
+        ),
         isTrue,
       );
-      expect(chat.draft, 'Unrelated draft');
-      expect(chat.attachments, [attachment]);
-      expect(chat.queuedPrompts.single.text, 'Later prompt');
+      expect(chat.composer.observation.text, 'Unrelated draft');
+      expect(chat.composer.observation.attachments.map((value) => value.id), [
+        attachment.id,
+      ]);
+      expect(chat.composer.observation.queue.single.text, 'Later prompt');
       expect(host.calls.where((call) => call.$2 == 'file.attach'), isEmpty);
 
-      chat.status = ProfileTurnStatus.running;
+      emitChatEvent(controller, chat, 'message.start');
       host.actionResponse = _actionResponse(
         'changed-without-send',
         type: 'send',
@@ -202,7 +281,11 @@ void main() {
         output: null,
       );
       expect(
-        await controller.controlSession(chat, SessionControlAction.goalResume),
+        await controller.controlSession(
+          chat,
+          SessionControlAction.goalResume,
+          canDispatch: () => true,
+        ),
         isFalse,
       );
       expect(chat.sessionControl!.revision, 'changed-without-send');
@@ -210,65 +293,57 @@ void main() {
         chat.sessionControlError,
         contains('continuation was not accepted'),
       );
-      expect(chat.draft, 'Unrelated draft');
+      expect(chat.composer.observation.text, 'Unrelated draft');
     },
   );
 
-  test('subgoal actions send their exact manager arguments', () async {
-    expect(
-      await controller.controlSession(
-        chat,
-        SessionControlAction.subgoalAdd,
-        args: {'text': 'Verify hydration'},
-      ),
-      isTrue,
-    );
-    expect(host.calls.last.$3, {
-      'session_id': 'a-runtime',
-      'action': 'subgoal.add',
-      'args': {'text': 'Verify hydration'},
-      'profile': 'a',
+  for (final (action, wireAction, args) in [
+    (
+      SessionControlAction.subgoalAdd,
+      'subgoal.add',
+      <String, dynamic>{'text': 'Verify hydration'},
+    ),
+    (
+      SessionControlAction.subgoalRemove,
+      'subgoal.remove',
+      <String, dynamic>{'index': 1},
+    ),
+    (SessionControlAction.subgoalClear, 'subgoal.clear', <String, dynamic>{}),
+  ]) {
+    test('$wireAction sends its exact manager arguments', () async {
+      expect(
+        await controller.controlSession(
+          chat,
+          action,
+          args: args,
+          canDispatch: () => true,
+        ),
+        isTrue,
+      );
+      expect(host.calls.last.$3, {
+        'session_id': 'a-runtime',
+        'action': wireAction,
+        'args': args,
+        'profile': 'a',
+      });
     });
-
-    host.actionResponse = _actionResponse('removed');
-    expect(
-      await controller.controlSession(
-        chat,
-        SessionControlAction.subgoalRemove,
-        args: {'index': 1},
-      ),
-      isTrue,
-    );
-    expect(host.calls.last.$3, {
-      'session_id': 'a-runtime',
-      'action': 'subgoal.remove',
-      'args': {'index': 1},
-      'profile': 'a',
-    });
-
-    host.actionResponse = _actionResponse('cleared');
-    expect(
-      await controller.controlSession(chat, SessionControlAction.subgoalClear),
-      isTrue,
-    );
-    expect(host.calls.last.$3, {
-      'session_id': 'a-runtime',
-      'action': 'subgoal.clear',
-      'args': <String, dynamic>{},
-      'profile': 'a',
-    });
-  });
+  }
 
   test(
-    'duplicate and stale actions fail closed without changing ownership',
+    'duplicate action is rejected while the accepted action retains profile ownership',
     () async {
       host.pendingAction = Completer<Map<String, dynamic>>();
       final first = controller.controlSession(
         chat,
         SessionControlAction.goalClear,
+        canDispatch: () => true,
       );
       expect(
-        await controller.controlSession(chat, SessionControlAction.goalClear),
+        await controller.controlSession(
+          chat,
+          SessionControlAction.goalClear,
+          canDispatch: () => true,
+        ),
         isFalse,
       );
       await controller.switchProfile('b');
@@ -278,17 +353,21 @@ void main() {
         host.calls.where((call) => call.$2 == 'session.control').last.$1,
         'a',
       );
-
-      host.pendingAction = Completer<Map<String, dynamic>>();
-      final stale = controller.controlSession(
-        chat,
-        SessionControlAction.goalUnwait,
-      );
-      chat.runtimeId = 'replacement-runtime';
-      host.pendingAction!.complete(_actionResponse('stale'));
-      expect(await stale, isFalse);
     },
   );
+
+  test('action completion cannot publish into a replacement runtime', () async {
+    host.pendingAction = Completer<Map<String, dynamic>>();
+    final stale = controller.controlSession(
+      chat,
+      SessionControlAction.goalUnwait,
+      canDispatch: () => true,
+    );
+    host.runtimeForResume['a'] = 'replacement-runtime';
+    await controller.openSession(chat.key);
+    host.pendingAction!.complete(_actionResponse('stale'));
+    expect(await stale, isFalse);
+  });
 
   test(
     'malformed dispatch does not claim the server action succeeded',
@@ -299,7 +378,11 @@ void main() {
       };
 
       expect(
-        await controller.controlSession(chat, SessionControlAction.goalPause),
+        await controller.controlSession(
+          chat,
+          SessionControlAction.goalPause,
+          canDispatch: () => true,
+        ),
         isFalse,
       );
       expect(chat.sessionControl, isNull);

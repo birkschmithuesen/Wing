@@ -1,0 +1,34 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.tarkilhk.wing.shareqa.fixture">
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="36" />
+    <application android:label="Wing external share fixture"
+        android:debuggable="true" android:allowBackup="false">
+        <activity android:name=".ShareSenderActivity" android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <activity android:name=".ClipboardSenderActivity" android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar" />
+        <provider android:name=".ClipboardFixtureProvider"
+            android:authorities="com.tarkilhk.wing.shareqa.fixture.clipboard"
+            android:exported="false" android:grantUriPermissions="true" />
+        <activity android:name=".BackupSaveActivity" android:exported="true"
+            android:label="Save Wing QA backup"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="application/json" />
+            </intent-filter>
+        </activity>
+        <activity android:name=".ControlledCameraActivity" android:exported="true"
+            android:theme="@android:style/Theme.Material.Light.NoActionBar">
+            <intent-filter>
+                <action android:name="android.media.action.IMAGE_CAPTURE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <receiver android:name=".CameraCommandReceiver" android:exported="true" />
+        <provider android:name=".ProbeProvider"
+            android:authorities="com.tarkilhk.wing.shareqa.fixture.files"
+            android:exported="false" android:grantUriPermissions="true" />
+    </application>
+</manifest>

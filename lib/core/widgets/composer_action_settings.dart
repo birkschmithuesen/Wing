@@ -1,97 +1,81 @@
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/composer_action.dart';
-import '../services/device_preference.dart';
+import '../services/app_preferences.dart';
 import 'composer_action_button.dart';
 import 'studio_error.dart';
 
-class ComposerActionSettings extends StatefulWidget {
+class ComposerActionSettings extends StatelessWidget {
   const ComposerActionSettings({super.key, required this.preferences});
-  final SharedPreferences preferences;
+  final AppPreferences preferences;
 
   @override
-  State<ComposerActionSettings> createState() => _ComposerActionSettingsState();
-}
-
-class _ComposerActionSettingsState extends State<ComposerActionSettings> {
-  bool _saving = false;
-  late ComposerAction _selected;
-
-  @override
-  void initState() {
-    super.initState();
-    _selected = ComposerAction.fromPreference(
-      widget.preferences.getString(ComposerAction.preferenceKey),
-    );
-  }
-
-  Future<void> _save(ComposerAction action) async {
-    if (_saving) return;
-    setState(() => _saving = true);
-    try {
-      await saveDevicePreference(
-        widget.preferences,
-        ComposerAction.preferenceKey,
-        action.name,
-      );
-      if (mounted) setState(() => _selected = action);
-    } catch (_) {
-      if (mounted) {
-        showStudioError(
-          context,
-          'Could not save the default action. Please retry.',
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _saving = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'While your agent is working',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            const SizedBox(height: 8),
-            const Text('Choose what a tap on the chat button does.'),
-            const SizedBox(height: 12),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
+  Widget build(
+    BuildContext context,
+  ) => ValueListenableBuilder<AppPreferencesState>(
+    valueListenable: preferences.state,
+    builder: (context, state, _) {
+      final control = state.runningAction;
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: StudioLoadingRegion(
+            available: !control.busy,
+            busy: control.busy,
+            label: 'Saving composer action',
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                for (final action in ComposerAction.runningDefaults)
-                  ChoiceChip(
-                    showCheckmark: false,
-                    avatar: Icon(composerActionIcon(action), size: 18),
-                    label: Text(action.label),
-                    selected: action == _selected,
-                    onSelected: _saving ? null : (_) => _save(action),
-                  ),
+                Text(
+                  'While your agent is working',
+                  style: Theme.of(context).textTheme.titleMedium,
+                ),
+                const SizedBox(height: 8),
+                const Text('Choose what a tap on the chat button does.'),
+                const SizedBox(height: 12),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final action in ComposerAction.runningDefaults)
+                      StudioButtonPress(
+                        child: ChoiceChip(
+                          showCheckmark: false,
+                          avatar: Icon(composerActionIcon(action), size: 18),
+                          label: Text(action.label),
+                          selected: action == control.selected,
+                          onSelected: control.choose == null
+                              ? null
+                              : (_) => control.choose!(action),
+                        ),
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Text(switch (control.selected) {
+                  ComposerAction.queue =>
+                    'Queue sends your message after the current reply.',
+                  ComposerAction.stop => 'Stop ends the current response.',
+                  ComposerAction.steer =>
+                    'Steer sends your message into the work in progress.',
+                  _ =>
+                    'Choose a default action. Named actions remain available in chat.',
+                }, style: Theme.of(context).textTheme.bodyMedium),
+                if (control.notice != null) StudioError(control.notice!),
+                if (control.error != null) StudioError(control.error!),
+
+                const SizedBox(height: 8),
+                Text(
+                  'Hold and slide to use another action.',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
               ],
             ),
-            const SizedBox(height: 12),
-            Text(switch (_selected) {
-              ComposerAction.queue =>
-                'Queue sends your message after the current reply.',
-              ComposerAction.stop => 'Stop ends the current response.',
-              _ => 'Steer sends your message into the work in progress.',
-            }, style: Theme.of(context).textTheme.bodyMedium),
-            const SizedBox(height: 8),
-            Text(
-              'Hold and slide to use another action.',
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    },
+  );
 }

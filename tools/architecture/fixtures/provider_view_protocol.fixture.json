@@ -1,0 +1,410 @@
+{
+  "cases": [
+    {
+      "name": "direct",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefixed-alias",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart' as data;\nvoid f(data.ProfileAdministration repository) { final alias = repository; alias.config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "cascade",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository..config(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "tearoff",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { final request = repository.config; request(); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "exported-alias",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\ntypedef Alias = ProfileAdministration;\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../../public.dart';\nvoid f(Alias repository) { repository.config(); }\n"
+        },
+        "lib/public.dart": {
+          "role": "utility",
+          "source": "export 'core/services/administration_repository.dart';\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "definition-part",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "part 'task_repository_part.dart';\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        },
+        "lib/core/services/task_repository_part.dart": {
+          "role": "data",
+          "source": "part of 'administration_repository.dart';\nclass ProfileAdministration { void config() {} }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "profile-read",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('model/options'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "owner-command",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "class Session { void load() {} }\nvoid f(Session owner) { owner.load(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-name",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "class LocalIndex { void config() {} }\nvoid f(LocalIndex index) { index.config(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "protocol-in-application",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "application",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "void f(dynamic value) { value.config(); }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "inherited-method",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nclass View extends ProfileAdministration { void f() { config(); } }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "consumer-part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\npart 'task_part.dart';\n"
+        },
+        "lib/core/screens/administration/task_part.dart": {
+          "role": "view",
+          "source": "part of 'admin_providers_page.dart';\nvoid f(ProfileAdministration repository) { repository.config(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/task_part.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "actual-json-decode",
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import 'dart:convert';\nvoid f(String text) { jsonDecode(text); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "owned-capability",
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class AdministrationRepository { final void Function() ownedMutation; final void Function() settingsWrite; AdministrationRepository(this.ownedMutation, this.settingsWrite); }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(AdministrationRepository repository) { repository.ownedMutation(); }\n"
+        }
+      }
+    },
+    {
+      "name": "owned-capability-tearoff",
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class AdministrationRepository { final void Function() ownedMutation; final void Function() settingsWrite; AdministrationRepository(this.ownedMutation, this.settingsWrite); }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(AdministrationRepository repository) { final send = repository.settingsWrite; }\n"
+        }
+      }
+    },
+    {
+      "name": "canonical-env-factory",
+      "exit": 1,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_inventory.dart';\nvoid f(Map<String,dynamic> row) { ProviderEnvironmentField.fromWire('KEY', row); }\n"
+        },
+        "lib/core/models/provider_inventory.dart": {
+          "role": "domain",
+          "source": "class ProviderEnvironmentField { factory ProviderEnvironmentField.fromWire(String key, Map<String,dynamic> row) => ProviderEnvironmentField._(); ProviderEnvironmentField._(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefixed-start-factory",
+      "exit": 1,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_device_sign_in.dart' as values;\nvoid f(Map<String,dynamic> row) { values.ProviderDeviceSession.fromStart(row); }\n"
+        },
+        "lib/core/models/provider_device_sign_in.dart": {
+          "role": "domain",
+          "source": "class ProviderDeviceSession { factory ProviderDeviceSession.fromStart(Map<String,dynamic> row) => ProviderDeviceSession._(); ProviderDeviceSession._(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "factory-tearoff",
+      "exit": 1,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_device_sign_in.dart';\nvoid f() { final parse = ProviderDeviceSession.fromStart; }\n"
+        },
+        "lib/core/models/provider_device_sign_in.dart": {
+          "role": "domain",
+          "source": "class ProviderDeviceSession { factory ProviderDeviceSession.fromStart(Map<String,dynamic> row) => ProviderDeviceSession._(); ProviderDeviceSession._(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "poll-wire-parser",
+      "exit": 1,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_device_sign_in.dart';\nvoid f(ProviderDeviceSession owned, Map<String,dynamic> row) { owned.statusFromPoll(row); }\n"
+        },
+        "lib/core/models/provider_device_sign_in.dart": {
+          "role": "domain",
+          "source": "class ProviderDeviceSession { void statusFromPoll(Map<String,dynamic> row) {} }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "factory-shadow-valid",
+      "exit": 0,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "class Local { Local.fromStart(Map<String,dynamic> row); }\nvoid f(Map<String,dynamic> row) { Local.fromStart(row); }\n"
+        },
+        "lib/core/models/provider_device_sign_in.dart": {
+          "role": "domain",
+          "source": "class ProviderDeviceSession { factory ProviderDeviceSession.fromStart(Map<String,dynamic> row) => ProviderDeviceSession._(); ProviderDeviceSession._(); }\n"
+        }
+      }
+    },
+    {
+      "name": "canonical-passive-value-valid",
+      "exit": 0,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_inventory.dart';\nvoid f() { const ProviderSignInTarget(id:'provider', name:'Provider'); }\n"
+        },
+        "lib/core/models/provider_inventory.dart": {
+          "role": "domain",
+          "source": "class ProviderSignInTarget { const ProviderSignInTarget({required String id, required String name}); }\n"
+        }
+      }
+    },
+    {
+      "name": "credentials-library",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "domain",
+          "source": "class ProfileAdministration { void write() {} }\n"
+        },
+        "lib/core/screens/administration/admin_provider_credentials.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration repository) { repository.write(); }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_provider_credentials.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "cleanup-identity-wire-parser",
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_device_sign_in.dart';\nvoid f(Map<String,dynamic> response) { ProviderDeviceSession.returnedIdentity(response); }\n"
+        },
+        "lib/core/models/provider_device_sign_in.dart": {
+          "role": "domain",
+          "source": "class ProviderDeviceSession { static String? returnedIdentity(Map<String,dynamic> response) => response['session_id'] as String?; }\n"
+        }
+      }
+    },
+    {
+      "name": "bare-inherited-capability-capture",
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_providers_page.dart",
+      "diagnosticLine": 2,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void Function() get ownedMutation => () {}; }\n"
+        },
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nclass View extends ProfileAdministration { void f() { final send = ownedMutation; } }\n"
+        }
+      }
+    },
+    {
+      "name": "same-named-local-capability-valid",
+      "exit": 0,
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": {
+          "role": "view",
+          "source": "void f(void Function() ownedMutation) { final send = ownedMutation; send(); }\n"
+        }
+      }
+    }
+  ]
+}

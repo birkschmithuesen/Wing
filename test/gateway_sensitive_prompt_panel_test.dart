@@ -24,10 +24,25 @@ void main() {
     ),
   );
 
-  testWidgets('masks the value and disables duplicate responses', (
+  testWidgets('password input disables disclosure through suggestions', (
+    tester,
+  ) async {
+    await tester.pumpWidget(app(sudo, (_) async {}));
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('sensitive-prompt-field')),
+    );
+    expect(field.obscureText, isTrue);
+    expect(field.autocorrect, isFalse);
+    expect(field.enableSuggestions, isFalse);
+  });
+
+  testWidgets('pending response gives feedback and rejects repeat actions', (
     tester,
   ) async {
     final pending = Completer<void>();
+    addTearDown(() {
+      if (!pending.isCompleted) pending.complete();
+    });
     final values = <String>[];
     await tester.pumpWidget(
       app(sudo, (value) {
@@ -35,14 +50,6 @@ void main() {
         return pending.future;
       }),
     );
-
-    final field = tester.widget<TextField>(
-      find.byKey(const Key('sensitive-prompt-field')),
-    );
-    expect(field.obscureText, isTrue);
-    expect(field.autocorrect, isFalse);
-    expect(field.enableSuggestions, isFalse);
-
     await tester.enterText(
       find.byKey(const Key('sensitive-prompt-field')),
       'synthetic-password',
@@ -51,23 +58,15 @@ void main() {
     await tester.tap(find.byKey(const Key('sensitive-prompt-submit')));
     await tester.pump();
 
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.tap(find.byKey(const Key('sensitive-prompt-submit')));
+    await tester.tap(find.byKey(const Key('sensitive-prompt-cancel')));
+    await tester.pump(const Duration(seconds: 2));
     expect(values, ['synthetic-password']);
-    expect(
-      tester
-          .widget<FilledButton>(
-            find.byKey(const Key('sensitive-prompt-submit')),
-          )
-          .onPressed,
-      isNull,
-    );
-    expect(
-      tester
-          .widget<TextButton>(find.byKey(const Key('sensitive-prompt-cancel')))
-          .onPressed,
-      isNull,
-    );
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
     pending.complete();
+    await tester.pump();
   });
 
   testWidgets('cancel sends the explicit empty response', (tester) async {
@@ -141,6 +140,51 @@ void main() {
       isTrue,
     );
   });
+
+  for (final fails in [false, true]) {
+    testWidgets(
+      'late ${fails ? 'failure' : 'success'} cannot clear a newer secret draft',
+      (tester) async {
+        final pending = Completer<void>();
+        addTearDown(() {
+          if (!pending.isCompleted) pending.complete();
+        });
+        await tester.pumpWidget(app(sudo, (_) => pending.future));
+        await tester.enterText(
+          find.byKey(const Key('sensitive-prompt-field')),
+          'old-secret',
+        );
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('sensitive-prompt-submit')));
+        await tester.pump();
+        const newer = GatewaySensitivePromptRequest(
+          kind: GatewaySensitivePromptKind.secret,
+          requestId: 'new-request',
+          title: 'New token',
+          description: 'Enter a new token.',
+          fieldLabel: 'Token',
+        );
+        final responses = <String>[];
+        await tester.pumpWidget(
+          app(newer, (value) async => responses.add(value)),
+        );
+        await tester.enterText(
+          find.byKey(const Key('sensitive-prompt-field')),
+          'new-secret',
+        );
+        if (fails) {
+          pending.completeError(StateError('old request failed'));
+        } else {
+          pending.complete();
+        }
+        await tester.pump();
+        expect(find.byKey(const Key('sensitive-prompt-error')), findsNothing);
+        await tester.tap(find.byKey(const Key('sensitive-prompt-submit')));
+        await tester.pump();
+        expect(responses, ['new-secret']);
+      },
+    );
+  }
 
   testWidgets('the same recovered request preserves the typed value', (
     tester,

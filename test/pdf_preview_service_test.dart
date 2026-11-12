@@ -28,8 +28,6 @@ void main() {
       expect(document.pageCount, 2);
       expect(await service.render(document, 1), [1, 2, 3]);
       expect(calls.last.arguments, {'documentId': 'opaque-1', 'page': 1});
-      await expectLater(service.render(document, 2), throwsArgumentError);
-      expect(calls, hasLength(2));
       await service.close(document);
       expect(calls.last.arguments, {'documentId': 'opaque-1'});
     },
@@ -48,27 +46,88 @@ void main() {
     expect(calls.last.arguments, {'documentId': 'bad-document'});
   });
 
-  test('invalid bytes and native failures remain safe', () async {
-    var calls = 0;
+  test('empty PDF bytes are rejected before invoking the platform', () async {
+    final calls = <MethodCall>[];
     messenger.setMockMethodCallHandler(channel, (call) async {
-      calls++;
-      throw PlatformException(
-        code: 'decoder',
-        message: '/private/document.pdf SECRET',
-      );
+      calls.add(call);
+      return null;
     });
     await expectLater(service.open(Uint8List(0)), throwsStateError);
-    expect(calls, 0);
-    await expectLater(
-      service.open(Uint8List.fromList([1])),
-      throwsA(
-        isA<StateError>().having(
-          (error) => error.message,
-          'safe error',
-          'This PDF could not be displayed.',
-        ),
-      ),
-    );
-    await service.close(const PdfDocument('gone', 1));
+    expect(calls, isEmpty);
   });
+
+  for (final page in [-1, 2]) {
+    test(
+      'page $page outside the document never invokes the platform',
+      () async {
+        final calls = <MethodCall>[];
+        messenger.setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          return null;
+        });
+        await expectLater(
+          service.render(const PdfDocument('document', 2), page),
+          throwsArgumentError,
+        );
+        expect(calls, isEmpty);
+      },
+    );
+  }
+
+  for (final error in [
+    PlatformException(code: 'decoder', message: '/private/document.pdf SECRET'),
+    MissingPluginException('PDF support unavailable'),
+  ]) {
+    test('open hides native ${error.runtimeType} details', () async {
+      messenger.setMockMethodCallHandler(channel, (_) async => throw error);
+      await expectLater(
+        service.open(Uint8List.fromList([1])),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'safe error',
+            'This PDF could not be displayed.',
+          ),
+        ),
+      );
+    });
+
+    test('render hides native ${error.runtimeType} details', () async {
+      messenger.setMockMethodCallHandler(channel, (_) async => throw error);
+      await expectLater(
+        service.render(const PdfDocument('document', 1), 0),
+        throwsA(
+          isA<StateError>().having(
+            (error) => error.message,
+            'safe error',
+            'This PDF page could not be displayed.',
+          ),
+        ),
+      );
+    });
+
+    test(
+      'close tolerates native ${error.runtimeType} after departure',
+      () async {
+        messenger.setMockMethodCallHandler(channel, (_) async => throw error);
+        await expectLater(
+          service.close(const PdfDocument('gone', 1)),
+          completes,
+        );
+      },
+    );
+  }
+
+  for (final image in [null, Uint8List(0)]) {
+    test(
+      'render rejects ${image == null ? 'missing' : 'empty'} page data',
+      () async {
+        messenger.setMockMethodCallHandler(channel, (_) async => image);
+        await expectLater(
+          service.render(const PdfDocument('document', 1), 0),
+          throwsStateError,
+        );
+      },
+    );
+  }
 }

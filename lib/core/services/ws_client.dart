@@ -2,36 +2,15 @@
 // Supports both request-response calls AND server-pushed streaming events.
 //
 // Wire protocol: newline-delimited JSON-RPC 2.0, same as the TUI gateway.
-// After submitting a prompt, the server pushes stream events and finally
-// a JSON-RPC response with the same id.
+// Requests settle through correlated responses; pushed events arrive separately.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'package:web_socket_channel/io.dart';
 
 import '../models/connection.dart';
 import '../models/gateway_sensitive_prompt.dart';
-
-final HttpClient _noRedirectWebSocketClient = _NoRedirectWebSocketHttpClient();
-
-/// `WebSocket.connect` only calls `openUrl` on its custom client. The SDK
-/// otherwise follows redirects and forwards arbitrary headers to the new
-/// origin, so header-authenticated gateways use this narrow fail-closed seam.
-class _NoRedirectWebSocketHttpClient implements HttpClient {
-  final HttpClient _inner = HttpClient();
-
-  @override
-  Future<HttpClientRequest> openUrl(String method, Uri url) async {
-    final request = await _inner.openUrl(method, url);
-    request.followRedirects = false;
-    return request;
-  }
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => throw UnsupportedError(
-    'WebSocket transport used an unsupported HttpClient operation.',
-  );
-}
+import 'authenticated_web_socket.dart';
+import 'connection_diagnostics.dart';
 
 Object? _deepFreezeJson(Object? value) {
   if (value is Map) {
@@ -102,125 +81,80 @@ class JsonRpcError implements Exception {
     );
   }
 
-  /// Server guidance only. Callers must never automatically resubmit a turn.
-  bool get safeToResubmit => data['safe_to_resubmit'] == true;
-
   @override
   String toString() => 'JsonRpcError($method): $message';
-}
-
-JsonRpcError _gatewayResponseError(
-  String method,
-  Object? error, {
-  required String fallbackMessage,
-}) {
-  if (error is Map) {
-    return JsonRpcError.fromGateway(
-      method,
-      error,
-      fallbackMessage: fallbackMessage,
-    );
-  }
-  return JsonRpcError(method, fallbackMessage);
 }
 
 /// Event types streamed from the gateway during a prompt submission.
 class StreamEvent {
   final String type; // 'tool_call', 'tool_result', 'assistant', 'session', etc.
   final Map<String, dynamic> data;
-  final bool isComplete; // true when the assistant message is done
   final String? sessionId;
-  final String? turnId;
-  final int? seq;
-  final String? messageId;
   final Map<String, dynamic> envelope;
 
   StreamEvent({
     required this.type,
     required Map<String, dynamic> data,
-    this.isComplete = false,
     this.sessionId,
-    this.turnId,
-    this.seq,
-    this.messageId,
     Map<String, dynamic>? envelope,
   }) : data = _deepFreezeJsonMap(data),
        envelope = _deepFreezeJsonMap(envelope ?? const <String, dynamic>{});
 }
 
-/// Gateway-side file reference returned by `file.attach`.
-class RemoteFileAttachment {
-  final String name;
-  final String path;
-  final String refText;
-  final bool uploaded;
-  final bool? atlasIntakeAccepted;
-  final String? atlasIntakeStatus;
-  final String? atlasRelativePath;
-
-  const RemoteFileAttachment({
-    required this.name,
-    required this.path,
-    required this.refText,
-    required this.uploaded,
-    this.atlasIntakeAccepted,
-    this.atlasIntakeStatus,
-    this.atlasRelativePath,
-  });
-}
-
 typedef StreamCallback = void Function(StreamEvent event);
 typedef ConnectionCallback = void Function(bool connected);
-typedef GatewayReadyCallback = void Function(Map<String, dynamic> frame);
 
 /// WebSocket client for the Hermes JSON-RPC gateway.
 class WsClient {
   final String baseUrl;
+  final Map<String, Object?> _diagnosticContext;
   final String? _token;
   final String? _ticket;
   final Map<String, String> _gatewayHeaders;
   IOWebSocketChannel? _channel;
   bool _connected = false;
+  bool canonicalClarifyBatch = false;
+  Future<void>? capabilitiesReady;
   int _nextId = 1;
   int _connectionGeneration = 0;
-  int _nextConnectionClosedListenerToken = 1;
 
   /// Pending requests: id -> (completer, timer).
   final Map<int, _Pending> _pending = {};
+  // Only correlation and completion live here; never retain a response value.
+  final Map<String, _Pending> _serverResponses = {};
 
-  /// Active stream subscriptions: id -> callback.
-  final Map<int, List<StreamCallback>> _streams = {};
-
-  /// Gateway events are emitted independently of a JSON-RPC request ID. Keep
-  /// per-session listeners so one active session cannot consume another one's
-  /// streamed response.
-  final Map<String, List<StreamCallback>> _sessionStreams = {};
-  final Map<int, _ConnectionClosedListener> _connectionClosedListeners = {};
   Completer<Map<String, dynamic>>? _gatewayReadyCompleter;
   Map<String, dynamic>? _gatewayReadyFrame;
   String? _gatewayReadyCanonical;
   JsonRpcError? _gatewayReadyFailure;
 
-  /// Global stream listener (receives all untargeted events).
+  /// Global listener for all parsed gateway events.
   StreamCallback? onStreamEvent;
   ConnectionCallback? onConnectionChanged;
-  GatewayReadyCallback? onGatewayReady;
 
   factory WsClient(
     String baseUrl, {
     String? token,
     String? ticket,
     Map<String, String> gatewayHeaders = const {},
+    Map<String, Object?> diagnosticContext = const {},
   }) {
     return WsClient._(
       baseUrl,
       token,
       ticket,
       validateGatewayHeaders(gatewayHeaders),
+      Map<String, Object?>.unmodifiable(diagnosticContext),
     );
   }
 
-  WsClient._(this.baseUrl, this._token, this._ticket, this._gatewayHeaders);
+  WsClient._(
+    this.baseUrl,
+    this._token,
+    this._ticket,
+    this._gatewayHeaders,
+    this._diagnosticContext,
+  );
 
   /// Connect to the WebSocket gateway.
   Future<void> connect() async {
@@ -229,6 +163,10 @@ class WsClient {
       throw StateError('A WebSocket connection is already in progress');
     }
     final generation = ++_connectionGeneration;
+    logConnectionDiagnostic(
+      'ws.connect_started',
+      details: {..._diagnosticContext, 'generation': generation},
+    );
     _gatewayReadyFrame = null;
     _gatewayReadyCanonical = null;
     _gatewayReadyFailure = null;
@@ -238,16 +176,35 @@ class WsClient {
     // Observe that error future immediately; the waiter still receives it.
     readyCompleter.future.ignore();
     final wsUrl = buildWebSocketUrl(baseUrl, token: _token, ticket: _ticket);
-    final channel = IOWebSocketChannel.connect(
+    final channel = connectAuthenticatedWebSocket(
       Uri.parse(wsUrl),
       headers: _gatewayHeaders,
-      customClient: _gatewayHeaders.isEmpty ? null : _noRedirectWebSocketClient,
     );
     _channel = channel;
     channel.stream.listen(
       (message) => _handleMessage(message, generation),
-      onError: (_) => _handleClosedConnection(generation),
+      onError: (Object error, StackTrace stack) {
+        if (generation != _connectionGeneration) return;
+        logConnectionDiagnostic(
+          'ws.stream_failed',
+          details: {..._diagnosticContext, 'generation': generation},
+          error: error,
+          stackTrace: stack,
+        );
+        _handleClosedConnection(generation);
+      },
       onDone: () {
+        if (generation != _connectionGeneration) return;
+        logConnectionDiagnostic(
+          'ws.remote_closed',
+          details: {
+            ..._diagnosticContext,
+            'generation': generation,
+            'close_code': channel.closeCode,
+            'pending_requests': _pending.length,
+            'gateway_ready': _gatewayReadyFrame != null,
+          },
+        );
         _handleClosedConnection(generation);
       },
     );
@@ -260,24 +217,42 @@ class WsClient {
           reason: 'connection_closed',
         );
       }
-      // Stock Hermes withdraws server requests for unadvertised transports.
-      // Announce on every socket, before connection observers can create or
-      // resume a session. WebSocket ordering puts this inline notification
-      // ahead of any operation that could need an approval or other input.
-      channel.sink.add(
-        jsonEncode({
-          'jsonrpc': '2.0',
-          'method': 'client.capabilities',
-          'params': {'server_requests': true},
-        }),
-      );
       _connected = true;
+      canonicalClarifyBatch = false;
+      capabilitiesReady = send('client.capabilities', {'server_requests': true})
+          .then((capabilities) {
+            final error = capabilities['error'];
+            if (error is Map) {
+              throw JsonRpcError.fromGateway(
+                'client.capabilities',
+                error,
+                fallbackMessage: 'Capability negotiation failed',
+              );
+            }
+            final result = capabilities['result'];
+            if (result is! Map) {
+              throw const FormatException('Missing client capabilities result');
+            }
+            if (generation != _connectionGeneration) return;
+            canonicalClarifyBatch = result['canonical_clarify_batch'] == true;
+          });
+      capabilitiesReady!.ignore();
+      logConnectionDiagnostic(
+        'ws.connected',
+        details: {..._diagnosticContext, 'generation': generation},
+      );
       try {
         onConnectionChanged?.call(true);
       } catch (_) {
         // Transport observers cannot turn a live socket into setup failure.
       }
-    } catch (_) {
+    } catch (error, stack) {
+      logConnectionDiagnostic(
+        'ws.connect_failed',
+        details: {..._diagnosticContext, 'generation': generation},
+        error: error,
+        stackTrace: stack,
+      );
       _handleClosedConnection(generation);
       try {
         await channel.sink.close();
@@ -297,7 +272,7 @@ class WsClient {
     _connected = false;
     _channel = null;
     // Reject all pending request-response calls.
-    for (var entry in _pending.values) {
+    for (final entry in [..._pending.values, ..._serverResponses.values]) {
       entry.timer?.cancel();
       if (!entry.completer.isCompleted) {
         entry.completer.completeError(
@@ -310,6 +285,7 @@ class WsClient {
       }
     }
     _pending.clear();
+    _serverResponses.clear();
     final closeError =
         _gatewayReadyFailure ??
         JsonRpcError(
@@ -325,22 +301,6 @@ class WsClient {
       ready.completeError(closeError);
     }
     _gatewayReadyCompleter = null;
-    final listenersToNotify = _connectionClosedListeners.entries
-        .where((entry) => entry.value.generation == generation)
-        .map((entry) => entry.value.callback)
-        .toList(growable: false);
-    _connectionClosedListeners.removeWhere(
-      (_, listener) => listener.generation == generation,
-    );
-    _streams.clear();
-    _sessionStreams.clear();
-    for (final listener in listenersToNotify) {
-      try {
-        listener();
-      } catch (_) {
-        // One watcher cannot prevent the remaining close cleanup.
-      }
-    }
     if (wasConnected) {
       try {
         onConnectionChanged?.call(false);
@@ -348,19 +308,6 @@ class WsClient {
         // Observer failures cannot keep a rejected socket logically active.
       }
     }
-  }
-
-  int _addConnectionClosedListener(void Function() callback) {
-    final token = _nextConnectionClosedListenerToken++;
-    _connectionClosedListeners[token] = _ConnectionClosedListener(
-      _connectionGeneration,
-      callback,
-    );
-    return token;
-  }
-
-  void _removeConnectionClosedListener(int token) {
-    _connectionClosedListeners.remove(token);
   }
 
   /// Produces the gateway `/api/ws` URL. Secured Desktop gateways use a
@@ -450,29 +397,36 @@ class WsClient {
           return;
         }
         final event = parseGatewayEvent(params);
-        if (event != null) _dispatchEvent(event);
+        if (event != null) {
+          if (event.type == 'request.cancel') {
+            final pending = _serverResponses.remove(event.data['id']);
+            if (pending != null) {
+              pending.timer?.cancel();
+              if (event.data['reason'] == 'resolved') {
+                pending.completer.complete({});
+              } else {
+                pending.completer.completeError(
+                  JsonRpcError(
+                    'server.response',
+                    'The secure request ended before the response was confirmed',
+                    reason: 'request_ended',
+                  ),
+                );
+              }
+            }
+          }
+          _dispatchEvent(event);
+        }
         return;
       }
 
-      // Response to a request (has id, may have method for streaming completion)
+      // Correlated response to a pending request.
       if (id != null) {
         final pending = _pending[id];
         if (pending != null) {
           _pending.remove(id);
           pending.timer?.cancel();
-          if (method == null || params == null) {
-            _streams.remove(id);
-          }
           pending.completer.complete(data);
-          // Internal request state is terminal before observers see the final
-          // stream event. Observer failures cannot retain a pending request.
-          if (method != null && params != null) {
-            _dispatchStreamEvent(
-              id,
-              method,
-              params is Map<String, dynamic> ? params : {},
-            );
-          }
           return;
         }
       }
@@ -487,19 +441,27 @@ class WsClient {
     final canonical = _canonicalJson(frame);
     final pinned = _gatewayReadyCanonical;
     if (pinned == null) {
+      logConnectionDiagnostic(
+        'ws.gateway_ready',
+        details: {
+          ..._diagnosticContext,
+          'generation': generation,
+          'session_authority':
+              frame['params']?['payload']?['session_authority'] == true,
+        },
+      );
       _gatewayReadyCanonical = canonical;
       _gatewayReadyFrame = frame;
       final ready = _gatewayReadyCompleter;
       if (ready != null && !ready.isCompleted) ready.complete(frame);
-      try {
-        onGatewayReady?.call(frame);
-      } catch (_) {
-        // Capability observers cannot change the pinned socket authority.
-      }
       return;
     }
     if (pinned == canonical) return;
 
+    logConnectionDiagnostic(
+      'ws.gateway_ready_drift',
+      details: {..._diagnosticContext, 'generation': generation},
+    );
     _gatewayReadyFailure = JsonRpcError(
       'gateway.ready',
       'Gateway ready frame changed on the active connection',
@@ -535,41 +497,10 @@ class WsClient {
     if (sessionId != null && sessionId.isNotEmpty) {
       data['session_id'] = sessionId;
     }
-    final rawTurnId = params['turn_id'];
-    final rawSeq = params['seq'];
-    final rawMessageId = params['message_id'];
-    final turnId =
-        rawTurnId is String &&
-            rawTurnId.isNotEmpty &&
-            rawTurnId.length <= 256 &&
-            rawTurnId.trim() == rawTurnId &&
-            !rawTurnId.codeUnits.any(
-              (unit) => unit < 32 || unit >= 127 && unit <= 159,
-            )
-        ? rawTurnId
-        : null;
-    final messageId =
-        rawMessageId is String &&
-            rawMessageId.isNotEmpty &&
-            rawMessageId.length <= 256 &&
-            rawMessageId.trim() == rawMessageId &&
-            !rawMessageId.codeUnits.any(
-              (unit) => unit < 32 || unit >= 127 && unit <= 159,
-            )
-        ? rawMessageId
-        : null;
     return StreamEvent(
       type: rawType,
       data: data,
-      isComplete:
-          rawType == 'message.complete' ||
-          rawType == 'error' ||
-          rawType == 'turn.end' ||
-          rawType == 'turn.error',
       sessionId: sessionId,
-      turnId: turnId,
-      seq: rawSeq is int && rawSeq > 0 ? rawSeq : null,
-      messageId: messageId,
       envelope: params,
     );
   }
@@ -593,36 +524,7 @@ class WsClient {
     try {
       onStreamEvent?.call(event);
     } catch (_) {
-      // Global observers cannot block the session-scoped listener chain.
-    }
-    final sessionId = event.sessionId;
-    if (sessionId == null || sessionId.isEmpty) return;
-    final listeners = _sessionStreams[sessionId];
-    if (listeners == null) return;
-    for (final listener in List<StreamCallback>.from(listeners)) {
-      try {
-        listener(event);
-      } catch (_) {
-        // One session observer cannot block other listeners or cleanup.
-      }
-    }
-  }
-
-  /// Dispatch a streaming event to a specific request's subscribers.
-  void _dispatchStreamEvent(int id, String type, Map<String, dynamic> data) {
-    final listeners = _streams.remove(id);
-    if (listeners == null) return;
-    final event = StreamEvent(
-      type: type,
-      data: data,
-      isComplete: type == 'done' || type == 'error',
-    );
-    for (final listener in List<StreamCallback>.from(listeners)) {
-      try {
-        listener(event);
-      } catch (_) {
-        // Stream observers run only after internal completion and cleanup.
-      }
+      // Observer failures do not alter transport state.
     }
   }
 
@@ -643,6 +545,16 @@ class WsClient {
     final id = _nextId++;
     final completer = Completer<Map<String, dynamic>>();
     final timer = Timer(timeout, () {
+      logConnectionDiagnostic(
+        'ws.rpc_timeout',
+        details: {
+          ..._diagnosticContext,
+          'generation': _connectionGeneration,
+          'rpc_method': method,
+          'request_id': id,
+          'timeout_ms': timeout.inMilliseconds,
+        },
+      );
       _pending.remove(id);
       if (!completer.isCompleted) {
         completer.completeError(
@@ -663,492 +575,45 @@ class WsClient {
     return completer.future;
   }
 
-  /// Send a JSON-RPC method call and receive streaming events.
-  /// Returns the final response when the stream completes.
-  Future<Map<String, dynamic>> sendStreaming(
-    String method,
-    Map<String, dynamic> params, {
-    StreamCallback? onEvent,
-    Duration timeout = const Duration(seconds: 120),
+  /// Answer the original server request on this subscribed socket. A response
+  /// frame has no RPC acknowledgement; the canonical owner confirms settlement
+  /// with request.cancel reason=resolved. Never replay a secret after reconnect.
+  Future<void> respondToRequest(
+    String requestId,
+    Map<String, dynamic> result, {
+    Duration timeout = const Duration(seconds: 30),
   }) async {
-    if (!_connected || _channel == null) {
+    final channel = _channel;
+    if (!_connected || channel == null) {
       throw JsonRpcError(
-        method,
+        'server.response',
         'Connection unavailable',
         reason: 'connection_closed',
       );
     }
-
-    final id = _nextId++;
-    if (onEvent != null) {
-      _streams[id] = [onEvent];
+    if (_serverResponses.containsKey(requestId)) {
+      throw StateError('A response is already being submitted.');
     }
     final completer = Completer<Map<String, dynamic>>();
     final timer = Timer(timeout, () {
-      _pending.remove(id);
-      _streams.remove(id);
-      if (!completer.isCompleted) {
-        completer.completeError(
-          JsonRpcError(method, 'Timeout', reason: 'request_timeout'),
-        );
-      }
+      _serverResponses.remove(requestId);
+      completer.completeError(
+        JsonRpcError(
+          'server.response',
+          'Hermes did not confirm the response',
+          reason: 'request_timeout',
+        ),
+      );
     });
-
-    _pending[id] = _Pending(method, completer, timer);
-    _channel!.sink.add(
-      jsonEncode({
-        'jsonrpc': '2.0',
-        'method': method,
-        'params': params,
-        'id': id,
-      }),
-    );
-    return completer.future;
-  }
-
-  /// Sends `prompt.submit`, then waits for the gateway's terminal turn event.
-  /// The RPC acknowledgement only confirms that the turn was accepted; it is
-  /// not the end of streamed model output.
-  Future<void> submitPrompt(
-    String message, {
-    required String sessionId,
-    required StreamCallback onEvent,
-    Duration timeout = const Duration(minutes: 10),
-  }) async {
-    final completion = Completer<void>();
-    final terminalFuture = completion.future;
-    // A close before the RPC acknowledgement rejects both the pending request
-    // and this terminal watcher. Observe the secondary future immediately so
-    // the request error remains the single surfaced failure.
-    terminalFuture.ignore();
-    late final StreamCallback listener;
-    Timer? timer;
-    final closeListenerToken = _addConnectionClosedListener(() {
-      if (!completion.isCompleted) {
-        completion.completeError(
-          JsonRpcError(
-            'prompt.submit',
-            'Desktop gateway connection closed',
-            reason: 'connection_closed',
-          ),
-        );
-      }
-    });
-
-    listener = (event) {
-      if (event.isComplete && !completion.isCompleted) {
-        if (event.type == 'error' || event.type == 'turn.error') {
-          completion.completeError(
-            JsonRpcError(
-              'prompt.submit',
-              event.data['message']?.toString() ?? 'Gateway turn failed',
-            ),
-          );
-        } else {
-          completion.complete();
-        }
-      }
-      try {
-        onEvent(event);
-      } catch (_) {
-        // Terminal state and other session listeners remain authoritative.
-      }
-    };
-
-    final listeners = _sessionStreams.putIfAbsent(sessionId, () => []);
-    listeners.add(listener);
-    timer = Timer(timeout, () {
-      if (!completion.isCompleted) {
-        completion.completeError(
-          JsonRpcError('prompt.submit', 'Timeout', reason: 'request_timeout'),
-        );
-      }
-    });
-
+    _serverResponses[requestId] = _Pending('server.response', completer, timer);
     try {
-      final response = await send('prompt.submit', {
-        'session_id': sessionId,
-        'text': message,
-      });
-      final error = response['error'];
-      if (error != null) {
-        throw _gatewayResponseError(
-          'prompt.submit',
-          error,
-          fallbackMessage: 'Unknown error',
-        );
-      }
-      await terminalFuture;
+      channel.sink.add(
+        jsonEncode({'jsonrpc': '2.0', 'id': requestId, 'result': result}),
+      );
+      await completer.future;
     } finally {
       timer.cancel();
-      _removeConnectionClosedListener(closeListenerToken);
-      final current = _sessionStreams[sessionId];
-      current?.remove(listener);
-      if (current != null && current.isEmpty) {
-        _sessionStreams.remove(sessionId);
-      }
-    }
-  }
-
-  /// Cooperatively interrupts the active turn for one gateway session.
-  Future<void> interruptSession(String sessionId) async {
-    final response = await send('session.interrupt', {'session_id': sessionId});
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'session.interrupt',
-        error,
-        fallbackMessage: 'Gateway interrupt failed',
-      );
-    }
-  }
-
-  /// Resolves one exact queue entry in a Hermes gateway session.
-  Future<void> respondToApproval({
-    required String sessionId,
-    required String requestId,
-    required String choice,
-  }) async {
-    if (requestId.trim().isEmpty) {
-      throw ArgumentError.value(
-        requestId,
-        'requestId',
-        'An approval ID is required',
-      );
-    }
-    const allowedChoices = {'once', 'session', 'always', 'deny'};
-    if (!allowedChoices.contains(choice)) {
-      throw ArgumentError.value(
-        choice,
-        'choice',
-        'Unsupported approval choice',
-      );
-    }
-    final response = await send('approval.respond', {
-      'session_id': sessionId,
-      'request_id': requestId,
-      'choice': choice,
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'approval.respond',
-        error,
-        fallbackMessage: 'Gateway approval failed',
-      );
-    }
-  }
-
-  Future<void> respondToSudo({
-    required String requestId,
-    required String password,
-  }) {
-    return _respondToSensitivePrompt(requestId: requestId, value: password);
-  }
-
-  Future<void> respondToSecret({
-    required String requestId,
-    required String value,
-  }) {
-    return _respondToSensitivePrompt(requestId: requestId, value: value);
-  }
-
-  Future<void> respondToClarify({
-    required String requestId,
-    required String answer,
-    String? questionId,
-  }) async {
-    if (requestId.trim().isEmpty) {
-      throw ArgumentError.value(
-        requestId,
-        'requestId',
-        'A Hermes request ID is required',
-      );
-    }
-    final batch = questionId != null && questionId.trim().isNotEmpty;
-    final method = batch ? 'clarify.lock' : 'request.answer';
-    final response = await send(
-      method,
-      batch
-          ? {
-              'request_id': requestId,
-              'question_id': questionId,
-              'answer': answer,
-            }
-          : {
-              'id': requestId,
-              'result': {'answer': answer},
-            },
-    );
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        method,
-        error,
-        fallbackMessage: 'Gateway clarification failed',
-      );
-    }
-  }
-
-  Future<void> _respondToSensitivePrompt({
-    required String requestId,
-    required String value,
-  }) async {
-    if (requestId.trim().isEmpty) {
-      throw ArgumentError.value(
-        requestId,
-        'requestId',
-        'A Hermes request ID is required',
-      );
-    }
-    final response = await send('request.answer', {
-      'id': requestId,
-      'result': {'value': value},
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'request.answer',
-        error,
-        fallbackMessage: 'Gateway response failed',
-      );
-    }
-  }
-
-  /// Resume an existing session.
-  Future<String> resumeSession(String sessionId) async {
-    final result = await send('session.resume', {'session_id': sessionId});
-    if (result['error'] != null) {
-      throw _gatewayResponseError(
-        'session.resume',
-        result['error'],
-        fallbackMessage: 'Unknown error',
-      );
-    }
-    return result['result']?['session_id'] as String? ?? sessionId;
-  }
-
-  Future<void> setSessionTitle(String sessionId, String title) async {
-    final response = await send('session.title', {
-      'session_id': sessionId,
-      'title': title,
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'session.title',
-        error,
-        fallbackMessage: 'Could not rename session',
-      );
-    }
-  }
-
-  Future<Map<String, dynamic>> branchSession(
-    String sessionId, {
-    required String name,
-  }) async {
-    final response = await send('session.branch', {
-      'session_id': sessionId,
-      'name': name,
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'session.branch',
-        error,
-        fallbackMessage: 'Could not branch session',
-      );
-    }
-    final result = response['result'];
-    if (result is Map<String, dynamic>) return result;
-    throw JsonRpcError('session.branch', 'Gateway returned no branch');
-  }
-
-  /// Submit a message to the active session with streaming.
-  /// Returns the final response and streams events via callback.
-  Future<String> sendMessageStreaming(
-    String message, {
-    required String sessionId,
-    StreamCallback? onEvent,
-  }) async {
-    await submitPrompt(
-      message,
-      sessionId: sessionId,
-      onEvent: onEvent ?? (_) {},
-    );
-    return sessionId;
-  }
-
-  /// Submit a message to the active session (non-streaming, backward-compatible).
-  Future<String> sendMessage(String message) async {
-    throw UnsupportedError(
-      'Use sendMessageStreaming with a gateway session ID instead.',
-    );
-  }
-
-  /// Uploads one file or image to a remote Desktop gateway and returns the
-  /// canonical `@file:` reference that must be included in the following turn.
-  Future<RemoteFileAttachment> attachFile({
-    required String sessionId,
-    required String name,
-    required String dataUrl,
-    String path = '',
-    String? sourceChannel,
-    String? sourceProfile,
-  }) async {
-    final params = <String, dynamic>{
-      'session_id': sessionId,
-      'name': name,
-      'path': path,
-      'data_url': dataUrl,
-    };
-    if (sourceChannel?.isNotEmpty == true) {
-      params['source_channel'] = sourceChannel;
-    }
-    if (sourceProfile?.isNotEmpty == true) {
-      params['source_profile'] = sourceProfile;
-    }
-    final response = await send('file.attach', params);
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'file.attach',
-        error,
-        fallbackMessage: 'Unknown error',
-      );
-    }
-    final result = response['result'];
-    if (result is! Map<String, dynamic> || result['attached'] != true) {
-      throw JsonRpcError('file.attach', 'Gateway did not attach the file');
-    }
-    final refText = result['ref_text']?.toString() ?? '';
-    if (refText.isEmpty) {
-      throw JsonRpcError('file.attach', 'Gateway returned no file reference');
-    }
-    final atlasIntake = result['atlas_intake'];
-    return RemoteFileAttachment(
-      name: result['name']?.toString() ?? name,
-      path: result['path']?.toString() ?? path,
-      refText: refText,
-      uploaded: result['uploaded'] == true,
-      atlasIntakeAccepted: atlasIntake is Map<String, dynamic>
-          ? atlasIntake['accepted'] == true
-          : null,
-      atlasIntakeStatus: atlasIntake is Map<String, dynamic>
-          ? atlasIntake['status']?.toString()
-          : null,
-      atlasRelativePath: atlasIntake is Map<String, dynamic>
-          ? atlasIntake['relative_path']?.toString()
-          : null,
-    );
-  }
-
-  /// Create a new chat session.
-  Future<String> createSession({String? model}) async {
-    final params = <String, dynamic>{};
-    if (model != null) params['model'] = model;
-    final result = await send('session.create', params);
-    if (result['error'] != null) {
-      throw _gatewayResponseError(
-        'session.create',
-        result['error'],
-        fallbackMessage: 'Unknown error',
-      );
-    }
-    return result['result']?['session_id'] as String? ?? '';
-  }
-
-  /// Resume an existing session via session.create (which starts a new
-  /// agent process for the given session ID). This works for sessions
-  /// that exist in the REST API but aren't active in the gateway.
-  Future<String> createOrResumeSession(String sessionId) async {
-    final result = await send('session.create', {'session_id': sessionId});
-    if (result['error'] != null) {
-      throw _gatewayResponseError(
-        'session.create',
-        result['error'],
-        fallbackMessage: 'Unknown error',
-      );
-    }
-    return result['result']?['session_id'] as String? ?? sessionId;
-  }
-
-  /// Applies a model only to one live gateway session.  Hermes interprets the
-  /// `--session` flag as a persistent per-session override; it must never be
-  /// replaced with a profile-wide config write from the mobile client.
-  Future<void> setSessionModel({
-    required String sessionId,
-    required String provider,
-    required String model,
-  }) async {
-    final result = await send('config.set', {
-      'session_id': sessionId,
-      'key': 'model',
-      'value': buildSessionModelValue(provider: provider, model: model),
-    });
-    if (result['error'] != null) {
-      throw _gatewayResponseError(
-        'config.set',
-        result['error'],
-        fallbackMessage: 'Model switch failed',
-      );
-    }
-    final payload = result['result'];
-    if (payload is Map && payload['confirm_required'] == true) {
-      throw JsonRpcError(
-        'config.set',
-        payload['confirm_message']?.toString() ??
-            'This model needs confirmation before it can be selected.',
-      );
-    }
-  }
-
-  /// Returns the effective reasoning effort for one live gateway session.
-  Future<String> getSessionReasoning(String sessionId) async {
-    final response = await send('config.get', {
-      'session_id': sessionId,
-      'key': 'reasoning',
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'config.get',
-        error,
-        fallbackMessage: 'Could not read reasoning effort',
-      );
-    }
-    final result = response['result'];
-    if (result is! Map) {
-      throw JsonRpcError('config.get', 'Gateway returned no reasoning effort');
-    }
-    return normalizeReasoningEffort(result['value']);
-  }
-
-  /// Applies reasoning effort only to one live gateway session.
-  Future<void> setSessionReasoning({
-    required String sessionId,
-    required String effort,
-  }) async {
-    final normalized = effort.trim().toLowerCase();
-    if (!validReasoningEfforts.contains(normalized)) {
-      throw ArgumentError.value(
-        effort,
-        'effort',
-        'Unsupported reasoning effort',
-      );
-    }
-    final response = await send('config.set', {
-      'session_id': sessionId,
-      'key': 'reasoning',
-      'value': normalized,
-    });
-    final error = response['error'];
-    if (error != null) {
-      throw _gatewayResponseError(
-        'config.set',
-        error,
-        fallbackMessage: 'Reasoning effort switch failed',
-      );
+      _serverResponses.remove(requestId);
     }
   }
 
@@ -1186,13 +651,19 @@ class WsClient {
     return '$modelValue --provider $normalizedProvider --session';
   }
 
-  bool get isConnected => _connected;
-
   /// Close the connection.
   void close() {
     if (!_connected && _channel == null) return;
     final generation = _connectionGeneration;
     final channel = _channel;
+    logConnectionDiagnostic(
+      'ws.local_closed',
+      details: {
+        ..._diagnosticContext,
+        'generation': generation,
+        'pending_requests': _pending.length,
+      },
+    );
     _handleClosedConnection(generation);
     channel?.sink.close();
   }
@@ -1203,11 +674,4 @@ class _Pending {
   final Completer<Map<String, dynamic>> completer;
   final Timer? timer;
   _Pending(this.method, this.completer, this.timer);
-}
-
-class _ConnectionClosedListener {
-  final int generation;
-  final void Function() callback;
-
-  const _ConnectionClosedListener(this.generation, this.callback);
 }

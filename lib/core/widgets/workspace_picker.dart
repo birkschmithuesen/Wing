@@ -8,18 +8,72 @@ import 'connection_icon_picker.dart';
 enum WorkspacePickerMode {
   connections,
   profiles,
+  analytics,
   connectionAndProfile;
 
-  bool get includesConnections => this != profiles;
+  bool get includesConnections =>
+      this == connections || this == connectionAndProfile;
   bool get includesProfiles => this != connections;
   String get label => switch (this) {
     connections => 'Choose instance',
-    profiles => 'Choose profile',
+    profiles || analytics => 'Choose profile',
     connectionAndProfile => 'Choose instance and profile',
   };
 }
 
-typedef WorkspaceChoice = ({String id, bool isConnection});
+enum WorkspaceChoiceKind { connection, profile, allProfiles }
+
+typedef WorkspaceChoice = ({String? id, WorkspaceChoiceKind kind});
+
+/// A separate profile filter beside the standard instance header.
+class WorkspaceProfilePicker extends StatelessWidget {
+  const WorkspaceProfilePicker({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+
+  final String label;
+  final ValueChanged<BuildContext> onPressed;
+
+  @override
+  Widget build(BuildContext context) => Builder(
+    builder: (anchor) => Semantics(
+      label: '$label. Choose profile',
+      button: true,
+      excludeSemantics: true,
+      onTap: () => onPressed(anchor),
+      child: Tooltip(
+        message: 'Choose profile',
+        child: StudioButtonPress(
+          child: InkWell(
+            key: const ValueKey('analytics-profile-picker-target'),
+            borderRadius: WingRadius.control,
+            onTap: () => onPressed(anchor),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 48, minWidth: 48),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Icon(Icons.expand_more, size: 16),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 
 Future<WorkspaceChoice?> showWorkspacePicker(
   BuildContext context, {
@@ -44,7 +98,7 @@ Future<WorkspaceChoice?> showWorkspacePicker(
   }
 
   var lastPosition = position();
-  PopupMenuItem<WorkspaceChoice> heading(String label) => PopupMenuItem(
+  PopupMenuItem<WorkspaceChoice> heading(String label) => StudioPopupMenuItem(
     enabled: false,
     height: 32,
     child: Text(label, style: Theme.of(context).textTheme.labelSmall),
@@ -54,9 +108,11 @@ Future<WorkspaceChoice?> showWorkspacePicker(
     String label,
     bool selected, {
     IconData? icon,
-  }) => PopupMenuItem(
+  }) => StudioPopupMenuItem(
     key: ValueKey(
-      'workspace-${value.isConnection ? 'connection' : 'profile'}-${value.id}',
+      value.kind == WorkspaceChoiceKind.allProfiles
+          ? 'workspace-all-profiles'
+          : 'workspace-${value.kind.name}-${value.id}',
     ),
     value: value,
     enabled: !busy,
@@ -100,7 +156,7 @@ Future<WorkspaceChoice?> showWorkspacePicker(
         heading('Hermes instance'),
         for (final connection in connections)
           option(
-            (id: connection.id, isConnection: true),
+            (id: connection.id, kind: WorkspaceChoiceKind.connection),
             connection.label,
             connection.id == connectionId,
             icon: connection.icon.glyph,
@@ -109,10 +165,16 @@ Future<WorkspaceChoice?> showWorkspacePicker(
       if (mode.includesProfiles) ...[
         if (mode.includesConnections) const PopupMenuDivider(),
         heading('Profile'),
+        if (mode == WorkspacePickerMode.analytics && profiles.isNotEmpty)
+          option(
+            (id: null, kind: WorkspaceChoiceKind.allProfiles),
+            'All',
+            profileName == null,
+          ),
         if (profiles.isEmpty) heading('Profiles unavailable'),
         for (final profile in profiles)
           option(
-            (id: profile.name, isConnection: false),
+            (id: profile.name, kind: WorkspaceChoiceKind.profile),
             profile.label,
             profile.name == profileName,
           ),

@@ -1,22 +1,60 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'dart:async';
+import 'dart:io';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/widgets/studio_error.dart';
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/services/profile_supervision_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'support/composer_fixture.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/widgets/profile_background_work_panel.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'support/profile_actions_fixture.dart';
+import 'support/form_family_capture.dart';
+
+class _BackgroundController extends ProfileWorkspaceController {
+  _BackgroundController({
+    required super.access,
+    required super.connectionIdentity,
+    required super.preferences,
+    required super.appPreferences,
+    required super.gatewayFactory,
+  });
+
+  Completer<bool>? unconfirmedStop;
+
+  @override
+  Future<bool> stopProcess(
+    ProfileChat chat,
+    String id, {
+    required bool Function() canDispatch,
+  }) =>
+      unconfirmedStop?.future ??
+      super.stopProcess(chat, id, canDispatch: canDispatch);
+}
 
 class _BackgroundFixture extends ProfileActionsFixture {
+  Completer<void>? heldMetadata;
+
   final requests = <(String, Map<String, dynamic>)>[];
   bool running = true;
+  bool recurring = true;
   bool rejectStop = false;
   String loopStatus = 'active';
   String heartbeatStatus = 'active';
   bool heartbeatPresent = true;
+  bool exitCodeSupplied = true;
+  String runningOutput = 'waiting for work\n';
 
   List<Map<String, dynamic>> get processes => [
     if (running)
@@ -24,7 +62,7 @@ class _BackgroundFixture extends ProfileActionsFixture {
         'session_id': 'proc-running',
         'command': 'dart run worker.dart',
         'cwd': '/workspace',
-        'output_tail': 'waiting for work\n',
+        'output_tail': runningOutput,
         'status': 'running',
         'uptime_seconds': 125,
         'pid': 4321,
@@ -36,30 +74,32 @@ class _BackgroundFixture extends ProfileActionsFixture {
       'command': 'dart test',
       'output_tail': 'All tests passed.\n',
       'status': 'exited',
-      'exit_code': 0,
+      if (exitCodeSupplied) 'exit_code': 0,
       'uptime_seconds': 9,
     },
   ];
 
   Map<String, dynamic> get control => {
     'goal': null,
-    'loop': {
-      'prompt': 'Check the release queue',
-      'status': loopStatus,
-      'mode': 'interval',
-      'interval_seconds': 300,
-      'current_delay': 300,
-      'times': 6,
-      'until': '',
-      'max_ticks': 0,
-      'ticks_fired': 3,
-      'created_at': 1,
-      'last_fired_at': 2,
-      'next_due_at': 1893456000,
-      'awaiting_response': true,
-      'deferred_by_goal': true,
-    },
-    'heartbeat': heartbeatPresent
+    'loop': !recurring
+        ? null
+        : {
+            'prompt': 'Check the release queue',
+            'status': loopStatus,
+            'mode': 'interval',
+            'interval_seconds': 300,
+            'current_delay': 300,
+            'times': 6,
+            'until': '',
+            'max_ticks': 0,
+            'ticks_fired': 3,
+            'created_at': 1,
+            'last_fired_at': 2,
+            'next_due_at': 1893456000,
+            'awaiting_response': true,
+            'deferred_by_goal': true,
+          },
+    'heartbeat': recurring && heartbeatPresent
         ? {
             'prompt': 'Report deployment health',
             'status': heartbeatStatus,
@@ -82,6 +122,9 @@ class _BackgroundFixture extends ProfileActionsFixture {
       get: base.read,
       rpc: (method, params) async {
         requests.add((method, params));
+        if (method == 'session.control.read' || method == 'process.list') {
+          await heldMetadata?.future;
+        }
         if (method == 'process.list') return {'processes': processes};
         if (method == 'process.kill') {
           if (rejectStop) {
@@ -115,49 +158,77 @@ class _BackgroundFixture extends ProfileActionsFixture {
 }
 
 void main() {
+  setUpAll(() async {
+    await loadFormFamilyFonts();
+    if (const bool.fromEnvironment('CAPTURE_FORM_FAMILY')) {
+      final mono = File('build/studio-mono.ttf');
+      await (FontLoader(
+        'monospace',
+      )..addFont(mono.readAsBytes().then(ByteData.sublistView))).load();
+    }
+  });
   late _BackgroundFixture fixture;
-  late ProfileWorkspaceController controller;
+  late _BackgroundController controller;
+  late AppPreferences appPreferences;
   late ProfileChat chat;
+  late ProfileSupervisionSession supervision;
 
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     fixture = _BackgroundFixture();
-    controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
+    controller = _BackgroundController(
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'background-work-panel',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
     );
     await controller.initialize();
-    chat = await controller.createChat();
+    chat = await controller.createChat(canDispatch: () => true);
+    supervision = ProfileSupervisionSession(controller: controller, chat: chat);
   });
 
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    supervision.dispose();
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   Future<void> showPanel(
     WidgetTester tester, {
     Size size = const Size(800, 900),
     double textScale = 1,
+    Brightness brightness = Brightness.light,
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    emitChatEvent(controller, chat, 'message.start');
+    await supervision.refreshProcesses();
     await tester.pumpWidget(
       MaterialApp(
+        theme: wingTheme(brightness),
+        debugShowCheckedModeBanner: false,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
+          data: MediaQuery.of(context).copyWith(
+            textScaler: TextScaler.linear(textScale),
+            disableAnimations: true,
+          ),
+          child: RepaintBoundary(key: formFamilyCapture, child: child!),
         ),
         home: Scaffold(
           body: ListView(
             children: [
               ProfileBackgroundWorkPanel(
-                controller: controller,
-                chat: chat,
+                session: supervision,
                 initiallyExpanded: true,
               ),
+              ProfileProcessPanel(session: supervision),
             ],
           ),
         ),
@@ -168,13 +239,53 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('automatic metadata read keeps the usable conversation quiet', (
+    tester,
+  ) async {
+    fixture.heldMetadata = Completer<void>();
+    addTearDown(() {
+      if (!fixture.heldMetadata!.isCompleted) fixture.heldMetadata!.complete();
+    });
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              const TextField(
+                decoration: InputDecoration(hintText: 'Draft remains editable'),
+              ),
+              ProfileBackgroundWorkPanel(session: supervision),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 100));
+    expect(find.byType(StudioLoading), findsNothing);
+    await tester.enterText(find.byType(TextField), 'Keep writing');
+    expect(
+      tester.widget<TextField>(find.byType(TextField)).controller?.text ??
+          tester
+              .widget<EditableText>(find.byType(EditableText))
+              .controller
+              .text,
+      'Keep writing',
+    );
+    fixture.heldMetadata!.complete();
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('stops only the selected running process after server ACK', (
     tester,
   ) async {
     await showPanel(tester);
     await tester.tap(find.text('dart run worker.dart'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Stop process'));
+    await tester.ensureVisible(find.byTooltip('Stop process'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Stop process'));
     await tester.pumpAndSettle();
 
     final stop = fixture.requests.singleWhere(
@@ -186,7 +297,7 @@ void main() {
     expect(find.text('dart test'), findsOneWidget);
   });
 
-  testWidgets('keeps a rejected process and dismisses only an exited row', (
+  testWidgets('keeps a process when the server rejects stopping it', (
     tester,
   ) async {
     fixture.rejectStop = true;
@@ -194,25 +305,149 @@ void main() {
 
     await tester.tap(find.text('dart run worker.dart'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Stop process'));
+    await tester.ensureVisible(find.byTooltip('Stop process'));
     await tester.pumpAndSettle();
-    expect(find.text('dart run worker.dart'), findsOneWidget);
+    await tester.tap(find.byTooltip('Stop process'));
+    await tester.pumpAndSettle();
+    expect(find.text('dart run worker.dart'), findsWidgets);
     expect(
       find.text('The server did not confirm that the process stopped.'),
       findsOneWidget,
     );
 
-    await tester.tap(find.text('dart test'));
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Dismiss'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Dismiss'));
-    await tester.pumpAndSettle();
-    expect(find.text('dart test'), findsNothing);
     expect(
       fixture.requests.where((request) => request.$1 == 'process.kill'),
       hasLength(1),
     );
+  });
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('process-specific stop failure ${brightness.name} $scale', (
+        tester,
+      ) async {
+        // Exercise the session fallback for an unconfirmed stop without a
+        // panel-wide error. The server-rejection test above covers that path.
+        final stop = Completer<bool>();
+        controller.unconfirmedStop = stop;
+        await showPanel(
+          tester,
+          size: Size(scale == 2 ? 320 : 390, 844),
+          textScale: scale,
+          brightness: brightness,
+        );
+        final process = find.text('dart run worker.dart');
+        await tester.scrollUntilVisible(
+          process,
+          160,
+          scrollable: find.byType(Scrollable).first,
+        );
+        await tester.tap(process);
+        await tester.pumpAndSettle();
+        final action = find.byTooltip('Stop process');
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        await tester.tap(action);
+        await tester.pump();
+        expect(
+          find.descendant(
+            of: action,
+            matching: find.byType(CircularProgressIndicator),
+          ),
+          findsOneWidget,
+        );
+        stop.complete(false);
+        await tester.pumpAndSettle();
+        final error = find.text(
+          'The server did not confirm that this process stopped.',
+        );
+        expect(
+          find.descendant(of: find.byType(StudioError), matching: error),
+          findsOneWidget,
+        );
+        await tester.ensureVisible(action);
+        await tester.pumpAndSettle();
+        expect(action.hitTestable(), findsOneWidget);
+        expect(error.hitTestable(), findsOneWidget);
+        await captureFormFamily(
+          tester,
+          'process-stop-error-${brightness.name}-$scale',
+        );
+
+        controller.unconfirmedStop = null;
+        await tester.tap(action);
+        await tester.pumpAndSettle();
+        expect(error, findsNothing);
+        expect(process, findsNothing);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('dismissing an exited process does not stop running work', (
+    tester,
+  ) async {
+    await showPanel(tester);
+    await tester.tap(find.text('dart test'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Dismiss'));
+    await tester.pumpAndSettle();
+    expect(find.text('dart test'), findsNothing);
+    expect(
+      fixture.requests.where((request) => request.$1 == 'process.kill'),
+      isEmpty,
+    );
+  });
+
+  testWidgets('process text actions serve command and output, not metadata', (
+    tester,
+  ) async {
+    await showPanel(tester);
+    await tester.tap(find.text('dart run worker.dart'));
+    await tester.pumpAndSettle();
+    expect(find.byTooltip('Copy Command'), findsOneWidget);
+    expect(find.byTooltip('Copy Recent output'), findsOneWidget);
+    expect(find.byTooltip('Open Command'), findsNothing);
+    expect(find.byTooltip('Open Recent output'), findsNothing);
+    expect(find.byTooltip('Copy PID'), findsNothing);
+    expect(find.byTooltip('Stop process'), findsOneWidget);
+    expect(
+      find.text('Latest received output; not a complete transcript'),
+      findsOneWidget,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('an exited process without an exit code stays unqualified', (
+    tester,
+  ) async {
+    fixture.exitCodeSupplied = false;
+    await showPanel(tester);
+    await tester.tap(find.text('dart test'));
+    await tester.pumpAndSettle();
+    expect(find.text('Exited'), findsWidgets);
+    expect(find.text('Completed'), findsNothing);
+    expect(find.text('Process exited; exit code not supplied'), findsOneWidget);
+    expect(find.byTooltip('Dismiss'), findsOneWidget);
+    expect(find.byTooltip('Stop process'), findsNothing);
+  });
+
+  testWidgets('an empty process receipt has no text action toolbar', (
+    tester,
+  ) async {
+    fixture.runningOutput = '';
+    await showPanel(tester);
+    await tester.tap(find.text('dart run worker.dart'));
+    await tester.pumpAndSettle();
+    expect(find.text('Latest received output is empty'), findsOneWidget);
+    expect(find.text('Empty text'), findsNothing);
+    expect(find.byTooltip('Copy Recent output'), findsNothing);
+    expect(find.byTooltip('Open Recent output'), findsNothing);
+    expect(find.byTooltip('Stop process'), findsOneWidget);
   });
 
   testWidgets('keeps recurring controls usable on a narrow large-text phone', (
@@ -226,9 +461,11 @@ void main() {
     expect(find.text('Waiting for the current response'), findsOneWidget);
     expect(find.text('Deferred while the goal is active'), findsOneWidget);
 
-    await tester.ensureVisible(find.text('Pause loop'));
+    await tester.ensureVisible(find.byTooltip('Pause loop'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Pause loop'));
+    await tester.ensureVisible(find.byTooltip('Pause loop'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Pause loop'));
     await tester.pumpAndSettle();
     expect(
       fixture.requests.any(
@@ -239,12 +476,14 @@ void main() {
       isTrue,
     );
 
-    await tester.ensureVisible(find.text('Clear heartbeat'));
+    await tester.ensureVisible(find.byTooltip('Clear heartbeat'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Clear heartbeat'));
+    await tester.ensureVisible(find.byTooltip('Clear heartbeat'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Clear heartbeat'));
     await tester.pumpAndSettle();
     expect(find.text('Clear heartbeat?'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilledButton, 'Clear'));
+    await tester.tap(find.byTooltip('Clear heartbeat').last);
     await tester.pumpAndSettle();
     expect(
       fixture.requests.any(
@@ -257,20 +496,39 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('chat actions opens background work for the current chat', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Chat actions'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Background work').last);
-    await tester.pumpAndSettle();
-
-    expect(find.text('Check the release queue'), findsOneWidget);
-    expect(find.text('Report deployment health'), findsOneWidget);
-    expect(find.text('dart run worker.dart'), findsOneWidget);
-  });
+  testWidgets(
+    'conversation discovers processes without recurring work or tools',
+    (tester) async {
+      fixture.recurring = false;
+      expect(chat.processes, isEmpty);
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: child!,
+          ),
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => []),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(chat.processes, hasLength(2));
+      await tester.tap(find.text('Background 1'));
+      await tester.pumpAndSettle();
+      expect(find.text('dart run worker.dart'), findsOneWidget);
+      expect(find.text('1 running'), findsOneWidget);
+      expect(find.text('dart test'), findsNothing);
+      expect(find.text('Background work'), findsNothing);
+      await tester.tap(find.text('dart run worker.dart'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.byTooltip('Stop process'));
+      await tester.tap(find.byTooltip('Stop process'));
+      await tester.pumpAndSettle();
+      expect(chat.processes.where((process) => process.isRunning), isEmpty);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

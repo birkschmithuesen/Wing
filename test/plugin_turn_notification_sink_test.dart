@@ -135,6 +135,7 @@ void main() {
     'show retries plugin initialization after a transient failure',
     () async {
       var initializeCalls = 0;
+      final posted = <Map<dynamic, dynamic>>[];
       messenger.setMockMethodCallHandler(channel, (call) async {
         switch (call.method) {
           case 'initialize':
@@ -146,6 +147,7 @@ void main() {
           case 'getNotificationAppLaunchDetails':
             return <String, Object?>{'notificationLaunchedApp': false};
           case 'show':
+            posted.add(call.arguments as Map<dynamic, dynamic>);
             return null;
         }
         return null;
@@ -164,6 +166,8 @@ void main() {
       );
 
       expect(initializeCalls, 2);
+      expect(posted, hasLength(1));
+      expect(posted.single['payload'], 'target');
     },
   );
 

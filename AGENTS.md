@@ -1,43 +1,46 @@
-# Hermes deployment constraint
+# Wing workspace
 
-Wing targets **the latest upstream, unmodified Hermes**, including changes on
-upstream main. Before designing or implementing an integration, verify the current
-stock API and record the inspected commit; a local checkout or an older deployed
-server does not define the target. Implement features entirely in the Android
-client. Backward compatibility requires the user's explicit approval.
+Before planning or editing Wing, read [the internal working instructions](internal/AGENTS.md)
+and the [Wing feature map](docs/FEATURE_MAP.md), the golden product reference.
+Read the affected feature files and connected journeys before changing code.
 
-Backend patches, forks, plugins and custom endpoints are out of scope. Backend
-checkouts are read-only references. Updating a deployed server is a separate
-deployment action; targeting current upstream does not authorize an upgrade.
+Feature-map maintenance is part of every feature implementation, behaviour fix,
+refactor or removal by default. Follow the map’s
+[maintenance contract](docs/FEATURE_MAP.md#maintain-a-feature) in the same PR;
+before marking work complete, reconcile every affected entry with the delivered
+source and verification, and report the checked feature IDs. If the map remains
+accurate, state why no update was needed.
 
-Verify the stock API before designing a feature. If it cannot support the requested
-behavior, state that limitation and discuss a client-only design. Never silently
-change shared profile settings to simulate an unsaved voice preview.
+- Before implementing app, native or tooling changes, use
+  [maintain-feature-architecture](internal/tools/agent_skills/maintain-feature-architecture/SKILL.md)
+  for ownership, interfaces, coupling and the final design review.
+- For feature verification or map upkeep, use
+  [verify-wing](.agents/skills/verify-wing/SKILL.md) for harness launch, user-path
+  driving, evidence, cleanup and recipe maintenance.
 
-# UI design
+For every feature or fix that changes a visible control, navigation, action
+admission or asynchronous UI behavior, follow the [UI workflow](internal/AGENTS.md#ui-design)
+before planning or editing, even when the implementation is mostly controller code.
 
-For UI work, read [the Studio design charter](docs/DESIGN_SYSTEM.md) before changing screens, components, themes, or interaction layouts. It owns the selected appearance, component rules, and behavior-preservation contract. Use its shared tokens for new and existing controls, including light and dark states.
+The private `wing-internal` repository must be cloned into `internal/` for
+engineering work. If it is missing, obtain its clone URL and access from the
+project owner before proceeding. The feature map and verification skill are
+self-contained in app Git; public CI runs from the app source alone.
 
-For administration UI, also read [the ownership handoff](docs/design/2026-09-14-administration-handoff.md). It defines profile-owned provider credentials and defaults, server operations, and runtime versus profile health. Planned capabilities and generated mockups are not evidence that a backend operation is implemented.
+For commit/push requests, stage only the completed task's app changes and run
+`python3 scripts/wing_save.py "<message>"`. Use `--commit-only` for local commits
+and `--push-only` to retry publication. The full save and recovery workflow is in
+[internal contributor instructions](internal/CONTRIBUTING.md#workspace-saves).
 
-## Design before implementation
+Keep plans, specs, architecture, research, design decisions, audit evidence and
+other development procedures under `internal/`. The canonical `docs/FEATURE_MAP.md`,
+`docs/features/` and `.agents/skills/verify-wing/` belong in app Git alongside code
+so feature changes and their recipes are reviewed in the same PR. Public Git also
+contains executable checks/build configuration, user guides, release notes and legal assets.
 
-For new screens and layout changes, apply the frontend-design skill's planning
-and critique process within Studio's established visual language.
-
-1. State the user's task and primary action. Separate editable controls, passive
-   context and temporary status before choosing components.
-2. Sketch at least two plausible arrangements; compare visual weight, repeated
-   information, taps and reachability. Present the recommended design when the
-   user asks for a proposal; a proposal request authorizes design work only.
-3. Challenge every heading, card, label and sentence: retain it only if it helps
-   the user decide, act or recover. Keep provider/context metadata subordinate
-   to controls. Show sample speech through playback; keep its script out of the
-   ordinary UI. Give transient saving feedback without permanent success clutter.
-4. Before declaring UI complete, inspect actual rendered screens at normal phone
-   size, then enlarged text in both themes. Check hierarchy and density as well
-   as selection, loading, errors and action reachability. Revise what looks or
-   feels wrong; passing widget tests alone does not establish design quality.
+Wing targets the latest upstream, unmodified Hermes. Integrations belong entirely
+in the Android client; backend patches, forks, plugins and custom endpoints are
+out of scope. Compatibility behavior requires the user's explicit approval.
 
 # Fork changelog
 
@@ -50,3 +53,11 @@ entry to `CHANGELOG.fork.md` (What, Why, merge commit hash, card number) and,
 if it is a new user-visible feature, a line in the README feature list
 linking to its docs file. This is checked at review/merge time; a card
 without both is not done.
+
+# Fork notes
+
+- Wing Voice targets stock Hermes. Upstream's live voice call needs the Wing Hermes plugin; fork work does
+  not depend on or extend it.
+- `docs/DESIGN_SYSTEM.md` and the administration handoff were removed upstream (moved to a private
+  workspace). Public UI references: `docs/features/ui-foundations.md`, `docs/FEATURE_MAP.md`.
+- Upstream's `scripts/wing_save.py` and private `internal/` workflow do not apply to the fork factory.

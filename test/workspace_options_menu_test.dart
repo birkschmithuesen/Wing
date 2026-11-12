@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -17,17 +18,40 @@ void main() {
   _OptionsReviewBinding();
   setUpAll(() async {
     const root = String.fromEnvironment('PREVIEW_FONT_ROOT');
-    if (root.isNotEmpty) {
-      final loader = FontLoader('Roboto')
-        ..addFont(
-          File(
-            '$root/Roboto-Regular.ttf',
-          ).readAsBytes().then(ByteData.sublistView),
+    Uri fontDirectory;
+    if (root.isEmpty) {
+      final packageConfig = File('.dart_tool/package_config.json').absolute;
+      final config = jsonDecode(await packageConfig.readAsString());
+      if (config is! Map<String, dynamic> || config['packages'] is! List) {
+        throw StateError('The generated package configuration is invalid.');
+      }
+      final flutter = (config['packages'] as List)
+          .where((row) => row is Map && row['name'] == 'flutter')
+          .single;
+      if (flutter['rootUri'] is! String) {
+        throw StateError('The Flutter package root is invalid.');
+      }
+      final packageRoot = packageConfig.uri.resolve(
+        flutter['rootUri'] as String,
+      );
+      if (packageRoot.scheme != 'file') {
+        throw StateError(
+          'The Flutter package root must be a local SDK directory.',
         );
-      await loader.load();
-      await (FontLoader('MaterialIcons')..addFont(
-            File(
-              '$root/MaterialIcons-Regular.otf',
+      }
+      fontDirectory = Directory.fromUri(
+        packageRoot,
+      ).parent.parent.uri.resolve('bin/cache/artifacts/material_fonts/');
+    } else {
+      fontDirectory = Directory(root).absolute.uri;
+    }
+    for (final font in {
+      'Roboto': 'Roboto-Regular.ttf',
+      'MaterialIcons': 'MaterialIcons-Regular.otf',
+    }.entries) {
+      await (FontLoader(font.key)..addFont(
+            File.fromUri(
+              fontDirectory.resolve(font.value),
             ).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
@@ -80,57 +104,130 @@ void main() {
   }
 
   for (final brightness in Brightness.values) {
+    testWidgets(
+      'automated label paints complete word at 320dp and 2x ${brightness.name}',
+      (tester) async {
+        String? selected;
+        await show(
+          tester,
+          brightness: brightness,
+          scale: 2,
+          onSelected: (value) => selected = value,
+        );
+        final control = find.byKey(
+          const ValueKey('chat-menu-include-automated'),
+        );
+        await tester.scrollUntilVisible(control, 100);
+        await tester.pumpAndSettle();
+        expect(control.hitTestable(), findsOneWidget);
+        expect(tester.getSize(control).height, greaterThanOrEqualTo(48));
+        final label = find.descendant(
+          of: control,
+          matching: find.text('Show automated chats'),
+        );
+        expect(label, findsOneWidget);
+        final paragraph = tester.renderObject<RenderParagraph>(label);
+        const text = 'Show automated chats';
+        expect(paragraph.text.toPlainText(), text);
+        final painted = Offset.zero & paragraph.size;
+        for (final fragment in ['chats', 'ats']) {
+          final boxes = paragraph.getBoxesForSelection(
+            TextSelection(
+              baseOffset: text.length - fragment.length,
+              extentOffset: text.length,
+            ),
+          );
+          expect(
+            boxes,
+            isNotEmpty,
+            reason: 'the complete $fragment must be painted',
+          );
+          for (final box in boxes) {
+            expect(painted.inflate(.5).contains(box.toRect().topLeft), isTrue);
+            expect(
+              painted.inflate(.5).contains(box.toRect().bottomRight),
+              isTrue,
+            );
+          }
+        }
+        for (
+          var offset = text.length - 'chats'.length;
+          offset < text.length;
+          offset++
+        ) {
+          expect(
+            paragraph.getBoxesForSelection(
+              TextSelection(baseOffset: offset, extentOffset: offset + 1),
+            ),
+            isNotEmpty,
+            reason: 'each letter of chats must remain painted',
+          );
+        }
+        expect(tester.takeException(), isNull);
+        await tester.tap(control);
+        await tester.pumpAndSettle();
+        expect(selected, 'include-automated');
+        expect(find.text(text), findsNothing);
+      },
+    );
     for (final scale in [1.0, 2.0]) {
       testWidgets('${brightness.name} menu at 320dp and ${scale}x text', (
         tester,
       ) async {
         final semantics = tester.ensureSemantics();
-        String? selected;
-        await show(
-          tester,
-          brightness: brightness,
-          scale: scale,
-          onSelected: (value) => selected = value,
-        );
-        expect(tester.takeException(), isNull);
-        expect(find.text('Show automated chats'), findsOneWidget);
-        await tester.scrollUntilVisible(find.text('New project'), 160);
-        await tester.pumpAndSettle();
-        expect(find.text('New project').hitTestable(), findsOneWidget);
-        await tester.drag(find.byType(ListView), const Offset(0, 600));
-        await tester.pumpAndSettle();
-        final unread = find.byKey(
-          const ValueKey('chat-menu-include-automated'),
-        );
-        expect(tester.getSize(unread).height, greaterThanOrEqualTo(48));
-        expect(
-          tester
-              .getSemantics(unread)
-              .getSemanticsData()
-              .hasAction(ui.SemanticsAction.tap),
-          isTrue,
-        );
-        if (const bool.fromEnvironment('OPTIONS_REVIEW')) {
-          await tester.runAsync(() async {
-            final boundary = tester.renderObject<RenderRepaintBoundary>(
-              find.byKey(const ValueKey('options-preview')),
-            );
-            final image = await boundary.toImage();
-            final data = await image.toByteData(format: ui.ImageByteFormat.png);
-            final file = File(
-              'build/options-review/${brightness.name}-$scale.png',
-            );
-            await file.parent.create(recursive: true);
-            await file.writeAsBytes(data!.buffer.asUint8List());
-            image.dispose();
-          });
+        try {
+          String? selected;
+          await show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            onSelected: (value) => selected = value,
+          );
+          expect(tester.takeException(), isNull);
+          expect(find.text('Show automated chats'), findsOneWidget);
+          await tester.scrollUntilVisible(find.text('New project'), 160);
+          await tester.pumpAndSettle();
+          expect(find.text('New project').hitTestable(), findsOneWidget);
+          await tester.drag(find.byType(ListView), const Offset(0, 600));
+          await tester.pumpAndSettle();
+          final unread = find.byKey(
+            const ValueKey('chat-menu-include-automated'),
+          );
+          expect(tester.getSize(unread).height, greaterThanOrEqualTo(48));
+          expect(
+            tester
+                .getSemantics(unread)
+                .getSemanticsData()
+                .hasAction(ui.SemanticsAction.tap),
+            isTrue,
+          );
+          if (const bool.fromEnvironment('OPTIONS_REVIEW')) {
+            await tester.runAsync(() async {
+              final boundary = tester.renderObject<RenderRepaintBoundary>(
+                find.byKey(const ValueKey('options-preview')),
+              );
+              final image = await boundary.toImage();
+              final data = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/options-review/${brightness.name}-$scale.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(data!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+          // The switch edge activates the same single menu action as the label.
+          await tester.tapAt(
+            tester.getTopRight(unread) + const Offset(-20, 24),
+          );
+          await tester.pumpAndSettle();
+          expect(selected, 'include-automated');
+          expect(find.text('Show automated chats'), findsNothing);
+        } finally {
+          semantics.dispose();
         }
-        // The switch edge activates the same single menu action as the label.
-        await tester.tapAt(tester.getTopRight(unread) + const Offset(-20, 24));
-        await tester.pumpAndSettle();
-        expect(selected, 'include-automated');
-        expect(find.text('Show automated chats'), findsNothing);
-        semantics.dispose();
       });
     }
   }
@@ -176,7 +273,10 @@ void main() {
   });
 
   testWidgets('disabled workspace cannot open menu', (tester) async {
-    await show(tester, enabled: false);
-    expect(find.text('Refresh'), findsNothing);
+    String? selected;
+    await show(tester, enabled: false, onSelected: (value) => selected = value);
+    expect(find.text('Show automated chats'), findsNothing);
+    expect(find.text('New project'), findsNothing);
+    expect(selected, isNull);
   });
 }

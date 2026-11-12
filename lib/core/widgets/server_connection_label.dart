@@ -13,6 +13,18 @@ typedef WorkspacePickerCallback =
 
 const _connectionIdentityGap = 6.0;
 
+/// Shared recovery sheet for header status controls and connection alerts.
+Future<void> showServerConnectionDetails(
+  BuildContext context, {
+  required String label,
+  required ServerConnectionStatus? status,
+}) => showModalBottomSheet<void>(
+  context: context,
+  isScrollControlled: true,
+  useSafeArea: true,
+  builder: (_) => _ConnectionDetails(label: label, status: status),
+);
+
 class ServerConnectionScope extends InheritedWidget {
   final ServerConnectionStatus status;
   final WorkspacePickerCallback? onPickWorkspace;
@@ -79,12 +91,8 @@ class ServerConnectionLabel extends StatelessWidget {
     final effectiveIcon = icon ?? scope?.icon ?? ConnectionIcon.server;
     final identity =
         '$label${suffix == null || suffix!.isEmpty ? '' : ' · $suffix'}';
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (context) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget labelBody() => Row(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,29 +107,32 @@ class ServerConnectionLabel extends StatelessWidget {
           excludeSemantics: true,
           child: Tooltip(
             message: 'Connection details',
-            child: InkWell(
-              borderRadius: WingRadius.control,
-              onTap: openDetails,
-              child: SizedBox(
-                width: 48,
-                height: 48,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        effectiveIcon.glyph,
-                        size: 16,
-                        color:
-                            style?.color ??
-                            Theme.of(context).textTheme.bodySmall?.color,
-                      ),
-                      const SizedBox(width: 8),
-                      _ConnectionLed(
-                        phase: status?.phase ?? ServerConnectionPhase.unchecked,
-                      ),
-                    ],
+            child: StudioButtonPress(
+              child: InkWell(
+                borderRadius: WingRadius.control,
+                onTap: openDetails,
+                child: SizedBox(
+                  width: 48,
+                  height: 48,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          effectiveIcon.glyph,
+                          size: 16,
+                          color:
+                              style?.color ??
+                              Theme.of(context).textTheme.bodySmall?.color,
+                        ),
+                        const SizedBox(width: 8),
+                        _ConnectionLed(
+                          phase:
+                              status?.phase ?? ServerConnectionPhase.unchecked,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -141,26 +152,28 @@ class ServerConnectionLabel extends StatelessWidget {
                   : () => scope!.onPickWorkspace!(anchor, mode: mode),
               child: Tooltip(
                 message: pickerLabel,
-                child: InkWell(
-                  key: const ValueKey('workspace-picker-target'),
-                  borderRadius: WingRadius.control,
-                  onTap: scope?.onPickWorkspace == null
-                      ? null
-                      : () => scope!.onPickWorkspace!(anchor, mode: mode),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(
-                      minHeight: 48,
-                      minWidth: 48,
-                    ),
-                    child: Align(
-                      alignment: alignment,
-                      widthFactor: 1,
-                      heightFactor: 1,
-                      child: Text(
-                        identity,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: style ?? Theme.of(context).textTheme.bodySmall,
+                child: StudioButtonPress(
+                  child: InkWell(
+                    key: const ValueKey('workspace-picker-target'),
+                    borderRadius: WingRadius.control,
+                    onTap: scope?.onPickWorkspace == null
+                        ? null
+                        : () => scope!.onPickWorkspace!(anchor, mode: mode),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(
+                        minHeight: 48,
+                        minWidth: 48,
+                      ),
+                      child: Align(
+                        alignment: alignment,
+                        widthFactor: 1,
+                        heightFactor: 1,
+                        child: Text(
+                          identity,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: style ?? Theme.of(context).textTheme.bodySmall,
+                        ),
                       ),
                     ),
                   ),
@@ -193,12 +206,8 @@ class DrawerConnectionLabel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final label = connection?.label ?? 'No server selected';
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget contents() {
       final description = '$label, ${status?.description ?? 'Not checked'}';
       final onTap = connection == null ? null : openDetails;
@@ -210,41 +219,44 @@ class DrawerConnectionLabel extends StatelessWidget {
         excludeSemantics: true,
         child: Tooltip(
           message: description,
-          child: InkWell(
-            key: const ValueKey('menu-connection'),
-            borderRadius: WingRadius.control,
-            onTap: onTap,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 48),
-              child: Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Align(
-                  alignment: Alignment.bottomLeft,
-                  heightFactor: 1,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        (connection?.icon ?? ConnectionIcon.server).glyph,
-                        size: 18,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
-                      const SizedBox(width: _connectionIdentityGap),
-                      Flexible(
-                        child: Text(
-                          label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(
-                            context,
-                          ).textTheme.bodySmall?.copyWith(fontSize: 13),
+          child: StudioButtonPress(
+            child: InkWell(
+              key: const ValueKey('menu-connection'),
+              borderRadius: WingRadius.control,
+              onTap: onTap,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 48),
+                child: Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Align(
+                    alignment: Alignment.bottomLeft,
+                    heightFactor: 1,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          (connection?.icon ?? ConnectionIcon.server).glyph,
+                          size: 18,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
-                      ),
-                      const SizedBox(width: _connectionIdentityGap),
-                      _ConnectionLed(
-                        phase: status?.phase ?? ServerConnectionPhase.unchecked,
-                      ),
-                    ],
+                        const SizedBox(width: _connectionIdentityGap),
+                        Flexible(
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(fontSize: 13),
+                          ),
+                        ),
+                        const SizedBox(width: _connectionIdentityGap),
+                        _ConnectionLed(
+                          phase:
+                              status?.phase ?? ServerConnectionPhase.unchecked,
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -275,12 +287,8 @@ class ServerConnectionIndicator extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    void openDetails() => showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _ConnectionDetails(label: label, status: status),
-    );
+    void openDetails() =>
+        showServerConnectionDetails(context, label: label, status: status);
     Widget contents() => Semantics(
       button: true,
       label:
@@ -288,17 +296,19 @@ class ServerConnectionIndicator extends StatelessWidget {
       focusable: true,
       onTap: openDetails,
       excludeSemantics: true,
-      child: InkWell(
-        onTap: openDetails,
-        child: SizedBox(
-          width: 48,
-          height: 48,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 16),
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: _ConnectionLed(
-                phase: status?.phase ?? ServerConnectionPhase.unchecked,
+      child: StudioButtonPress(
+        child: InkWell(
+          onTap: openDetails,
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 16),
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: _ConnectionLed(
+                  phase: status?.phase ?? ServerConnectionPhase.unchecked,
+                ),
               ),
             ),
           ),
@@ -421,10 +431,12 @@ class _ConnectionDetails extends StatelessWidget {
                       style: theme.textTheme.titleLarge?.copyWith(fontSize: 20),
                     ),
                   ),
-                  IconButton(
-                    tooltip: 'Close connection details',
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close),
+                  StudioButtonPress(
+                    child: IconButton(
+                      tooltip: 'Close connection details',
+                      onPressed: () => Navigator.pop(context),
+                      icon: const Icon(Icons.close),
+                    ),
                   ),
                 ],
               ),
@@ -475,8 +487,17 @@ class _ConnectionDetails extends StatelessWidget {
                   padding: const EdgeInsets.only(top: 16),
                   child: StudioError(status!.problem!),
                 ),
+              if (status?.chatEndpointUnsupported == true)
+                Padding(
+                  padding: const EdgeInsets.only(top: 16),
+                  child: Text(
+                    'Open the instance menu, choose Edit instance and check the gateway Webapp address.',
+                    style: theme.textTheme.bodySmall,
+                  ),
+                ),
               if (status?.phase == ServerConnectionPhase.disconnected &&
-                  status?.recoveryProblem == null)
+                  status?.recoveryProblem == null &&
+                  status?.chatEndpointUnsupported != true)
                 Padding(
                   padding: const EdgeInsets.only(top: 16),
                   child: Text(
@@ -488,13 +509,14 @@ class _ConnectionDetails extends StatelessWidget {
                   status?.phase != ServerConnectionPhase.connected)
                 Padding(
                   padding: const EdgeInsets.only(top: 16),
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        status?.phase == ServerConnectionPhase.reconnecting
-                        ? null
-                        : () => status!.retry!(),
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Retry connection'),
+                  child: StudioButtonPress(
+                    child: IconButton.outlined(
+                      onPressed: status?.recoveryAttemptInProgress == true
+                          ? null
+                          : () => status!.retry!(),
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'Retry connection',
+                    ),
                   ),
                 ),
             ],

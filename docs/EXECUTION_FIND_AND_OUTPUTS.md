@@ -2,22 +2,25 @@
 
 ## Live execution
 
-Tool activity upserts by server identity, with output capped at 12,000 characters per displayed result. Expanded details preserve useful output while the ordinary transcript stays compact. Todo/progress revisions are server-owned and read-only. Reasoning and timing appear only when Hermes supplies them.
+Activity's Timeline preserves individual tool calls and supplied reasoning in order. Tasks, Agents and Work show their related progress. Expand a detail to read received content, or open a full reader for longer output. Progress reported by Hermes is read-only.
 
-String `review.summary` events appear as transient Activity notices, with a scoped limit of 20 and position-aware deduplication. Opening a notice shows its full text. It is not an approval or a persisted memory record.
+Tap anywhere on a task row's header to expand or collapse it. Expanded task text
+remains selectable and scrollable.
 
-System/control and agent-delivery presentation follows [Transcript projection](TRANSCRIPT_DISPLAY_TYPES.md). Raw history, row IDs and ordinal counts remain intact for actions and pagination.
+Completed timing uses supplied durations. An active call can show a labelled estimate; missing timing remains unavailable. Saved conversation content stays readable even when optional timing recovery fails. Source, commands and literal output have wrap controls.
+
+Temporary review notices can appear in Activity. Open one to read its full text; it is not an approval request or saved memory entry. See [Tool activity](TOOL_ACTIVITY.md) for more.
 
 ## Find in chat
 
-Start with the most recent 500 loaded messages. Search older loads additional server history, keeping existing results and retrying the same offset after a failure. Verify the history segment when compaction changes boundaries. A partial result set must not be presented as a complete archive search.
+Find starts with the most recent 500 loaded messages. **Search older** loads more history while retaining existing results. A failed load offers retry. Results cover the loaded history, rather than the entire archive until all needed pages are searched.
 
-View in chat opens a bounded historical context with up to four nearby rows on either side and a highlighted result. This view is read-only; saved-message edits require the normal verified live history. Back to latest returns to the active conversation and its draft. Keep that action reachable even when a long result is expanded.
+**View in chat** opens a highlighted result with up to four nearby messages on either side. This view is read-only. **Back to latest** returns to the live conversation and its draft.
 
 ## Per-chat Outputs
 
-Outputs indexes file references in recent history, initially 500 messages, with older batches available. It is not an authoritative filesystem inventory. Retain loaded results after a failed refresh and exclude passive cache paths from suggestions. Old references can return 404 if the server no longer exposes the file.
+Outputs lists file references in recent history, initially 500 messages, with older batches available. It is a conversation index, rather than a complete server filesystem inventory. A failed refresh retains loaded results. Old references may be unavailable if Hermes no longer exposes the file.
 
-Direct Markdown links to supported result files use the same authenticated file client. Resolve them with the original connection/profile/chat, not a later selection. File errors distinguish unavailable/missing content from transient failures, offering Retry only where useful.
+Supported file links use the original conversation's connection and profile. Missing content and temporary failures have distinct errors, with Retry where useful. See [Output viewers](OPENING_OUTPUT_FILES.md) for formats, download limits and preview restrictions.
 
-Use [Output viewers](OPENING_OUTPUT_FILES.md) for formats, download limits and sandbox boundaries. There is no general remote filesystem browser or global artifact library.
+Wing does not offer a general remote filesystem browser or global artifact library.

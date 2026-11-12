@@ -4,12 +4,32 @@ import 'package:flutter/foundation.dart';
 
 import '../models/backend_update.dart';
 import 'profile_gateway.dart';
+import 'backend_update_channels.dart';
 import 'workspace_connection_failure.dart';
 
 class BackendUpdateController extends ChangeNotifier {
   final ProfileGateway gateway;
+  final bool cloudManaged;
 
   BackendUpdateCheck? check;
+  BackendUpdateChannel? channel;
+  bool channelSaving = false;
+  late final _channels = BackendUpdateChannels(
+    gateway,
+    readHealth: _readHealth,
+  );
+  Future<Map<String, dynamic>>? _healthRead;
+  Future<void>? _availabilityRead;
+
+  Future<Map<String, dynamic>> _readHealth() async {
+    final request = _healthRead ??= gateway.read('health');
+    try {
+      return await request;
+    } finally {
+      if (identical(_healthRead, request)) _healthRead = null;
+    }
+  }
+
   String? installedVersion;
   bool versionLoading = false;
   bool versionStale = false;
@@ -26,17 +46,69 @@ class BackendUpdateController extends ChangeNotifier {
   int _versionObservation = 0;
   int _checkGeneration = 0;
   int _statusGeneration = 0;
+  Timer? _statusPoll;
+  Future<void>? _statusRead;
+  int updateAttempt = 0;
   String? _actionId;
   int? _actionPid;
 
-  BackendUpdateController(this.gateway);
+  BackendUpdateController(this.gateway, {this.cloudManaged = false});
 
   bool get requestOutstanding => _requestOutstanding;
   bool get canStart =>
+      !cloudManaged &&
+      !checking &&
+      !statusLoading &&
+      !channelSaving &&
       !starting &&
       !_requestOutstanding &&
       phase != BackendUpdatePhase.running &&
-      check?.canStart == true;
+      check?.canStart == true &&
+      channel?.error == null &&
+      channel?.targetSha != null;
+
+  bool get canOpenChannelEditor =>
+      !cloudManaged &&
+      !statusLoading &&
+      !starting &&
+      !channelSaving &&
+      !_requestOutstanding &&
+      phase != BackendUpdatePhase.running &&
+      check?.canApply != false &&
+      channel?.canSelect != false;
+
+  bool get canSelectChannel =>
+      canOpenChannelEditor &&
+      !checking &&
+      check?.canApply == true &&
+      channel?.canSelect == true;
+
+  Future<(BackendUpdateCheck, BackendUpdateChannel?)> _readUpdateCheck() async {
+    return _channels.check();
+  }
+
+  void _publishCheck(BackendUpdateCheck next, BackendUpdateChannel? track) {
+    check = next;
+    channel = track;
+    if (next.currentVersion case final version?) {
+      _versionObservation++;
+      installedVersion = version;
+      versionStale = false;
+    }
+    final identityMissing = next.canApply == true && track == null;
+    phase = next.failed || identityMissing || track?.error != null
+        ? BackendUpdatePhase.unknown
+        : BackendUpdatePhase.ready;
+    message = next.failed
+        ? next.message ?? 'Update availability could not be checked. Try again.'
+        : identityMissing
+        ? 'The update channel could not be verified. Check for updates again.'
+        : track?.error != null
+        ? 'The ${track!.name} channel could not be checked. Try again.'
+        : next.behind == 0
+        ? null
+        : next.message;
+  }
 
   /// Installed identity must not wait for the host's remote GitHub comparison.
   Future<void> _readInstalledVersion() async {
@@ -47,9 +119,9 @@ class BackendUpdateController extends ChangeNotifier {
     try {
       for (var attempt = 0; attempt < 2; attempt++) {
         try {
-          final health = await gateway
-              .read('health')
-              .timeout(const Duration(seconds: 5));
+          final health = await _readHealth().timeout(
+            const Duration(seconds: 5),
+          );
           if (_disposed || observation != _versionObservation) return;
           final version = health['version'];
           if (health['ok'] != true ||
@@ -79,19 +151,31 @@ class BackendUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> checkForUpdate() async {
-    if (checking ||
+  Future<void> checkForUpdate() {
+    if (cloudManaged) {
+      return _readInstalledVersion();
+    }
+    if (channelSaving ||
         starting ||
         _requestOutstanding ||
         phase == BackendUpdatePhase.running ||
         _disposed) {
-      return;
+      return Future.value();
     }
-    await Future.wait([_readInstalledVersion(), _checkForUpdate()]);
+    return _availabilityRead ??= _refreshAvailability();
+  }
+
+  Future<void> _refreshAvailability() async {
+    try {
+      await Future.wait([_readInstalledVersion(), _checkForUpdate()]);
+    } finally {
+      _availabilityRead = null;
+    }
   }
 
   Future<void> _checkForUpdate() async {
     if (checking ||
+        channelSaving ||
         starting ||
         _requestOutstanding ||
         phase == BackendUpdatePhase.running) {
@@ -99,23 +183,15 @@ class BackendUpdateController extends ChangeNotifier {
     }
     final generation = ++_checkGeneration;
     checking = true;
-    message = null;
     _notify();
     try {
-      final next = BackendUpdateCheck.fromJson(
-        await gateway.read('hermes/update/check', {'force': 'true'}),
-      );
+      final (next, track) = await _readUpdateCheck();
       if (!_currentCheck(generation)) return;
-      check = next;
-      if (next.currentVersion case final version?) {
-        _versionObservation++;
-        installedVersion = version;
-        versionStale = false;
-      }
-      phase = BackendUpdatePhase.ready;
+      _publishCheck(next, track);
     } catch (_) {
       if (!_currentCheck(generation)) return;
       check = null;
+      channel = null;
       phase = BackendUpdatePhase.unknown;
       message = 'Update availability could not be checked. Try again.';
     } finally {
@@ -126,14 +202,24 @@ class BackendUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<bool> startUpdate() async {
-    if (starting ||
+  Future<bool> startUpdate({
+    required BackendUpdateChannel approvedChannel,
+    required bool Function() canDispatch,
+  }) async {
+    if (cloudManaged ||
+        _disposed ||
+        !canDispatch() ||
+        channelSaving ||
+        starting ||
         _requestOutstanding ||
         phase == BackendUpdatePhase.running) {
       return false;
     }
     final generation = ++_checkGeneration;
+    updateAttempt++;
+    _statusPoll?.cancel();
     _statusGeneration++;
+    _statusRead = null;
     statusLoading = false;
     status = null;
     _actionId = null;
@@ -145,27 +231,47 @@ class BackendUpdateController extends ChangeNotifier {
     _notify();
     var posted = false;
     try {
-      final fresh = BackendUpdateCheck.fromJson(
-        await gateway.read('hermes/update/check', {'force': 'true'}),
-      );
+      final (fresh, track) = await _readUpdateCheck();
       if (!_currentCheck(generation)) return false;
-      check = fresh;
-      if (fresh.currentVersion case final version?) {
-        _versionObservation++;
-        installedVersion = version;
-        versionStale = false;
-      }
-      if (!fresh.canStart) {
+      if (!canDispatch()) {
         phase = BackendUpdatePhase.refused;
-        message = fresh.canApply != true
+        message =
+            'This update action is no longer active. Nothing was started.';
+        return false;
+      }
+      _publishCheck(fresh, track);
+      if (track == null || !approvedChannel.sameUpdateIntent(track)) {
+        phase = BackendUpdatePhase.refused;
+        message = track == null
+            ? 'The update channel could not be verified. Nothing was started.'
+            : 'The update channel or target changed. Review it before updating.';
+        return false;
+      }
+      if (!fresh.canStart ||
+          fresh.failed ||
+          track.error != null ||
+          track.targetSha == null) {
+        phase = BackendUpdatePhase.refused;
+        message = fresh.failed
+            ? fresh.message ??
+                  'Update availability could not be checked. Nothing was started.'
+            : fresh.canApply != true
             ? 'This server did not confirm that updates can be applied from the app.'
             : 'The server reports no update is available.';
         return false;
       }
 
-      _requestOutstanding = true;
-      posted = true;
-      final response = await gateway.post('hermes/update');
+      phase = BackendUpdatePhase.starting;
+
+      final response = await gateway.postOwned(
+        'hermes/update',
+        const {},
+        canDispatch: () => _currentCheck(generation) && canDispatch(),
+        onDispatched: () {
+          _requestOutstanding = true;
+          posted = true;
+        },
+      );
       if (!_currentCheck(generation)) return false;
       if (response['ok'] == false) {
         _requestOutstanding = false;
@@ -198,7 +304,7 @@ class BackendUpdateController extends ChangeNotifier {
       phase = BackendUpdatePhase.running;
       message = alreadyRunning
           ? 'A backend update is already running on this host. Its status is now tracked.'
-          : 'Backend update started. Check update progress to follow it.';
+          : 'Backend update started. Following update progress.';
       return true;
     } catch (_) {
       if (!_currentCheck(generation)) return false;
@@ -211,14 +317,96 @@ class BackendUpdateController extends ChangeNotifier {
       if (_currentCheck(generation)) {
         starting = false;
         _notify();
+        if (phase == BackendUpdatePhase.running) {
+          _statusPoll = Timer(
+            Duration.zero,
+            () => unawaited(refreshStatus(background: true)),
+          );
+        }
       }
     }
   }
 
-  Future<void> refreshStatus() async {
-    if (statusLoading || starting) return;
+  Future<bool> selectChannel(
+    String name,
+    BackendUpdateChannel approved, {
+    required bool Function() canDispatch,
+  }) async {
+    if (_disposed ||
+        !canDispatch() ||
+        !canSelectChannel ||
+        name == channel?.name ||
+        !{'stable', 'main'}.contains(name)) {
+      return false;
+    }
+    final generation = ++_checkGeneration;
+    channelSaving = true;
+    message = null;
+    _notify();
+    var saved = false;
+    try {
+      final (fresh, track) = await _readUpdateCheck();
+      if (!_currentCheck(generation) || !canDispatch()) return false;
+      _publishCheck(fresh, track);
+      if (fresh.canApply != true ||
+          track == null ||
+          !track.canSelect ||
+          !approved.sameInstallation(track) ||
+          approved.name != track.name ||
+          approved.branch != track.branch) {
+        message = 'The server update channel changed. Review it before saving.';
+        return false;
+      }
+      await _channels.save(
+        track,
+        name,
+        canDispatch: () => _currentCheck(generation) && canDispatch(),
+      );
+      if (!_currentCheck(generation)) return false;
+      saved = true;
+      check = null;
+      channel = null;
+      final (next, nextTrack) = await _readUpdateCheck();
+      if (!_currentCheck(generation)) return false;
+      _publishCheck(next, nextTrack);
+      if (nextTrack?.name != name) {
+        phase = BackendUpdatePhase.unknown;
+        message =
+            'The $name channel was saved, but its update check could not be confirmed. Check again.';
+      }
+      return true;
+    } catch (_) {
+      if (!_currentCheck(generation)) return false;
+      check = null;
+      channel = null;
+      phase = BackendUpdatePhase.unknown;
+      message = saved
+          ? 'The $name channel was saved, but its update check failed. Check again.'
+          : 'The channel save could not be confirmed. Try again.';
+      return false;
+    } finally {
+      if (_currentCheck(generation)) {
+        channelSaving = false;
+        _notify();
+      }
+    }
+  }
+
+  Future<void> refreshStatus({bool background = false}) {
+    if (cloudManaged || _disposed || starting || channelSaving) {
+      return Future.value();
+    }
+    if (!background && !statusLoading) {
+      statusLoading = true;
+      _notify();
+    }
+    return _statusRead ??= _refreshStatus(background: background);
+  }
+
+  Future<void> _refreshStatus({required bool background}) async {
+    _statusPoll?.cancel();
     final generation = ++_statusGeneration;
-    statusLoading = true;
+    statusLoading = !background;
     _notify();
     try {
       final next = BackendUpdateStatus.fromJson(
@@ -234,8 +422,15 @@ class BackendUpdateController extends ChangeNotifier {
       message = 'Backend update status is unavailable. Check again.';
     } finally {
       if (_currentStatus(generation)) {
+        _statusRead = null;
         statusLoading = false;
         _notify();
+        if (phase == BackendUpdatePhase.running) {
+          _statusPoll = Timer(
+            const Duration(seconds: 2),
+            () => unawaited(refreshStatus(background: true)),
+          );
+        }
       }
     }
   }
@@ -283,7 +478,7 @@ class BackendUpdateController extends ChangeNotifier {
       return;
     }
     String? outcome;
-    if ((exactAction || sameProcessExit) && pid != null) {
+    if (pid != null) {
       final receipt = await _readReceipt(generation);
       if (!_currentStatus(generation)) return;
       if (receipt?.pid == pid) outcome = receipt?.outcome;
@@ -347,6 +542,7 @@ class BackendUpdateController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _statusPoll?.cancel();
     _checkGeneration++;
     _statusGeneration++;
     super.dispose();

@@ -2,6 +2,40 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/backend_update.dart';
 
 void main() {
+  test('invalid counts cannot grant update eligibility', () {
+    for (final count in [null, -2, '2', 2.5, double.nan, true]) {
+      final check = BackendUpdateCheck.fromJson({
+        'behind': count,
+        'can_apply': true,
+        'update_available': true,
+      });
+      expect(check.failed, isTrue);
+      expect(check.canStart, isFalse);
+      expect(check.behind, isNull);
+    }
+  });
+  test('unknown release count and failed check are distinct stock results', () {
+    final release = BackendUpdateCheck.fromJson({
+      'behind': -1,
+      'can_apply': true,
+      'update_available': true,
+      'rollback_to': ' 0.21.6 ',
+      'message': ' This moves back to stable. ',
+    });
+    expect(release.behind, isNull);
+    expect(release.failed, isFalse);
+    expect(release.canStart, isTrue);
+    expect(release.rollbackTo, '0.21.6');
+    expect(release.message, 'This moves back to stable.');
+    expect(
+      BackendUpdateCheck.fromJson({'can_apply': true, 'behind': null}).failed,
+      isTrue,
+    );
+    expect(
+      BackendUpdateCheck.fromJson({'can_apply': false, 'behind': null}).failed,
+      isFalse,
+    );
+  });
   test('parses stock commit summaries and epoch seconds in server order', () {
     final check = BackendUpdateCheck.fromJson({
       'commits': [
@@ -41,6 +75,7 @@ void main() {
           'current_version': '1.2.3',
           'update_available': true,
           'can_apply': true,
+          'behind': -1,
           'commits': rows,
         });
         expect(check.canStart, isTrue);

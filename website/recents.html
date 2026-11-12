@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Filter ongoing work, switch conversations with two fingers and browse a persistent card stack.">
+<title>Recents · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html" aria-current="page">Recents</a>
+<a href="live-work.html">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<h1 id="guide-title">Multitask<br> with Recents</h1>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside><nav class="guide-toc" aria-label="Page contents">
+<a href="#view">Find running work and chats waiting for you</a>
+<a href="#switch">Switch chats with two fingers</a>
+<a href="#attention">Notice replies while you work elsewhere</a>
+</nav></aside>
+<div class="guide-copy">
+<section id="view" aria-labelledby="view-title">
+<h2 id="view-title">Find running work and chats waiting for you</h2>
+<p>Recents gathers chats with messages from the last 24 hours and ongoing work across profiles on your current connection. Cards show the latest message, work or input status and unread replies, ordered by message freshness. Older conversations remain in Chats.</p>
+<p>Detached agents and processes can keep a chat visible as ongoing work even when its main turn has ended. This status shows what Hermes reports; live controls still depend on the chat's availability.</p>
+<p>Tap a conversation to open it with its profile selected.</p><figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/recents-dark.png" aria-label="Enlarge screenshot: Wing Recents showing running work and chats waiting for input across profiles"><img src="assets/screenshots/recents-dark.png" width="780" height="1688" alt="Wing Recents showing running work and chats waiting for input across profiles" loading="lazy"></a>
+</div>
+</figure>
+</section>
+<section id="switch" aria-labelledby="switch-title">
+<h2 id="switch-title">Switch chats with two fingers</h2>
+<p>From any chat or group discussion, swipe sideways with two fingers to move to the next or previous conversation. Diagonal swipes work too. The last chat links back to the first.</p>
+<p>Pinch inward to open the card stack. Lift your fingers and it stays open. Swipe through the cards with one finger, then tap a card to expand that conversation.</p><figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/recents-stack-dark.png" aria-label="Enlarge screenshot: Wing Recents card stack with conversation previews and swipe-to-browse controls"><img src="assets/screenshots/recents-stack-dark.png" width="780" height="1688" alt="Wing Recents card stack with conversation previews and swipe-to-browse controls" loading="lazy"></a>
+</div>
+</figure>
+<p>Back closes the card stack first, then returns to Recents. Opening a chat directly from Chats, Bots or Groups keeps that list as its return destination.</p>
+</section>
+<section id="attention" aria-labelledby="attention-title">
+<h2 id="attention-title">Notice replies while you work elsewhere</h2>
+<p>A soft edge cue points toward another conversation with a new reply. Amber indicates a confirmed request for your input. You can check that chat without returning to the list, even while typing. Tool activity alone does not create an unread reply. Reading progress and your place in the conversation are tracked separately during the current app session.</p>
+<figure class="guide-shot guide-inline-shot ripple-demo" data-ripple-demo>
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/recents-arrival-dark.png" aria-label="Enlarge screenshot: Reply arrival ripples at the edge of a Wing conversation">
+<picture><source type="image/gif" data-ripple-source><img src="assets/screenshots/recents-arrival-dark.png" width="780" height="1688" alt="Reply arrival ripples at the right edge while another Wing conversation stays open" loading="lazy"></picture>
+</a>
+</div>
+<button class="icon-button ripple-replay" type="button" data-ripple-replay hidden aria-label="Replay reply ripple animation" title="Replay reply ripple animation">
+<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 10a9 9 0 1 1 2.6 8.4M3 4v6h6"/></svg>
+</button>
+<p class="ripple-error" role="status" hidden>Animation could not load. Use replay to try again.</p>
+</figure>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="workspaces.html">Profiles, projects and view controls</a>
+<a class="text-link" href="live-work.html">Inspect and steer running work</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html">Get connected</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>

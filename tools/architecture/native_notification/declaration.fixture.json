@@ -1,0 +1,214 @@
+{
+  "schema": 1,
+  "rule": "NATIVE_RETIRED_DECLARATION",
+  "cases": [
+    {
+      "name": "original two declarations",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {\n companion object { private const val summaryId = 214602 }\n}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(\n private val random: () -> String = { UUID.randomUUID().toString() },\n val now: () -> Long,\n) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "BackgroundMonitoringService.kt",
+          3,
+          "BackgroundMonitoringService.summaryId"
+        ],
+        [
+          "NotificationInteractionSecurity.kt",
+          3,
+          "NotificationHandleStore.random"
+        ]
+      ]
+    },
+    {
+      "name": "live clock and UUID",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(private val now: () -> Long) { fun issue() = UUID.randomUUID().toString() }\n"
+      },
+      "exit": 0,
+      "findings": []
+    },
+    {
+      "name": "service direct member",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { val summaryId = 1 }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "BackgroundMonitoringService.kt",
+          2,
+          "BackgroundMonitoringService.summaryId"
+        ]
+      ]
+    },
+    {
+      "name": "named companion backtick property",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { companion object State { val `summaryId` = 1 } }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "BackgroundMonitoringService.kt",
+          2,
+          "BackgroundMonitoringService.summaryId"
+        ]
+      ]
+    },
+    {
+      "name": "service constructor property",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService(val summaryId: Int) {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "BackgroundMonitoringService.kt",
+          2,
+          "BackgroundMonitoringService.summaryId"
+        ]
+      ]
+    },
+    {
+      "name": "mutable constructor property",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(var random: () -> String) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "NotificationInteractionSecurity.kt",
+          2,
+          "NotificationHandleStore.random"
+        ]
+      ]
+    },
+    {
+      "name": "plain constructor option",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(random: () -> String) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "NotificationInteractionSecurity.kt",
+          2,
+          "NotificationHandleStore.random"
+        ]
+      ]
+    },
+    {
+      "name": "backtick constructor option",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(`random`: () -> String) {}\n"
+      },
+      "exit": 1,
+      "findings": [
+        [
+          "NotificationInteractionSecurity.kt",
+          2,
+          "NotificationHandleStore.random"
+        ]
+      ]
+    },
+    {
+      "name": "unrelated same spellings",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { fun start() { val summaryId = 1 }; class Other { val summaryId = 2 } }\nclass OtherService { companion object { const val summaryId = 3 } }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) { fun issue() { val random = UUID.randomUUID().toString() }; fun other(random: String) {} }\nclass OtherHandles(val random: String) {}\n"
+      },
+      "exit": 0,
+      "findings": []
+    },
+    {
+      "name": "comments and display strings",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { // private const val summaryId = 214602\n val label = \"summaryId\" }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) { val label = \"random\" /* random: () -> String */ }\n"
+      },
+      "exit": 0,
+      "findings": []
+    },
+    {
+      "name": "body clock and unrelated body field",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore { val now = System.currentTimeMillis(); val random = UUID.randomUUID().toString() }\n"
+      },
+      "exit": 0,
+      "findings": []
+    },
+    {
+      "name": "companion local same spelling",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { companion object { fun start() { val summaryId = 1 } } }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 0,
+      "findings": []
+    },
+    {
+      "name": "malformed service",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { broken (",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 2,
+      "findings": []
+    },
+    {
+      "name": "malformed handles beats prior violation",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService { val summaryId = 1 }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore( broken"
+      },
+      "exit": 2,
+      "findings": []
+    },
+    {
+      "name": "missing owner",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass OtherHandles(val random: String) {}\n"
+      },
+      "exit": 2,
+      "findings": []
+    },
+    {
+      "name": "duplicate owner",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\nclass BackgroundMonitoringService {}\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 2,
+      "findings": []
+    },
+    {
+      "name": "wrong package",
+      "files": {
+        "BackgroundMonitoringService.kt": "package unrelated\nclass BackgroundMonitoringService { val summaryId = 1 }\n",
+        "NotificationInteractionSecurity.kt": "package com.tarkilhk.wing\nclass NotificationHandleStore(val now: () -> Long) {}\n"
+      },
+      "exit": 2,
+      "findings": []
+    },
+    {
+      "name": "missing file",
+      "files": {
+        "BackgroundMonitoringService.kt": "package com.tarkilhk.wing\nclass BackgroundMonitoringService {}\n"
+      },
+      "exit": 2,
+      "findings": []
+    }
+  ]
+}

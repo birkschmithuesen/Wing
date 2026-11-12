@@ -1,18 +1,14 @@
+import '../../widgets/studio_form_actions.dart';
+import '../../widgets/wing_app_bar.dart';
 import 'dart:async';
 export 'admin_navigation.dart';
 import '../../theme/wing_theme.dart';
+import '../../theme/wing_icons.dart';
 import '../../widgets/server_connection_label.dart';
 import '../../widgets/workspace_picker.dart';
 import 'package:flutter/material.dart';
 
-import '../../services/administration_repository.dart';
 import '../../widgets/studio_error.dart';
-import '../../widgets/studio_action_label.dart';
-import '../../widgets/read_recovery.dart';
-import '../../services/workspace_connection_failure.dart';
-
-/// Inherit all Studio component states and the selected app accent.
-ThemeData administrationTheme(ThemeData base) => base;
 
 class AdminPage extends StatelessWidget {
   final String title;
@@ -31,75 +27,32 @@ class AdminPage extends StatelessWidget {
     this.bottomNavigationBar,
   });
   @override
-  Widget build(BuildContext context) => Theme(
-    data: administrationTheme(Theme.of(context)),
-    child: Builder(
-      builder: (context) => Scaffold(
-        appBar: AppBar(
-          toolbarHeight: adminToolbarHeight(
-            context,
-            title,
-            actions: actions.length,
-          ),
-          title: Text(title, maxLines: 6, softWrap: true),
-          actions: actions,
-        ),
-        bottomNavigationBar: bottomNavigationBar == null
-            ? null
-            : Padding(
-                padding: EdgeInsets.only(
-                  bottom: MediaQuery.viewInsetsOf(context).bottom,
-                ),
-                child: bottomNavigationBar,
-              ),
-        body: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: ServerConnectionScope.of(context) == null
-                  ? Text(scope, style: Theme.of(context).textTheme.bodySmall)
-                  : ServerConnectionLabel(
-                      label: scope,
-                      pickerMode: pickerMode,
-                      includeProfiles:
-                          scope != ServerConnectionScope.of(context)?.label,
-                      status: ServerConnectionScope.of(context),
-                    ),
-            ),
-            Expanded(child: child),
-          ],
-        ),
-      ),
-    ),
-  );
-}
+  Widget build(BuildContext context) => Scaffold(
+    appBar: WingAppBar(
+      context: context,
 
-/// Let long page titles grow at large text sizes instead of silently truncating.
-double adminToolbarHeight(
-  BuildContext context,
-  String title, {
-  int actions = 0,
-}) {
-  final theme = Theme.of(context);
-  final painter =
-      TextPainter(
-        text: TextSpan(
-          text: title,
-          style: theme.appBarTheme.titleTextStyle ?? theme.textTheme.titleLarge,
-        ),
-        textDirection: Directionality.of(context),
-        textScaler: MediaQuery.textScalerOf(context),
-        maxLines: 6,
-      )..layout(
-        maxWidth: (MediaQuery.sizeOf(context).width - 88 - actions * 48).clamp(
-          80,
-          double.infinity,
-        ),
-      );
-  final height = (painter.height + 16).clamp(kToolbarHeight, double.infinity);
-  painter.dispose();
-  return height;
+      title: Text(title, maxLines: 6, softWrap: true),
+      actions: actions,
+      contextRow: ServerConnectionScope.of(context) == null
+          ? Text(scope, style: Theme.of(context).textTheme.bodySmall)
+          : ServerConnectionLabel(
+              label: scope,
+              pickerMode: pickerMode,
+              includeProfiles:
+                  scope != ServerConnectionScope.of(context)?.label,
+              status: ServerConnectionScope.of(context),
+            ),
+    ),
+    bottomNavigationBar: bottomNavigationBar == null
+        ? null
+        : Padding(
+            padding: EdgeInsets.only(
+              bottom: MediaQuery.viewInsetsOf(context).bottom,
+            ),
+            child: bottomNavigationBar,
+          ),
+    body: child,
+  );
 }
 
 class AdminGroup extends StatelessWidget {
@@ -125,24 +78,6 @@ class AdminGroup extends StatelessWidget {
           children[i],
         ],
       ],
-    ),
-  );
-}
-
-class AdminSectionLabel extends StatelessWidget {
-  const AdminSectionLabel(this.label, {super.key});
-  final String label;
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.fromLTRB(0, 20, 0, 8),
-    child: Semantics(
-      header: true,
-      child: Text(
-        label,
-        style: Theme.of(context).textTheme.labelLarge?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
-      ),
     ),
   );
 }
@@ -175,36 +110,12 @@ class AdminEditorActions extends StatelessWidget {
             style: Theme.of(context).textTheme.bodySmall,
           ),
           const SizedBox(height: 4),
-          Row(
-            children: [
-              Expanded(
-                flex: 2,
-                child: TextButton(
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                  onPressed: saving ? null : onClose,
-                  child: const Text('Close'),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                flex: 3,
-                child: FilledButton(
-                  style: FilledButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                  ),
-                  onPressed: saving ? null : onSave,
-                  child: StudioActionLabel('Save', busy: saving),
-                ),
-              ),
-            ],
+          StudioFormActions(
+            onCancel: saving ? null : onClose,
+            onConfirm: saving ? null : onSave,
+            confirmLabel: 'Save changes',
+            busy: saving,
+            progressLabel: 'Saving changes',
           ),
         ],
       ),
@@ -219,6 +130,7 @@ class AdminRow extends StatefulWidget {
   final String? attention;
   final String? detail;
   final IconData icon;
+  final Color? iconColor;
   final VoidCallback? onTap;
   const AdminRow({
     super.key,
@@ -228,6 +140,7 @@ class AdminRow extends StatefulWidget {
     this.attention,
     this.detail,
     required this.icon,
+    this.iconColor,
     this.onTap,
   });
   @override
@@ -267,37 +180,39 @@ class _AdminRowState extends State<AdminRow> {
     color: _changed
         ? Theme.of(context).colorScheme.primaryContainer
         : Colors.transparent,
-    child: ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-      minTileHeight: 64,
-      minVerticalPadding: 8,
-      leading: Icon(widget.icon, size: 22),
-      title: Text(
-        widget.title,
-        style: const TextStyle(fontWeight: FontWeight.w600),
-      ),
-      subtitle: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (widget.attention != null) ...[
-            const SizedBox(height: 4),
-            AdminAttention(widget.attention!),
-            const SizedBox(height: 4),
+    child: StudioButtonPress(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        minTileHeight: 64,
+        minVerticalPadding: 8,
+        leading: Icon(widget.icon, size: 22, color: widget.iconColor),
+        title: Text(
+          widget.title,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (widget.attention != null) ...[
+              const SizedBox(height: 4),
+              AdminAttention(widget.attention!),
+              const SizedBox(height: 4),
+            ],
+            if (widget.detail != null)
+              Text(
+                widget.detail!,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+            Text(widget.subtitle, style: Theme.of(context).textTheme.bodySmall),
           ],
-          if (widget.detail != null)
-            Text(
-              widget.detail!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodySmall,
-            ),
-          Text(widget.subtitle, style: Theme.of(context).textTheme.bodySmall),
-        ],
+        ),
+        trailing: widget.onTap == null
+            ? null
+            : const Icon(Icons.chevron_right, size: 20),
+        onTap: widget.onTap,
       ),
-      trailing: widget.onTap == null
-          ? null
-          : const Icon(Icons.chevron_right, size: 20),
-      onTap: widget.onTap,
     ),
   );
 }
@@ -307,24 +222,12 @@ class AdminAttention extends StatelessWidget {
   const AdminAttention(this.label, {super.key});
   final String label;
   @override
-  Widget build(BuildContext context) {
-    final color = WingTokens.of(context).warning;
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(Icons.error_outline, size: 16, color: color),
-        const SizedBox(width: 6),
-        Flexible(
-          child: Text(
-            label,
-            style: Theme.of(
-              context,
-            ).textTheme.labelMedium?.copyWith(color: color),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => StudioError(
+    label,
+    severity: StudioErrorSeverity.noResult,
+    announce: false,
+    framed: false,
+  );
 }
 
 class AdminNotice extends StatelessWidget {
@@ -344,122 +247,16 @@ class AdminNotice extends StatelessWidget {
         else
           Text(text, style: Theme.of(context).textTheme.bodyMedium),
         if (retry != null)
-          TextButton(onPressed: retry, child: const Text('Retry')),
+          StudioButtonPress(
+            child: IconButton(
+              onPressed: retry,
+              tooltip: 'Retry',
+              icon: const Icon(Icons.refresh),
+            ),
+          ),
       ],
     ),
   );
-}
-
-/// Retains the last observation on refresh failure and never renders failure as empty.
-class AdminLoad extends StatefulWidget {
-  final bool expand;
-  final Future<Map<String, dynamic>> Function() load;
-  final Widget Function(BuildContext, Map<String, dynamic>, VoidCallback)
-  builder;
-  const AdminLoad({
-    super.key,
-    required this.load,
-    required this.builder,
-    this.expand = true,
-  });
-  @override
-  State<AdminLoad> createState() => _AdminLoadState();
-}
-
-class _AdminLoadState extends State<AdminLoad> {
-  Map<String, dynamic>? _data;
-  DateTime? _checkedAt;
-  String? _error;
-  bool _loading = true;
-  bool _retryable = false;
-  int _generation = 0;
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    if (!mounted) return;
-    final generation = ++_generation;
-    setState(() {
-      _loading = true;
-      _error = null;
-      _retryable = false;
-    });
-    try {
-      final data = await widget.load();
-      if (mounted && generation == _generation) {
-        setState(() {
-          _data = data;
-          _checkedAt = DateTime.now();
-        });
-      }
-    } catch (e) {
-      if (mounted && generation == _generation) {
-        setState(() {
-          _error = administrationError(e);
-          _retryable = isTemporaryWorkspaceFailure(e);
-        });
-      }
-    } finally {
-      if (mounted && generation == _generation) {
-        setState(() => _loading = false);
-      }
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) => ReadRecovery(
-    shouldRetry: () => !_loading && _retryable,
-    retry: _load,
-    child: _body(context),
-  );
-
-  Widget _body(BuildContext context) => Column(
-    mainAxisSize: widget.expand ? MainAxisSize.max : MainAxisSize.min,
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (_loading) const LinearProgressIndicator(),
-      if (_error != null)
-        if (widget.expand)
-          Flexible(child: SingleChildScrollView(child: _failure(context)))
-        else
-          _failure(context),
-      if (_data != null)
-        if (widget.expand)
-          Expanded(key: const ValueKey('content'), child: _content(context))
-        else
-          KeyedSubtree(
-            key: const ValueKey('content'),
-            child: _content(context),
-          ),
-    ],
-  );
-
-  Widget _failure(BuildContext context) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16),
-    child: AdminNotice.error(
-      '${_data == null ? '' : 'Last checked ${TimeOfDay.fromDateTime(_checkedAt!).format(context)}. '}$_error',
-      retry: _loading ? null : _load,
-    ),
-  );
-
-  Widget _content(BuildContext context) {
-    try {
-      return widget.builder(context, _data!, _load);
-    } on FormatException {
-      return AdminNotice.error(
-        'The server returned an invalid response.',
-        retry: _load,
-      );
-    } on TypeError {
-      return AdminNotice.error(
-        'The server returned an incomplete response.',
-        retry: _load,
-      );
-    }
-  }
 }
 
 /// Bring a failed/partial save into view without moving focus into an input.
@@ -481,22 +278,23 @@ Future<bool> adminConfirm(
   BuildContext context,
   String title,
   String detail, {
-  String action = 'Continue',
+  required String action,
+  required IconData actionIcon,
+  required bool destructive,
 }) async =>
     await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StudioDialog(
         scrollable: true,
         title: Text(title),
         content: Text(detail),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: Text(action),
+          StudioFormActions(
+            onCancel: () => Navigator.pop(context, false),
+            onConfirm: () => Navigator.pop(context, true),
+            confirmLabel: action,
+            confirmIcon: actionIcon,
+            destructive: destructive,
           ),
         ],
       ),
@@ -507,6 +305,32 @@ void adminMessage(
   BuildContext context,
   String message, {
   bool isError = false,
-}) => ScaffoldMessenger.of(context).showSnackBar(
-  SnackBar(content: isError ? StudioError(message) : Text(message)),
-);
+}) {
+  if (isError) {
+    showStudioError(context, message);
+  } else {
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+}
+
+/// Shared diagnostic chat action for Doctor findings and failed schedules.
+class AdminAskHermesButton extends StatelessWidget {
+  const AdminAskHermesButton({
+    super.key,
+    required this.label,
+    required this.onPressed,
+  });
+  final String label;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) => StudioButtonPress(
+    child: TextButton.icon(
+      onPressed: onPressed,
+      icon: const Icon(WingIcons.newChat, size: 18),
+      label: Text(label),
+    ),
+  );
+}

@@ -55,6 +55,7 @@ class VoiceDeviceFixture with VadVoiceFixture implements VoiceDevice, VadVoiceDe
   Future<Uint8List?> stop(String id, {Duration timeout = const Duration(seconds: 5)}) async {
     calls.add('stop');
     lastStopTimeout = timeout;
+    if (recording != id) return null;
     return local == true ? null : Uint8List.fromList([1, 2, 3]);
   }
 

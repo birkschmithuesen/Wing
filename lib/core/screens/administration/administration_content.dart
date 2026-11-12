@@ -1,8 +1,22 @@
+import '../../widgets/selection_viewport.dart';
+import '../../models/scheduled_task.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../../widgets/wing_app_bar.dart';
+import '../../services/administration_logs_session.dart';
+import 'admin_plugins_page.dart';
+import '../../services/profile_plugins_session.dart';
+import '../../services/profile_skills_session.dart';
+import '../../services/profile_tool_setup_session.dart';
+import 'admin_provider_credentials.dart';
+import '../../services/profile_capabilities_session.dart';
+import '../../models/profile_session_key.dart';
+import 'package:wing/core/models/settings_edit.dart';
 import 'dart:async';
 import '../analytics_content.dart';
-import '../../services/administration_overview.dart';
-import '../../services/administration_health.dart';
-import '../../widgets/profile_diagnostics_panel.dart';
+import '../../models/profile_overview_summary.dart';
+import '../../services/profile_overview_session.dart';
+import '../../services/scheduled_tasks_controller.dart';
+import '../../services/profile_diagnostics_controller.dart';
 import '../../widgets/workspace_connection_status.dart';
 import '../../widgets/studio_error.dart';
 import '../../widgets/server_connection_label.dart';
@@ -12,7 +26,8 @@ import 'admin_profile_overview.dart';
 import 'package:flutter/material.dart';
 import '../../services/administration_repository.dart';
 import '../../services/profile_workspace_controller.dart';
-import '../../services/profile_color_store.dart';
+import '../../services/profiles_management_session.dart';
+import '../../services/profile_identity_edit_session.dart';
 import 'admin_identity_page.dart';
 import 'admin_profiles_page.dart';
 import '../profile_capabilities_screen.dart';
@@ -21,12 +36,14 @@ import 'admin_settings_page.dart';
 import 'admin_memory_page.dart';
 import 'admin_providers_page.dart';
 import 'admin_health_page.dart';
-import 'admin_runtime_health.dart';
 import 'admin_defaults_page.dart';
-import 'admin_connectors_page.dart';
+import 'admin_connector_routes.dart';
 import 'admin_tool_setup_page.dart';
+import 'admin_voice_routes.dart';
+import '../../services/android_voice.dart';
 import 'admin_skills_page.dart';
-import 'admin_operations_page.dart';
+import 'admin_hosted_connector_accounts_page.dart';
+import 'admin_logs_page.dart';
 import 'admin_scheduled_tasks_page.dart';
 
 class HermesAdministrationContent extends StatefulWidget {
@@ -35,6 +52,7 @@ class HermesAdministrationContent extends StatefulWidget {
   final VoidCallback? onConnections;
   final AdministrationRepository? repository;
   final Future<void> Function(ProfileSessionKey) onOpenSession;
+  final ValueChanged<ScheduledTaskInvestigationRequest>? onInvestigate;
   final bool healthOnly;
   const HermesAdministrationContent({
     super.key,
@@ -43,6 +61,7 @@ class HermesAdministrationContent extends StatefulWidget {
     this.onConnections,
     this.repository,
     required this.onOpenSession,
+    this.onInvestigate,
     this.healthOnly = false,
   });
   @override
@@ -55,65 +74,90 @@ class _HermesAdministrationContentState
   late final _healthSession = widget.controller.healthSession(
     repository: widget.repository,
   );
-  late final _server = widget.healthOnly
-      ? _healthSession.server
-      : widget.repository ??
-            AdministrationRepository.forConnection(
-              widget.controller.connection,
-              widget.controller.connectionIdentity,
-              connectionStatus: widget.controller.connectionStatus,
-            );
+  late final _server = _healthSession.server;
   String _search = '';
-  int _overviewRevision = 0;
-  Set<String> _overviewKeys = const {};
+  ProfileOverviewSession? _overviewSession;
+  String? _healthProfileName;
+  bool _refreshingHealth = false;
+  bool get _checkingProfile => _healthSession.checking(_profile?.name);
 
-  void _refreshAfter(_Destination destination) {
-    if (widget.healthOnly) {
-      unawaited(_refreshHealthProfile());
-      return;
+  void _selectOverviewProfile() {
+    if (widget.healthOnly) return;
+    final profile = _profile;
+    if (_overviewSession?.scope == profile?.scope) return;
+    _overviewSession?.removeListener(_overviewChanged);
+    _overviewSession?.dispose();
+    _overviewSession = profile == null
+        ? null
+        : ProfileOverviewSession(
+            profile,
+            widget.controller.preferences,
+            refreshWorkspace: widget.controller.refresh,
+          );
+    final session = _overviewSession;
+    if (session != null) {
+      session.addListener(_overviewChanged);
+      unawaited(session.load());
     }
-    unawaited(_health.refreshReadiness());
-    setState(() {
-      _overviewKeys = destination.summaryKeys;
-      _overviewRevision++;
-    });
   }
 
-  late final _health = widget.healthOnly
-      ? _healthSession.health
-      : AdministrationHealth(
-          _server,
-          connectionStatus: widget.controller.connectionStatus,
-        );
-  String? _healthProfileName;
-  bool _refreshing = false;
-  bool get _checkingProfile => _healthSession.checking(_profile?.name);
+  void _overviewChanged() {
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _openDestination(_Destination destination) async {
+    final openEditor = destination.open;
+    if (openEditor == null) return;
+    final session = _overviewSession;
+    final overviewDestination = destination.overviewDestination;
+    if (!widget.healthOnly && session != null && overviewDestination != null) {
+      await session.review(overviewDestination, openEditor);
+    } else {
+      await openEditor();
+      if (mounted && widget.healthOnly) await _refreshHealthProfile();
+    }
+  }
 
   void _selectHealthProfile() {
     if (!widget.healthOnly) return;
-    _healthSession.select(_profile == null ? null : widget.controller.current);
+    _healthSession.select(
+      _profile == null ? null : widget.controller.current?.gateway,
+    );
   }
 
   Future<void> _refreshHealthProfile() {
     final workspace = widget.controller.current;
     return workspace == null
         ? Future.value()
-        : _healthSession.refresh(workspace);
+        : _healthSession.refresh(workspace.gateway);
   }
 
   Future<void> _checkProfile() => _refreshHealthProfile();
 
-  final _accessChecks = <String, ProfileDiagnosticsController>{};
+  Future<void> Function(
+    Future<void> Function(ProfileAdministration profile) openEditor,
+  )?
+  _reviewAccessCommand() {
+    final workspace = widget.controller.current;
+    if (workspace == null || workspace.scope != _profile?.scope) return null;
+    return (openEditor) =>
+        _healthSession.reviewAccess(workspace.gateway, openEditor);
+  }
 
   @override
   void initState() {
     super.initState();
-    _healthProfileName = _profile?.name;
+    if (widget.healthOnly) {
+      _healthProfileName = _profile?.name;
+    }
     widget.controller.addListener(_workspaceChanged);
     _selectHealthProfile();
+    _selectOverviewProfile();
     if (widget.healthOnly) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) unawaited(refreshHealthDiagnostics(context, _health));
+        if (mounted) {
+          unawaited(_healthSession.health.refreshDiagnostics());
+        }
       });
     }
   }
@@ -121,73 +165,51 @@ class _HermesAdministrationContentState
   void _workspaceChanged() {
     if (!mounted) return;
     final name = _profile?.name;
-    if (name != _healthProfileName) {
+    if (widget.healthOnly && name != _healthProfileName) {
       _healthProfileName = name;
-      _health.selectProfile(null);
       _selectHealthProfile();
     }
-    _checksForCurrentProfile();
+    _selectOverviewProfile();
     setState(() {});
   }
 
   ProfileDiagnosticsController? _checksForCurrentProfile() {
     final workspace = widget.controller.current;
     if (workspace == null || workspace.scope != _profile?.scope) return null;
-    if (widget.healthOnly) return _healthSession.checksFor(workspace);
-    final checks = _accessChecks.putIfAbsent(
-      workspace.scope.storageNamespace,
-      () {
-        final checks = ProfileDiagnosticsController(
-          workspace: workspace,
-          connectionLabel: _server.connectionLabel,
-        );
-        checks.addListener(() {
-          if (mounted) _health.updateProfileChecks(checks.healthObservation);
-        });
-        return checks;
-      },
-    );
-    checks.updateWorkspace(
-      workspace: workspace,
-      connectionLabel: _server.connectionLabel,
-    );
-    return checks;
-  }
-
-  void _observeOverview(AdministrationOverview overview) {
-    if (!mounted || overview.profile.scope != _profile?.scope) return;
-    final changed = !identical(_health.overview, overview);
-    _health.selectProfile(overview);
-    if (changed) {
-      final checks = _checksForCurrentProfile();
-      if (checks != null) _health.updateProfileChecks(checks.healthObservation);
-      unawaited(_health.refreshReadiness());
-    }
+    return _healthSession.checksFor(workspace.gateway);
   }
 
   Future<void> _refresh() async {
-    if (_refreshing) return;
-    setState(() {
-      _refreshing = true;
-      _overviewKeys = {...AdministrationOverview.endpoints.keys, 'tasks'};
-      _overviewRevision++;
-    });
+    if (!widget.healthOnly) {
+      final session = _overviewSession;
+      if (session != null) {
+        await session.refresh();
+        if (mounted && identical(session, _overviewSession)) {
+          if (session.refreshError case final error?) {
+            showStudioError(context, error);
+          }
+        }
+      } else {
+        await widget.controller.refresh();
+      }
+      return;
+    }
+    if (_refreshingHealth) return;
+    setState(() => _refreshingHealth = true);
     try {
       await Future.wait([
         widget.controller.refresh(),
-        if (widget.healthOnly)
-          _refreshHealthProfile()
-        else
-          _health.refreshReadiness(),
+        _refreshHealthProfile(),
+        widget.controller
+            .hostResources(repository: widget.repository)
+            .refresh(),
       ]);
     } catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(administrationError(error))));
+        showStudioError(context, administrationError(error));
       }
     } finally {
-      if (mounted) setState(() => _refreshing = false);
+      if (mounted) setState(() => _refreshingHealth = false);
     }
   }
 
@@ -195,15 +217,9 @@ class _HermesAdministrationContentState
   @override
   void dispose() {
     widget.controller.removeListener(_workspaceChanged);
-    if (!widget.healthOnly) _health.dispose();
-    for (final checks in _accessChecks.values) {
-      checks.dispose();
-    }
+    _overviewSession?.removeListener(_overviewChanged);
+    _overviewSession?.dispose();
     _searchInput.dispose();
-    if (!widget.healthOnly && widget.repository == null) {
-      final server = _server;
-      scheduleMicrotask(server.close);
-    }
     super.dispose();
   }
 
@@ -216,15 +232,14 @@ class _HermesAdministrationContentState
   }
 
   Future<void> _manageProfiles() async {
+    final controller = widget.controller;
     await adminPush(
       context,
       (context) => AdminProfilesPage(
-        server: _server,
-        onOpenProfile: (name) async {
-          await widget.controller.switchProfile(name);
-          final opened = widget.controller.current?.scope.profileName == name;
-          return opened;
-        },
+        createSession: () => ProfilesManagementSession(
+          server: _server,
+          openProfile: controller.switchProfile,
+        ),
       ),
     );
     if (mounted) setState(() {});
@@ -237,19 +252,23 @@ class _HermesAdministrationContentState
     final manageAction = manage
         ? Tooltip(
             message: 'Manage profiles',
-            child: TextButton(
-              style: TextButton.styleFrom(
-                minimumSize: const Size(48, 36),
-                tapTargetSize: MaterialTapTargetSize.padded,
-                visualDensity: VisualDensity.standard,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
-                foregroundColor: colors.onSurfaceVariant,
-                backgroundColor: colors.surfaceContainerLow,
-                side: BorderSide(color: colors.outlineVariant),
-                shape: RoundedRectangleBorder(borderRadius: WingRadius.control),
+            child: StudioButtonPress(
+              child: TextButton(
+                style: TextButton.styleFrom(
+                  minimumSize: const Size(48, 36),
+                  tapTargetSize: MaterialTapTargetSize.padded,
+                  visualDensity: VisualDensity.standard,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  foregroundColor: colors.onSurfaceVariant,
+                  backgroundColor: colors.surfaceContainerLow,
+                  side: BorderSide(color: colors.outlineVariant),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: WingRadius.control,
+                  ),
+                ),
+                onPressed: _manageProfiles,
+                child: const Icon(Icons.manage_accounts_outlined),
               ),
-              onPressed: _manageProfiles,
-              child: const Icon(Icons.manage_accounts_outlined),
             ),
           )
         : null;
@@ -259,10 +278,7 @@ class _HermesAdministrationContentState
           )
         : ProfileSelector(
             profiles: profiles,
-            colors: ProfileColorStore(
-              widget.controller.preferences,
-              widget.controller.connectionIdentity,
-            ),
+            createColors: widget.controller.createProfileColors,
             selectedProfile: name,
             padding: EdgeInsets.zero,
             trailing: manageAction,
@@ -283,16 +299,16 @@ class _HermesAdministrationContentState
   }
 
   Future<void> _identity(ProfileAdministration profile) async {
-    final workspace = widget.controller.current;
+    final controller = widget.controller;
     final changed = await showAdminIdentityEditor(
       context,
-      gateway: workspace?.scope == profile.scope
-          ? workspace!.gateway
-          : profile.gateway,
-      connectionLabel: _server.connectionLabel,
+      createSession: () => ProfileIdentityEditSession(profile),
     );
-    if (changed && mounted && _profile?.name == profile.name) {
-      await widget.controller.refresh();
+    if (changed &&
+        mounted &&
+        identical(controller, widget.controller) &&
+        _profile?.scope == profile.scope) {
+      await controller.refresh();
     }
   }
 
@@ -334,6 +350,7 @@ class _HermesAdministrationContentState
               p,
               (context, profile) => AdminDefaultsPage(profile: profile),
             ),
+      overviewDestination: ProfileOverviewDestination.models,
     ),
     _Destination(
       'Profile',
@@ -341,6 +358,7 @@ class _HermesAdministrationContentState
       'Description and SOUL',
       Icons.person_outline,
       p == null ? null : () => _identity(p),
+      overviewDestination: ProfileOverviewDestination.identity,
     ),
     _Destination(
       'Profile',
@@ -354,6 +372,7 @@ class _HermesAdministrationContentState
               p,
               (context, profile) => AdminMemoryPage(profile: profile),
             ),
+      overviewDestination: ProfileOverviewDestination.memory,
     ),
     _Destination(
       'Profile',
@@ -365,32 +384,9 @@ class _HermesAdministrationContentState
           : () => adminPushProfile(
               context,
               p,
-              (context, profile) => ProfileCapabilitiesScreen(
-                gateway: profile.gateway,
-                connectionLabel: _server.connectionLabel,
-                onToolSetup: (name) => adminPushProfile(
-                  context,
-                  profile,
-                  (context, profile) =>
-                      AdminToolSetupPage(profile: profile, name: name),
-                ),
-                onLibrary: () => adminPushProfile(
-                  context,
-                  profile,
-                  (context, profile) => AdminSkillLibraryPage(profile: profile),
-                ),
-                onHub: () => adminPushProfile(
-                  context,
-                  profile,
-                  (context, profile) => AdminSkillHubPage(profile: profile),
-                ),
-                onPlugins: () => adminPushProfile(
-                  context,
-                  profile,
-                  (context, profile) => AdminPluginsPage(profile: profile),
-                ),
-              ),
+              (context, profile) => profileCapabilitiesPage(context, profile),
             ),
+      overviewDestination: ProfileOverviewDestination.skills,
     ),
     _Destination(
       'Profile',
@@ -407,7 +403,18 @@ class _HermesAdministrationContentState
                 p,
                 (context, profile) => AdminScheduledTasksPage(
                   profile: profile,
-                  preferences: widget.controller.preferences,
+                  onInvestigate: widget.onInvestigate == null
+                      ? null
+                      : (request) {
+                          widget.onInvestigate!(request);
+                          if (navigator.mounted) {
+                            navigator.popUntil((route) => route == root);
+                          }
+                        },
+                  acquireController: () => ScheduledTasksController.acquire(
+                    profile,
+                    widget.controller.preferences,
+                  ),
                   onOpenSession: (key) async {
                     await widget.onOpenSession(key);
                     if (navigator.mounted) {
@@ -417,6 +424,7 @@ class _HermesAdministrationContentState
                 ),
               );
             },
+      overviewDestination: ProfileOverviewDestination.scheduledTasks,
     ),
     _Destination(
       'Profile',
@@ -442,18 +450,29 @@ class _HermesAdministrationContentState
                       ),
                     ),
                     AdminRow(
+                      title: 'Connected apps',
+                      subtitle: 'Named work and personal app accounts',
+                      icon: Icons.apps_outlined,
+                      onTap: () => adminPushProfile(
+                        context,
+                        profile,
+                        (_, profile) =>
+                            AdminHostedConnectorAccountsPage(profile: profile),
+                      ),
+                    ),
+                    AdminRow(
                       title: 'MCP connectors',
                       subtitle: 'Status, tools, authentication and access',
                       icon: Icons.link,
                       onTap: () => adminPushProfile(
                         context,
                         profile,
-                        (context, profile) =>
-                            AdminConnectorsPage(profile: profile),
+                        (context, profile) => profileConnectorsPage(profile),
                       ),
                     ),
                   ]),
             ),
+      overviewDestination: ProfileOverviewDestination.access,
     ),
     _Destination(
       'Profile',
@@ -500,11 +519,15 @@ class _HermesAdministrationContentState
                   onTap: () => adminPushProfile(
                     context,
                     profile,
-                    (context, profile) => AdminVoicePage(profile: profile),
+                    (context, profile) => profileVoicePage(
+                      profile,
+                      device: AndroidVoice.instance,
+                    ),
                   ),
                 ),
               ]),
             ),
+      overviewDestination: ProfileOverviewDestination.behavior,
     ),
   ];
 
@@ -531,6 +554,7 @@ class _HermesAdministrationContentState
                   group.value,
                   initialField: field.key,
                 ),
+          overviewDestination: ProfileOverviewDestination.behavior,
         ),
     _Destination(
       'Profile',
@@ -544,6 +568,7 @@ class _HermesAdministrationContentState
               p,
               (context, profile) => AdminDefaultsPage(profile: profile),
             ),
+      overviewDestination: ProfileOverviewDestination.models,
     ),
     _Destination(
       'Profile',
@@ -555,8 +580,11 @@ class _HermesAdministrationContentState
           : () => adminPushProfile(
               context,
               p,
-              (context, profile) => AdminSkillHubPage(profile: profile),
+              (context, profile) => AdminSkillHubPage(
+                createSession: () => ProfileSkillsSession.hub(profile),
+              ),
             ),
+      overviewDestination: ProfileOverviewDestination.skillHub,
     ),
     _Destination(
       'Profile',
@@ -568,8 +596,9 @@ class _HermesAdministrationContentState
           : () => adminPushProfile(
               context,
               p,
-              (context, profile) => AdminConnectorsPage(profile: profile),
+              (context, profile) => profileConnectorsPage(profile),
             ),
+      overviewDestination: ProfileOverviewDestination.connectors,
     ),
     _Destination(
       'Profile',
@@ -581,8 +610,11 @@ class _HermesAdministrationContentState
           : () => adminPushProfile(
               context,
               p,
-              (context, profile) => AdminPluginsPage(profile: profile),
+              (context, profile) => AdminPluginsPage(
+                createSession: () => ProfilePluginsSession(profile),
+              ),
             ),
+      overviewDestination: null,
     ),
     _Destination(
       'Analytics',
@@ -596,36 +628,50 @@ class _HermesAdministrationContentState
               p,
               (context, profile) => AnalyticsPage(profile: profile),
             ),
+      overviewDestination: null,
     ),
     _Destination(
       'Runtime health',
       'Logs',
       'Errors, severity and search',
       Icons.subject,
-      () => adminPush(context, (context) => AdminLogsPage(server: _server)),
+      () {
+        final server = _server;
+        return adminPush(
+          context,
+          (context) => AdminLogsPage(
+            createSession: () => AdministrationLogsSession(server),
+          ),
+        );
+      },
+      overviewDestination: null,
     ),
   ];
 
-  Widget _searchField() => TextField(
-    controller: _searchInput,
-    decoration: InputDecoration(
-      hintText: MediaQuery.textScalerOf(context).scale(16) >= 24
-          ? 'Search'
-          : 'Search settings',
-      prefixIcon: const Icon(Icons.search),
-      suffixIcon: _search.isEmpty
-          ? null
-          : IconButton(
-              tooltip: 'Clear search',
-              icon: const Icon(Icons.close),
-              onPressed: () {
-                _searchInput.clear();
-                setState(() => _search = '');
-                FocusScope.of(context).unfocus();
-              },
-            ),
+  Widget _searchField() => viewportSelection(
+    TextField(
+      controller: _searchInput,
+      decoration: InputDecoration(
+        hintText: MediaQuery.textScalerOf(context).scale(16) >= 24
+            ? 'Search'
+            : 'Search settings',
+        prefixIcon: const Icon(Icons.search),
+        suffixIcon: _search.isEmpty
+            ? null
+            : StudioButtonPress(
+                child: IconButton(
+                  tooltip: 'Clear search',
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    _searchInput.clear();
+                    setState(() => _search = '');
+                    FocusScope.of(context).unfocus();
+                  },
+                ),
+              ),
+      ),
+      onChanged: (value) => setState(() => _search = value),
     ),
-    onChanged: (value) => setState(() => _search = value),
   );
 
   Widget? _searchResults(ProfileAdministration? profile) {
@@ -648,10 +694,7 @@ class _HermesAdministrationContentState
             icon: destination.icon,
             onTap: destination.open == null
                 ? null
-                : () async {
-                    await destination.open!();
-                    if (mounted) _refreshAfter(destination);
-                  },
+                : () => _openDestination(destination),
           ),
       ],
     );
@@ -663,12 +706,14 @@ class _HermesAdministrationContentState
       return ListenableBuilder(
         listenable: Listenable.merge([
           widget.controller,
-          _health,
+          _healthSession.health,
           _healthSession,
         ]),
         builder: (context, _) => AdminHealthContent(
-          server: _server,
-          health: _health,
+          health: _healthSession.health,
+          hostResources: widget.controller.hostResources(
+            repository: widget.repository,
+          ),
           persistenceError: _healthSession.persistenceError,
           profile: _profile,
           chatController: widget.controller,
@@ -686,6 +731,7 @@ class _HermesAdministrationContentState
           checkingProfile: _checkingProfile,
           profileCheckedAt: _healthSession.checkedAt(_profile?.name),
           accessChecks: _checksForCurrentProfile,
+          onReviewAccess: _reviewAccessCommand(),
           onConnections: widget.onConnections,
           onRefresh: _refresh,
           onOpenDestination: (title) async {
@@ -693,111 +739,98 @@ class _HermesAdministrationContentState
               _profile,
             ).where((d) => d.title == title).firstOrNull;
             if (destination?.open != null) {
-              await destination!.open!();
-              if (mounted) _refreshAfter(destination);
+              await _openDestination(destination!);
             }
           },
         ),
       );
     }
     final profile = _profile;
-    final large =
-        MediaQuery.textScalerOf(context).scale(16) >= 24 ||
-        adminToolbarHeight(context, 'Administration', actions: 1) >
-            kToolbarHeight;
-    final title = large
-        ? const Padding(
-            padding: EdgeInsets.only(bottom: 12),
-            child: Text(
-              'Administration',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
-            ),
-          )
-        : null;
     return Scaffold(
-      appBar: AppBar(
-        leading: IconButton(
-          tooltip: 'Open navigation menu',
-          icon: const Icon(Icons.menu),
-          onPressed: widget.onOpenMenu,
+      appBar: WingAppBar(
+        context: context,
+        leading: StudioButtonPress(
+          child: IconButton(
+            tooltip: 'Open navigation menu',
+            icon: const Icon(Icons.menu),
+            onPressed: widget.onOpenMenu,
+          ),
         ),
-        title: large ? null : const Text('Administration'),
+        title: const Text('Administration'),
+        contextRow: ServerConnectionLabel(
+          label: _server.connectionLabel,
+          suffix: profile?.name,
+          style: Theme.of(context).textTheme.bodySmall,
+          icon: widget.controller.connection.icon,
+          status: widget.controller.connectionStatus,
+        ),
         actions: [
-          IconButton(
-            tooltip: 'Refresh administration',
-            icon: const Icon(Icons.refresh),
-            onPressed: _refreshing || widget.controller.switching
-                ? null
-                : _refresh,
+          StudioButtonPress(
+            child: IconButton(
+              tooltip: 'Refresh administration',
+              icon: const Icon(Icons.refresh),
+              onPressed:
+                  _overviewSession?.refreshing == true ||
+                      widget.controller.switching
+                  ? null
+                  : _refresh,
+            ),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (widget.controller.switching) const LinearProgressIndicator(),
-          WorkspaceConnectionStatus(status: widget.controller.connectionStatus),
-          if (widget.controller.error != null)
-            ListTile(
-              title: StudioError(widget.controller.error!),
-              trailing: TextButton(
-                onPressed: widget.controller.retry,
-                child: const Text('Retry'),
-              ),
+      body: StudioLoadingRegion(
+        available: true,
+        busy: widget.controller.switching,
+        label: 'Switching profile',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            WorkspaceConnectionStatus(
+              status: widget.controller.connectionStatus,
             ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(minHeight: 40),
-              child: Align(
-                alignment: Alignment.centerLeft,
-                child: ServerConnectionLabel(
-                  label: _server.connectionLabel,
-                  suffix: profile?.name,
-                  style: Theme.of(context).textTheme.bodySmall,
-                  icon: widget.controller.connection.icon,
-                  status: widget.controller.connectionStatus,
+            if (widget.controller.error != null)
+              ListTile(
+                title: StudioError(widget.controller.error!),
+                trailing: StudioButtonPress(
+                  child: TextButton(
+                    onPressed: widget.controller.retry,
+                    child: const Text('Retry'),
+                  ),
                 ),
               ),
+            Expanded(
+              child: profile == null
+                  ? ListView(
+                      padding: const EdgeInsets.all(16),
+                      children: [
+                        _selector(manage: true),
+                        const SizedBox(height: 12),
+                        _searchField(),
+                        ?_searchResults(profile),
+                        if (_search.isEmpty)
+                          const AdminNotice(
+                            'Choose an available profile to manage its settings. Health remains accessible.',
+                          ),
+                      ],
+                    )
+                  : AdminProfileOverview(
+                      key: ValueKey(profile.scope.storageNamespace),
+                      metadata: widget.controller.discovery?.named(
+                        profile.name,
+                      ),
+                      session: _overviewSession!,
+                      selector: _selector(manage: true),
+                      search: _searchField(),
+                      searchResults: _searchResults(profile),
+                      destinations: {
+                        for (final d in _destinations(profile))
+                          ?d.overviewDestination: d.open,
+                      },
+                    ),
             ),
-          ),
-          Expanded(
-            child: profile == null
-                ? ListView(
-                    padding: const EdgeInsets.all(16),
-                    children: [
-                      ?title,
-                      _selector(manage: true),
-                      const SizedBox(height: 12),
-                      _searchField(),
-                      ?_searchResults(profile),
-                      if (_search.isEmpty)
-                        const AdminNotice(
-                          'Choose an available profile to manage its settings. Health remains accessible.',
-                        ),
-                    ],
-                  )
-                : AdminProfileOverview(
-                    key: ValueKey(profile.scope.storageNamespace),
-                    profile: profile,
-                    revision: _overviewRevision,
-                    refreshKeys: _overviewKeys,
-                    metadata: widget.controller.discovery?.named(profile.name),
-                    preferences: widget.controller.preferences,
-                    selector: _selector(manage: true),
-                    search: _searchField(),
-                    searchResults: _searchResults(profile),
-                    titleBeforeSelector: title,
-                    onOverviewChanged: _observeOverview,
-                    onRefreshCompleted: _health.refreshReadiness,
-                    onTasksChanged: _health.updateTasks,
-                    destinations: {
-                      for (final d in _destinations(profile)) d.title: d.open,
-                    },
-                  ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -813,6 +846,7 @@ class HermesHealthContent extends HermesAdministrationContent {
     super.onConnections,
     super.repository,
     required super.onOpenSession,
+    super.onInvestigate,
   }) : super(healthOnly: true);
 }
 
@@ -820,30 +854,15 @@ class _Destination {
   final String tab, title, subtitle;
   final IconData icon;
   final FutureOr<void> Function()? open;
-  const _Destination(this.tab, this.title, this.subtitle, this.icon, this.open);
-  Set<String> get summaryKeys {
-    if (const {
-      'Memory settings',
-      'Execution',
-      'Approval policy',
-      'Compression',
-      'Reach and recovery',
-    }.contains(subtitle)) {
-      return {'config'};
-    }
-    return switch (title) {
-      'Models and reasoning' ||
-      'Helper models' => {'model', 'config', 'access'},
-      'Memory' || 'Behavior' => {'config'},
-      'Skills and tools' => {'skills', 'tools', 'access'},
-      'Skill Hub' => {'skills'},
-      'Access and connectors' => {'access', 'connectors'},
-      'MCP connectors' => {'connectors'},
-      'Scheduled tasks' => {'tasks'},
-      _ => {},
-    };
-  }
-
+  final ProfileOverviewDestination? overviewDestination;
+  const _Destination(
+    this.tab,
+    this.title,
+    this.subtitle,
+    this.icon,
+    this.open, {
+    required this.overviewDestination,
+  });
   String get path {
     if (tab == 'Profile') {
       if (const {
@@ -885,3 +904,57 @@ class _Destination {
     );
   }
 }
+
+/// Shared composition for the profile menu and alert recovery.
+Widget profileCapabilitiesPage(
+  BuildContext context,
+  ProfileAdministration profile,
+) => ProfileCapabilitiesScreen(
+  createSession: () => ProfileCapabilitiesSession(profile.gateway),
+  connectionLabel: profile.server.connectionLabel,
+  onConnectedApps: () => adminPushProfile(
+    context,
+    profile,
+    (_, profile) => AdminHostedConnectorAccountsPage(profile: profile),
+  ),
+  onMcpConnectors: () => adminPushProfile(
+    context,
+    profile,
+    (_, profile) => profileConnectorsPage(profile),
+  ),
+  onToolSetup: (name) => adminPushProfile(
+    context,
+    profile,
+    (context, profile) => name == 'tts'
+        ? profileSpeechSynthesisPage(profile, device: AndroidVoice.instance)
+        : AdminToolSetupPage(
+            createSession: () => ProfileToolSetupSession(profile, tool: name),
+            onCredential: (context, field) => adminPushProfile(
+              context,
+              profile,
+              (context, profile) =>
+                  AdminSecretPage(profile: profile, name: field.key),
+            ),
+          ),
+  ),
+  onLibrary: () => adminPushProfile(
+    context,
+    profile,
+    (context, profile) => AdminSkillLibraryPage(
+      createSession: () => ProfileSkillsSession.library(profile),
+    ),
+  ),
+  onHub: () => adminPushProfile(
+    context,
+    profile,
+    (context, profile) => AdminSkillHubPage(
+      createSession: () => ProfileSkillsSession.hub(profile),
+    ),
+  ),
+  onPlugins: () => adminPushProfile(
+    context,
+    profile,
+    (context, profile) =>
+        AdminPluginsPage(createSession: () => ProfilePluginsSession(profile)),
+  ),
+);

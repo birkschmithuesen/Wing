@@ -7,7 +7,17 @@ class ProviderAccess {
   ProviderAccess(this.row, {DateTime? now}) : checkedAt = now ?? DateTime.now();
 
   Map get status => row['status'] is Map ? row['status'] as Map : const {};
-  String get id => row['id'] as String? ?? '';
+
+  /// Stock provider rows carry a nonempty identity even when status is sparse.
+  /// Validate before replacing a retained observation, not during rendering.
+  static void validateIdentity(Map<String, dynamic> row) {
+    final id = row['id'];
+    if (id is! String || id.trim().isEmpty) {
+      throw const FormatException('Invalid stock provider identity');
+    }
+  }
+
+  String get id => row['id'] as String;
   String get name => switch (id) {
     'claude-code' => 'Claude Code',
     'openai-codex' => 'ChatGPT / Codex',
@@ -16,7 +26,6 @@ class ProviderAccess {
   };
   bool get external => row['flow'] == 'external';
   DateTime? get expiresAt => providerStatusDate(status['expires_at']);
-  DateTime? get lastRefresh => providerStatusDate(status['last_refresh']);
   bool get canRefresh => status['has_refresh_token'] == true;
   bool get hasCredential => status['logged_in'] == true || expiresAt != null;
 
@@ -36,13 +45,6 @@ class ProviderAccess {
   bool get needsAttention =>
       state == ProviderAccessState.expired ||
       state == ProviderAccessState.unknown;
-  String get label => switch (state) {
-    ProviderAccessState.connected => 'Connected',
-    ProviderAccessState.expired => 'Token expired',
-    ProviderAccessState.signedOut => 'Not connected',
-    ProviderAccessState.external => 'Check external sign-in',
-    ProviderAccessState.unknown => 'Status unavailable',
-  };
   String get detail => switch (state) {
     ProviderAccessState.connected => 'Credentials detected by the server.',
     ProviderAccessState.expired when canRefresh =>

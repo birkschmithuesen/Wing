@@ -1,3 +1,9 @@
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/services/doctor_finding_draft_session.dart';
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -8,10 +14,10 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
-import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/theme/wing_icons.dart';
 
 import 'support/administration_fixture.dart';
 import 'support/profile_browser_fixture.dart';
@@ -73,25 +79,46 @@ void main() {
         addTearDown(tester.view.reset);
         final fixture = AdministrationFixture();
         SharedPreferences.setMockInitialValues({});
+        final preferences = await SharedPreferences.getInstance();
+        final appPreferences = AppPreferences(preferences);
+        addTearDown(appPreferences.dispose);
         final controller = ProfileWorkspaceController(
-          connection: SavedConnection(
-            id: fixture.id,
-            label: fixture.id,
-            host: 'localhost',
-            port: 1,
-            apiKey: '',
+          access: ConnectionAccess(
+            connection: SavedConnection(
+              id: fixture.id,
+              label: fixture.id,
+              host: 'localhost',
+              port: 1,
+              apiKey: '',
+            ),
+            dashboardOAuth: null,
           ),
           connectionIdentity: fixture.server.connectionIdentity,
-          preferences: await SharedPreferences.getInstance(),
+          preferences: preferences,
+          appPreferences: appPreferences,
           gatewayFactory: ProfileBrowserFixture().gateway,
         );
         await controller.initialize();
         addTearDown(controller.dispose);
         var runs = 0;
-        final opening = Completer<void>();
+        var opening = Completer<void>();
+        var opened = 0;
+        addTearDown(() {
+          if (!opening.isCompleted) opening.complete();
+        });
         fixture.override = (method, path, query, body) async {
-          return {'pid': 7, 'running': false, 'exit_code': 0, 'lines': lines};
+          return {
+            'name': 'doctor',
+            'pid': 7,
+            'running': false,
+            'exit_code': 1,
+            'lines': lines,
+          };
         };
+        final operation = fixtureOperation(
+          fixture.server,
+          const AdministrationAction('doctor', 7),
+        );
         await tester.pumpWidget(
           MaterialApp(
             debugShowCheckedModeBanner: false,
@@ -106,11 +133,14 @@ void main() {
               ),
             ),
             home: AdminActionPage(
-              server: fixture.server,
-              action: const AdministrationAction('doctor', 7),
+              operation: operation,
               title: 'Doctor',
-              chatController: controller,
-              onOpenSession: (_) => opening.future,
+              createDraftSession: () =>
+                  DoctorFindingDraftSession(operation, controller),
+              onOpenSession: (_) {
+                opened++;
+                return opening.future;
+              },
               onRunAgain: () async {
                 runs++;
               },
@@ -120,6 +150,7 @@ void main() {
         );
         await tester.pumpAndSettle();
         expect(find.text('3 issues found'), findsOneWidget);
+        expect(find.text('Failed'), findsNothing);
         expect(find.text('Ask Hermes'), findsNWidgets(3));
         expect(find.text(lines.join('\n')), findsNothing);
         expect(find.text('Completed'), findsNothing);
@@ -135,7 +166,10 @@ void main() {
         await tester.tap(find.text('Ask Hermes').last);
         await tester.pump();
         await tester.pump(const Duration(milliseconds: 100));
-        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(find.bySemanticsLabel('Opening chat'), findsOneWidget);
+        expect(opened, 1);
+        expect(find.byIcon(WingIcons.newChat), findsNWidgets(3));
         expect(
           tester
               .widgetList<TextButton>(find.byType(TextButton))
@@ -150,6 +184,20 @@ void main() {
           findsOneWidget,
         );
         await snapshot(tester, '${brightness.name}-$scale-chat-error');
+        expect(find.bySemanticsLabel('Opening chat'), findsNothing);
+        await tester.pump(const Duration(seconds: 5));
+        await tester.pumpAndSettle();
+        opening = Completer<void>();
+        await tester.ensureVisible(find.text('Ask Hermes').last);
+        await tester.tap(find.text('Ask Hermes').last);
+        await tester.pump();
+        await tester.pump();
+        expect(find.bySemanticsLabel('Opening chat'), findsOneWidget);
+        expect(opened, 2);
+        opening.complete();
+        await tester.pumpAndSettle();
+        expect(find.bySemanticsLabel('Opening chat'), findsNothing);
+
         expect(tester.takeException(), isNull);
         await tester.pump(const Duration(seconds: 5));
         await tester.pumpAndSettle();
@@ -194,6 +242,7 @@ void main() {
         addTearDown(tester.view.reset);
         final fixture = AdministrationFixture();
         fixture.override = (method, path, query, body) async => {
+          'name': 'doctor',
           'pid': 7,
           'running': false,
           'exit_code': failed ? 1 : 0,
@@ -208,8 +257,10 @@ void main() {
             builder: (context, child) =>
                 RepaintBoundary(key: const ValueKey('capture'), child: child!),
             home: AdminActionPage(
-              server: fixture.server,
-              action: const AdministrationAction('doctor', 7),
+              operation: fixtureOperation(
+                fixture.server,
+                const AdministrationAction('doctor', 7),
+              ),
               title: 'Doctor',
               scope: 'Home server',
             ),
@@ -229,29 +280,65 @@ void main() {
     }
   }
 
-  testWidgets('running Doctor does not show a previous run’s summary', (
-    tester,
-  ) async {
-    final fixture = AdministrationFixture();
-    fixture.override = (method, path, query, body) async => {
-      'pid': 7,
-      'running': true,
-      'exit_code': null,
-      'lines': lines,
-    };
-    await tester.pumpWidget(
-      MaterialApp(
-        home: AdminActionPage(
-          server: fixture.server,
-          action: const AdministrationAction('doctor', 7),
-          title: 'Doctor',
-          scope: 'Home server',
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('Running'), findsOneWidget);
-    expect(find.text(summary), findsNothing);
-    await tester.pumpWidget(const SizedBox.shrink());
-  });
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'running Doctor uses a status timestamp ${brightness.name} at $scale text',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final fixture = AdministrationFixture();
+          var running = true;
+          fixture.override = (method, path, query, body) async => {
+            'name': 'doctor',
+            'pid': 7,
+            'running': running,
+            'exit_code': running ? null : 0,
+            'lines': running ? lines : ['Operation done'],
+          };
+          final operation = fixtureOperation(
+            fixture.server,
+            const AdministrationAction('doctor', 7),
+          );
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: child!,
+              ),
+              home: RepaintBoundary(
+                key: const ValueKey('capture'),
+                child: AdminActionPage(
+                  operation: operation,
+                  title: 'Doctor',
+                  scope: 'Home server',
+                ),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          expect(find.text('Running'), findsOneWidget);
+          expect(find.textContaining('Last updated '), findsOneWidget);
+          expect(find.textContaining('Checked '), findsNothing);
+          expect(find.text(summary), findsNothing);
+          expect(tester.takeException(), isNull);
+          await snapshot(tester, '${brightness.name}-$scale-running');
+          running = false;
+          await operation.refresh();
+          await tester.pumpAndSettle();
+          expect(find.text('Running'), findsNothing);
+          expect(find.textContaining('Last updated '), findsNothing);
+          expect(find.textContaining('Checked '), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+          operation.dispose();
+        },
+      );
+    }
+  }
 }

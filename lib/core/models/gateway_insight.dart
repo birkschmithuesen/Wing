@@ -1,17 +1,7 @@
-enum GatewayReasoningEventMode { append, replace }
-
 class GatewayReasoningUpdate {
-  static const _maxTextLength = 20000;
-
   final String text;
-  final GatewayReasoningEventMode mode;
-  final bool verbose;
 
-  const GatewayReasoningUpdate({
-    required this.text,
-    required this.mode,
-    required this.verbose,
-  });
+  const GatewayReasoningUpdate({required this.text});
 
   static GatewayReasoningUpdate? fromGatewayEvent(
     String eventType,
@@ -20,64 +10,14 @@ class GatewayReasoningUpdate {
     if (eventType != 'reasoning.delta' && eventType != 'reasoning.available') {
       return null;
     }
-    final text = _safeText(data['text']?.toString(), _maxTextLength);
-    if (text == null) return null;
-    return GatewayReasoningUpdate(
-      text: text,
-      mode: eventType == 'reasoning.available'
-          ? GatewayReasoningEventMode.replace
-          : GatewayReasoningEventMode.append,
-      verbose: data['verbose'] == true,
-    );
-  }
-
-  String applyTo(String current) {
-    final combined = mode == GatewayReasoningEventMode.replace
-        ? text
-        : '$current$text';
-    if (combined.length <= _maxTextLength) return combined;
-    return '${combined.substring(0, _maxTextLength - 1)}…';
-  }
-
-  static String? _safeText(String? value, int maxLength) {
-    if (value == null) return null;
-    final safe = value.replaceAll('\u0000', '');
-    if (safe.trim().isEmpty) return null;
-    return safe.length <= maxLength
-        ? safe
-        : '${safe.substring(0, maxLength - 1)}…';
-  }
-}
-
-class GatewayInterimTransition {
-  final String sealedText;
-  final bool startsNewMessage;
-
-  const GatewayInterimTransition({
-    required this.sealedText,
-    required this.startsNewMessage,
-  });
-
-  factory GatewayInterimTransition.resolve({
-    required String currentText,
-    required String interimText,
-    required bool alreadyStreamed,
-  }) {
-    final safeInterim = interimText.replaceAll('\u0000', '');
-    var sealed = currentText;
-    if (safeInterim.isNotEmpty &&
-        currentText != safeInterim &&
-        !currentText.endsWith(safeInterim)) {
-      if (!alreadyStreamed) {
-        sealed = '$currentText$safeInterim';
-      } else if (currentText.isEmpty || safeInterim.startsWith(currentText)) {
-        sealed = safeInterim;
-      }
+    final text = data['text'];
+    if (text is! String ||
+        text.isEmpty ||
+        text.replaceAll('\u0000', '').isEmpty) {
+      return null;
     }
-    return GatewayInterimTransition(
-      sealedText: sealed,
-      startsNewMessage: sealed.trim().isNotEmpty,
-    );
+    if (eventType == 'reasoning.available' && text.trim().isEmpty) return null;
+    return GatewayReasoningUpdate(text: text);
   }
 }
 
@@ -94,14 +34,6 @@ class GatewayNotice {
   const GatewayNotice({required this.kind, required this.text, this.taskId});
 
   String get identity => '${kind.name}|${taskId ?? ''}|$text';
-
-  String get title => switch (kind) {
-    GatewayNoticeKind.background =>
-      taskId == null
-          ? 'Background task completed'
-          : 'Background task $taskId completed',
-    GatewayNoticeKind.review => 'Hermes review',
-  };
 
   static GatewayNotice? fromGatewayEvent(
     String eventType,
@@ -133,46 +65,6 @@ class GatewayNotice {
   }
 }
 
-enum GatewayNotificationLevel { info, success, warning, error }
-
-class GatewayNotification {
-  final String key;
-  final String text;
-  final GatewayNotificationLevel level;
-  final Duration? ttl;
-
-  const GatewayNotification({
-    required this.key,
-    required this.text,
-    required this.level,
-    this.ttl,
-  });
-
-  static GatewayNotification? fromEventData(Map<String, dynamic> data) {
-    final text = GatewayNotice.safeLine(data['text']?.toString(), 1000);
-    if (text == null) return null;
-    final key =
-        GatewayNotice.safeLine((data['key'] ?? data['id'])?.toString(), 120) ??
-        'latest';
-    final ttlMs = switch (data['ttl_ms']) {
-      int value when value > 0 => value,
-      num value when value > 0 => value.toInt(),
-      _ => null,
-    };
-    return GatewayNotification(
-      key: key,
-      text: text,
-      level: switch (data['level']?.toString()) {
-        'success' => GatewayNotificationLevel.success,
-        'warn' => GatewayNotificationLevel.warning,
-        'error' => GatewayNotificationLevel.error,
-        _ => GatewayNotificationLevel.info,
-      },
-      ttl: ttlMs == null ? null : Duration(milliseconds: ttlMs),
-    );
-  }
-}
-
 enum GatewaySubagentPhase { requested, running, thinking, tool, completed }
 
 enum GatewaySubagentStatus { queued, running, completed, failed, interrupted }
@@ -180,6 +72,7 @@ enum GatewaySubagentStatus { queued, running, completed, failed, interrupted }
 class GatewaySubagentActivity {
   static const maxRecentActivity = 40;
   final String id;
+  final String? childSessionId;
   final String? parentId;
   final int? depth;
   final String goal;
@@ -192,12 +85,14 @@ class GatewaySubagentActivity {
   final int? taskIndex;
   final int? taskCount;
   final double? startedAt;
+  final double? durationSeconds;
   final int? toolCount;
   final String? lastTool;
   final List<String> recentActivity;
 
   const GatewaySubagentActivity({
     required this.id,
+    this.childSessionId,
     required this.goal,
     required this.phase,
     this.parentId,
@@ -210,6 +105,7 @@ class GatewaySubagentActivity {
     this.taskIndex,
     this.taskCount,
     this.startedAt,
+    this.durationSeconds,
     this.toolCount,
     this.lastTool,
     this.recentActivity = const [],
@@ -224,7 +120,6 @@ class GatewaySubagentActivity {
       };
 
   bool get acceptingSteer => !isTerminal && (_acceptingSteer ?? false);
-  bool get isComplete => isTerminal;
   bool get isTerminal => const {
     GatewaySubagentStatus.completed,
     GatewaySubagentStatus.failed,
@@ -238,6 +133,7 @@ class GatewaySubagentActivity {
     if (isTerminal) return this;
     return GatewaySubagentActivity(
       id: id,
+      childSessionId: next.childSessionId ?? childSessionId,
       goal: next.goal.isEmpty ? goal : next.goal,
       phase: next.phase,
       status: next.status,
@@ -250,6 +146,7 @@ class GatewaySubagentActivity {
       taskIndex: next.taskIndex ?? taskIndex,
       taskCount: next.taskCount ?? taskCount,
       startedAt: next.startedAt ?? startedAt,
+      durationSeconds: next.durationSeconds ?? durationSeconds,
       toolCount: next.toolCount ?? toolCount,
       lastTool: next.lastTool ?? lastTool,
       recentActivity: snapshot && recentActivity.isNotEmpty
@@ -265,6 +162,7 @@ class GatewaySubagentActivity {
     final status = _normalizeStatus(data['status']);
     return GatewaySubagentActivity(
       id: id,
+      childSessionId: _opaqueId(data['child_session_id']),
       parentId: GatewayNotice.safeLine(data['parent_id']?.toString(), 120),
       depth: _integer(data['depth']),
       goal: GatewayNotice.safeLine(data['goal']?.toString(), 500) ?? '',
@@ -312,6 +210,7 @@ class GatewaySubagentActivity {
         : _normalizeStatus(data['status']);
     return GatewaySubagentActivity(
       id: id,
+      childSessionId: _opaqueId(data['child_session_id']),
       parentId: GatewayNotice.safeLine(data['parent_id']?.toString(), 120),
       depth: _integer(data['depth']),
       goal: goal,
@@ -329,6 +228,9 @@ class GatewaySubagentActivity {
       taskIndex: _integer(data['task_index']),
       taskCount: _integer(data['task_count']),
       startedAt: _number(data['started_at']),
+      durationSeconds: eventType == 'subagent.complete'
+          ? _number(data['duration_seconds'])
+          : null,
       toolCount: _integer(data['tool_count']),
       lastTool: GatewayNotice.safeLine(
         (data['tool_name'] ?? data['last_tool'])?.toString(),
@@ -403,7 +305,7 @@ class GatewaySubagentActivity {
 
   static int? _integer(dynamic value) => value is num ? value.toInt() : null;
   static double? _number(dynamic value) =>
-      value is num ? value.toDouble() : null;
+      value is num && value.isFinite && value >= 0 ? value.toDouble() : null;
   static String? _opaqueId(dynamic value) =>
       value is String && value.trim().isNotEmpty ? value : null;
 }

@@ -1,3 +1,4 @@
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/connection_manager.dart';
@@ -19,7 +20,7 @@ void main() {
         apiKey: '',
       );
       final gateway = ProfileGateway.forConnection(
-        connection,
+        ConnectionAccess(connection: connection, dashboardOAuth: null),
         WorkspaceScope(
           connectionId: connection.id,
           profileName: 'android-qa-a',
@@ -40,10 +41,12 @@ void main() {
       expect(content['name'], skillName);
       expect(content['content'], isA<String>());
       try {
-        final ack = await gateway.put('skills/toggle', {
-          'name': skillName,
-          'enabled': !skillEnabled,
-        });
+        final ack = await gateway.putOwned(
+          'skills/toggle',
+          {'name': skillName, 'enabled': !skillEnabled},
+          canDispatch: () => true,
+          onDispatched: () {},
+        );
         expect(ack['ok'], true);
         expect(
           (await rows(
@@ -52,10 +55,12 @@ void main() {
           !skillEnabled,
         );
       } finally {
-        await gateway.put('skills/toggle', {
-          'name': skillName,
-          'enabled': skillEnabled,
-        });
+        await gateway.putOwned(
+          'skills/toggle',
+          {'name': skillName, 'enabled': skillEnabled},
+          canDispatch: () => true,
+          onDispatched: () {},
+        );
         expect(
           (await rows(
             'skills',
@@ -71,7 +76,12 @@ void main() {
       final toolName = tool['name'] as String;
       final endpoint = 'tools/toolsets/${Uri.encodeComponent(toolName)}';
       try {
-        final ack = await gateway.put(endpoint, {'enabled': false});
+        final ack = await gateway.putOwned(
+          endpoint,
+          {'enabled': false},
+          canDispatch: () => true,
+          onDispatched: () {},
+        );
         expect(ack['ok'], true);
         expect(
           (await rows(
@@ -80,7 +90,12 @@ void main() {
           false,
         );
       } finally {
-        await gateway.put(endpoint, {'enabled': true});
+        await gateway.putOwned(
+          endpoint,
+          {'enabled': true},
+          canDispatch: () => true,
+          onDispatched: () {},
+        );
         expect(
           (await rows(
             'tools/toolsets',

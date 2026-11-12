@@ -1,3 +1,5 @@
+import 'package:wing/core/models/provider_inventory.dart';
+import 'package:wing/core/screens/administration/admin_provider_credentials.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -8,8 +10,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/provider_access.dart';
 import 'package:wing/core/models/provider_recovery.dart';
+import 'package:wing/core/services/provider_recovery.dart';
 import 'package:wing/core/screens/administration/admin_provider_detail.dart';
-import 'package:wing/core/screens/administration/admin_providers_page.dart';
+import 'package:wing/core/screens/administration/provider_recovery_routes.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'support/administration_fixture.dart';
 import 'provider_recovery_test.dart' show claude, pool;
@@ -37,6 +40,7 @@ void main() {
   bool offline = false;
   setUp(() {
     fixture = AdministrationFixture('Claw');
+    addTearDown(fixture.server.close);
     observation = claude();
     offline = false;
     fixture.override = (method, path, query, body) async {
@@ -116,7 +120,7 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  Widget detail() => AdminProviderDetail(
+  Widget detail() => providerRecoveryPage(
     profile: fixture.server.profile('personal'),
     providerId: observation['id'] as String,
   );
@@ -156,7 +160,7 @@ void main() {
           expect(find.text('Renew shared sign-in?'), findsOneWidget);
           expect(fixture.consoleRequests.where((r) => r.$3), isEmpty);
           await shot(tester, '${brightness.name}-${scale.toInt()}-confirm');
-          await tester.tap(find.text('Cancel'));
+          await tester.tap(find.byTooltip('Cancel'));
           await tester.pumpAndSettle();
           await reveal(tester, 'Delete saved credentials');
           await tester.tap(find.text('Delete saved credentials'));
@@ -200,7 +204,7 @@ void main() {
     await tester.tap(
       find.descendant(
         of: find.byType(AlertDialog),
-        matching: find.text('Renew access'),
+        matching: find.byTooltip('Renew access'),
       ),
     );
     await tester.pumpAndSettle();
@@ -221,6 +225,10 @@ void main() {
     await show(tester, detail());
     await tester.tap(find.text('Renew access'));
     await tester.pumpAndSettle();
+    expect(
+      find.text('Renewal was not confirmed. Check status.'),
+      findsOneWidget,
+    );
     expect(find.text('Access token expired'), findsOneWidget);
     expect(find.text('Sign-in options'), findsOneWidget);
     await shot(tester, 'renewal-failed');
@@ -247,10 +255,18 @@ void main() {
     'renewal loading disables other actions without duplicate submission',
     (tester) async {
       final gate = Completer<String>();
+      addTearDown(() {
+        if (!gate.isCompleted) gate.complete('anthropic (0 credentials):\n');
+      });
       fixture.consoleOverride = (_, _, {confirm = false}) => gate.future;
       await show(tester, detail());
       await tester.tap(find.text('Renew access'));
       await tester.pump();
+      final progress = find.descendant(
+        of: find.widgetWithText(FilledButton, 'Renew access'),
+        matching: find.byType(CircularProgressIndicator),
+      );
+      expect(progress, findsOneWidget);
       expect(
         tester
             .widget<OutlinedButton>(
@@ -259,9 +275,15 @@ void main() {
             .onPressed,
         isNull,
       );
+      await tester.tap(find.text('Renew access'));
+      await tester.tap(find.text('Sign-in options'));
+      await tester.pump(const Duration(seconds: 2));
+      expect(progress, findsOneWidget);
+      expect(fixture.consoleRequests, hasLength(1));
       await shot(tester, 'renewal-loading');
       gate.complete('anthropic (0 credentials):\n');
       await tester.pumpAndSettle();
+      expect(progress, findsNothing);
       expect(fixture.consoleRequests.length, 1);
     },
   );
@@ -271,8 +293,10 @@ void main() {
       await show(
         tester,
         AdminProviderFileRemoval(
-          profile: fixture.server.profile('personal'),
-          access: ProviderAccess(observation),
+          createSession: () => ProviderRecovery.forFileReview(
+            fixture.server.profile('personal'),
+            ProviderAccess(observation),
+          ),
         ),
       );
       await tester.tap(
@@ -289,7 +313,7 @@ void main() {
       await tester.tap(
         find.descendant(
           of: find.byType(AlertDialog),
-          matching: find.text('Delete credentials'),
+          matching: find.byTooltip('Delete credentials'),
         ),
       );
       await tester.pumpAndSettle();
@@ -322,7 +346,7 @@ void main() {
     await tester.tap(find.text('Remove saved sign-in'));
     await tester.pumpAndSettle();
     expect(find.textContaining('personal on Claw'), findsOneWidget);
-    await tester.tap(find.text('Remove sign-in'));
+    await tester.tap(find.byTooltip('Remove sign-in'));
     await tester.pumpAndSettle();
     expect(fixture.requests.where((r) => r.$1 == 'DELETE').single.$3, {
       'profile': 'personal',
@@ -340,7 +364,7 @@ void main() {
     expect(find.text('Choose a saved sign-in'), findsOneWidget);
     expect(fixture.consoleRequests.where((r) => r.$3), isEmpty);
     await shot(tester, 'credential-choice');
-    Navigator.of(tester.element(find.byType(SimpleDialog))).pop();
+    Navigator.of(tester.element(find.text('Choose a saved sign-in'))).pop();
     await tester.pumpAndSettle();
   });
   testWidgets('unknown credentials never offer renewal or direct deletion', (
@@ -357,6 +381,22 @@ void main() {
     expect(find.text('Sign-in options'), findsOneWidget);
   });
   testWidgets('expired device sign-in can start again', (tester) async {
+    String? copied;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          copied = (call.arguments as Map)['text'] as String;
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
     fixture.override = (method, path, query, body) async {
       if (path == 'profiles') {
         return {
@@ -370,24 +410,32 @@ void main() {
         return {
           'session_id': 'test-session',
           'flow': 'device_code',
+          'expires_in': 900,
           'user_code': 'ABCD-EFGH',
           'poll_interval': 5,
           'verification_url': 'https://example.com/sign-in',
         };
       }
-      if (path.contains('/poll/')) return {'status': 'expired'};
+      if (path.contains('/poll/')) {
+        return {'session_id': 'test-session', 'status': 'expired'};
+      }
       throw StateError('Unexpected $path');
     };
     await show(
       tester,
       AdminProviderSignIn(
         profile: fixture.server.profile('personal'),
-        provider: const {'id': 'nous', 'name': 'Nous'},
+        target: const ProviderSignInTarget(id: 'nous', name: 'Nous'),
       ),
     );
     await tester.tap(find.text('Start sign-in'));
     await tester.pumpAndSettle();
-    expect(find.text('Copy code'), findsOneWidget);
+    expect(find.text('Copy code'), findsNothing);
+    await tester.tap(find.byTooltip('Copy code'));
+    await tester.pump();
+    expect(copied, 'ABCD-EFGH');
+    expect(find.byType(SnackBar), findsNothing);
+    await shot(tester, 'device-code-copy');
     await tester.tap(find.text('Check status'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Start again'));

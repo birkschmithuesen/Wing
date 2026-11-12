@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 enum GatewaySensitivePromptKind {
   sudo,
   secret,
@@ -24,6 +26,33 @@ class GatewaySensitivePromptRequest {
     required this.description,
     required this.fieldLabel,
   });
+
+  /// Validate transient input without retaining secret response values.
+  bool canRespond({required String value, required String password}) =>
+      switch (kind) {
+        GatewaySensitivePromptKind.vaultSaveLogin =>
+          value.trim().isNotEmpty && password.isNotEmpty,
+        GatewaySensitivePromptKind.vaultCode => normalizeResponseValue(
+          value,
+        ).isNotEmpty,
+        _ => value.isNotEmpty,
+      };
+
+  /// The stock server-response value. Password and ordinary secret bytes are exact.
+  String responseValue({required String value, required String password}) =>
+      switch (kind) {
+        GatewaySensitivePromptKind.vaultSaveLogin => jsonEncode({
+          'identifier': value.trim(),
+          'password': password,
+        }),
+        GatewaySensitivePromptKind.vaultCode => normalizeResponseValue(value),
+        _ => value,
+      };
+
+  String normalizeResponseValue(String value) =>
+      kind == GatewaySensitivePromptKind.vaultCode
+      ? value.replaceAll(RegExp(r'[\s-]'), '')
+      : value;
 
   static GatewaySensitivePromptKind? kindForMethod(String? method) =>
       switch (method) {

@@ -1,6 +1,9 @@
 /// Disposable, offline Android fixture for the deliverable reader and save picker.
 library;
 
+import 'package:wing/core/services/chat_outputs_session.dart';
+
+import 'package:wing/core/models/transcript_message.dart';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -63,11 +66,11 @@ class _PreviewState extends State<_Preview> {
         body: SingleChildScrollView(
           padding: const EdgeInsets.all(16),
           child: ProfileMessage(
-            message: const {
+            message: TranscriptMessage.fromRow(const {
               'role': 'assistant',
               'content':
                   'The analysis is ready.\n\n**Deliverable**\n\nMEDIA:$_path\n\nReview the report before the next step.',
-            },
+            }),
             onOpenRemoteFile: (output) => _open(context, output),
             onDownloadRemoteFile: (_) => saveRemoteFile(
               RemoteFileDownload(filename: _name, bytes: utf8.encode(_source)),
@@ -84,20 +87,21 @@ class _PreviewState extends State<_Preview> {
           builder: (_) => ChatOutputsScreen(
             chatTitle: 'Deliverable QA',
             initialOutput: output,
-            loadHistory: (_) async =>
-                throw StateError('Direct preview must not load Outputs'),
-            download: (_) async => RemoteFileDownload(
-              filename: _name,
-              bytes: utf8.encode(_source),
-            ),
-            readText: (_) async => const RemoteTextPreview(
-              path: _path,
-              text: _source,
-              language: 'markdown',
-              mimeType: 'text/markdown',
-            byteSize: 164,
-              binary: false,
-              truncated: false,
+            createSession: () => ChatOutputsSession(
+              loadHistory: (_) async =>
+                  throw StateError('Direct preview must not load Outputs'),
+              download: (_) async => RemoteFileDownload(
+                filename: _name,
+                bytes: utf8.encode(_source),
+              ),
+              readText: (_) async => const RemoteTextPreview(
+                path: _path,
+                text: _source,
+                language: 'markdown',
+                mimeType: 'text/markdown',
+                binary: false,
+                truncated: false,
+              ),
             ),
           ),
         ),

@@ -29,20 +29,24 @@ try{localStorage.setItem('probe','yes')}catch(e){document.body.dataset.storage='
   final source =
       prefix +
       'x' *
-          (RemoteFilesClient.defaultMaxDownloadBytes -
+          (maxFilePreviewBytes -
               prefix.length -
               tail.length) +
       tail;
+  final bytes = utf8.encode(source);
+  if (bytes.length != 32 * 1024 * 1024) {
+    throw StateError(
+      'Native HTML acceptance requires a complete 32 MiB fixture',
+    );
+  }
   runApp(
     MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: wingTheme(Brightness.dark),
       home: HtmlPreviewScreen(
         title: 'Large report',
-        download: () async => RemoteFileDownload(
-          filename: 'report.html',
-          bytes: utf8.encode(source),
-        ),
+        download: () async =>
+            RemoteFileDownload(filename: 'report.html', bytes: bytes),
         share: (_) async {},
       ),
     ),

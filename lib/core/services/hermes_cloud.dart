@@ -6,9 +6,8 @@ import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:uuid/uuid.dart';
 
-import '../models/dashboard_oauth_session.dart';
-
-export '../models/dashboard_oauth_session.dart';
+import '../models/dashboard_oauth_grant.dart';
+import 'dashboard_oauth_session.dart';
 
 class CloudOrganization {
   const CloudOrganization(this.id, this.name);
@@ -78,7 +77,7 @@ class CloudDiscovery {
         final row = value as Map;
         final rawUrl = row['dashboardUrl'];
         final url = rawUrl is String && rawUrl.isNotEmpty
-            ? DashboardOAuthSession.canonicalBase(rawUrl)
+            ? DashboardOAuthGrant.canonicalBase(rawUrl)
             : null;
         final status = row['status'] as String? ?? 'unknown';
         return CloudInstance(
@@ -156,7 +155,7 @@ class HermesCloud {
       cookie = await _browser.portalCookie(signIn: true);
     }
     if (cookie == null || generation != _generation) return null;
-    for (var attempt = 0; attempt < 2; attempt++) {
+    for (var attempt = 0; ; attempt++) {
       final uri = Uri.parse('$portal/api/agents').replace(
         queryParameters: organization == null ? null : {'org': organization},
       );
@@ -176,7 +175,6 @@ class HermesCloud {
       if (response.statusCode == 401 || response.statusCode == 403) {
         throw const CloudAccessException(
           'Nous Portal couldn’t confirm your access. Sign in again.',
-          signInRequired: true,
         );
       }
       try {
@@ -190,10 +188,6 @@ class HermesCloud {
         );
       }
     }
-    throw const CloudAccessException(
-      'Sign in to Nous Portal again.',
-      signInRequired: true,
-    );
   }
 
   String _nonce() => base64UrlEncode(
@@ -202,7 +196,7 @@ class HermesCloud {
 
   Future<DashboardOAuthSession?> signIn(CloudInstance instance) async {
     final generation = ++_generation;
-    final base = DashboardOAuthSession.canonicalBase(instance.dashboardUrl!);
+    final base = DashboardOAuthGrant.canonicalBase(instance.dashboardUrl!);
     final verifier = _nonce(), state = _nonce();
     final callback = 'http://127.0.0.1:49152/wing/${_nonce()}';
     final authorize = Uri.parse('$base/auth/native/authorize').replace(
@@ -247,6 +241,7 @@ class HermesCloud {
         .send(request)
         .then(http.Response.fromStream)
         .timeout(const Duration(seconds: 20));
+    if (generation != _generation) return null;
     if (response.statusCode != 200) {
       throw const CloudAccessException(
         'This Hermes instance couldn’t complete sign-in. Try again.',
@@ -255,14 +250,16 @@ class HermesCloud {
     try {
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       if (data['provider'] != 'nous') throw const FormatException();
-      return DashboardOAuthSession.fromMap({
-        ...data,
-        'id': const Uuid().v4(),
-        'base_url': base,
-        'expires_at': DashboardOAuthSession.tokenExpiry(
-          data['expires_at'],
-        ).toIso8601String(),
-      });
+      return DashboardOAuthSession(
+        DashboardOAuthGrant.fromMap({
+          ...data,
+          'id': const Uuid().v4(),
+          'base_url': base,
+          'expires_at': DashboardOAuthGrant.tokenExpiry(
+            data['expires_at'],
+          ).toIso8601String(),
+        }),
+      );
     } catch (_) {
       throw const CloudAccessException(
         'The instance returned an incomplete sign-in. Try again.',

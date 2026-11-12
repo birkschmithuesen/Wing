@@ -1,8 +1,82 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/doctor_diagnostic.dart';
+import 'package:wing/core/models/administration_operation.dart';
 
 void main() {
   final divider = '─' * 60;
+  test('Doctor findings are a completed diagnostic outcome, not a failure', () {
+    final findings = [
+      '=== doctor started 2026-10-07 08:28:00 ===',
+      divider,
+      'Found 1 issue(s) to address:',
+      '1. state.db is large — enable sessions.auto_prune in config.yaml',
+    ];
+    for (final (name, running, code, lines, expected) in [
+      ('doctor', false, 1, findings, AdministrationOperationOutcome.findings),
+      (
+        'doctor',
+        false,
+        0,
+        [divider, 'All checks passed! 🎉'],
+        AdministrationOperationOutcome.completed,
+      ),
+      ('doctor', true, null, findings, AdministrationOperationOutcome.running),
+      ('doctor', false, null, findings, AdministrationOperationOutcome.unknown),
+      (
+        'doctor',
+        false,
+        1,
+        ['Doctor could not finish'],
+        AdministrationOperationOutcome.failed,
+      ),
+      (
+        'doctor',
+        false,
+        1,
+        [divider, 'Found 2 issue(s) to address:', '1. Truncated'],
+        AdministrationOperationOutcome.failed,
+      ),
+      (
+        'doctor',
+        false,
+        1,
+        [divider, 'All checks passed! 🎉'],
+        AdministrationOperationOutcome.failed,
+      ),
+      ('doctor', false, 2, findings, AdministrationOperationOutcome.failed),
+      ('install', false, 1, findings, AdministrationOperationOutcome.failed),
+      (
+        'doctor',
+        false,
+        1,
+        [
+          ...findings,
+          '=== doctor started 2026-10-07 08:29:00 ===',
+          'Doctor could not finish',
+        ],
+        AdministrationOperationOutcome.failed,
+      ),
+    ]) {
+      final observation = AdminDiagnosticObservation(
+        AdministrationAction(name, 7),
+        {'running': running, 'exit_code': code, 'lines': lines},
+        DateTime.utc(2026, 10, 7),
+      );
+      expect(
+        observation.classification,
+        expected,
+        reason: '$name running=$running exit=$code lines=$lines',
+      );
+      expect(
+        observation.failed,
+        expected == AdministrationOperationOutcome.failed,
+      );
+      if (expected == AdministrationOperationOutcome.findings) {
+        expect(observation.outcome, 'Review Doctor findings');
+        expect(observation.summaryLabel, '1 issue found');
+      }
+    }
+  });
   test('turns colored findings into titles and supporting details', () {
     final report = DoctorDiagnostic.fromLines([
       '  ✓ Profiles checked',

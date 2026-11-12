@@ -20,13 +20,18 @@ class ServerConnectionStatus extends ChangeNotifier {
   final String label;
   ConnectionAvailability access = ConnectionAvailability.unchecked;
   final Map<String, ConnectionAvailability> _live = {};
-  final Set<String> _recoveries = {};
+  final Map<String, bool> _recoveries = {};
   final Map<String, String> _failedRecoveries = {};
   String? _accessProblem;
+  bool? _chatEndpointSupported;
+  bool get chatEndpointUnsupported => _chatEndpointSupported == false;
   String? get recoveryProblem => _failedRecoveries.values.lastOrNull;
-  String? get problem => recoveryProblem ?? _accessProblem;
-  DateTime? lastConnected;
+  String? get problem => chatEndpointUnsupported
+      ? chatEndpointFailureMessage
+      : recoveryProblem ?? _accessProblem;
   Future<void> Function()? retry;
+  bool get recoveryAttemptInProgress =>
+      _recoveries.values.any((active) => active);
   VoidCallback? onInterruption;
   bool _closed = false;
 
@@ -41,12 +46,28 @@ class ServerConnectionStatus extends ChangeNotifier {
       : _live.values.contains(ConnectionAvailability.available)
       ? ConnectionAvailability.available
       : ConnectionAvailability.unchecked;
+
+  /// Transport health is independent of a particular chat's restoration.
+  /// An unchecked channel cannot establish recovery of a retained incident.
+  ConnectionAvailability get transportAvailability {
+    if (access == ConnectionAvailability.unavailable ||
+        live == ConnectionAvailability.unavailable) {
+      return ConnectionAvailability.unavailable;
+    }
+    if (access == ConnectionAvailability.available &&
+        live == ConnectionAvailability.available) {
+      return ConnectionAvailability.available;
+    }
+    return ConnectionAvailability.unchecked;
+  }
+
   bool hasLiveObservation(String owner) => _live.containsKey(owner);
   bool liveAvailable(String owner) =>
       _live[owner] == ConnectionAvailability.available;
   ServerConnectionPhase get phase {
     if (!networkGate.available) return ServerConnectionPhase.disconnected;
     if (_recoveries.isNotEmpty) return ServerConnectionPhase.reconnecting;
+    if (chatEndpointUnsupported) return ServerConnectionPhase.disconnected;
     if (_failedRecoveries.isNotEmpty) return ServerConnectionPhase.disconnected;
     if (access == ConnectionAvailability.available &&
         live == ConnectionAvailability.available) {
@@ -63,27 +84,44 @@ class ServerConnectionStatus extends ChangeNotifier {
     return ServerConnectionPhase.unchecked;
   }
 
-  String get description => switch (phase) {
-    ServerConnectionPhase.unchecked => 'Not checked',
-    ServerConnectionPhase.connected => 'Connected',
-    ServerConnectionPhase.reconnecting => 'Reconnecting',
-    ServerConnectionPhase.limited =>
-      live == ConnectionAvailability.unavailable
-          ? 'Live updates interrupted'
-          : live == ConnectionAvailability.unchecked
-          ? 'Live chat not checked'
-          : 'Server access interrupted',
-    ServerConnectionPhase.disconnected =>
-      recoveryProblem == null ? 'Disconnected' : 'Conversation unavailable',
-  };
+  String get description => chatEndpointUnsupported && _recoveries.isEmpty
+      ? 'Chat address needs changing'
+      : switch (phase) {
+          ServerConnectionPhase.unchecked => 'Not checked',
+          ServerConnectionPhase.connected => 'Connected',
+          ServerConnectionPhase.reconnecting => 'Reconnecting',
+          ServerConnectionPhase.limited =>
+            live == ConnectionAvailability.unavailable
+                ? 'Live updates interrupted'
+                : live == ConnectionAvailability.unchecked
+                ? 'Live chat not checked'
+                : 'Server access interrupted',
+          ServerConnectionPhase.disconnected =>
+            recoveryProblem == null
+                ? 'Disconnected'
+                : 'Conversation unavailable',
+        };
   void _changed() {
     if (!_closed) notifyListeners();
   }
 
-  void beginRecovery(String owner) {
+  /// The exact socket's stock greeting owns endpoint support. HTTP reads and
+  /// auxiliary socket liveness cannot clear a known incompatible chat address.
+  void observeChatEndpoint(bool supported) {
+    if (_closed) return;
+    _chatEndpointSupported = supported;
+    _changed();
+  }
+
+  void beginRecovery(String owner) => _setRecovery(owner, active: true);
+
+  /// The destination still needs recovery, but Retry can bypass its backoff.
+  void waitForRecovery(String owner) => _setRecovery(owner, active: false);
+
+  void _setRecovery(String owner, {required bool active}) {
     if (_closed) return;
     _failedRecoveries.remove(owner);
-    _recoveries.add(owner);
+    _recoveries[owner] = active;
     _changed();
   }
 
@@ -107,7 +145,6 @@ class ServerConnectionStatus extends ChangeNotifier {
     if (_closed) return;
     access = ConnectionAvailability.available;
     _accessProblem = null;
-    lastConnected = DateTime.now();
     _changed();
   }
 
@@ -126,7 +163,6 @@ class ServerConnectionStatus extends ChangeNotifier {
     _live[owner] = connected
         ? ConnectionAvailability.available
         : ConnectionAvailability.unavailable;
-    if (connected) lastConnected = DateTime.now();
     _changed();
   }
 

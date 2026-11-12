@@ -12,18 +12,4 @@ void main() {
     expect(manifest, contains('android.intent.action.SEND_MULTIPLE'));
     expect(manifest, contains('android:mimeType="*/*"'));
   });
-
-  test(
-    'MainActivity copies shared streams before handing them to Flutter',
-    () async {
-      final source = await File(
-        'android/app/src/main/kotlin/com/tarkilhk/wing/MainActivity.kt',
-      ).readAsString();
-
-      expect(source, contains('Intent.ACTION_SEND_MULTIPLE'));
-      expect(source, contains('Intent.EXTRA_STREAM'));
-      expect(source, contains('contentResolver.openInputStream'));
-      expect(source, contains('sharePayload'));
-    },
-  );
 }

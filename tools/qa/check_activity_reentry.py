@@ -5,6 +5,10 @@ Restarts the selected app and navigates through its launcher/Recents shortcut.
 Does not send messages, change settings, or read conversation contents.
 Requires an unlocked device. Captures stay in memory; only pixel counts are logged.
 """
+# Optimization would remove the verdict assertions below.
+if not __debug__:
+    raise RuntimeError("Native acceptance requires Python assertions; remove -O/PYTHONOPTIMIZE")
+
 
 import argparse
 import collections

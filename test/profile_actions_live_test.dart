@@ -1,3 +1,4 @@
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/connection_manager.dart';
@@ -16,13 +17,16 @@ void main() {
       final gateways = <ProfileGateway>[];
       for (final profile in ['android-qa-a', 'android-qa-b']) {
         final gateway = ProfileGateway.forConnection(
-          SavedConnection(
-            id: 'local-actions',
-            label: 'Local QA',
-            host: '127.0.0.1',
-            port: port,
-            dashboardPortOverride: port,
-            apiKey: '',
+          ConnectionAccess(
+            connection: SavedConnection(
+              id: 'local-actions',
+              label: 'Local QA',
+              host: '127.0.0.1',
+              port: port,
+              dashboardPortOverride: port,
+              apiKey: '',
+            ),
+            dashboardOAuth: null,
           ),
           WorkspaceScope(connectionId: 'local-actions', profileName: profile),
         );
@@ -52,7 +56,7 @@ void main() {
             ],
           },
         );
-        addTearDown(() => gateway.deleteSession(id));
+        addTearDown(() => gateway.deleteSession(id, canDispatch: () => true));
       }
       final a = gateways.first;
       final b = gateways.last;
@@ -60,7 +64,7 @@ void main() {
         'title': 'Android QA renamed',
         'pinned': true,
         'unread': true,
-      });
+      }, canDispatch: () => true);
       final first = (await a.sessions()).rows.firstWhere(
         (row) => row['id'] == id,
       );
@@ -73,7 +77,11 @@ void main() {
       expect(second['title'], 'Disposable Android action test');
       expect(second['pinned'], false);
       if (moveFolder.isNotEmpty) {
-        final moved = await a.moveSession(id, moveFolder);
+        final moved = await a.moveSession(
+          id,
+          moveFolder,
+          canDispatch: () => true,
+        );
         final movedRow = (await a.sessions()).rows.firstWhere(
           (row) => row['id'] == id,
         );
@@ -84,7 +92,7 @@ void main() {
         expect(movedRow['git_repo_root'], moved['git_repo_root']);
         expect(otherRow['cwd'], second['cwd']);
       }
-      await a.updateSession(id, {'archived': true});
+      await a.updateSession(id, {'archived': true}, canDispatch: () => true);
       expect(
         (await a.sessions(
           archivedOnly: true,
@@ -95,13 +103,13 @@ void main() {
         'archived': false,
         'pinned': false,
         'unread': false,
-      });
+      }, canDispatch: () => true);
       final restored = (await a.sessions()).rows.firstWhere(
         (row) => row['id'] == id,
       );
       expect(restored['archived'], false);
       expect(restored['unread'], false);
-      await a.deleteSession(id);
+      await a.deleteSession(id, canDispatch: () => true);
       expect((await a.sessions()).rows.any((row) => row['id'] == id), false);
       expect((await b.sessions()).rows.any((row) => row['id'] == id), true);
     },

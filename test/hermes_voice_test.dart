@@ -7,87 +7,111 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/hermes_voice.dart';
 
 void main() {
-  test(
-    'authenticated audio requests retain explicit profile and contain no voice overrides',
-    () async {
-      var logins = 0;
-      var transcriptions = 0;
-      final bodies = <Map<String, dynamic>>[];
-      final dashboard = DashboardClient(
-        host: 'hermes.test',
-        port: 9119,
-        username: 'owner',
-        password: 'fixture',
-        httpClient: MockClient((request) async {
-          if (request.url.path == '/auth/password-login') {
-            logins++;
-            return http.Response(
-              '{"ok":true}',
-              200,
-              headers: {
-                'set-cookie': 'hermes_session_at=fixture$logins; Path=/',
-              },
+  for (final synthesis in [false, true]) {
+    test(
+      'authenticated ${synthesis ? 'synthesis' : 'transcription'} retains profile and body across renewal',
+      () async {
+        var logins = 0;
+        final bodies = <Map<String, dynamic>>[];
+        final dashboard = DashboardClient(
+          host: 'hermes.test',
+          port: 9119,
+          username: 'owner',
+          password: 'fixture',
+          httpClient: MockClient((request) async {
+            if (request.url.path == '/auth/password-login') {
+              logins++;
+              return http.Response(
+                '{"ok":true}',
+                200,
+                headers: {
+                  'set-cookie': 'hermes_session_at=fixture$logins; Path=/',
+                },
+              );
+            }
+            expect(request.method, 'POST');
+            expect(request.headers['cookie'], contains('hermes_session_at='));
+            expect(request.url.queryParameters, {'profile': 'work'});
+            expect(
+              request.url.path,
+              synthesis ? '/api/audio/speak' : '/api/audio/transcribe',
             );
-          }
-          expect(request.method, 'POST');
-          expect(request.headers['cookie'], contains('hermes_session_at='));
-          expect(request.url.queryParameters, {'profile': 'work'});
-          bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
-          if (request.url.path == '/api/audio/transcribe') {
-            transcriptions++;
-            if (transcriptions == 1) return http.Response('', 401);
+            bodies.add(jsonDecode(request.body) as Map<String, dynamic>);
+            if (bodies.length == 1) return http.Response('', 401);
             return http.Response(
-              '{"ok":true,"transcript":" Hello ","provider":"fixture"}',
+              synthesis
+                  ? '{"ok":true,"data_url":"data:audio/wav;base64,AQID"}'
+                  : '{"ok":true,"transcript":" Hello ","provider":"fixture"}',
               200,
             );
-          }
-          expect(request.url.path, '/api/audio/speak');
-          return http.Response(
-            '{"ok":true,"data_url":"data:audio/wav;base64,AQID"}',
-            200,
+          }),
+        );
+        final client = HermesVoice(
+          profile: 'work',
+          request: (path, body) => dashboard.apiPost(path, body: body),
+          closeClient: dashboard.close,
+        );
+        addTearDown(client.close);
+        if (synthesis) {
+          expect(await client.synthesize('Reply'), [1, 2, 3]);
+        } else {
+          expect(
+            await client.transcribe(Uint8List.fromList([1, 2, 3])),
+            'Hello',
           );
-        }),
-      );
-      final client = HermesVoice(
-        profile: 'work',
-        request: (path, body) => dashboard.apiPost(path, body: body),
-        closeClient: dashboard.close,
-      );
-      addTearDown(client.close);
-      expect(await client.transcribe(Uint8List.fromList([1, 2, 3])), 'Hello');
-      expect(await client.synthesize('Reply'), [1, 2, 3]);
-      expect(logins, 2);
-      expect(bodies[0], {
-        'data_url': 'data:audio/mp4;base64,AQID',
-        'mime_type': 'audio/mp4',
-      });
-      expect(bodies[1], bodies[0]);
-      expect(bodies[2], {'text': 'Reply'});
-    },
-  );
-  test(
-    'rejects invalid audio and provider envelopes instead of playing or inventing text',
-    () async {
-      var calls = 0;
-      Map<String, dynamic> response = {'ok': false, 'transcript': 'bad'};
+        }
+        expect(logins, 2);
+        final expected = synthesis
+            ? {'text': 'Reply'}
+            : {
+                'data_url': 'data:audio/mp4;base64,AQID',
+                'mime_type': 'audio/mp4',
+              };
+        expect(bodies, [expected, expected]);
+      },
+    );
+  }
+
+  test('empty audio is rejected before a transcription request', () async {
+    var calls = 0;
+    final client = HermesVoice(
+      profile: 'personal',
+      closeClient: () {},
+      request: (_, _) async {
+        calls++;
+        return {};
+      },
+    );
+    addTearDown(client.close);
+    await expectLater(client.transcribe(Uint8List(0)), throwsStateError);
+    expect(calls, 0);
+  });
+
+  test('failed provider envelope cannot invent a transcript', () async {
+    final client = HermesVoice(
+      profile: 'personal',
+      closeClient: () {},
+      request: (_, _) async => {'ok': false, 'transcript': 'bad'},
+    );
+    addTearDown(client.close);
+    await expectLater(
+      client.transcribe(Uint8List.fromList([1])),
+      throwsFormatException,
+    );
+  });
+
+  for (final entry in <String, String>{
+    'foreign URL': 'https://foreign.example/audio.mp3',
+    'empty audio': 'data:audio/mp3;base64,',
+  }.entries) {
+    test('${entry.key} synthesis response is rejected', () async {
       final client = HermesVoice(
         profile: 'personal',
         closeClient: () {},
-        request: (_, _) async {
-          calls++;
-          return response;
-        },
+        request: (_, _) async => {'ok': true, 'data_url': entry.value},
       );
-      await expectLater(client.transcribe(Uint8List(0)), throwsStateError);
-      expect(calls, 0);
-      await expectLater(
-        client.transcribe(Uint8List.fromList([1])),
-        throwsFormatException,
-      );
-      response = {'ok': true, 'data_url': 'https://foreign.example/audio.mp3'};
+      addTearDown(client.close);
       await expectLater(client.synthesize('hello'), throwsFormatException);
-      response = {'ok': true, 'data_url': 'data:audio/mp3;base64,'};
-      await expectLater(client.synthesize('hello'), throwsFormatException);
-    },
-  );
+    });
+  }
 }

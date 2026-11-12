@@ -1,3 +1,7 @@
+import 'package:wing/core/services/administration_logs_session.dart';
+import 'package:wing/core/screens/administration/admin_logs_page.dart';
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -6,7 +10,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/analytics_content.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
-import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'support/administration_design_fixture.dart';
 
@@ -47,10 +50,12 @@ void main() {
       for (final page in ['usage', 'logs', 'audit']) {
         testWidgets('$page ${brightness.name} at $scale', (tester) async {
           final fixture = AdministrationDesignFixture();
+          addTearDown(fixture.server.close);
           if (page != 'usage') {
             fixture.override = (method, path, query, body) async =>
                 switch (path) {
                   'logs' => {
+                    'file': query['file'],
                     'lines': [
                       '2026-09-18 02:15:03 INFO Gateway connected',
                       '2026-09-18 02:15:05 WARNING Provider connection retry',
@@ -58,6 +63,7 @@ void main() {
                     ],
                   },
                   'actions/security-audit/status' => {
+                    'name': 'security-audit',
                     'pid': 7,
                     'running': false,
                     'exit_code': 0,
@@ -89,10 +95,15 @@ void main() {
                 'usage' => AnalyticsPage(
                   profile: fixture.server.profile('client-work'),
                 ),
-                'logs' => AdminLogsPage(server: fixture.server),
+                'logs' => AdminLogsPage(
+                  createSession: () =>
+                      AdministrationLogsSession(fixture.server),
+                ),
                 _ => AdminActionPage(
-                  server: fixture.server,
-                  action: const AdministrationAction('security-audit', 7),
+                  operation: fixtureOperation(
+                    fixture.server,
+                    const AdministrationAction('security-audit', 7),
+                  ),
                   title: 'Security audit',
                   scope: 'Home server',
                 ),
@@ -140,6 +151,19 @@ void main() {
             expect(find.text('Research model'), findsOneWidget);
             await snapshot(tester, '$page-${brightness.name}-$scale-breakdown');
           } else {
+            expect(fixture.requests, isNotEmpty);
+            if (page == 'audit') {
+              await tester.tap(find.text('Diagnostic output'));
+              await tester.pumpAndSettle();
+            }
+            expect(
+              find.textContaining(
+                page == 'logs'
+                    ? 'Gateway connected'
+                    : 'Security audit completed.',
+              ),
+              findsOneWidget,
+            );
             expect(
               fixture.requests.every(
                 (r) => r.$1 == 'GET' && !r.$3.containsKey('profile'),
@@ -155,7 +179,6 @@ void main() {
           }
           expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox());
-          fixture.server.close();
         });
       }
     }

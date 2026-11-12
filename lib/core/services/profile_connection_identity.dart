@@ -14,7 +14,8 @@ class ProfileConnectionIdentity {
     FlutterSecureCredentialStore(),
   );
   final CredentialStore _store;
-  Future<List<int>>? _key;
+  List<int>? _key;
+  Future<List<int>>? _loadingKey;
 
   factory ProfileConnectionIdentity({CredentialStore? credentialStore}) =>
       credentialStore == null
@@ -45,13 +46,20 @@ class ProfileConnectionIdentity {
   }
 
   Future<String> resolve(SavedConnection connection) async {
-    final pending = _key ??= _loadKey();
     final List<int> key;
-    try {
-      key = await pending;
-    } catch (_) {
-      if (identical(_key, pending)) _key = null;
-      rethrow;
+    final cached = _key;
+    if (cached != null) {
+      key = cached;
+    } else {
+      final pending = _loadingKey ??= _loadKey();
+      try {
+        key = await pending;
+        _key = key;
+      } finally {
+        // Keep only in-flight work: a settled Future retains its originating
+        // execution zone, which can strand callers in a later widget lifecycle.
+        if (identical(_loadingKey, pending)) _loadingKey = null;
+      }
     }
     final settings = jsonEncode([
       connection.id,
@@ -70,7 +78,7 @@ class ProfileConnectionIdentity {
         [
           connection.cloudInstanceId,
           connection.cloudOrganization,
-          connection.dashboardOAuth?.id,
+          connection.dashboardGrant?.id,
         ],
       if (connection.gatewayHeaders.isNotEmpty)
         canonicalGatewayHeaders(connection.gatewayHeaders),

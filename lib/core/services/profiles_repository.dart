@@ -1,15 +1,8 @@
+import 'connection_access.dart';
 import '../models/hermes_profile.dart';
 import 'connection_manager.dart';
 
 typedef ProfileApiGet = Future<Map<String, dynamic>> Function(String endpoint);
-
-enum ProfilesCapability {
-  supported,
-  authenticationRequired,
-  unsupported,
-  unavailable,
-  malformed,
-}
 
 class ProfileDiscovery {
   final List<HermesProfile> profiles;
@@ -34,26 +27,10 @@ class ProfileDiscovery {
       named(currentName) ?? named(activeName) ?? profiles.first;
 }
 
-class ProfilesProbeResult {
-  final ProfilesCapability capability;
-  final ProfileDiscovery? discovery;
-  final String? message;
-
-  const ProfilesProbeResult._(this.capability, {this.discovery, this.message});
-
-  const ProfilesProbeResult.supported(ProfileDiscovery discovery)
-    : this._(ProfilesCapability.supported, discovery: discovery);
-
-  const ProfilesProbeResult.failure(
-    ProfilesCapability capability,
-    String message,
-  ) : this._(capability, message: message);
-}
-
 /// Discovers profiles through the authenticated modern dashboard contract.
 ///
 /// There is deliberately no legacy fallback here. An absent or unhealthy
-/// profile endpoint is an explicit capability state, never permission to send
+/// profile endpoint fails discovery, never granting permission to send
 /// an unscoped request to the server's default profile.
 class ProfilesRepository {
   final ProfileApiGet _get;
@@ -65,7 +42,8 @@ class ProfilesRepository {
     : _get = client.apiGet,
       _ownedClient = client;
 
-  factory ProfilesRepository.forConnection(SavedConnection connection) {
+  factory ProfilesRepository.forConnection(ConnectionAccess access) {
+    final connection = access.connection;
     return ProfilesRepository._owned(
       DashboardClient(
         host: connection.host,
@@ -75,9 +53,10 @@ class ProfilesRepository {
         proxied: connection.dashboardProxied,
         username: connection.dashboardUsername,
         password: connection.dashboardPassword,
-        dashboardOAuth: connection.dashboardOAuth,
+        dashboardOAuth: access.dashboardOAuth,
         requiresOAuth: connection.isCloud,
         gatewayHeaders: connection.gatewayHeaders,
+        authentication: access.dashboardAuthentication,
       ),
     );
   }
@@ -123,49 +102,5 @@ class ProfilesRepository {
     );
   }
 
-  Future<ProfilesProbeResult> probe() async {
-    try {
-      return ProfilesProbeResult.supported(await discover());
-    } on DashboardHttpException catch (error) {
-      if (error.statusCode == 401 || error.statusCode == 403) {
-        return const ProfilesProbeResult.failure(
-          ProfilesCapability.authenticationRequired,
-          'Profile discovery needs dashboard authentication.',
-        );
-      }
-      if (error.statusCode == 404 || error.statusCode == 405) {
-        return const ProfilesProbeResult.failure(
-          ProfilesCapability.unsupported,
-          'This server does not expose the modern profile API.',
-        );
-      }
-      return ProfilesProbeResult.failure(
-        ProfilesCapability.unavailable,
-        'Profile discovery failed with HTTP ${error.statusCode}.',
-      );
-    } on FormatException catch (error) {
-      return ProfilesProbeResult.failure(
-        ProfilesCapability.malformed,
-        error.message,
-      );
-    } catch (_) {
-      return const ProfilesProbeResult.failure(
-        ProfilesCapability.unavailable,
-        'Could not reach the profile API.',
-      );
-    }
-  }
-
   void close() => _ownedClient?.close();
-}
-
-Future<ProfilesProbeResult> probeProfilesForConnection(
-  SavedConnection connection,
-) async {
-  final repository = ProfilesRepository.forConnection(connection);
-  try {
-    return await repository.probe();
-  } finally {
-    repository.close();
-  }
 }

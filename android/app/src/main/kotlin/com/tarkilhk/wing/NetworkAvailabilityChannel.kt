@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Handler
 import android.os.Looper
+import android.util.Log
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 
@@ -19,6 +20,12 @@ class NetworkAvailabilityChannel(context: Context, messenger: BinaryMessenger) {
     private val callback = object : ConnectivityManager.NetworkCallback() {
         override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
             val available = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            if (validated != network || !available) {
+                Log.i("WingConnection", "network.capabilities network=$network validated=$available " +
+                    "wifi=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)} " +
+                    "cellular=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)} " +
+                    "vpn=${capabilities.hasTransport(NetworkCapabilities.TRANSPORT_VPN)}")
+            }
             if (available && validated != network) {
                 validated = network
                 main.post { if (!closed) channel.invokeMethod("available", null) }
@@ -27,6 +34,7 @@ class NetworkAvailabilityChannel(context: Context, messenger: BinaryMessenger) {
             }
         }
         override fun onLost(network: Network) {
+            Log.i("WingConnection", "network.lost network=$network previously_validated=${validated == network}")
             if (validated == network) {
                 validated = null
                 main.post { if (!closed) channel.invokeMethod("unavailable", null) }

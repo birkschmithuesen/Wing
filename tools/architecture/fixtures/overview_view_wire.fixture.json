@@ -1,0 +1,440 @@
+{
+  "cases": [
+    {
+      "name": "direct",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('config'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefixed-local-alias",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart' as api;\nvoid f(api.ProfileAdministration profile) { final alias = profile; alias.read('config'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "cascade",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile..read('config'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "method-tearoff",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { final read = profile.read; read('config'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "raw-observation",
+      "files": {
+        "lib/core/services/administration_overview.dart": {
+          "role": "data",
+          "source": "class AdministrationOverview { final observations = <String,Object>{}; }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_overview.dart';\nvoid f(AdministrationOverview overview) { final data = overview.observations; }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "raw-task-records",
+      "files": {
+        "lib/core/services/scheduled_tasks_controller.dart": {
+          "role": "data",
+          "source": "class ScheduledTasksController { final tasks = <Object>[]; }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/scheduled_tasks_controller.dart';\nvoid f(ScheduledTasksController owner) { final rows = owner.tasks; }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "top-level-parser",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "List<Object> administrationRows(Object? data) => [];\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(Object? data) { administrationRows(data); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "function-tearoff",
+      "files": {
+        "lib/core/models/settings_edit.dart": {
+          "role": "data",
+          "source": "Object? setting(Object? data, String key) => null;\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/settings_edit.dart';\nvoid f(Object? data) { final parser = setting; parser(data, 'memory.enabled'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "provider-constructor",
+      "files": {
+        "lib/core/models/provider_access.dart": {
+          "role": "data",
+          "source": "class ProviderAccess { ProviderAccess(Object? row); }\ntypedef Alias = ProviderAccess;\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_access.dart';\nvoid f(Object? row) { ProviderAccess(row); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "constructor-tearoff",
+      "files": {
+        "lib/core/models/provider_access.dart": {
+          "role": "data",
+          "source": "class ProviderAccess { ProviderAccess(Object? row); }\ntypedef Alias = ProviderAccess;\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_access.dart';\nvoid f(List<Object?> rows) { rows.map(ProviderAccess.new); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "constructor-exported-alias",
+      "files": {
+        "lib/core/models/provider_access.dart": {
+          "role": "data",
+          "source": "class ProviderAccess { ProviderAccess(Object? row); }\ntypedef Alias = ProviderAccess;\n"
+        },
+        "lib/public.dart": {
+          "role": "utility",
+          "source": "export 'core/models/provider_access.dart';\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../../public.dart' as domain;\nvoid f(Object? row) { domain.Alias(row); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "owner-command",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "class Session { void refresh() {} }\nvoid f(Session session) { session.refresh(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-method",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "class LocalDocument { void read(String name) {} }\nvoid f(LocalDocument document) { document.read('description'); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-function",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "Object? setting(Object? data, String key) => null;\nvoid f(Object? data) { setting(data, \"local\"); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "same-class-wrong-library",
+      "files": {
+        "lib/local.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String key) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../../local.dart';\nvoid f(ProfileAdministration local) { local.read('value'); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "same-constructor-wrong-library",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "class ProviderAccess { ProviderAccess(String label); }\nvoid f() { ProviderAccess(\"display label\"); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "sdk-unrelated-write",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "void f(StringBuffer buffer) { buffer.write(\"display\"); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "void f(dynamic value) { value.read('config'); }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "conditional",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/alternate.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String key) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../../alternate.dart' if (dart.library.io) '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('config'); }\n"
+        }
+      },
+      "exit": 2
+    },
+    {
+      "name": "consumer-part",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/overview_part.dart": {
+          "role": "view",
+          "source": "part of 'admin_profile_overview.dart';\nvoid f(ProfileAdministration profile) { profile.read('config'); }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\npart 'overview_part.dart';\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/overview_part.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "definition-part",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "part 'admin_part.dart';\n"
+        },
+        "lib/core/services/admin_part.dart": {
+          "role": "data",
+          "source": "part of 'administration_repository.dart';\nclass ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('config'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "unmigrated-view-outside-scope",
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void read(String path) {} }\n"
+        },
+        "lib/screens/remaining.dart": {
+          "role": "view",
+          "source": "import '../core/services/administration_repository.dart';\nvoid f(ProfileAdministration profile) { profile.read('config'); }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "class Session { void refresh() {} }\nvoid f(Session session) { session.refresh(); }\n"
+        }
+      },
+      "exit": 0
+    },
+    {
+      "name": "provider-identity-parser",
+      "files": {
+        "lib/core/models/provider_access.dart": {
+          "role": "domain",
+          "source": "class ProviderAccess { static void validateIdentity(Map<String,Object?> row) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_access.dart';\nvoid f(Map<String,Object?> row) { ProviderAccess.validateIdentity(row); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "model-wire-parser",
+      "files": {
+        "lib/core/models/model_choice.dart": {
+          "role": "domain",
+          "source": "class ConfiguredModel { static Object fromInfo(Object? row) => Object(); }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/model_choice.dart';\nvoid f(Object? row) { ConfiguredModel.fromInfo(row); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "raw-observation-record",
+      "files": {
+        "lib/core/services/administration_overview.dart": {
+          "role": "data",
+          "source": "class AdministrationObservation { final data = <String,Object>{}; }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_overview.dart';\nvoid f(AdministrationObservation observation) { final row = observation.data; }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "profile-gateway-rpc",
+      "files": {
+        "lib/core/services/profile_gateway.dart": {
+          "role": "data",
+          "source": "class ProfileGateway { void rpc(String operation) {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/profile_gateway.dart';\nvoid f(ProfileGateway gateway) { gateway.rpc('profiles.get'); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "constructor-typedef-chain",
+      "files": {
+        "lib/core/models/provider_access.dart": {
+          "role": "domain",
+          "source": "class ProviderAccess { ProviderAccess(Object? row); }\ntypedef First = ProviderAccess;\ntypedef Second = First;\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../models/provider_access.dart';\nvoid f(Object? row) { Second(row); }\n"
+        }
+      },
+      "exit": 1,
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "bare-inherited-capability",
+      "exit": 1,
+      "files": {
+        "lib/core/services/administration_repository.dart": {
+          "role": "data",
+          "source": "class ProfileAdministration { void config() {} void read() {} }\n"
+        },
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "import '../../services/administration_repository.dart';\nclass Page extends ProfileAdministration { Object callback() => config; }\n"
+        }
+      },
+      "diagnosticFile": "lib/core/screens/administration/admin_profile_overview.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "bare-unrelated-callback",
+      "exit": 0,
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": {
+          "role": "view",
+          "source": "Object callback(void Function() config) => config;\n"
+        }
+      }
+    }
+  ]
+}

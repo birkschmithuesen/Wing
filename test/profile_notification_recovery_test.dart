@@ -1,3 +1,6 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -16,16 +19,15 @@ import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/composer_action_button.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'profile_workspace_controller_test.dart' show Host;
 
 class _ResumeHost extends Host {
-  Object? resumeError;
   Map<String, dynamic>? resumeInfo;
   bool failResumeOnce = false;
   int resumeCalls = 0;
-  Completer<void>? resumeDelay;
 
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
@@ -56,7 +58,29 @@ class _ResumeHost extends Host {
 void main() {
   late _ResumeHost host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   late ProfileChat chat;
+
+  final retry = find.descendant(
+    of: find.byType(MaterialBanner),
+    matching: find.byTooltip('Retry'),
+  );
+
+  Future<void> until(
+    WidgetTester tester,
+    bool Function() ready,
+    String outcome,
+  ) async {
+    await tester.pump();
+    expect(tester.takeException(), isNull);
+    final deadline = DateTime.now().add(const Duration(seconds: 5));
+    while (!ready() && DateTime.now().isBefore(deadline)) {
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump(const Duration(milliseconds: 20));
+      expect(tester.takeException(), isNull);
+    }
+    expect(ready(), isTrue, reason: outcome);
+  }
 
   const capture = bool.fromEnvironment('CAPTURE_RECOVERY');
   setUpAll(() async {
@@ -77,60 +101,75 @@ void main() {
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     host = _ResumeHost()..running = false;
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'notification-recovery',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
-    chat = await controller.createChat();
+    chat = await controller.createChat(canDispatch: () => true);
     await controller.updateDraft(chat, 'My unsent follow-up');
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
-  testWidgets(
-    'notification opens a stock lazy runtime without a profile echo',
-    (tester) async {
-      // Stock _fallback_session_info before the resumed agent is initialized.
-      host.resumeInfo = {
-        'cwd': '/workspace',
-        'branch': '',
-        'project': null,
-        'lazy': true,
-        'model': 'test-model',
-        'skills': <String, dynamic>{},
-        'tools': <String, dynamic>{},
-      'desktop_contract': 8,
-      };
-      await controller.openNotification(chat.key);
-      await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
-      );
-      await tester.pump();
-
-      expect(chat.openingError, isNull);
-      expect(chat.opening, isFalse);
-      expect(controller.notificationChat, isNull);
-      expect(controller.current!.chat, same(chat));
-      expect(chat.draft, 'My unsent follow-up');
-      expect(find.text('Retry connection'), findsNothing);
-      expect(
-        host.calls
-            .where((call) => call.$2 == 'session.resume')
-            .single
-            .$3['profile'],
-        chat.key.workspace.profileName,
-      );
-      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
-      await tester.pumpWidget(const SizedBox.shrink());
+  // Canonical local snapshots echo their profile even before agent creation;
+  // non-local snapshots may carry only the protocol identity.
+  for (final info in [
+    {'desktop_protocol': 'hermes-gateway-v1'},
+    {
+      'desktop_protocol': 'hermes-gateway-v1',
+      'profile_name': 'a',
+      'lazy': true,
     },
-  );
+  ]) {
+    testWidgets(
+      'notification opens the canonical ${info.containsKey('profile_name') ? 'local lazy' : 'minimal non-local'} snapshot',
+      (tester) async {
+        host.resumeInfo = info;
+        await controller.openNotification(chat.key);
+        await tester.pumpWidget(
+          MaterialApp(
+            home: ProfileWorkspaceScreen(
+              createBotsSession: () => BotsSession((_) async => const []),
+              controller: controller,
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(chat.runtime.openingError, isNull);
+        expect(chat.runtime.opening, isFalse);
+        expect(controller.notificationChat, isNull);
+        expect(controller.current!.chat, same(chat));
+        expect(chat.composer.observation.text, 'My unsent follow-up');
+        expect(retry, findsNothing);
+        expect(
+          host.calls
+              .where((call) => call.$2 == 'session.resume')
+              .single
+              .$3['profile'],
+          chat.key.workspace.profileName,
+        );
+        expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   for (final info in [
     {'lazy': true, 'profile_name': 'another-profile'},
     {'lazy': true, 'profile_name': null},
-    {'lazy': false},
+    {'profile_name': 17},
   ]) {
     test(
       'rejects invalid or conflicting session owner metadata: $info',
@@ -150,12 +189,12 @@ void main() {
       final observed = <({bool opening, bool notification})>[];
       controller.addListener(() {
         observed.add((
-          opening: chat.opening,
+          opening: chat.runtime.opening,
           notification: controller.notificationChat != null,
         ));
       });
       await controller.openNotification(chat.key);
-      expect(chat.opening, isFalse);
+      expect(chat.runtime.opening, isFalse);
       expect(observed.last, (opening: false, notification: false));
     },
   );
@@ -169,7 +208,7 @@ void main() {
     await tester.pump(const Duration(minutes: 2));
     expect(host.resumeCalls, 1);
     expect(controller.notificationChat, isNull);
-    expect(chat.draft, 'My unsent follow-up');
+    expect(chat.composer.observation.text, 'My unsent follow-up');
   });
 
   for (final brightness in Brightness.values) {
@@ -201,11 +240,14 @@ void main() {
                 child: child!,
               ),
             ),
-            home: ProfileWorkspaceScreen(controller: controller),
+            home: ProfileWorkspaceScreen(
+              createBotsSession: () => BotsSession((_) async => const []),
+              controller: controller,
+            ),
           ),
         );
         await tester.pumpAndSettle();
-        expect(find.text('Retry connection').hitTestable(), findsOneWidget);
+        expect(retry.hitTestable(), findsOneWidget);
         expect(tester.takeException(), isNull);
         if (capture) {
           final render =
@@ -230,7 +272,7 @@ void main() {
   }
 
   testWidgets(
-    'cached notification failure exposes retry and preserves the draft',
+    'cached notification failure stores Send and preserves a fresh draft on retry',
     (tester) async {
       host.resumeError = JsonRpcError(
         'session.resume',
@@ -239,12 +281,17 @@ void main() {
       );
       await controller.openNotification(chat.key);
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            createBotsSession: () => BotsSession((_) async => const []),
+            controller: controller,
+          ),
+        ),
       );
       await tester.pump();
-      expect(chat.openingError, isNotNull);
-      expect(chat.messages.single['content'], 'a completed');
-      expect(find.text('Retry connection'), findsOneWidget);
+      expect(chat.runtime.openingError, isNotNull);
+      expect(chat.reading.messages.single['content'], 'a completed');
+      expect(retry, findsOneWidget);
       expect(
         controller.connectionStatus.phase,
         ServerConnectionPhase.disconnected,
@@ -259,29 +306,61 @@ void main() {
         tester
             .widget<ComposerActionButton>(find.byType(ComposerActionButton))
             .unavailable[ComposerAction.send],
-        isNotNull,
+        isNull,
       );
-      await controller.send(chat);
+      final send = find.byType(ComposerActionButton);
+      expect(
+        tester.widget<ComposerActionButton>(send).primary,
+        ComposerAction.send,
+      );
+      expect(send.hitTestable(), findsOneWidget);
+      await tester.tap(send);
+      await until(
+        tester,
+        () => chat.composer.observation.queue.isNotEmpty,
+        'Send stores the original draft while connection recovery is paused.',
+      );
+      expect(chat.composer.observation.text, isEmpty);
+      expect(
+        chat.composer.observation.queue.single.text,
+        'My unsent follow-up',
+      );
       expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
 
       host.resumeError = null;
-      host.resumeDelay = Completer<void>();
-      await tester.tap(find.text('Retry connection'));
-      await tester.pump();
-      expect(
-        controller.connectionStatus.phase,
-        ServerConnectionPhase.reconnecting,
-      );
-      expect(chat.openingError, isNull);
-      await controller.updateDraft(chat, 'Edited while reconnecting');
-      host.resumeDelay!.complete();
-      for (var i = 0; i < 5; i++) {
-        await tester.pump(const Duration(milliseconds: 100));
+      final recovery = Completer<void>();
+      host.resumeDelay = recovery;
+      try {
+        expect(retry.hitTestable(), findsOneWidget);
+        await tester.tap(retry);
+        await until(
+          tester,
+          () =>
+              controller.connectionStatus.phase ==
+                  ServerConnectionPhase.reconnecting &&
+              find.byType(StudioLoading).evaluate().isNotEmpty,
+          'Retry starts recovery and renders visible pending feedback.',
+        );
+        expect(chat.runtime.openingError, isNull);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        await controller.updateDraft(chat, 'Edited while reconnecting');
+        recovery.complete();
+        await until(
+          tester,
+          () =>
+              !chat.runtime.opening &&
+              !chat.composer.observation.sending &&
+              chat.composer.observation.queue.isEmpty,
+          'Recovery submits the queued message and preserves the newer draft.',
+        );
+      } finally {
+        if (!recovery.isCompleted) recovery.complete();
+        await tester.pump();
       }
       expect(controller.notificationChat, isNull);
       expect(controller.current!.chat, same(chat));
-      expect(chat.opening, isFalse);
-      expect(chat.draft, 'Edited while reconnecting');
+      expect(chat.runtime.opening, isFalse);
+      expect(chat.composer.observation.text, 'Edited while reconnecting');
       expect(
         controller.connectionStatus.phase,
         ServerConnectionPhase.connected,
@@ -292,7 +371,18 @@ void main() {
             .unavailable[ComposerAction.send],
         isNull,
       );
-      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+      final submitted = host.calls
+          .where((call) => call.$2 == 'prompt.submit')
+          .single;
+      expect(submitted.$3['text'], 'My unsent follow-up');
+      final inputId = submitted.$3['submission_id'];
+      expect(inputId, isA<String>());
+      expect(inputId, isNotEmpty);
+      expect(host.canonicalAdmissions, hasLength(1));
+      final receipt = host.canonicalAdmissions.values.single;
+      expect(receipt['input_id'], inputId);
+      expect((receipt['ref'] as Map)['session_id'], chat.runtime.runtimeId);
+      expect(chat.composer.observation.queue, isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
@@ -316,7 +406,7 @@ void main() {
       (tester) async {
         host.resumeError = failure;
         await controller.openNotification(chat.key);
-        expect(chat.openingError, isNull);
+        expect(chat.runtime.openingError, isNull);
         expect(
           controller.connectionStatus.phase,
           ServerConnectionPhase.reconnecting,
@@ -325,8 +415,8 @@ void main() {
         await tester.pump(const Duration(seconds: 1));
         expect(host.resumeCalls, 2);
         expect(controller.notificationChat, isNull);
-        expect(chat.opening, isFalse);
-        expect(chat.draft, 'My unsent follow-up');
+        expect(chat.runtime.opening, isFalse);
+        expect(chat.composer.observation.text, 'My unsent follow-up');
         expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
       },
     );
@@ -352,13 +442,13 @@ void main() {
       expect(host.resumeCalls, 2);
       expect(controller.recovering, isFalse);
       expect(controller.current!.chat, same(chat));
-      expect(chat.draft, 'My unsent follow-up');
-      expect(chat.messages.single['content'], 'a completed');
+      expect(chat.composer.observation.text, 'My unsent follow-up');
+      expect(chat.reading.messages.single['content'], 'a completed');
       expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
     },
   );
 
-  testWidgets('notification waits for focus after its short retry burst', (
+  testWidgets('notification retries automatically after a prolonged outage', (
     tester,
   ) async {
     host.resumeError = TimeoutException('Synthetic resume timeout');
@@ -367,28 +457,33 @@ void main() {
       await tester.pump(Duration(seconds: seconds));
     }
     expect(host.resumeCalls, 6);
-    expect(chat.openingError, isNotNull);
+    expect(chat.runtime.openingError, isNull);
     expect(
       controller.connectionStatus.phase,
-      ServerConnectionPhase.disconnected,
+      ServerConnectionPhase.reconnecting,
     );
-    expect(chat.draft, 'My unsent follow-up');
+    expect(chat.composer.observation.text, 'My unsent follow-up');
     host.resumeError = null;
-    await tester.pump(const Duration(minutes: 2));
+    await tester.pump(const Duration(seconds: 29));
     expect(host.resumeCalls, 6);
-    await controller.resumeConnection();
+    await tester.pump(const Duration(seconds: 1));
     expect(host.resumeCalls, 7);
     expect(controller.notificationChat, isNull);
-    expect(chat.opening, isFalse);
+    expect(chat.runtime.opening, isFalse);
     expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
     expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
   });
 
-  testWidgets('reopening a cached chat retries its exhausted recovery', (
+  testWidgets('reopening a cached chat bypasses its pending recovery delay', (
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+      MaterialApp(
+        home: ProfileWorkspaceScreen(
+          createBotsSession: () => BotsSession((_) async => const []),
+          controller: controller,
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
@@ -399,7 +494,7 @@ void main() {
     for (final seconds in [1, 2, 4, 8, 16]) {
       await tester.pump(Duration(seconds: seconds));
     }
-    expect(chat.openingError, 'Couldn’t reopen this chat. Retry to continue.');
+    expect(chat.runtime.openingError, isNull);
     final calls = host.resumeCalls;
     host.resumeError = null;
 
@@ -411,11 +506,11 @@ void main() {
     await tester.pump();
 
     expect(host.resumeCalls, calls + 1);
-    expect(chat.openingError, isNull);
-    expect(chat.opening, isFalse);
+    expect(chat.runtime.openingError, isNull);
+    expect(chat.runtime.opening, isFalse);
     expect(controller.notificationChat, isNull);
-    expect(chat.draft, 'My unsent follow-up');
-    expect(find.text('Retry connection'), findsNothing);
+    expect(chat.composer.observation.text, 'My unsent follow-up');
+    expect(retry, findsNothing);
     expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
     await tester.pumpWidget(const SizedBox.shrink());
   });
@@ -431,7 +526,12 @@ void main() {
       expect(host.resumeCalls, 1);
 
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            createBotsSession: () => BotsSession((_) async => const []),
+            controller: controller,
+          ),
+        ),
       );
       await tester.pump();
       host.resumeDelay!.complete();
@@ -441,11 +541,11 @@ void main() {
       await tester.pump();
 
       expect(host.resumeCalls, 2);
-      expect(chat.openingError, isNull);
-      expect(chat.opening, isFalse);
+      expect(chat.runtime.openingError, isNull);
+      expect(chat.runtime.opening, isFalse);
       expect(controller.notificationChat, isNull);
-      expect(chat.draft, 'My unsent follow-up');
-      expect(find.text('Retry connection'), findsNothing);
+      expect(chat.composer.observation.text, 'My unsent follow-up');
+      expect(retry, findsNothing);
       expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
     },

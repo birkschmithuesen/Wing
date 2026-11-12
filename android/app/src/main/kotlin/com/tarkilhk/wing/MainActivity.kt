@@ -5,8 +5,11 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.ClipData
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Process
 import android.net.Uri
 import android.os.Bundle
+import android.os.CancellationSignal
 import android.provider.MediaStore
 import android.provider.OpenableColumns
 import androidx.core.content.FileProvider
@@ -19,7 +22,6 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
-import java.util.concurrent.Executors
 
 class MainActivity : FlutterActivity() {
     private val shareChannelName = "com.tarkilhk.wing/share"
@@ -32,8 +34,9 @@ class MainActivity : FlutterActivity() {
     private val intakeQueueKey = "queue"
     private val pendingCameraKey = "pending_camera"
     private val cameraRequestCode = 9301
-    private val maxSharedItems = 10
-    private val maxSharedBytes = 64L * 1024L * 1024L
+    private val maxSharedItems = 40
+    private val maxSharedBytes = 128L * 1024L * 1024L
+    private val maxCameraBytes = 64L * 1024L * 1024L
     private val maxPendingRecords = 10
     private val maxPendingBytes = 128L * 1024L * 1024L
     private val maxSharedTextChars = 256 * 1024
@@ -46,6 +49,13 @@ class MainActivity : FlutterActivity() {
     private var mediaPreviewChannel: MediaPreviewChannel? = null
     private var voiceChannel: VoiceChannel? = null
     private var imageClipboardChannel: ImageClipboardChannel? = null
+    private var botScreenChannel: BotScreenChannel? = null
+    private var emailComposerChannel: EmailComposerChannel? = null
+    private var scrollCaptureChannel: ScrollCaptureChannel? = null
+    private var accessibilityTimeoutChannel: AccessibilityTimeoutChannel? = null
+    private var intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
+    @Volatile private var shareAuthority = Any()
+    @Volatile private var shareAuthorityActive = true
     private var initialShareIntent: Intent? = null
     private var initialLaunchAction: String? = null
     @Volatile private var activityResumed = false
@@ -71,6 +81,18 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         engineAttached = true
+        accessibilityTimeoutChannel?.close()
+        accessibilityTimeoutChannel = AccessibilityTimeoutChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        scrollCaptureChannel?.close()
+        scrollCaptureChannel = ScrollCaptureChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        botScreenChannel?.close()
+        botScreenChannel = BotScreenChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        emailComposerChannel?.close()
+        emailComposerChannel = EmailComposerChannel(this, flutterEngine.dartExecutor.binaryMessenger)
+        intakeReplies.retire()
+        intakeReplies = IntakeMethodReplies { action -> runOnUiThread(action) }
+        shareAuthority = Any()
+        shareAuthorityActive = true
         MonitoringRuntime.attach(this, flutterEngine)
         hermesCloud?.close()
         hermesCloud = HermesCloudChannel(this, flutterEngine.dartExecutor.binaryMessenger)
@@ -95,19 +117,26 @@ class MainActivity : FlutterActivity() {
             MermaidDiagramViewFactory(),
         )
         shareChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, shareChannelName).apply {
-            setMethodCallHandler { call, result ->
+            setMethodCallHandler { call, rawResult ->
+                val result = IntakeResult(rawResult)
                 when (call.method) {
                     "getPendingShare" -> {
                         val pendingIntent = initialShareIntent
                         initialShareIntent = null
-                        intakeExecutor.execute {
+                        enqueueIntake(result) {
                             try {
                                 recoverPendingCamera()
-                                if (pendingIntent != null) importShareIntent(pendingIntent)
-                                postResult(result, oldestPendingPayload())
+                                if (pendingIntent != null) {
+                                    importShareIntent(pendingIntent) {
+                                        if (result.isActive) result.success(oldestPendingPayloadSafely())
+                                        else result.error("intake_cancelled", intakeCancelledError, null)
+                                    }
+                                } else {
+                                    result.success(oldestPendingPayload())
+                                }
                             } catch (error: Exception) {
                                 postShareError(safeImportMessage(error))
-                                postResult(result, oldestPendingPayloadSafely())
+                                result.success(oldestPendingPayloadSafely())
                             } finally {
                                 if (pendingIntent != null) clearConsumedShareIntent(pendingIntent)
                             }
@@ -115,24 +144,28 @@ class MainActivity : FlutterActivity() {
                     }
                     "acknowledgeShare" -> {
                         val id = (call.argument<String>("id") ?: "").trim()
-                        intakeExecutor.execute {
+                        enqueueIntake(result) {
                             try {
-                                postResult(result, acknowledgeShare(id))
+                                result.success(acknowledgeShare(id))
                             } catch (_: Exception) {
-                                postError(result, "share_ack_failed", genericAcknowledgeError)
+                                result.error("share_ack_failed", genericAcknowledgeError, null)
                             }
                         }
                     }
                     "capturePhoto" -> {
                         val target = call.argument<Map<*, *>>("target")
-                        intakeExecutor.execute {
+                        val authority = shareAuthority
+                        enqueueIntake(result) {
                             try {
                                 val descriptor = prepareCameraCapture(target)
-                                runOnUiThread { launchCamera(descriptor, result) }
+                                runOnUiThread {
+                                    if (shareAuthorityActive && shareAuthority === authority) launchCamera(descriptor, result)
+                                    else abandonCameraLaunch(descriptor, null, result)
+                                }
                             } catch (error: CameraCaptureException) {
-                                postError(result, error.code, error.safeMessage)
+                                result.error(error.code, error.safeMessage, null)
                             } catch (_: Exception) {
-                                postError(result, "camera_unavailable", genericCameraError)
+                                result.error("camera_unavailable", genericCameraError, null)
                             }
                         }
                     }
@@ -156,7 +189,8 @@ class MainActivity : FlutterActivity() {
             flutterEngine.dartExecutor.binaryMessenger,
             fileDeliveryChannelName,
         ).apply {
-            setMethodCallHandler { call, result ->
+            setMethodCallHandler { call, rawResult ->
+                val result = IntakeResult(rawResult)
                 when (call.method) {
                     "openInApp" -> openDownloadedFile(
                         call.argument<String>("filename"),
@@ -184,7 +218,7 @@ class MainActivity : FlutterActivity() {
             return
         }
         val filename = safeDeliveredFilename(rawFilename)
-        intakeExecutor.execute {
+        enqueueIntake(result) {
             try {
                 val directory = File(cacheDir, "delivered_outputs")
                 if (!directory.exists() && !directory.mkdirs()) {
@@ -224,7 +258,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
             } catch (_: Exception) {
-                postError(result, "file_open_failed", genericFileOpenError)
+                result.error("file_open_failed", genericFileOpenError, null)
             }
         }
     }
@@ -256,6 +290,17 @@ class MainActivity : FlutterActivity() {
         // Clean up at engine detachment, before a replacement host installs its
         // handlers. The old host's later onDestroy must not clear those handlers.
         engineAttached = false
+        scrollCaptureChannel?.close()
+        scrollCaptureChannel = null
+        accessibilityTimeoutChannel?.close()
+        accessibilityTimeoutChannel = null
+        botScreenChannel?.close()
+        botScreenChannel = null
+        emailComposerChannel?.close()
+        emailComposerChannel = null
+        shareAuthorityActive = false
+        intakeReplies.retire()
+        providerWork.cancel(shareAuthority)
         activityResumed = false
         hermesCloud?.close()
         hermesCloud = null
@@ -282,7 +327,7 @@ class MainActivity : FlutterActivity() {
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         if (requestCode != cameraRequestCode) return
-        intakeExecutor.execute {
+        enqueueIntake {
             try {
                 finishCameraCapture(resultCode == Activity.RESULT_OK)
             } catch (error: Exception) {
@@ -293,6 +338,7 @@ class MainActivity : FlutterActivity() {
 
     override fun onResume() {
         super.onResume()
+        botScreenChannel?.apply()
         if (!engineAttached) return
         activityResumed = true
         voiceChannel?.resume()
@@ -300,7 +346,7 @@ class MainActivity : FlutterActivity() {
             ChatNotifications.handleMainIntent(this, intent)
         }
         MonitoringRuntime.activityVisible = true
-        intakeExecutor.execute {
+        enqueueIntake {
             try {
                 reconcilePendingCameraOnResume()
             } catch (error: Exception) {
@@ -311,9 +357,20 @@ class MainActivity : FlutterActivity() {
 
     override fun onPause() {
         voiceChannel?.pause()
+        voiceChannel?.pauseOffline()
         activityResumed = false
         if (engineAttached) MonitoringRuntime.activityVisible = false
         super.onPause()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) botScreenChannel?.apply()
+    }
+
+    override fun onStop() {
+        voiceChannel?.leaveForeground()
+        super.onStop()
     }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
@@ -332,11 +389,10 @@ class MainActivity : FlutterActivity() {
             return
         }
         if (!isShareIntent(intent)) return
-        intakeExecutor.execute {
+        enqueueIntake {
             try {
                 recoverPendingCamera()
-                importShareIntent(intent)
-                postSharePayload(oldestPendingPayload())
+                importShareIntent(intent) { postSharePayload(oldestPendingPayloadSafely()) }
             } catch (error: Exception) {
                 postShareError(safeImportMessage(error))
             } finally {
@@ -363,7 +419,7 @@ class MainActivity : FlutterActivity() {
         val queue = readQueue()
         pruneOrphanedIntake(queue)
         if (queue.length() >= maxPendingRecords ||
-            queueBytes(queue) > maxPendingBytes - maxSharedBytes
+            queueBytes(queue) > maxPendingBytes - maxCameraBytes
         ) {
             throw CameraCaptureException("camera_intake_full", queueFullError)
         }
@@ -390,6 +446,10 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun launchCamera(descriptor: CameraDescriptor, result: MethodChannel.Result) {
+        if (!engineAttached || !activityResumed || isFinishing || isDestroyed) {
+            abandonCameraLaunch(descriptor, null, result)
+            return
+        }
         var outputUri: Uri? = null
         try {
             val uri = FileProvider.getUriForFile(
@@ -399,6 +459,14 @@ class MainActivity : FlutterActivity() {
             )
             outputUri = uri
             val capture = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
+                // Android 11+ limits implicit capture to preinstalled cameras.
+                // Only the explicitly opted-in, isolated debug QA build routes
+                // through a controlled foreign activity for lifetime tests.
+                if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA &&
+                    BuildConfig.APPLICATION_ID == "com.tarkilhk.wing.notificationqa") {
+                    setClassName("com.tarkilhk.wing.shareqa.fixture",
+                        "com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity")
+                }
                 putExtra(MediaStore.EXTRA_OUTPUT, uri)
                 clipData = ClipData.newRawUri("camera-output", uri)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -418,10 +486,14 @@ class MainActivity : FlutterActivity() {
         result: MethodChannel.Result,
     ) {
         if (outputUri != null) revokeCameraGrant(outputUri)
-        intakeExecutor.execute {
-            writeCameraDescriptor(null)
-            deleteIntakeDirectory(descriptor.id)
-            postError(result, "camera_unavailable", genericCameraError)
+        // This is cleanup of the admitted camera attempt, not a second method
+        // admission. Its captured reply still settles if the actor retires.
+        enqueueIntake(onRejected = {
+            result.error("camera_unavailable", genericCameraError, null)
+        }) {
+            if (readCameraDescriptor()?.id == descriptor.id) writeCameraDescriptor(null)
+            if (!queueContains(readQueue(), descriptor.id)) deleteIntakeDirectory(descriptor.id)
+            result.error("camera_unavailable", genericCameraError, null)
         }
     }
 
@@ -499,7 +571,7 @@ class MainActivity : FlutterActivity() {
         }
         val output = File(descriptor.path)
         val length = if (output.isFile) output.length() else 0L
-        if (length <= 0L || length > maxSharedBytes) {
+        if (length <= 0L || length > maxCameraBytes) {
             writeCameraDescriptor(null)
             deleteIntakeDirectory(descriptor.id)
             throw CameraCaptureException("camera_invalid_output", invalidCameraOutputError)
@@ -530,7 +602,9 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun validatedCameraTarget(raw: Map<*, *>?): Map<String, String> {
-        val keys = listOf("connection", "connection_identity", "profile", "session")
+        val keys = if (raw?.containsKey("room") == true)
+            listOf("connection", "connection_identity", "room")
+        else listOf("connection", "connection_identity", "profile", "session")
         if (raw == null || raw.keys.any { it !in keys }) {
             throw CameraCaptureException("camera_invalid_target", invalidCameraTargetError)
         }
@@ -560,68 +634,120 @@ class MainActivity : FlutterActivity() {
     private fun queueContains(queue: JSONArray, id: String): Boolean =
         (0 until queue.length()).any { queue.getJSONObject(it).optString("id") == id }
 
-    private fun importShareIntent(intent: Intent) {
+    /** The local actor only preflights and commits. No foreign provider runs on it. */
+    private fun importShareIntent(intent: Intent, completed: () -> Unit) {
+        val authority = shareAuthority
+        fun active() = shareAuthorityActive && shareAuthority === authority
         val queue = readQueue()
         pruneOrphanedIntake(queue)
         val fingerprint = shareFingerprint(intent)
-        val alreadyPending = (0 until queue.length()).any {
-            queue.getJSONObject(it).optString("fingerprint") == fingerprint
+        if ((0 until queue.length()).any {
+                queue.getJSONObject(it).optString("fingerprint") == fingerprint
+            }) {
+            completed()
+            return
         }
-        if (alreadyPending) return
+        val text = extractSharedText(intent)
+        if ((text?.length ?: 0) > maxSharedTextChars) throw ShareImportException(textTooLargeError)
+        val uris = sharedUris(intent)
+        if (uris.size > maxSharedItems) throw ShareImportException(tooManyFilesError)
+        uris.forEach(::validateExternalShareUri)
+        if (text == null && uris.isEmpty()) throw ShareImportException(genericImportError)
+        val id = UUID.randomUUID().toString()
+        // Outside pending_intake: queue pruning/ack/camera cannot delete a live stage.
+        val stage = File(providerStageRoot(), id)
+        if (uris.isEmpty()) {
+            commitShareRecord(JSONObject().put("id", id).put("fingerprint", fingerprint)
+                .put("text", text ?: JSONObject.NULL).put("files", JSONArray()), null)
+            completed()
+            return
+        }
+        val fallbackType = intent.type
+        val accepted = providerWork.submit(
+            authority = authority,
+            releaseStage = { !stage.exists() || stage.deleteRecursively() },
+            work = { lease ->
+                val files = JSONArray()
+                var copiedBytes = 0L
+                uris.forEachIndexed { index, uri ->
+                    lease.check()
+                    val file = copySharedUri(uri, index, fallbackType, stage,
+                        maxSharedBytes - copiedBytes, lease)
+                    files.put(file)
+                    copiedBytes += file.getLong("byteLength")
+                }
+                JSONObject().put("id", id).put("fingerprint", fingerprint)
+                    .put("text", text ?: JSONObject.NULL).put("files", files)
+            },
+            completed = { lease, record, error ->
+                enqueueIntake(onRejected = {
+                    lease.retire()
+                    lease.finish()
+                    if (active()) postShareError(queueFullError)
+                    completed()
+                }) {
+                    try {
+                        if (!active()) return@enqueueIntake
+                        if (error != null || record == null) throw ShareImportException(genericImportError)
+                        lease.publish {
+                            if (!active()) throw ShareImportException(genericImportError)
+                            commitShareRecord(record, stage)
+                        }
+                    } catch (failure: Exception) {
+                        if (active()) runOnUiThread {
+                            if (active()) shareChannel?.invokeMethod("shareError", safeImportMessage(failure))
+                        }
+                    } finally {
+                        lease.finish()
+                        completed()
+                    }
+                }
+            },
+        )
+        if (!accepted) throw ShareImportException(queueFullError)
+    }
+
+    private fun providerStageRoot(): File {
+        val root = File(cacheDir, "provider_share_staging")
+        if (!providerStagingInitialized) {
+            // Process-start recovery only: a previous process has no live producer.
+            if (root.exists() && !root.deleteRecursively()) throw ShareImportException(queueFullError)
+            if (!root.mkdirs()) throw ShareImportException(genericImportError)
+            providerStagingInitialized = true
+        }
+        return root
+    }
+
+    private fun commitShareRecord(record: JSONObject, stage: File?) {
+        val current = readQueue()
+        if ((0 until current.length()).any {
+                current.getJSONObject(it).optString("fingerprint") == record.getString("fingerprint")
+            }) return
         val cameraPending = readCameraDescriptor() != null
-        if (queue.length() + (if (cameraPending) 1 else 0) >= maxPendingRecords) {
+        if (current.length() + (if (cameraPending) 1 else 0) >= maxPendingRecords ||
+            queueBytes(current) + recordBytes(record) +
+            (if (cameraPending) maxCameraBytes else 0L) > maxPendingBytes) {
             throw ShareImportException(queueFullError)
         }
-
-        val text = extractSharedText(intent)
-        if ((text?.length ?: 0) > maxSharedTextChars) {
-            throw ShareImportException(textTooLargeError)
-        }
-        val uris = sharedUris(intent)
-        if (uris.size > maxSharedItems) {
-            throw ShareImportException(tooManyFilesError)
-        }
-        if (text == null && uris.isEmpty()) {
-            throw ShareImportException(genericImportError)
-        }
-
-        val id = UUID.randomUUID().toString()
-        val directory = File(intakeDirectory(), id)
-        val files = JSONArray()
-        var copiedBytes = 0L
-        try {
-            uris.forEachIndexed { index, uri ->
-                val remainingIncoming = maxSharedBytes - copiedBytes
-                val cameraReservation = if (cameraPending) maxSharedBytes else 0L
-                val remainingQueue =
-                    maxPendingBytes - cameraReservation - queueBytes(queue) - copiedBytes
-                if (remainingIncoming <= 0L) throw ShareImportException(incomingTooLargeError)
-                if (remainingQueue <= 0L) throw ShareImportException(queueFullError)
-                val file = copySharedUri(
-                    uri = uri,
-                    index = index,
-                    fallbackType = intent.type,
-                    directory = directory,
-                    byteLimit = minOf(remainingIncoming, remainingQueue),
-                    queueIsLimiting = remainingQueue < remainingIncoming,
-                )
-                files.put(file)
-                copiedBytes += file.getLong("byteLength")
+        val destination = File(intakeDirectory(), record.getString("id"))
+        val files = record.getJSONArray("files")
+        if (files.length() > 0) {
+            if (stage == null || !stage.renameTo(destination)) throw ShareImportException(genericImportError)
+            for (index in 0 until files.length()) {
+                val file = files.getJSONObject(index)
+                file.put("path", File(destination, File(file.getString("path")).name).absolutePath)
             }
-            val record = JSONObject()
-                .put("id", id)
-                .put("fingerprint", fingerprint)
-                .put("text", text ?: JSONObject.NULL)
-                .put("files", files)
-            queue.put(record)
-            if (!writeQueue(queue)) throw ShareImportException(genericImportError)
-        } catch (error: ShareImportException) {
-            directory.deleteRecursively()
-            throw error
-        } catch (_: Exception) {
-            directory.deleteRecursively()
+        }
+        current.put(record)
+        if (!writeQueue(current)) {
+            destination.deleteRecursively()
             throw ShareImportException(genericImportError)
         }
+    }
+
+    private fun recordBytes(record: JSONObject): Long {
+        val files = record.getJSONArray("files")
+        return (0 until files.length()).sumOf { files.getJSONObject(it).getLong("byteLength") }
     }
 
     private fun acknowledgeShare(id: String): Map<String, Any?>? {
@@ -651,51 +777,57 @@ class MainActivity : FlutterActivity() {
         fallbackType: String?,
         directory: File,
         byteLimit: Long,
-        queueIsLimiting: Boolean,
+        lease: BoundedProviderWork.Lease,
     ): JSONObject {
+        lease.check()
+        if (byteLimit <= 0L) throw ShareImportException(incomingTooLargeError)
+        validateExternalShareUri(uri)
         val mediaType = contentResolver.getType(uri)?.trim().orEmpty()
             .ifEmpty { fallbackType?.trim().orEmpty() }
             .ifEmpty { "application/octet-stream" }
-        val displayName = queryDisplayName(uri)
-            ?.let(::safeDisplayName)
-            ?.takeIf { it.isNotEmpty() && it != "." && it != ".." }
-            ?: "shared-${index + 1}"
-        directory.mkdirs()
-        val destination = File(directory, "${UUID.randomUUID()}-$displayName")
-        try {
-            val input = contentResolver.openInputStream(uri)
-                ?: throw ShareImportException(genericImportError)
-            var total = 0L
-            input.use { source ->
-                FileOutputStream(destination).use { output ->
-                    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = source.read(buffer)
-                        if (read < 0) break
-                        total += read
-                        if (total > byteLimit) {
-                            throw ShareImportException(
-                                if (queueIsLimiting) queueFullError else incomingTooLargeError,
-                            )
-                        }
-                        output.write(buffer, 0, read)
-                    }
-                    output.flush()
+        lease.check()
+        val signal = CancellationSignal()
+        lease.own(AutoCloseable { signal.cancel() })
+        val name = try {
+            val cursor = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME),
+                null, null, null, signal)?.let { lease.own(it) }
+            cursor?.let {
+                if (!it.moveToFirst()) null else {
+                    val column = it.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (column < 0) null else it.getString(column)
                 }
             }
-            if (total <= 0L) throw ShareImportException(genericImportError)
-            return JSONObject()
-                .put("path", destination.absolutePath)
-                .put("name", displayName)
-                .put("mediaType", mediaType)
-                .put("byteLength", total)
-        } catch (error: ShareImportException) {
-            destination.delete()
-            throw error
         } catch (_: Exception) {
-            destination.delete()
-            throw ShareImportException(genericImportError)
+            lease.check()
+            null // Android provider display-name metadata is optional.
         }
+        lease.check()
+        val displayName = name?.let(::safeDisplayName)
+            ?.takeIf { it.isNotEmpty() && it != "." && it != ".." } ?: "shared-${index + 1}"
+        val descriptor = contentResolver.openAssetFileDescriptor(uri, "r", signal)
+            ?: throw ShareImportException(genericImportError)
+        lease.own(descriptor)
+        val input = lease.own(descriptor.createInputStream())
+        val destination = File(directory, "${UUID.randomUUID()}-$displayName")
+        var total = 0L
+        lease.publish { if (!directory.exists() && !directory.mkdirs()) throw ShareImportException(genericImportError) }
+        lease.publish { FileOutputStream(destination) }.use { output ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                lease.check()
+                val read = input.read(buffer)
+                lease.check()
+                if (read < 0) break
+                total += read
+                if (total > byteLimit) throw ShareImportException(incomingTooLargeError)
+                lease.reserveBytes(read)
+                lease.publish { output.write(buffer, 0, read) }
+            }
+            lease.publish { output.flush() }
+        }
+        if (total <= 0L) throw ShareImportException(genericImportError)
+        return JSONObject().put("path", destination.absolutePath).put("name", displayName)
+            .put("mediaType", mediaType).put("byteLength", total)
     }
 
     private fun readQueue(): JSONArray {
@@ -903,14 +1035,19 @@ class MainActivity : FlutterActivity() {
             .joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
     }
 
-    private fun queryDisplayName(uri: Uri): String? = try {
-        contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-            if (!cursor.moveToFirst()) return@use null
-            val column = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
-            if (column < 0) null else cursor.getString(column)
+    private fun validateExternalShareUri(uri: Uri) {
+        // Never let externally supplied shares use Wing's own file/provider privileges.
+        val authority = uri.authority
+        if (uri.scheme != "content" || authority.isNullOrBlank() || authority.contains('@')) {
+            throw ShareImportException(genericImportError)
         }
-    } catch (_: Exception) {
-        null
+        val provider = packageManager.resolveContentProvider(authority, 0)
+        val granted = checkUriPermission(
+            uri, Process.myPid(), Process.myUid(), Intent.FLAG_GRANT_READ_URI_PERMISSION,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (!ExternalShareUriPolicy.allows(uri.scheme, authority, provider?.packageName, packageName, granted)) {
+            throw ShareImportException(genericImportError)
+        }
     }
 
     private fun safeDisplayName(value: String): String =
@@ -918,20 +1055,47 @@ class MainActivity : FlutterActivity() {
             .replace(Regex("[^A-Za-z0-9._() -]"), "_")
             .take(160)
 
-    private fun postResult(result: MethodChannel.Result, value: Any?) {
-        runOnUiThread { result.success(value) }
+    private fun enqueueIntake(
+        result: MethodChannel.Result? = null,
+        onRejected: (() -> Unit)? = null,
+        action: () -> Unit,
+    ) {
+        val authority = shareAuthority
+        if (intakeExecutor.submit {
+                if (shareAuthorityActive && shareAuthority === authority &&
+                    ((result as? IntakeResult)?.admit() != false)) action()
+                else if (onRejected != null) onRejected()
+                else result?.error("intake_cancelled", intakeCancelledError, null)
+            }) return
+        if (onRejected != null) onRejected()
+        else if (result != null) result.error("intake_busy", queueFullError, null)
+        else postShareError(queueFullError)
     }
 
-    private fun postError(result: MethodChannel.Result, code: String, message: String) {
-        runOnUiThread { result.error(code, message, null) }
+    private inner class IntakeResult(private val result: MethodChannel.Result) : MethodChannel.Result {
+        private val reply = intakeReplies.register {
+            result.error("intake_cancelled", intakeCancelledError, null)
+        }
+        val isActive: Boolean get() = reply.isActive
+        fun admit(): Boolean = reply.admit()
+        override fun success(value: Any?) = reply.complete { result.success(value) }
+        override fun error(code: String, message: String?, details: Any?) =
+            reply.complete { result.error(code, message, details) }
+        override fun notImplemented() = reply.complete { result.notImplemented() }
     }
 
     private fun postSharePayload(payload: Map<String, Any?>?) {
-        if (payload != null) runOnUiThread { shareChannel?.invokeMethod("sharePayload", payload) }
+        val channel = shareChannel
+        if (payload != null) runOnUiThread {
+            if (shareAuthorityActive && shareChannel === channel) channel?.invokeMethod("sharePayload", payload)
+        }
     }
 
     private fun postShareError(message: String) {
-        runOnUiThread { shareChannel?.invokeMethod("shareError", message) }
+        val channel = shareChannel
+        runOnUiThread {
+            if (shareAuthorityActive && shareChannel === channel) channel?.invokeMethod("shareError", message)
+        }
     }
 
     private fun safeImportMessage(error: Exception): String =
@@ -974,7 +1138,9 @@ class MainActivity : FlutterActivity() {
     )
 
     companion object {
-        private val intakeExecutor = Executors.newSingleThreadExecutor()
+        private val intakeExecutor = BoundedIntakeQueue()
+        private val providerWork = BoundedProviderWork()
+        private var providerStagingInitialized = false
         private const val maxDeliveredBytes = 32 * 1024 * 1024
         private const val maxDeliveredFiles = 12
         private const val deliveredFileMaxAgeMs = 24L * 60L * 60L * 1000L
@@ -988,8 +1154,8 @@ class MainActivity : FlutterActivity() {
         private val uuidPattern = Regex(
             "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$",
         )
-        private const val tooManyFilesError = "You can share up to 10 files at once."
-        private const val incomingTooLargeError = "Shared files are limited to 64 MiB at once."
+        private const val tooManyFilesError = "You can share up to 40 files at once."
+        private const val incomingTooLargeError = "Shared files are limited to 128 MiB at once."
         private const val queueFullError =
             "Shared draft storage is full. Add or discard a pending share first."
         private const val textTooLargeError = "Shared text is too large to import."
@@ -997,6 +1163,8 @@ class MainActivity : FlutterActivity() {
             "Shared content could not be imported. Try sharing it again."
         private const val genericAcknowledgeError =
             "The pending share could not be cleared. Try again."
+        private const val intakeCancelledError =
+            "This operation was cancelled because Wing's screen changed. Try again."
         private const val cameraBusyError = "A camera capture is already in progress."
         private const val invalidCameraTargetError =
             "The destination chat is no longer available for this photo."

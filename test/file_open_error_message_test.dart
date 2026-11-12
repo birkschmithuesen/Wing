@@ -4,9 +4,19 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/file_open_error_message.dart';
+import 'package:wing/core/services/platform_share.dart';
 import 'package:http/http.dart' as http;
 
 void main() {
+  test('share admission explains the active sheet without blaming Hermes', () {
+    const busy = PlatformShareBusy();
+    expect(
+      fileOpenErrorMessage(busy),
+      'Finish the current share sheet, then try again.',
+    );
+    expect(canRetryFileOpen(busy), isFalse);
+  });
+
   test('classifies file-open failures without exposing exception details', () {
     expect(
       fileOpenErrorMessage(const DashboardHttpException(400, 'private/path')),

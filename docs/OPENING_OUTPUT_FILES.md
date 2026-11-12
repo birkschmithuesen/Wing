@@ -1,107 +1,67 @@
 # Output viewers and downloads
 
-Assistant deliverables (`MEDIA:` references, explicit file links and complete
-file paths in inline code, plus plain `.html` / `.htm` paths) appear as
-file cards with separate **Download** and **Open preview** actions. Download opens
-Android's save destination picker; cancelling does not save a file. Open preview
-opens the existing full-screen reader, and Back returns to the conversation.
-Markdown starts in **Rendered** mode with a **Source** control. Copy message
-retains the original authored text, including the server path.
+Explicit Markdown file links and `MEDIA:` references in an answer appear as
+cards with separate Download and Open preview icons. Inline code remains literal,
+even when it looks like a file path: API request paths and code examples are not
+file attachments. To offer a file, use a Markdown link such as
+`[Read the report](/srv/report.md)` or `MEDIA:/srv/report.md`. The chat's
+**Outputs** list also collects references, including older history. Download opens Android's destination picker; cancelling saves
+nothing. Open preview opens the reader, and Back returns to the conversation.
 
-Inline code paths such as `/home/tarkil/projects/reports/report.md` use the same
-reader. Detection requires a rooted path or `./` / `../` prefix and a filename
-extension; commands, directories and fenced code remain code. Spaces and literal
-percent, question-mark and hash characters in these filenames are preserved.
-This client rendering change was verified against stock Hermes main
-[`fb2dded3d191d15c614a80d15e1c95002956867c`](https://github.com/NousResearch/hermes-agent/blob/fb2dded3d191d15c614a80d15e1c95002956867c/hermes_cli/web_routers/files.py)
-on 27 September 2026: `fs/read-text` accepts the path; `fs/download` accepts
-path, profile and session identity. No server changes are required.
-
-Plain HTML paths such as
-`/home/tarkil/projects/memory-maintenance/reports/whole-bank-visual-20260928/index.html`
-also offer these actions without requiring backticks or a Markdown link. Detection
-requires a rooted path or `./` / `../` prefix; web URLs, commands in code spans,
-fenced examples and filenames with a different final extension remain unchanged.
-Paths containing spaces can use inline code or an explicit Markdown link.
-Verified on 28 September 2026 against stock Hermes main
-[`bfda74c71acd884f170345064d537bc0d3a30d20`](https://github.com/NousResearch/hermes-agent/blob/bfda74c71acd884f170345064d537bc0d3a30d20/hermes_cli/web_routers/files.py):
-`fs/read-text` still returns text, MIME type, language and truncation state, and
-`fs/download` accepts path, profile and session identity. HTML uses the existing
-client preview and download flow. Rechecked the unchanged read/download APIs at
-stock main `27062c347426f2c3ad2b828064e033d81fa9bcc3` on 28 September 2026.
-The unchanged full-download contract was also verified at stock main
-`9a0a1625367242596d338ae2da541c4a1fc785a2` for large HTML rendering that day.
-
-A chat's Outputs list provides another way to find and open references, including
-older history. Files are fetched through their original authenticated connection
-and profile. Relative text-preview paths resolve against the originating saved
-chat's directory; an unavailable directory is an error. Leaving the chat while a
-download is pending prevents a late save picker. Old paths may be unavailable.
-
-Inside a Markdown document, relative hyperlinks and image links resolve against
-the open file's directory. For example, `details.md#the-six-health-checks` opens
-the neighboring file and scrolls to that heading. A `#heading` link scrolls within
-the current document without fetching it again. Back returns to the source
-document. Missing headings report that they are absent from the available
-preview (including truncated previews). Web links retain their browser behavior.
-Verified against stock Hermes main `516535b54275e963a82b4c28f866338fb768e7bc`
-on 27 September 2026: `fs/read-text` returns the resolved file path, which supplies
-the document base. The client resolves links and heading fragments locally.
-
-This follows stock Hermes desktop's `PreviewAttachment`, MEDIA parsing and
-Markdown preview at upstream commit
-[`0caf219aafdf40522f7bfc3ce8756e4eae463a04`](https://github.com/NousResearch/hermes-agent/tree/0caf219aafdf40522f7bfc3ce8756e4eae463a04/apps/desktop/src),
-inspected on 20 September 2026. Android uses a full-screen reader in place of the
-desktop side pane. The integration uses stock `/api/fs/read-text`,
-`/api/fs/download` and `/api/sessions/{session_id}`; no backend changes are needed.
+Files are fetched from their original connection and profile. Old paths can
+become unavailable. Relative paths in chat resolve against the saved chat's
+directory; a missing directory shows an error. Leaving while a download is
+pending prevents a late viewer or save picker from opening.
 
 ## Supported reading
 
-| Content | In-app behavior | Boundary |
+| Content | In-app behavior | Limits |
 | --- | --- | --- |
-| Markdown and code | Rendered/Source controls, copying, tables and supported diagrams | Keep server truncation notices visible. Download or Save or share retrieves the full file within the download limit. Document links use the open file's directory; links in chat use the saved chat directory. |
-| Images and SVG | Explicit loading and zoom; SVG uses the restricted diagram viewer | Preserve a useful source or save/open fallback. |
-| PDF | Read PDF, Previous/Next page and pinch zoom | Viewing only; no editing, forms, text search or selection. Password-protected/unsupported files can use another app. |
-| Audio and video | Play media, timeline, pause and seek through Android controls | Explicit Play; device codecs determine support. No background playback or authenticated-URL streaming. |
-| Web links | Browser preview with close/Back, usually Custom Tabs | Browser uses its own login state. No Hermes headers are passed. |
-| Self-contained HTML | Opens directly in the HTML viewer, with Show source and inline interaction | Full UTF-8 download up to the standard 32 MiB file limit, in the sandbox described below. CDN-dependent pages need an external app. |
+| Markdown and code | Formatted or raw Markdown, selectable code, copying, tables, and supported diagrams | A truncated preview is labelled; download for the full file. |
+| Images and SVG | Loading, zoom, and restricted SVG preview | Unsupported content can be saved or opened elsewhere. |
+| PDF | Page controls and pinch zoom | No editing, forms, text search, or selection; encrypted files may need another app. |
+| Audio and video | Explicit Play, pause, and seek | Device codecs determine support; no background playback. |
+| Web links | Browser preview or external browser | Uses the browser's login state. |
+| Self-contained HTML | Rendered page, inline interaction, and optional Show source | External-resource pages may need another app; see the sandbox below. |
 
-PDF/audio/video also offer Open in app. Save or share remains available when a compatible viewer is absent or an in-app format fails. A successful viewer launch does not prove successful playback or rendering.
+PDF, audio, and video also offer Open in app. Save or share remains available if
+an in-app format fails or a compatible viewer is unavailable. Returning to a
+media preview resumes at the last position, paused.
 
-## Download and cache ownership
+Markdown's toolbar offers raw/formatted switching, Copy content, Share file,
+and Download. Relative document links and images resolve from the open file's
+directory. Heading links scroll within that file; Back returns from a linked
+document. Missing headings are reported, including those outside a truncated
+preview. Web links open in the browser.
 
-Downloads are capped at 32 MiB, checking both declared length and streamed bytes. Disable duplicate delivery while pending. Closing a preview must prevent a late download from launching a viewer. The native bridge rechecks activity lifetime before launch.
+Code preserves its original text when wrapped, selected, or copied. Chat code
+fences wrap by default and offer a horizontal-scrolling toggle. Activity source
+viewers have their own wrap controls. Copying a chat message retains the original
+message, including its file paths.
 
-Android viewers receive downloaded bytes, safe display filenames and supported MIME types. Sanitize the decoded basename; use UUID cache filenames. Never pass backend credentials, headers, cookies or authenticated URLs to another app.
+## Download limits and temporary files
 
-FileProvider grants temporary read access only to the `delivered_outputs/` cache area. Age/count pruning removes abandoned delivery files. This is temporary viewing storage, not an offline library. Explicitly saved/shared copies have their own destination lifetime.
+Downloads have no fixed size limit in Wing. In-app previews retain a 32 MiB
+budget for downloaded files. Embedded images have a 32 MiB decoded limit;
+oversized images cannot be previewed or shared. Other outputs remain available.
+Authenticated reads time out after 45 seconds and show a retryable error.
 
-## PDF and media resources
-
-PDF uses Android `PdfRenderer`, one page at a time, with at most 2,000 pixels on the longest bitmap edge and three open documents. Native operations are serialized. Failed pages can retry without downloading/reopening the document. Close pages, bitmaps, renderer, handles and temporary files, including a late open after the reader closes. Activity destruction and later pruning clean up abandoned resources.
-
-Media uses a private Android activity with `VideoView` and `MediaController`. Leaving pauses and releases playback, including pending preparation. Return prepares the same cached file at the last position, paused; rotation retains that position. Closing removes the file, with later pruning for process-death leftovers. These viewers add no storage permission or background service.
+In-app viewing uses temporary cached files, not an offline library. Save a copy
+to retain it. Wing does not pass Hermes credentials to external viewers or web
+browsers. For shared-copy retention, see
+[Sharing from Wing](SHARING_AND_CAPTURE.md#sharing-from-wing).
 
 ## HTML and diagram sandbox
 
-Interactive HTML uses the complete downloaded bytes, never a truncated text
-preview. HTML filenames bypass the text-preview API entirely. The viewer supports
-the standard 32 MiB file-download limit, with no separate smaller HTML limit.
-Invalid UTF-8 retains a Save or share action for the original bytes.
-Android serves the document directly to the viewer from a private intercepted
-response, without embedding it in JavaScript or copying it into an iframe's
-`srcdoc`. Inline scripts/CSS and embedded images run in a fresh opaque-origin
-iframe without storage, parent access, native bridge or Hermes credentials.
+HTML opens from the complete downloaded file, up to 32 MiB, rather than a
+truncated text preview. Show source displays the same full document. A loading
+failure offers retry; invalid text encoding still allows saving the original.
 
-Opening HTML from chat or Outputs goes directly to the rendered viewer after
-loading the complete file. Show source is optional and displays that same full
-document. Download failures offer retry; leaving while loading prevents a late
-viewer from opening. Back returns to the original chat or Outputs list.
+The HTML viewer supports inline scripts, styles, and embedded images. It blocks
+external resources, page navigation, forms, workers, and nested frames, and does
+not supply Hermes credentials or access to Wing's storage. It is not complete
+network isolation: WebRTC networking is not reliably blocked. Open trusted
+self-contained files; pages relying on external resources may need another app.
 
-Content policies and native interception block external resources, navigation, forms, workers and nested frames. This is not complete network isolation: WebRTC ICE/data-channel networking is not reliably covered by those controls. Remove temporary frames on replacement and close.
-
-Mermaid and SVG have a separate restricted offline renderer with tighter source limits. See [Diagram previews](DIAGRAM_PREVIEWS.md) for vendor versions, licenses and update checks.
-
-Web links accept only HTTP/HTTPS with a host and no URL user information. Custom Tabs can fall back to the external browser or the launcher's WebView path; failure remains visible. No authenticated resource proxy is added for arbitrary pages.
-
-Native PDF/image/SVG zoom and common media playback were exercised against real Hermes downloads during September acceptance. HTML browser fixtures establish sandbox behavior, not exhaustive native phone coverage. See [Testing](TESTING.md).
+Mermaid and SVG use a separate restricted viewer. See
+[Diagram previews](DIAGRAM_PREVIEWS.md).

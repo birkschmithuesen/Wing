@@ -1,3 +1,6 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -9,12 +12,10 @@ import 'package:wing/main.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_connection_identity.dart';
-import 'package:wing/core/services/profile_selection_store.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 
 /// Opt-in, one real prompt per RECOVERY_RUN_ID. Install with adb install -r.
 /// After READY_FOR_PROCESS_STOP, force-stop and relaunch the SAME APK. After
-/// RESTORED_INPUT, answer PROCESS_RECOVERY_QA through the app's Reply dialog.
+/// RESTORED_INPUT, answer PROCESS_RECOVERY_QA through the inline input card.
 /// The saved target prevents a restart from ever submitting the prompt again.
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized()
@@ -46,19 +47,37 @@ void main() {
         dashboardPortOverride: port,
         apiKey: '',
       );
-      await manager.importConnections([connection], replaceExisting: false);
+      await manager.importConnections(
+        [connection],
+        replaceExisting: false,
+        canCommit: () => true,
+      );
       await prefs.setString('last_connection_id', connection.id);
+      final appPreferences = AppPreferences(prefs);
+      addTearDown(appPreferences.dispose);
       if (savedTarget == null) {
         expect(runModel, isTrue, reason: 'Explicit RUN_MODEL=true is required');
-        await ProfileSelectionStore(prefs).write(
-          await ProfileConnectionIdentity().resolve(connection),
-          'android-qa-a',
+        expect(
+          (await appPreferences
+                  .admitProfileSelection(
+                    await ProfileConnectionIdentity().resolve(connection),
+                    'android-qa-a',
+                  )
+                  .settled)
+              .confirmed,
+          isTrue,
         );
       }
-      final selectedAtStartup = ProfileSelectionStore(
-        prefs,
-      ).read(await ProfileConnectionIdentity().resolve(connection));
-      await tester.pumpWidget(WingApp(connManager: manager));
+      final selectedAtStartup = appPreferences
+          .profileSelectionFor(
+            await ProfileConnectionIdentity().resolve(connection),
+          )
+          .value
+          .selectedName;
+      addTearDown(() => tester.pumpWidget(const SizedBox.shrink()));
+      await tester.pumpWidget(
+        WingApp(connManager: manager, appPreferences: appPreferences),
+      );
       Future<void> until(bool Function() condition, {int seconds = 45}) async {
         final deadline = DateTime.now().add(Duration(seconds: seconds));
         while (!condition() && DateTime.now().isBefore(deadline)) {
@@ -76,18 +95,21 @@ void main() {
       await until(() => controller.current != null || controller.error != null);
       expect(controller.error, isNull);
       if (savedTarget == null) {
-        final chat = await controller.createChat();
+        final chat = await controller.createChat(canDispatch: () => true);
         // Checkpoint before submitting. A crash at any later point can only
         // resume this owner, never create a second billable turn.
         await prefs.setString(checkpoint, jsonEncode(chat.key.toJson()));
-        chat.draft =
-            'Android process recovery test. Use only your clarify tool to ask exactly: What is the recovery marker? Wait for my answer, then reply with that answer only. Do not use any other tool, read or change files, browse, delegate, or do other work.';
+        chat.composer.editText(
+          'Android process recovery test. Use only your clarify tool to ask exactly: What is the recovery marker? Wait for my answer, then reply with that answer only. Do not use any other tool, read or change files, browse, delegate, or do other work.',
+        );
         await controller.send(chat);
         await until(
-          () => chat.clarification != null || !chat.busy,
+          () =>
+              chat.runtime.questions != null ||
+              !chat.runtime.blocksTurnAdmission,
           seconds: 90,
         );
-        expect(chat.clarification, isNotNull, reason: chat.error);
+        expect(chat.runtime.questions, isNotNull, reason: chat.runtime.error);
         await controller.switchProfile('android-qa-b');
         expect(controller.current!.scope.profileName, 'android-qa-b');
         debugPrint(
@@ -106,41 +128,41 @@ void main() {
       );
       final restored = controller.activity.singleWhere((c) => c.key == target);
       expect(controller.current!.scope.profileName, selectedAtStartup);
-      expect(restored.status, ProfileTurnStatus.attention);
-      expect(restored.clarification, isNotNull);
+      expect(restored.runtime.needsInput, isTrue);
+      expect(restored.runtime.questions, isNotNull);
       await controller.openSession(target);
       await tester.pumpAndSettle();
-      expect(find.text('Reply'), findsOneWidget);
+      expect(find.byKey(const Key('clarify-other-field')), findsOneWidget);
       expect(find.text('What is the recovery marker?'), findsOneWidget);
       debugPrint(
-        '[recovery-qa] RESTORED_INPUT: answer PROCESS_RECOVERY_QA through the Reply dialog.',
+        '[recovery-qa] RESTORED_INPUT: answer PROCESS_RECOVERY_QA through the inline input card.',
       );
       if (autoAnswer) {
-        await tester.tap(find.text('Reply'));
-        await tester.pumpAndSettle();
         await tester.enterText(
-          find.widgetWithText(TextField, 'Answer'),
+          find.byKey(const Key('clarify-other-field')),
           'PROCESS_RECOVERY_QA',
         );
-        await tester.tap(find.text('Continue'));
+        final confirm = find.byTooltip('Confirm answer and continue');
+        await tester.ensureVisible(confirm);
+        await tester.tap(confirm);
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       }
-      await until(() => !restored.busy, seconds: 180);
+      await until(() => !restored.runtime.blocksTurnAdmission, seconds: 180);
       expect(
-        restored.status,
-        ProfileTurnStatus.completed,
-        reason: restored.error,
+        restored.runtime.execution,
+        ChatExecution.completed,
+        reason: restored.runtime.error,
       );
       await until(
-        () => restored.messages.any(
+        () => restored.reading.messages.any(
           (m) =>
               m['role'] == 'assistant' &&
               m['content'].toString().trim() == 'PROCESS_RECOVERY_QA',
         ),
       );
       expect(
-        restored.messages.where(
+        restored.reading.messages.where(
           (m) =>
               m['role'] == 'user' &&
               m['content'].toString().contains(

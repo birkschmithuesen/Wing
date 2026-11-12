@@ -1,5 +1,5 @@
+import 'package:wing/core/models/chat_list_status.dart';
 import 'package:flutter/material.dart';
-import '../models/chat_list_view.dart';
 import '../theme/wing_theme.dart';
 
 class ChatStatusDot extends StatelessWidget {

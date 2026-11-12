@@ -9,8 +9,9 @@ class ProfileTranscriptDisclosure extends StatefulWidget {
     required this.icon,
     required this.children,
     this.summary,
+    this.trailing,
     this.initiallyExpanded = false,
-    this.loading = false,
+    this.anchorExpansion = true,
     this.isError = false,
     this.maintainState = true,
     this.onExpansionChanged,
@@ -18,11 +19,12 @@ class ProfileTranscriptDisclosure extends StatefulWidget {
   });
 
   final String label;
-  final IconData icon;
+  final IconData? icon;
+  final Widget? trailing;
   final Widget? summary;
   final List<Widget> children;
   final bool initiallyExpanded;
-  final bool loading;
+  final bool anchorExpansion;
   final bool isError;
   final bool maintainState;
   final ValueChanged<bool>? onExpansionChanged;
@@ -45,14 +47,15 @@ class _ProfileTranscriptDisclosureState
       horizontalTitleGap: 0,
       child: AnchoredExpansionTile(
         initiallyExpanded: widget.initiallyExpanded,
+        anchorExpansion: widget.anchorExpansion,
         maintainState: widget.maintainState,
-        minTileHeight: 28,
+        minTileHeight: widget.trailing == null ? 28 : 48,
         tilePadding: EdgeInsets.zero,
         childrenPadding: widget.childrenPadding,
         expandedCrossAxisAlignment: CrossAxisAlignment.stretch,
         shape: const Border(),
         collapsedShape: const Border(),
-        trailing: const SizedBox.shrink(),
+        showTrailingIcon: false,
         onExpansionChanged: (expanded) {
           setState(() => _expanded = expanded);
           widget.onExpansionChanged?.call(expanded);
@@ -67,16 +70,7 @@ class _ProfileTranscriptDisclosureState
           ),
           child: Row(
             children: [
-              if (widget.loading)
-                SizedBox.square(
-                  dimension: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 1.5,
-                    color: color,
-                    semanticsLabel: 'Refreshing ${widget.label}',
-                  ),
-                )
-              else
+              if (widget.icon != null)
                 Icon(
                   widget.icon,
                   size: 16,
@@ -84,24 +78,33 @@ class _ProfileTranscriptDisclosureState
                       ? Theme.of(context).colorScheme.error
                       : color,
                 ),
-              const SizedBox(width: 8),
-              Flexible(
+              if (widget.icon != null) const SizedBox(width: 8),
+              Expanded(
                 child: Wrap(
                   spacing: 8,
                   crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
                     Text(widget.label),
-                    ?widget.summary,
-                    Icon(
-                      _expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      size: 16,
-                      color: color,
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        if (widget.summary != null) ...[
+                          Flexible(child: widget.summary!),
+                          const SizedBox(width: 8),
+                        ],
+                        Icon(
+                          _expanded
+                              ? Icons.keyboard_arrow_down_rounded
+                              : Icons.keyboard_arrow_right_rounded,
+                          size: 16,
+                          color: color,
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
+              ?widget.trailing,
             ],
           ),
         ),

@@ -20,6 +20,7 @@ void main() {
         ),
       );
       final device = AndroidVoice.instance;
+      addTearDown(() => device.cancel('background-capture'));
       debugPrint('VOICE_DENY_READY');
       await expectLater(
         device.start('permission-denied', local: false, language: ''),

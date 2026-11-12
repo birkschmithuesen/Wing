@@ -1,3 +1,4 @@
+import 'support/backend_update_channel_fixture.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -57,10 +58,27 @@ void main() {
     'failed refresh retains identity but clears update eligibility',
     () async {
       var offline = false;
-      final version = controller((endpoint, _) async {
+      final source = BackendUpdateChannelFixture();
+      final version = controller((endpoint, query) async {
         if (offline) throw StateError('offline');
+        if (endpoint == 'hermes/update/check') source.fetchedAt++;
+        final metadata = source.read(endpoint, query);
+        if (metadata != null) {
+          if (endpoint == 'profiles') {
+            return {
+              'profiles': [
+                {'name': 'default', 'path': BackendUpdateChannelFixture.home},
+              ],
+            };
+          }
+          return metadata;
+        }
         return endpoint == 'health'
-            ? {'ok': true, 'version': '1.2.3'}
+            ? {
+                'ok': true,
+                'version': '1.2.3',
+                'commit': BackendUpdateChannelFixture.currentSha,
+              }
             : {
                 'current_version': '1.2.3',
                 'update_available': true,

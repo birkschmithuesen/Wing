@@ -1,3 +1,12 @@
+import 'package:wing/core/services/group_observations.dart';
+import 'package:wing/core/services/workspace_recents_session.dart';
+import 'package:wing/core/services/bots_repository.dart';
+import 'package:wing/core/widgets/bot_avatar.dart';
+import 'package:wing/core/widgets/studio_error.dart';
+import 'support/bots_fixture.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -9,10 +18,12 @@ import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/screens/workspace_overview_content.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/theme/project_icon_glyphs.dart';
 
 const _capture = bool.fromEnvironment('CAPTURE_RECENTS');
 
@@ -56,6 +67,15 @@ class _ActivityHost {
                   },
             ],
           }
+        : RegExp(r'^sessions/[^/]+$').hasMatch(path)
+        ? const <Map<String, dynamic>>[
+            {'id': 'running', 'title': 'Running job', 'profile': 'main'},
+            {'id': 'needs-input', 'title': 'Question', 'profile': 'main'},
+            {'id': 'side-work', 'title': 'Deploy checks', 'profile': 'main'},
+            {'id': 'idle-old', 'title': 'Idle old server', 'profile': 'main'},
+          ].singleWhere(
+            (row) => row['id'] == Uri.decodeComponent(path.split('/')[1]),
+          )
         : path == 'sessions'
         ? {
             'sessions': [
@@ -66,6 +86,7 @@ class _ActivityHost {
                   'profile': 'main',
                   'last_active':
                       DateTime.now().millisecondsSinceEpoch / 1000 - 7200,
+                  'unread': true,
                 },
               {'id': 'running', 'title': 'Running job', 'profile': 'main'},
               {'id': 'needs-input', 'title': 'Question', 'profile': 'main'},
@@ -79,30 +100,48 @@ class _ActivityHost {
         : {
             'session_id': path.split('/')[1],
             'messages': <Map<String, dynamic>>[
-              if (includeHistory && path == 'sessions/recent/messages')
+              if (includeHistory)
                 {
                   'id': 1,
                   'role': 'assistant',
                   'content': 'Guide ready',
                   'timestamp':
-                      DateTime.now().millisecondsSinceEpoch / 1000 - 7200,
+                      DateTime.now().millisecondsSinceEpoch / 1000 -
+                      (path == 'sessions/needs-input/messages'
+                          ? 360
+                          : path == 'sessions/running/messages'
+                          ? 600
+                          : path == 'sessions/side-work/messages'
+                          ? 1200
+                          : 7200),
                 },
             ],
             'pagination': {
               'offset': 0,
               'limit': int.parse(query['limit'] ?? '50'),
-              'returned': includeHistory && path == 'sessions/recent/messages'
-                  ? 1
-                  : 0,
+              'returned': includeHistory ? 1 : 0,
               'order': 'latest',
             },
           },
     rpc: (method, params) async {
+      if (method == 'subagent.roster') return {'sessions': <Object>[]};
       if (method == 'session.active_list') {
         if (failed.contains(scope.profileName)) throw StateError('offline');
         return {'sessions': live[scope.profileName] ?? []};
       }
-      if (method == 'projects.tree') return {'projects': []};
+      if (method == 'projects.tree') {
+        return {
+          'projects': [
+            {
+              'id': 'sync',
+              'label': 'Sync',
+              'icon': 'repo',
+              'color': '#A78BFA',
+              'sessionIds': ['needs-input'],
+            },
+          ],
+        };
+      }
       return {};
     },
   );
@@ -114,6 +153,7 @@ void main() {
     for (final entry in {
       'Roboto': 'build/studio-roboto.ttf',
       'MaterialIcons': 'build/studio-icons.otf',
+      'WingProjectIcons': 'assets/fonts/codicons.ttf',
     }.entries) {
       await (FontLoader(entry.key)..addFont(
             File(entry.value).readAsBytes().then(ByteData.sublistView),
@@ -123,20 +163,30 @@ void main() {
   });
   late _ActivityHost host;
   late ProfileWorkspaceController controller;
-
+  late AppPreferences preferences;
+  late BotsSession bots;
+  late WorkspaceRecentsSession recents;
+  late BotsFixture fixture;
+  late DateTime now;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
-    host = _ActivityHost();
+    host = _ActivityHost()..includeHistory = true;
+    final saved = await SharedPreferences.getInstance();
+    preferences = AppPreferences(saved);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'activity-filter-test',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: saved,
+      appPreferences: preferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
@@ -145,85 +195,181 @@ void main() {
         'id': 'runtime-running',
         'session_key': 'running',
         'status': 'working',
-        'last_active': 2,
+        'last_active': DateTime.now().millisecondsSinceEpoch / 1000,
       },
       {
         'id': 'runtime-input',
         'session_key': 'needs-input',
         'status': 'waiting',
         'last_active': 1,
-        'side_tasks_running': 0,
       },
       {
         'id': 'runtime-side',
         'session_key': 'side-work',
         'status': 'idle',
-        'last_active': 3,
+        'last_active': 2,
         'side_tasks_running': 2,
-      },
-      {
-        'id': 'runtime-idle-old',
-        'session_key': 'idle-old',
-        'status': 'idle',
-        'last_active': 4,
       },
     ];
     await controller.refreshRecents();
-  });
+    now = DateTime.now();
+    fixture = BotsFixture();
+    fixture.profiles.first['name'] = 'main';
+    fixture.profiles.first['ui_meta']['hermes-bots']['title'] = 'Scout';
+    fixture.profiles.first['canonical_session'] = {
+      'id': 'running',
+      'resolved_id': 'running',
+      'preview': 'Body text must stay out of Recents',
+    };
+    fixture.events.add({
+      'room_id': 'room-1',
+      'seq': 1,
+      'kind': 'message.member',
+      'created_at': DateTime.now().millisecondsSinceEpoch / 1000 - 720,
+      'actor': {'kind': 'member', 'id': 'atlas', 'display_name': 'Scout'},
+      'payload': {'text': 'Room discussion excerpt'},
+    });
+    bots = BotsSession(
+      (_) async => [
+        BotsRepository(
+          groupObservations: GroupObservations(controller.current!.scope),
+          scope: controller.current!.scope,
+          instance: 'Host',
+          read: fixture.read,
 
-  tearDown(() => controller.dispose());
+          command: fixture.command,
+          ownership: fixture.ownership,
+        ),
+      ],
+      now: () => now,
+    );
+    await bots.refresh();
+    recents = WorkspaceRecentsSession(controller, bots, foreground: true);
+  });
+  tearDown(() {
+    recents.dispose();
+    bots.dispose();
+    controller.dispose();
+    preferences.dispose();
+  });
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
-      testWidgets('work and history at $scale in ${brightness.name}', (
+      testWidgets('approved identity cards in ${brightness.name} at $scale', (
         tester,
       ) async {
-        host.includeHistory = true;
-        final now = DateTime.now().millisecondsSinceEpoch / 1000;
-        for (final (index, row) in host.live['main']!.indexed) {
-          row['last_active'] = now - (index + 1) * 180;
-        }
-        await controller.refreshRecents();
-        expect(controller.recentChats(), hasLength(4));
         tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final frame = GlobalKey();
+        ProfileRecentChat? opened;
+        List<WorkspaceRecentItem>? displayed;
+        String? openedRoom;
         await tester.pumpWidget(
           MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: wingTheme(brightness),
             builder: (context, child) => MediaQuery(
-              data: MediaQuery.of(
-                context,
-              ).copyWith(textScaler: TextScaler.linear(scale)),
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(scale),
+                disableAnimations: true,
+              ),
               child: RepaintBoundary(key: frame, child: child),
             ),
             home: Scaffold(
               appBar: AppBar(title: const Text('Recents')),
               body: WorkspaceActivityContent(
-                controller: controller,
-                onOpen: (_) {},
+                recents: recents,
+                visible: false,
+                onOpen: (item, rows) {
+                  opened = item;
+                  displayed = rows;
+                },
+                onOpenGroup: (group) async {
+                  openedRoom = group.id;
+                },
               ),
             ),
           ),
         );
         await tester.pumpAndSettle();
-        final ongoing = find.byKey(const ValueKey('recents-ongoing'));
+        expect(controller.activityProfileErrors, isEmpty);
+        expect(find.byType(FilterChip), findsNothing);
+        expect(find.text('Ongoing'), findsNothing);
+        expect(find.text('Last 24 hours'), findsNothing);
+        expect(find.textContaining('Body text'), findsNothing);
+        expect(find.text('Room discussion excerpt'), findsOneWidget);
+        expect(find.text('New answer'), findsWidgets);
+        expect(find.text('Sync'), findsOneWidget);
+        expect(find.byIcon(ProjectIconGlyphs.of('repo')), findsOneWidget);
+        controller.current!.gateway.onEvent!(
+          StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+        );
+        controller.showList();
+        await tester.pumpAndSettle();
+        final assignedRow = find.byKey(
+          const ValueKey('activity-main-needs-input'),
+        );
         expect(
-          find.descendant(of: ongoing, matching: find.text('Deploy checks')),
+          find.descendant(of: assignedRow, matching: find.text('Sync')),
           findsOneWidget,
         );
         expect(
-          find.descendant(
-            of: ongoing,
-            matching: find.text('Draft the setup guide'),
-          ),
+          find.descendant(of: assignedRow, matching: find.text('No project')),
           findsNothing,
         );
-        expect(tester.takeException(), isNull);
-        Future<void> capture(String suffix) async {
-          if (!_capture) return;
+        expect(find.byIcon(ProjectIconGlyphs.of('repo')), findsOneWidget);
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pumpAndSettle();
+        final botRow = find.byKey(const ValueKey('activity-main-running'));
+        for (
+          var wait = 0;
+          wait < 20 &&
+              find
+                  .descendant(of: botRow, matching: find.byType(BotAvatar))
+                  .evaluate()
+                  .isEmpty;
+          wait++
+        ) {
+          await tester.pump(const Duration(milliseconds: 50));
+        }
+        final avatar = find.descendant(
+          of: botRow,
+          matching: find.byType(BotAvatar),
+        );
+        expect(avatar, findsOneWidget);
+        final unassignedRow = find.byKey(
+          const ValueKey('activity-main-side-work'),
+        );
+        final groupRow = find.byKey(
+          const ValueKey('recent-group-activity-filter-test/room-1'),
+        );
+        expect(
+          find.descendant(of: botRow, matching: find.text('No project')),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: groupRow, matching: find.text('No project')),
+          findsNothing,
+        );
+        final botName = find.descendant(
+          of: botRow,
+          matching: find.text('Scout'),
+        );
+        expect(botName, findsOneWidget);
+        expect(
+          tester.getRect(botName).right,
+          lessThan(tester.getRect(avatar).left),
+        );
+        expect(
+          find.descendant(of: botRow, matching: find.text('M')),
+          findsNothing,
+        );
+        expect(
+          find.descendant(of: botRow, matching: find.text('Running job')),
+          findsNothing,
+        );
+        if (_capture) {
           final boundary =
               frame.currentContext!.findRenderObject()!
                   as RenderRepaintBoundary;
@@ -233,88 +379,209 @@ void main() {
               format: ui.ImageByteFormat.png,
             );
             final file = File(
-              'build/recents-review/${brightness.name}-$scale-$suffix.png',
+              'build/recents-review/${brightness.name}-$scale-approved.png',
             );
             await file.parent.create(recursive: true);
             await file.writeAsBytes(bytes!.buffer.asUint8List());
             image.dispose();
           });
         }
-
-        await capture('top');
         await tester.scrollUntilVisible(
-          find.text('Draft the setup guide'),
-          200,
+          unassignedRow,
+          120,
+          scrollable: find.byType(Scrollable),
         );
-        expect(find.text('Draft the setup guide'), findsOneWidget);
-        expect(find.text('Last 24 hours'), findsOneWidget);
-        expect(find.text('Recent'), findsNothing);
+        await tester.pumpAndSettle();
+        expect(
+          find.descendant(of: unassignedRow, matching: find.text('No project')),
+          findsOneWidget,
+        );
+        final room = find.byKey(
+          const ValueKey('recent-group-activity-filter-test/room-1'),
+        );
+        await tester.ensureVisible(room);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(of: room, matching: find.text('Research team')),
+        );
+        await tester.pumpAndSettle();
+        expect(openedRoom, 'room-1');
+        await tester.scrollUntilVisible(
+          botRow,
+          -120,
+          scrollable: find.byType(Scrollable),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(botName);
+        await tester.pumpAndSettle();
+        expect(opened?.key.sessionId, 'running');
+        expect(
+          displayed!.map((row) => row.chat?.key.sessionId ?? row.group!.id),
+          ['needs-input', 'running', 'room-1', 'side-work', 'recent'],
+        );
+        expect(() => displayed!.clear(), throwsUnsupportedError);
         expect(tester.takeException(), isNull);
-        await capture('history');
+        await tester.pumpWidget(const SizedBox());
       });
     }
   }
-
-  testWidgets('filters activity, opens an owner item, and fits large text', (
-    tester,
-  ) async {
-    ProfileRecentChat? opened;
-    await tester.pumpWidget(
-      MediaQuery(
-        data: const MediaQueryData(textScaler: TextScaler.linear(2)),
-        child: MaterialApp(
-          home: SizedBox(
-            width: 320,
-            child: Scaffold(
-              body: WorkspaceActivityContent(
-                controller: controller,
-                onOpen: (item) => opened = item,
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'gateway outage leaves reporting to Alerts in ${brightness.name} at $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final frame = GlobalKey();
+          now = now.add(const Duration(minutes: 5));
+          controller.connectionStatus.onInterruption = null;
+          host.failed.add('main');
+          fixture.readHook = (_, _, _) async =>
+              throw const SocketException('offline');
+          controller.connectionStatus.accessFailed(
+            const SocketException('offline'),
+          );
+          controller.connectionStatus.liveChanged('outage-test', false);
+          await controller.refreshRecents();
+          await bots.refresh();
+          expect(bots.state.errors.length, greaterThan(1));
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: RepaintBoundary(key: frame, child: child),
+              ),
+              home: Scaffold(
+                appBar: AppBar(title: const Text('Recents')),
+                body: WorkspaceActivityContent(
+                  recents: recents,
+                  visible: false,
+                  onOpen: (_, _) {},
+                  onOpenGroup: (_) async {},
+                ),
               ),
             ),
+          );
+          await tester.pumpAndSettle();
+          if (_capture) {
+            final boundary =
+                frame.currentContext!.findRenderObject()!
+                    as RenderRepaintBoundary;
+            await tester.runAsync(() async {
+              final image = await boundary.toImage();
+              final bytes = await image.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final file = File(
+                'build/recents-review/${brightness.name}-$scale-outage.png',
+              );
+              await file.parent.create(recursive: true);
+              await file.writeAsBytes(bytes!.buffer.asUint8List());
+              image.dispose();
+            });
+          }
+          expect(find.byType(StudioError), findsNothing);
+          expect(recents.catalog.error, isNull);
+          expect(find.text('Draft the setup guide'), findsOneWidget);
+          expect(find.text('Live status could not be loaded.'), findsNothing);
+          expect(tester.takeException(), isNull);
+
+          // Transport recovery alone must update the notice without a catalog read.
+          controller.connectionStatus.accessAvailable();
+          controller.connectionStatus.liveChanged('outage-test', true);
+          await tester.pumpAndSettle();
+          expect(find.text('Connection interrupted. Try again.'), findsNothing);
+          expect(
+            find.text('Some recent conversations could not be loaded.'),
+            findsOneWidget,
+          );
+          // Refresh success clears the summary and retains cached content.
+          host.failed.clear();
+          fixture.readHook = null;
+          now = now.add(const Duration(minutes: 5));
+          await controller.refreshRecents();
+          await bots.refresh();
+          await tester.pumpAndSettle();
+          expect(find.byType(StudioError), findsNothing);
+          await tester.scrollUntilVisible(
+            find.text('Draft the setup guide'),
+            150,
+            scrollable: find.byType(Scrollable),
+          );
+          expect(find.text('Draft the setup guide'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox());
+        },
+      );
+    }
+  }
+  testWidgets('offline empty Recents does not claim there are no chats', (
+    tester,
+  ) async {
+    host.includeHistory = false;
+    host.live.clear();
+    await controller.refreshRecents();
+    final emptyBots = BotsSession((_) async => []);
+    await emptyBots.refresh();
+    final emptyRecents = WorkspaceRecentsSession(
+      controller,
+      emptyBots,
+      foreground: true,
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: WorkspaceActivityContent(
+            recents: emptyRecents,
+            visible: false,
+            onOpen: (_, _) {},
+            onOpenGroup: (_) async {},
           ),
         ),
       ),
     );
-    await tester.pump();
-    expect(find.text('Running job'), findsOneWidget);
-    expect(find.text('Question'), findsOneWidget);
-    expect(find.text('Deploy checks'), findsOneWidget);
-    expect(find.textContaining('2 background tasks running'), findsOneWidget);
-    expect(find.text('Idle old server'), findsNothing);
-
-    await tester.tap(find.widgetWithText(FilterChip, 'Needs input'));
-    await tester.pump();
-    expect(find.text('Running job'), findsNothing);
-    expect(find.text('Question'), findsOneWidget);
-    await tester.tap(find.text('Question'));
-    expect(opened?.key.sessionId, 'needs-input');
-
-    await tester.tap(find.widgetWithText(FilterChip, 'Running'));
-    await tester.pump();
-    expect(find.text('Running job'), findsOneWidget);
-    expect(find.text('Question'), findsNothing);
-    expect(find.text('Deploy checks'), findsOneWidget);
-    await tester.tap(find.widgetWithText(FilterChip, 'All'));
-    await tester.pump();
-    expect(find.text('Question'), findsOneWidget);
-    expect(tester.takeException(), isNull);
+    await tester.pumpAndSettle();
+    expect(find.text('No recent chats'), findsOneWidget);
+    controller.connectionStatus.onInterruption = null;
+    controller.connectionStatus.accessFailed(const SocketException('offline'));
+    await tester.pumpAndSettle();
+    expect(find.text('No recent chats'), findsNothing);
+    expect(find.byType(StudioError), findsNothing);
+    expect(emptyRecents.contentAvailable, isFalse);
+    await tester.pumpWidget(const SizedBox());
+    emptyRecents.dispose();
+    emptyBots.dispose();
   });
-
-  testWidgets('retains activity-unavailable error', (tester) async {
+  testWidgets('retains partial status failures with usable chats', (
+    tester,
+  ) async {
     host.failed.add('main');
     await controller.refreshRecents();
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: WorkspaceActivityContent(
-            controller: controller,
-            onOpen: (_) {},
+            recents: recents,
+            visible: false,
+            onOpen: (_, _) {},
+            onOpenGroup: (_) async {},
           ),
         ),
       ),
     );
-    await tester.pump();
-    expect(find.text('Live status could not be loaded.'), findsOneWidget);
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Some recent conversations could not be loaded.'),
+      findsOneWidget,
+    );
     expect(find.text('No recent chats'), findsNothing);
+    expect(find.text('Draft the setup guide'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
   });
 }

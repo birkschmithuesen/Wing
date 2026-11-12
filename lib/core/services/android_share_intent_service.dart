@@ -205,7 +205,10 @@ Map<String, String>? _validatedTarget(Object? raw) {
   if (raw is! Map) {
     return null;
   }
-  const keys = ['connection', 'connection_identity', 'profile', 'session'];
+  final keys = raw.containsKey('room')
+      ? const ['connection', 'connection_identity', 'room']
+      : const ['connection', 'connection_identity', 'profile', 'session'];
+  if (raw.keys.any((key) => !keys.contains(key))) return null;
   final target = <String, String>{};
   for (final key in keys) {
     final value = raw[key];

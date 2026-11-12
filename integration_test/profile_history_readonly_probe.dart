@@ -3,6 +3,13 @@
 /// It prints counts only and cannot resume a runtime or write server data.
 library;
 
+import 'package:wing/core/services/chat_runtime.dart';
+
+import '../test/support/composer_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+
+import 'package:wing/core/services/app_preferences.dart';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/connection_manager.dart';
@@ -30,6 +37,7 @@ Future<void> main() async {
     ),
   );
   ProfileWorkspaceController? controller;
+  AppPreferences? appPreferences;
   try {
     const label = String.fromEnvironment('PAGING_CONNECTION_LABEL');
     const host = String.fromEnvironment('PAGING_EXPECTED_HOST');
@@ -41,12 +49,18 @@ Future<void> main() async {
       (c) => c.label == label && c.host == host,
     );
     SharedPreferences.setMockInitialValues({});
+    final fixturePreferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(fixturePreferences);
     controller = ProfileWorkspaceController(
-      connection: connection,
+      appPreferences: appPreferences,
+      access: manager.accessFor(connection),
       connectionIdentity: 'read-only-probe',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: fixturePreferences,
       gatewayFactory: (scope) {
-        final live = ProfileGateway.forConnection(connection, scope);
+        final live = ProfileGateway.forConnection(
+          manager.accessFor(connection),
+          scope,
+        );
         return ProfileGateway(
           scope: scope,
           discover: live.discover,
@@ -93,46 +107,77 @@ Future<void> main() async {
           ),
         );
       final id = candidates.first['id'] as String;
-      final chat = ProfileChat(
+      final runtime = ChatRuntime(runtimeId: '');
+      final chat = composeChat(
+        controller: controller,
+        preferences: controller.preferences,
         key: ProfileSessionKey(data.scope, id),
-        runtimeId: '',
+        runtime: runtime,
         title: 'Read-only check',
       );
-      data.chats[id] = chat;
-      data.selectedSession = id;
-      await controller.refreshHistory(chat);
-      if (chat.historyError != null) throw StateError('Latest history failed');
-      final latestIds = chat.messages.map((m) => m['id']).toSet();
-      for (
-        var page = 1;
-        chat.nextHistoryOffset != null &&
-            chat.messages.length <= 550 &&
-            page < 15;
-        page++
-      ) {
-        await controller.loadOlderMessages(chat);
-        if (chat.historyError != null) throw StateError('Older history failed');
+      final capturedController = controller;
+      var readingAlive = true;
+      final readingChanges = ChangeNotifier();
+      bool canPublishReading() =>
+          readingAlive && identical(capturedController.current, data);
+      void readingChanged() {
+        if (canPublishReading()) readingChanges.notifyListeners();
       }
-      final ids = chat.messages.map((m) => m['id']).toSet();
-      if (ids.length != chat.messages.length || !ids.containsAll(latestIds)) {
-        throw StateError('History identity check failed');
-      }
-      final oldest = chat.messages.firstOrNull?['id'];
-      final before = chat.messages.length;
-      await controller.refreshHistory(chat);
-      if (chat.historyError != null ||
-          chat.messages.firstOrNull?['id'] != oldest) {
-        throw StateError('History refresh lost the older prefix');
-      }
-      if (before > 500) longHistories++;
-      counts.add(before);
-      debugPrint(
-        '[readonly-history-probe] profile ${index + 1}: rows=$before unique=true prefix_retained=true',
+
+      Future<void> refreshReading() => chat.reading.refresh(
+        sessionId: id,
+        runtimeId: '',
+        canPublish: canPublishReading,
+        onChanged: readingChanged,
       );
-      report.value =
-          'Read-only history checks completed for ${index + 1}/${names.length} profiles.';
-      controller.showList();
-      data.chats.remove(id);
+      Future<void> loadOlderReading() => chat.reading.loadOlder(
+        canPublish: canPublishReading,
+        onChanged: readingChanged,
+      );
+      try {
+        await refreshReading();
+        if (chat.reading.historyError != null) {
+          throw StateError('Latest history failed');
+        }
+        final latestIds = chat.reading.messages.map((m) => m['id']).toSet();
+        for (
+          var page = 1;
+          chat.reading.nextHistoryOffset != null &&
+              chat.reading.messages.length <= 550 &&
+              page < 15;
+          page++
+        ) {
+          await loadOlderReading();
+          if (chat.reading.historyError != null) {
+            throw StateError('Older history failed');
+          }
+        }
+        final ids = chat.reading.messages.map((m) => m['id']).toSet();
+        if (ids.length != chat.reading.messages.length ||
+            !ids.containsAll(latestIds)) {
+          throw StateError('History identity check failed');
+        }
+        final oldest = chat.reading.messages.firstOrNull?['id'];
+        final before = chat.reading.messages.length;
+        await refreshReading();
+        if (chat.reading.historyError != null ||
+            chat.reading.messages.firstOrNull?['id'] != oldest) {
+          throw StateError('History refresh lost the older prefix');
+        }
+        if (before > 500) longHistories++;
+        counts.add(before);
+        debugPrint(
+          '[readonly-history-probe] profile ${index + 1}: rows=$before unique=true prefix_retained=true',
+        );
+        report.value =
+            'Read-only history checks completed for ${index + 1}/${names.length} profiles.';
+      } finally {
+        readingAlive = false;
+        chat.reading.dispose();
+        chat.composer.dispose();
+        runtime.dispose();
+        readingChanges.dispose();
+      }
     }
     if (longHistories == 0) {
       throw StateError('No history over 500 rows was available');
@@ -147,5 +192,6 @@ Future<void> main() async {
     debugPrint('[readonly-history-probe] ${report.value}');
   } finally {
     controller?.dispose();
+    appPreferences?.dispose();
   }
 }

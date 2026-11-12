@@ -1,3 +1,5 @@
+import 'helpers/pump_markdown_widget.dart';
+import 'package:wing/core/models/transcript_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/widgets/profile_activity_tabs.dart';
@@ -8,7 +10,7 @@ import 'package:wing/core/utils/expansion_scroll_controller.dart';
 
 void main() {
   for (final scale in [1.0, 2.0, 3.0]) {
-    testWidgets('tabs retain details and Thinking at phone scale $scale', (
+    testWidgets('tabs retain timeline expansion at phone scale $scale', (
       tester,
     ) async {
       tester.view.physicalSize = const Size(360, 900);
@@ -24,45 +26,54 @@ void main() {
             builder: (context, setState) {
               update = setState;
               return MediaQuery(
-                data: MediaQuery.of(
-                  context,
-                ).copyWith(textScaler: TextScaler.linear(scale)),
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
                 child: Scaffold(
                   body: SingleChildScrollView(
                     padding: const EdgeInsets.all(16),
                     child: ProfileActivitySection(
+                      label: 'Activity',
                       initiallyExpanded: true,
-                      toolCount: 5,
-                      tabs: [
-                        if (showTasks)
+                      detailsBuilder: (_) => ProfileActivityTabs(
+                        tabs: [
                           ProfileActivityTab(
-                            id: 'tasks',
-                            label: 'Tasks $completed/4',
-                            child: const Text('Task details'),
+                            id: 'timeline',
+                            label: 'Timeline',
+                            child: Column(
+                              children: [
+                                ProfileToolActivity(
+                                  results: [
+                                    TranscriptToolResult.fromRow({
+                                      'id': 1,
+                                      'role': 'tool',
+                                      'tool_name': 'skill_view',
+                                      'content': 'Saved tool detail',
+                                    }),
+                                  ],
+                                ),
+                                const ProfileReasoningDisclosure(
+                                  text: 'Reasoning details',
+                                  running: true,
+                                ),
+                              ],
+                            ),
                           ),
-                        ProfileActivityTab(
-                          id: 'agents',
-                          label: 'Agents 1/2',
-                          child: const Text('Agent details'),
-                          onSelected: () => activations++,
-                        ),
-                      ],
-                      thinking: const ProfileReasoningDisclosure(
-                        text: 'Reasoning details',
-                        running: true,
+                          if (showTasks)
+                            ProfileActivityTab(
+                              id: 'tasks',
+                              label: 'Tasks $completed/4',
+                              child: const Text('Task details'),
+                            ),
+                          ProfileActivityTab(
+                            id: 'agents',
+                            label: 'Agents 1/2',
+                            child: const Text('Agent details'),
+                            onSelected: () => activations++,
+                          ),
+                        ],
                       ),
-                      children: const [
-                        ProfileToolActivity(
-                          messages: [
-                            {
-                              'id': 1,
-                              'role': 'tool',
-                              'tool_name': 'skill_view',
-                              'content': 'Saved tool detail',
-                            },
-                          ],
-                        ),
-                      ],
                     ),
                   ),
                 ),
@@ -72,38 +83,53 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('skill_view'));
+      await tester.settleMarkdown();
+      await tester.tap(find.text('Read skill'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(find.text('Saved tool detail'), findsOneWidget);
       await tester.tap(find.text('Tasks 1/4'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(find.text('Task details'), findsOneWidget);
       expect(find.text('Saved tool detail'), findsNothing);
-      expect(find.text('Thinking'), findsOneWidget);
-      expect(
-        tester
-            .getTopLeft(find.byKey(const ValueKey('activity-thinking-divider')))
-            .dy,
-        lessThan(tester.getTopLeft(find.text('Thinking')).dy),
-      );
+      expect(find.text('Thinking'), findsNothing);
       update(() => completed = 2);
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(find.text('Task details'), findsOneWidget);
       await tester.tap(find.text('Agents 1/2'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(activations, 1);
       expect(find.text('Agent details'), findsOneWidget);
+      await tester.tap(find.text('Timeline'));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Thinking'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Thinking'));
       await tester.pumpAndSettle();
-      expect(find.text('Reasoning details'), findsOneWidget);
-      await tester.tap(find.text('Tools 5'));
+      await tester.settleMarkdown();
+      expect(
+        find.text('Reasoning details', findRichText: true),
+        findsNWidgets(2),
+      );
+      await tester.ensureVisible(find.text('Timeline'));
       await tester.pumpAndSettle();
+      await tester.tap(find.text('Timeline'));
+      await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(find.text('Saved tool detail'), findsOneWidget);
-      expect(find.text('Reasoning details'), findsOneWidget);
+      expect(
+        find.text('Reasoning details', findRichText: true),
+        findsNWidgets(2),
+      );
       await tester.tap(find.text('Tasks 2/4'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       update(() => showTasks = false);
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(find.text('Saved tool detail'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
@@ -112,14 +138,19 @@ void main() {
   testWidgets(
     'switching category preserves its position in reversed transcript',
     (tester) async {
-      final scroll = ExpansionScrollController();
+      final scroll = ExpansionScrollController(
+        preserveViewportPosition: () => true,
+      );
       addTearDown(scroll.dispose);
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
             body: NotificationListener<ExpansionAnchorNotification>(
               onNotification: (event) {
-                scroll.anchorExpansion(event.anchor);
+                scroll.anchorExpansion(
+                  event.anchor,
+                  allowBottomGap: event.allowBottomGap,
+                );
                 return true;
               },
               child: ListView(
@@ -149,12 +180,15 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       final before = tester.getTopLeft(find.text('Tasks')).dy;
       await tester.tap(find.text('Tasks'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(tester.getTopLeft(find.text('Tasks')).dy, closeTo(before, 1));
       await tester.tap(find.text('Tools'));
       await tester.pumpAndSettle();
+      await tester.settleMarkdown();
       expect(tester.getTopLeft(find.text('Tasks')).dy, closeTo(before, 1));
       expect(tester.takeException(), isNull);
     },

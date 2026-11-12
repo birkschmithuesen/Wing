@@ -98,12 +98,12 @@ void main() {
   });
 
   group('ConfigBackup serialization', () {
-    test('older backups without icons use the standard server icon', () {
+    test('current backups require an explicit connection icon', () {
       final json = sampleBackup().toJson();
       (json['connections'] as List).single.remove('icon');
       expect(
-        ConfigBackup.fromJson(json).connections.single.icon,
-        ConnectionIcon.server,
+        () => ConfigBackup.fromJson(json),
+        throwsA(isA<ConfigBackupException>()),
       );
     });
 

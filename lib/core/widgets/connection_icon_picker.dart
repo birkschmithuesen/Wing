@@ -1,8 +1,8 @@
+import 'studio_form_actions.dart';
 import 'package:flutter/material.dart';
 
 import '../models/connection_icon.dart';
 import '../theme/wing_theme.dart';
-import 'studio_action_label.dart';
 import 'studio_error.dart';
 
 extension ConnectionIconPresentation on ConnectionIcon {
@@ -80,15 +80,17 @@ class ConnectionIconButton extends StatelessWidget {
   final VoidCallback? onPressed;
 
   @override
-  Widget build(BuildContext context) => IconButton(
-    tooltip: 'Change connection icon',
-    onPressed: onPressed,
-    style: IconButton.styleFrom(
-      minimumSize: const Size(48, 48),
-      padding: const EdgeInsets.all(8),
-      shape: const RoundedRectangleBorder(borderRadius: WingRadius.control),
+  Widget build(BuildContext context) => StudioButtonPress(
+    child: IconButton(
+      tooltip: 'Change connection icon',
+      onPressed: onPressed,
+      style: IconButton.styleFrom(
+        minimumSize: const Size(48, 48),
+        padding: const EdgeInsets.all(8),
+        shape: const RoundedRectangleBorder(borderRadius: WingRadius.control),
+      ),
+      icon: ConnectionIconBadge(icon: icon),
     ),
-    icon: ConnectionIconBadge(icon: icon),
   );
 }
 
@@ -150,93 +152,83 @@ class _ConnectionIconPickerState extends State<_ConnectionIconPicker> {
   @override
   Widget build(BuildContext context) => PopScope(
     canPop: !_saving,
-    child: SafeArea(
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
+    child: StudioFormSheet(
+      actions: StudioFormActions(
+        onCancel: _saving ? null : () => Navigator.pop(context),
+        onConfirm: _saving ? null : _save,
+        confirmLabel: 'Save connection icon',
+        busy: _saving,
+        progressLabel: 'Saving connection icon',
+      ),
+      children: [
+        Text(
+          'Instance icon',
+          style: Theme.of(context).dialogTheme.titleTextStyle,
+        ),
+        const SizedBox(height: 16),
+        Row(
           children: [
-            Text(
-              'Instance icon',
-              style: Theme.of(context).textTheme.titleLarge,
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                ConnectionIconBadge(icon: _selected),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Text(
-                    widget.connectionName,
-                    style: Theme.of(context).textTheme.titleMedium,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Text(_selected.label, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final icon in ConnectionIcon.values)
-                  Semantics(
-                    selected: icon == _selected,
-                    child: IconButton(
-                      key: ValueKey('connection-icon-${icon.name}'),
-                      tooltip: icon.label,
-                      isSelected: icon == _selected,
-                      style: ButtonStyle(
-                        minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
-                        shape: WidgetStatePropertyAll(
-                          RoundedRectangleBorder(
-                            borderRadius: WingRadius.control,
-                          ),
-                        ),
-                        backgroundColor: WidgetStatePropertyAll(
-                          icon == _selected
-                              ? Theme.of(context).colorScheme.primaryContainer
-                              : null,
-                        ),
-                        side: WidgetStateProperty.resolveWith(
-                          (states) => states.contains(WidgetState.focused)
-                              ? BorderSide(
-                                  color: Theme.of(context).colorScheme.primary,
-                                  width: 2,
-                                )
-                              : null,
-                        ),
-                      ),
-                      onPressed: _saving
-                          ? null
-                          : () => setState(() => _selected = icon),
-                      icon: Icon(
-                        icon.glyph,
-                        size: 24,
-                        semanticLabel: icon.label,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            if (_failed) ...[
-              const SizedBox(height: 16),
-              const StudioError('Couldn’t save this icon. Try again.'),
-            ],
-            const SizedBox(height: 24),
-            FilledButton(
-              onPressed: _saving ? null : _save,
-              child: StudioActionLabel('Save icon', busy: _saving),
-            ),
-            TextButton(
-              onPressed: _saving ? null : () => Navigator.pop(context),
-              child: const Text('Cancel'),
+            ConnectionIconBadge(icon: _selected),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Text(
+                widget.connectionName,
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
             ),
           ],
         ),
-      ),
+        const SizedBox(height: 16),
+        Text(_selected.label, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final icon in ConnectionIcon.values)
+              Semantics(
+                selected: icon == _selected,
+                child: StudioButtonPress(
+                  child: IconButton(
+                    key: ValueKey('connection-icon-${icon.name}'),
+                    tooltip: icon.label,
+                    isSelected: icon == _selected,
+                    style: ButtonStyle(
+                      minimumSize: const WidgetStatePropertyAll(Size(48, 48)),
+                      shape: WidgetStatePropertyAll(
+                        RoundedRectangleBorder(
+                          borderRadius: WingRadius.control,
+                        ),
+                      ),
+                      backgroundColor: WidgetStatePropertyAll(
+                        icon == _selected
+                            ? Theme.of(context).colorScheme.primaryContainer
+                            : null,
+                      ),
+                      side: WidgetStateProperty.resolveWith(
+                        (states) => states.contains(WidgetState.focused)
+                            ? BorderSide(
+                                color: Theme.of(context).colorScheme.primary,
+                                width: 2,
+                              )
+                            : null,
+                      ),
+                    ),
+                    onPressed: _saving
+                        ? null
+                        : () => setState(() => _selected = icon),
+                    icon: Icon(icon.glyph, size: 24, semanticLabel: icon.label),
+                  ),
+                ),
+              ),
+          ],
+        ),
+        if (_failed) ...[
+          const SizedBox(height: 16),
+          const StudioError('Couldn’t save this icon. Try again.'),
+        ],
+        const SizedBox(height: 24),
+      ],
     ),
   );
 }

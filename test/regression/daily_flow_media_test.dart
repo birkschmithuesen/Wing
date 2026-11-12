@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/models/chat_output.dart';
 import 'package:wing/core/widgets/chat_image_preview.dart';
 import 'package:wing/core/widgets/deliverable_attachment.dart';
 import 'package:wing/core/widgets/profile_message.dart';
@@ -27,7 +26,7 @@ Widget _message(String text, Future<Uint8List> Function(String path) load) =>
         body: SingleChildScrollView(
           child: ProfileMessage(
             message: {'role': 'assistant', 'content': text},
-            onLoadRemoteImage: (ChatOutput output) => load(output.path!),
+            loadAttachmentImage: load,
           ),
         ),
       ),
