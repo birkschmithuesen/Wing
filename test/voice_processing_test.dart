@@ -337,4 +337,22 @@ void main() {
     expect(spokenReplyText('Only `inline code` remains'), 'Only  remains');
     expect(spokenReplyText('Compare A & B: 1 < 2.'), 'Compare A & B: 1 < 2.');
   });
+  test('MEDIA reference lines are not read aloud', () {
+    expect(
+      spokenReplyText('Text.\n\nMEDIA:/a/b/c.png'),
+      'Text.',
+    );
+    expect(
+      spokenReplyText('Text.\n\nMEDIA: "/a b/c.png"'),
+      'Text.',
+    );
+    expect(
+      spokenReplyText('Text.\n\n`MEDIA:/x.pdf`'),
+      'Text.',
+    );
+    expect(
+      spokenReplyText('Streaming media players are great.'),
+      'Streaming media players are great.',
+    );
+  });
 }

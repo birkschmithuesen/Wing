@@ -29,7 +29,16 @@ the README feature list current for every future change.
   acquired ~20:37 and still held at 23:26 (2h49m); `batterystats` since charge showed Wing as the
   top consumer (435 mAh) with `wakelock:fgs` held 3h05m and ~100 mAh/h screen-off drain. Fixed
   manually on the day by `am force-stop`; this card makes the service self-terminate instead.
-- **Merge:** TBD (branch `wt/t_8f6a3d26`, not yet merged to `voice-offline`) · **Card:** t_8f6a3d26
+- **Merge:** `852642d5` · **Card:** t_8f6a3d26 (review t_fbb61043 APPROVED, merge t_26c3971a)
+
+### Read-aloud no longer speaks MEDIA reference lines
+- **What:** Voice read-aloud (`spokenReplyText`) now strips `MEDIA:/path` reference lines — quoted and
+  backticked variants included — before building the spoken text, reusing the same `mediaReferencePattern`
+  the chat display already parses. The image/file card or thumbnail still renders; only the path is no
+  longer read aloud. A sentence that merely mentions the word "media" is unaffected.
+- **Why:** Wing's voice/conversation mode read the full reply text including `MEDIA:/home/.../file.png`
+  lines verbatim, which is noise for a listener who only hears the card's presence, not its path.
+- **Merge:** `1b7d5295` · **Card:** t_256dcf56
 
 ## 2026-11-08
 
