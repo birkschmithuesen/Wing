@@ -49,10 +49,15 @@ abstract interface class WorkspaceVoiceHost {
   // Screen-owned voice state, until the tasks that move it.
   CarModeSession get car;
   CarMicSession get carMic;
-  BackgroundVoice get background;
-  bool get loopFocus;
   bool get onChatsDestination;
-  bool? vadRoute();
+  bool get routeIsCurrent;
+  bool get appIsActive;
+
+  /// The workspace has the focus of the chat on screen.
+  bool get hasChatFocus;
+
+  /// Ends the voice session (the screen's cancel).
+  void cancelVoice();
   Map<ComposerAction, String?> composerActions(ProfileChat chat);
   TextEditingController get composer;
   Future<T?> runValue<T>(Future<T> Function() action);
@@ -79,7 +84,12 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   VoiceOutputController get _voiceOutput => host.voiceOutput;
   CarModeSession get _car => host.car;
   CarMicSession get _carMic => host.carMic;
-  BackgroundVoice get _background => host.background;
+
+  late final background = BackgroundVoice(
+    backgroundHost ?? AndroidBackgroundVoiceHost.instance,
+    onStopped: host.cancelVoice,
+  );
+  BackgroundVoice get _background => background;
 
   /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
   late final bargeIn = BargeInCoordinator(
@@ -105,8 +115,11 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// initState part.
   void attach() {
+    bargeIn.addListener(() => background.listening(bargeIn.listening));
+    _liveWorkspaces++;
     _autoSpeak = _controller.completedReplies.listen(_speakCompletedReply);
     _voiceInput.addListener(_voiceInputChanged);
+    _voiceDeviceEvents = device.events.listen(_voiceDeviceEvent);
   }
 
   /// initState part, after the car mode listeners: follows the output route.
@@ -122,6 +135,89 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       VoiceSwitchHolders.screenOn(device).set(host, false);
     }
     _voiceInput.removeListener(_voiceInputChanged);
+    unawaited(_voiceDeviceEvents?.cancel());
+  }
+
+  /// dispose part, after the screen disposed its voice controllers.
+  void disposeParts() {
+    _background.dispose();
+    bargeIn.dispose();
+    headphones.dispose();
+  }
+
+  /// dispose part, after the screen dropped its route visibility.
+  void releaseDevice() {
+    if (_mediaKeysOn) {
+      _mediaKeysOn = false;
+      VoiceSwitchHolders.mediaKeys(device).set(host, false);
+    }
+    // A replacement workspace may already hold the model; release it only
+    // when the last workspace goes away.
+    if (--_liveWorkspaces <= 0 && vadRoute() == true) {
+      unawaited(
+        VadVoiceDevice.of(device).releaseVad().catchError((Object _) {}),
+      );
+    }
+  }
+
+  /// The app lifecycle part: whether a held background service keeps the
+  /// voice session alive across [state].
+  bool keepsVoice(AppLifecycleState state) => _background.keepsVoice(state);
+
+  void lifecycle(AppLifecycleState state) => _background.lifecycle(state);
+
+  static int _liveWorkspaces = 0;
+  bool _mediaKeysOn = false;
+  StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
+
+  /// Chat focus for the conversation loop; a held hold also counts when the app is paused (spec 2026-10-14).
+  bool get loopFocus =>
+      (host.routeIsCurrent || _car.active) &&
+      host.onChatsDestination &&
+      (host.appIsActive || _background.held);
+
+  /// Route vad: preload the phone model. Media keys are captured only while
+  /// this workspace is the focused chat on the vad route (spec: foreground).
+  void syncVadRoute() {
+    final vad = vadRoute();
+    if (vad == null) return;
+    syncMediaKeys();
+    if (vad) unawaited(VadVoiceDevice.of(device).prepareVad().catchError((Object _) {}));
+  }
+
+  bool? vadRoute() {
+    final settings = tryReadVoicePreferences(_controller.preferences);
+    return settings == null ? null : settings.input == VoiceInputRoute.vad;
+  }
+
+  void syncMediaKeys() {
+    final want = (vadRoute() ?? false) && host.hasChatFocus;
+    if (want == _mediaKeysOn) return;
+    _mediaKeysOn = want;
+    VoiceSwitchHolders.mediaKeys(device).set(host, want);
+  }
+
+  void _voiceDeviceEvent(Map<String, dynamic> event) {
+    if (event['mediaKey'] != 'playPause' ||
+        !host.mounted ||
+        !host.hasChatFocus) {
+      return;
+    }
+    if (vadRoute() != true) {
+      return;
+    }
+    if (bargeIn.listening && _voiceOutput.owner == null) {
+      unawaited(bargeIn.listener.endUtterance());
+      return;
+    }
+    if (_voiceInput.phase == VoiceInputPhase.recording) {
+      unawaited(_voiceInput.stopHandsFree());
+      return;
+    }
+    if (_voiceInput.active) return;
+    final chat = _controller.notificationChat ?? _controller.current?.chat;
+    if (chat == null || _controller.switching || chat.needsUserInput) return;
+    unawaited(host.run(() => host.dictate(chat)));
   }
 
   /// Anything that ends the hands-free conversation loop.
@@ -149,7 +245,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     _conversationKey = value;
     _background.sync(
-      want: value != null && host.vadRoute() == true && !_car.active,
+      want: value != null && vadRoute() == true && !_car.active,
     );
   }
 
@@ -175,7 +271,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   /// is dictating. Replies queue behind each other in arrival order; the
   /// microphone only reopens once the queue drained after the last one.
   void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
-    if (!host.mounted || !host.loopFocus) {
+    if (!host.mounted || !loopFocus) {
       conversation = null;
       return;
     }
@@ -251,7 +347,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     final ok =
         host.mounted &&
         conversation == chat.key &&
-        host.loopFocus &&
+        loopFocus &&
         host.currentChat == chat &&
         !_controller.switching &&
         !chat.voiceBusy &&
