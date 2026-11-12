@@ -114,7 +114,7 @@ jobs:
       - name: Surface contract failure as annotations
         if: failure() && hashFiles('contracts_output.txt') != ''
         run: |
-          grep -v '^\s*$' contracts_output.txt | head -40 | cut -c1-300 | paste -d"~" - - - - | while IFS= read -r line; do printf '::error::CONTRACT: %s\n' "$line"; done
+          grep -E '\[[A-Z_]+\]|failed|rror|Traceback|Exception' contracts_output.txt | head -40 | cut -c1-300 | paste -d"~" - - - - | while IFS= read -r line; do printf '::error::CONTRACT: %s\n' "$line"; done
 
       - name: Check workspace search owner fixtures
         run: dart run tools/architecture/tests/workspace_search_owner_test.dart

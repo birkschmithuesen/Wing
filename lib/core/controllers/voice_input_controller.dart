@@ -60,8 +60,6 @@ class VoiceInputController extends ChangeNotifier {
   String? get error => _error;
   VoiceInputNotice? get notice => _notice;
   int get seconds => _seconds;
-  @visibleForTesting
-  set seconds(int v) => _seconds = v;
   bool get active => _phase != VoiceInputPhase.idle;
 
   void _notify() {

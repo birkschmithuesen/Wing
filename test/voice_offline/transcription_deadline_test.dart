@@ -6,9 +6,9 @@ import '../support/voice_fixture.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  test(
+  testWidgets(
     'stop() asks the native layer to wait longer for longer recordings',
-    () async {
+    () (tester) async {
       expect(transcriptionDeadlineFor(0), const Duration(milliseconds: 5000));
       expect(
         transcriptionDeadlineFor(50),
@@ -29,7 +29,7 @@ void main() {
         (_) => fail('Unexpected draft edit'),
         createRemote: RemoteVoiceFixture.new,
       );
-      controller.seconds = 50;
+      await tester.pump(const Duration(seconds: 50));
       await controller.stop();
       expect(device.lastStopTimeout, const Duration(milliseconds: 30000));
     },
