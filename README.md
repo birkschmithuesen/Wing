@@ -10,7 +10,6 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [German/English read-aloud per sentence](docs/VOICE_LANGUAGE.md)
 - [Read-aloud queue](CHANGELOG.fork.md#read-aloud-queue-a-new-reply-waits-its-turn)
 - [Bluetooth and car microphone](docs/VAD_INPUT.md#microphone-route)
-- [Inline, tap-to-zoom chat images](CHANGELOG.fork.md#chat-images-now-show-inline-with-a-tap-to-zoom-thumbnail)
 - [Car kit stays on the voice channel for the whole conversation](docs/VAD_INPUT.md#car-kit-sco-hold-conversation-wide-birk-decision-2026-10-19)
 - [Offline behaviour](docs/CAR_MODE.md)
 - [Conversation mode releases its microphone wakelock when the loop ends](CHANGELOG.fork.md#backgroundvoiceservice-now-releases-its-wakelock-when-the-conversation-loop-ends)

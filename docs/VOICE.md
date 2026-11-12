@@ -16,6 +16,10 @@ Fork additions (on-device VAD dictation, car mode): see [VAD_INPUT.md](VAD_INPUT
 
 Tap the composer microphone, speak, then tap **Stop recording**. The words appear in your draft for review and editing; Wing never sends them automatically. Use **Read aloud** on an assistant reply to hear its prose, or **Stop speech** to end playback. Recording and playback stop when you leave the foreground or change chats.
 
+### Wing Voice (fork)
+
+Conversation mode (opt-in) sends dictations automatically. The system-recognizer fallback stays inside Local and never switches to Hermes. The maximum dictation duration is 10 minutes.
+
 [Voice setup details](PROFILE_VOICE.md) · [Privacy](../PRIVACY.md)
 
 ## Live conversations

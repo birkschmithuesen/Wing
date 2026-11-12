@@ -11,6 +11,28 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-12 (upstream merge)
+
+### Upstream merge: tarkilhk/Wing e8a4089c (806 commits) into the fork
+- **What:** Merged tarkilhk/Wing upstream/main e8a4089c (806 commits: gateway/chat rewrite, outbox, typed
+  preferences, live voice call) into the fork. Fork voice, car mode and offline features re-hung on upstream's
+  new seams (spec docs/superpowers/specs/2026-11-12-wing-upstream-merge-design.md).
+- **Why:** Stay upstream-compatible (fork strategy).
+- **User-visible:** Parakeet is chosen as "Recognition engine" under Local voice input (stored value migrated
+  automatically); the settings card still hides "Recognition language" for the Parakeet engine; empty Parakeet
+  recognition shows upstream's "No speech detected" notice; upstream's live call button appears (needs the Wing
+  Hermes plugin) and a running conversation loop is paused while an upstream live call is active; the
+  model-removal dialog uses icon buttons with tooltips (upstream dialog rules); unsent drafts/queues from before
+  the update are not carried over (upstream format change, one-time step before install). Inline chat images now
+  use upstream's image box (tap opens the preview).
+- **Dropped for upstream:** own queue drain loop and history-text queue-head check (upstream outbox), composer
+  toolbar mic (upstream mic in the text field).
+- **Fork edits of upstream files/tools:** `lib/core/widgets/voice_preferences_card.dart`
+  (VoiceOfflineEngineBuilder), `lib/core/controllers/profile_workspace_controller.dart` (NetworkGate +
+  TransientSend mark/hold hooks), `tools/architecture` roles.json/roots.json registrations, and the car_mode
+  cycle break (CarModeSession screenBuilder).
+- **Merge:** `116d82f4` · **Card:** t_d1d49ff1
+
 ## 2026-11-12
 
 ### Internal: fork code moved out of upstream files (no behaviour change)
@@ -94,6 +116,7 @@ the README feature list current for every future change.
 - **Why:** Birk 2026-10-30, Robo-reported MEDIA images render as a file card instead of an inline thumbnail in
   Wing conversational mode.
 - **Merge:** pending (branch `wt/t_3dcd191e`, not yet merged to `voice-offline`) · **Card:** t_3dcd191e
+- Superseded by upstream ChatInlineImage in the upstream merge (t_d1d49ff1).
 
 ## 2026-10-20
 
