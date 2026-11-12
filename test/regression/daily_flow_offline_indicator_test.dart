@@ -38,6 +38,7 @@ void main() {
         onAttention: (notification) async {},
       );
       await controller.initialize();
+      controller.connectionStatus.accessAvailable();
     });
     // SETUP
     tearDown(() {

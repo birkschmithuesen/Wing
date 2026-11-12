@@ -26,6 +26,13 @@ ProfileGateway _gateway(List<(String, Map<String, dynamic>)> calls) {
         'session_id': 'runtime',
         'stored_session_id': 'stored',
         'info': {'profile_name': 'a'},
+        'revision': 0,
+        'execution_generation': 0,
+        'authority_epoch': 1,
+        'replay_epoch': 'replay',
+        'last_sequence': 0,
+        'subscription_id': 'subscription',
+        'pending': <Object?>[],
       };
     },
   );
