@@ -57,6 +57,7 @@ void main() {
     logs = [];
     session = CarModeSession(
       device: device,
+      screenBuilder: (session) => CarModeScreen(session: session),
       log: logs.add,
       bridge: CarModeBridge(
         changes: world,

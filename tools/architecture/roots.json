@@ -7039,6 +7039,11 @@
       "provenance": "tracked"
     },
     {
+      "path": ".github/workflows/ci-fetch.yml",
+      "area": ".github",
+      "provenance": "tracked"
+    },
+    {
       "path": ".github/workflows/native-impact.yml",
       "area": ".github",
       "provenance": "intentional-untracked"
@@ -7059,6 +7064,16 @@
       "provenance": "tracked"
     },
     {
+      "path": ".github/workflows/voice-apk.yml",
+      "area": ".github",
+      "provenance": "tracked"
+    },
+    {
+      "path": ".github/workflows/voice-review.yml",
+      "area": ".github",
+      "provenance": "tracked"
+    },
+    {
       "path": ".gitignore",
       "area": "root",
       "provenance": "tracked"
@@ -7074,12 +7089,22 @@
       "provenance": "tracked"
     },
     {
+      "path": "CHANGELOG.fork.md",
+      "area": "root",
+      "provenance": "tracked"
+    },
+    {
       "path": "CHANGELOG.md",
       "area": "root",
       "provenance": "tracked"
     },
     {
       "path": "CONTRIBUTING.md",
+      "area": "root",
+      "provenance": "tracked"
+    },
+    {
+      "path": "FACTORY.yaml",
       "area": "root",
       "provenance": "tracked"
     },
@@ -7119,7 +7144,17 @@
       "provenance": "tracked"
     },
     {
+      "path": "android/app/.gitignore",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
       "path": "android/app/build.gradle.kts",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/proguard-rules.pro",
       "area": "android",
       "provenance": "tracked"
     },
@@ -7159,6 +7194,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/AccessibilityTimeoutChannel.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/BackgroundMonitoringService.kt",
       "area": "android",
       "provenance": "tracked"
@@ -7184,6 +7224,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/EmailComposerChannel.kt",
+      "area": "android",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/HermesCloudChannel.kt",
       "area": "android",
       "provenance": "tracked"
@@ -7204,7 +7249,7 @@
       "provenance": "intentional-untracked"
     },
     {
-      "path": "android/ime-cache-fix.gradle.kts",
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/LiveVoiceService.kt",
       "area": "android",
       "provenance": "intentional-untracked"
     },
@@ -7244,6 +7289,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/OfflineSpeech.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/PdfPreviewChannel.kt",
       "area": "android",
       "provenance": "tracked"
@@ -7252,6 +7302,16 @@
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/ScrollCaptureChannel.kt",
       "area": "android",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/SpeechModelStore.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VadCapture.kt",
+      "area": "android",
+      "provenance": "tracked"
     },
     {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoiceCapture.kt",
@@ -7264,9 +7324,19 @@
       "provenance": "tracked"
     },
     {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoiceDebugStore.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoiceFileWork.kt",
       "area": "android",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoiceMediaKeys.kt",
+      "area": "android",
+      "provenance": "tracked"
     },
     {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoiceOperation.kt",
@@ -7275,6 +7345,51 @@
     },
     {
       "path": "android/app/src/main/kotlin/com/tarkilhk/wing/VoicePlayback.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceChannel.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/BackgroundVoiceService.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/HoldIdleTimer.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voicebackground/StopReason.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voiceoffline/HeadphoneRouteChannel.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voiceoffline/HeadsetMicRoute.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voiceoffline/LanguageSpeech.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voiceoffline/RecognizerSelection.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/voiceoffline/VoiceOfflineHandler.kt",
       "area": "android",
       "provenance": "tracked"
     },
@@ -7489,6 +7604,21 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "android/app/src/test/kotlin/com/tarkilhk/wing/voicebackground/HoldIdleTimerTest.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/src/test/kotlin/com/tarkilhk/wing/voicebackground/StopReasonTest.kt",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
+      "path": "android/app/voice-offline.gradle",
+      "area": "android",
+      "provenance": "tracked"
+    },
+    {
       "path": "android/build.gradle.kts",
       "area": "android",
       "provenance": "tracked"
@@ -7502,6 +7632,11 @@
       "path": "android/gradle/wrapper/gradle-wrapper.properties",
       "area": "android",
       "provenance": "tracked"
+    },
+    {
+      "path": "android/ime-cache-fix.gradle.kts",
+      "area": "android",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "android/settings.gradle.kts",
@@ -7540,6 +7675,21 @@
     },
     {
       "path": "assets/fonts/wing-icons.ttf",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/icon/icon.png",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/icon/playful-master.png",
+      "area": "assets",
+      "provenance": "tracked"
+    },
+    {
+      "path": "assets/icon/wing.svg",
       "area": "assets",
       "provenance": "tracked"
     },
@@ -7589,21 +7739,6 @@
       "provenance": "tracked"
     },
     {
-      "path": "assets/icon/icon.png",
-      "area": "assets",
-      "provenance": "tracked"
-    },
-    {
-      "path": "assets/icon/playful-master.png",
-      "area": "assets",
-      "provenance": "tracked"
-    },
-    {
-      "path": "assets/icon/wing.svg",
-      "area": "assets",
-      "provenance": "tracked"
-    },
-    {
       "path": "docs/ADMINISTRATION.md",
       "area": "docs",
       "provenance": "tracked"
@@ -7622,6 +7757,11 @@
       "path": "docs/BOTS.md",
       "area": "docs",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "docs/CAR_MODE.md",
+      "area": "docs",
+      "provenance": "tracked"
     },
     {
       "path": "docs/CHATS.md",
@@ -7724,6 +7864,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "docs/SCHEDULED_TASKS.md",
+      "area": "docs",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "docs/SELF_HOSTING.md",
       "area": "docs",
       "provenance": "tracked"
@@ -7764,7 +7909,22 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "docs/VAD_INPUT.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
       "path": "docs/VOICE.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/VOICE_BARGE_IN.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/VOICE_LANGUAGE.md",
       "area": "docs",
       "provenance": "tracked"
     },
@@ -7984,6 +8144,326 @@
       "provenance": "tracked"
     },
     {
+      "path": "docs/superpowers/plans/2026-10-13-wing-client-source.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-13-wing-tts-language.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-13-wing-voice-vad-input.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-14-wing-car-mode.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-14-wing-voice-background.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-14-wing-voice-barge-in.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-10-19-wing-porter-push.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-11-wing-upstream-compat-refactor.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/plans/2026-11-12-wing-upstream-merge.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-13-wing-client-source-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-13-wing-tts-language-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-13-wing-voice-vad-input-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-mockup.html",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/attention-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/attention-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/attention-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/attention-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/error-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/error-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/error-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/error-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-landscape-day-entry.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-landscape-night-offline.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-day-entry.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-day-offline.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-day-reconnecting.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-night-entry.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-night-offline.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-night-reconnecting.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/idle-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-portrait-day-steer.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-portrait-night-offline.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/listening-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/render_shots.py",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/speaking-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/speaking-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/speaking-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/speaking-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-portrait-day-working.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-portrait-night-websearch.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/thinking-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/transcribing-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/transcribing-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/transcribing-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/transcribing-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/waiting-landscape-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/waiting-landscape-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/waiting-portrait-day.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-car-mode-shots/waiting-portrait-night.png",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-voice-background-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-14-wing-voice-barge-in-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-10-19-wing-push-contract.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-11-wing-upstream-compat-refactor-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
+      "path": "docs/superpowers/specs/2026-11-12-wing-upstream-merge-design.md",
+      "area": "docs",
+      "provenance": "tracked"
+    },
+    {
       "path": "fastlane/metadata/android/en-US/full_description.txt",
       "area": "fastlane",
       "provenance": "tracked"
@@ -8042,6 +8522,11 @@
       "path": "integration_test/background_monitoring_device.dart",
       "area": "integration_test",
       "provenance": "tracked"
+    },
+    {
+      "path": "integration_test/background_processes_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
     },
     {
       "path": "integration_test/bot_screen_live_test.dart",
@@ -8159,9 +8644,39 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "integration_test/hermes023_context_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes023_groups_tasks_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes023_sessions_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "integration_test/hermes_next_admin_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "integration_test/hermes_next_conversation_prod_test.dart",
+      "area": "integration_test",
+      "provenance": "tracked"
+    },
+    {
       "path": "integration_test/large_html_native_preview.dart",
       "area": "integration_test",
       "provenance": "tracked"
+    },
+    {
+      "path": "integration_test/live_voice_native_test.dart",
+      "area": "integration_test",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "integration_test/notification_cold_input_device.dart",
@@ -8539,6 +9054,31 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/car_mode/car_mode_bridge.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/car_mode/car_mode_palette.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/car_mode/car_mode_screen.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/car_mode/car_mode_session.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/car_mode/car_mode_state.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
       "path": "lib/core/config/support_wing.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -8729,6 +9269,16 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/models/detached_work.dart",
+      "area": "lib",
+      "provenance": "task-authored"
+    },
+    {
+      "path": "lib/core/models/email_draft.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/models/fallback_model.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -8819,6 +9369,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/models/live_voice_turn.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/models/local_transcript_message.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -8855,6 +9410,11 @@
     },
     {
       "path": "lib/core/models/notification_input.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/models/operational_error.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
     },
@@ -9109,6 +9669,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/models/wing_plugin.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/models/workspace_entry.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -9225,6 +9790,11 @@
     },
     {
       "path": "lib/core/screens/administration/admin_fallback_page.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/screens/administration/admin_health_alerts.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
     },
@@ -9419,6 +9989,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/screens/bots/bot_group_context_sheet.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/screens/bots/bot_group_screen.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -9537,6 +10112,11 @@
       "path": "lib/core/screens/workspace_overview_content.dart",
       "area": "lib",
       "provenance": "tracked"
+    },
+    {
+      "path": "lib/core/services/accessibility_timeout.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "lib/core/services/administration_health.dart",
@@ -9899,6 +10479,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/services/email_composer.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/services/file_open_error_message.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -9985,6 +10570,21 @@
     },
     {
       "path": "lib/core/services/image_codec.LICENSE",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_protocol.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_session.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/live_voice_transport.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
     },
@@ -10174,6 +10774,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/services/profile_workspace_live_voice.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/services/profile_workspace_notifications.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -10324,6 +10929,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "lib/core/services/transcript_resource_session.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/services/turn_notification_service.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -10337,6 +10947,11 @@
       "path": "lib/core/services/usage_analytics_session.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/vad_endpoint.dart",
+      "area": "lib",
+      "provenance": "tracked"
     },
     {
       "path": "lib/core/services/versions_controller.dart",
@@ -10355,6 +10970,21 @@
     },
     {
       "path": "lib/core/services/web_preview.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/core/services/wing_plugin_releases.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/wing_plugin_session.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/services/wing_session_source.dart",
       "area": "lib",
       "provenance": "tracked"
     },
@@ -10709,6 +11339,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/widgets/email_draft_card.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/widgets/gateway_approval_panel.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -10762,6 +11397,11 @@
       "path": "lib/core/widgets/installed_app_version_card.dart",
       "area": "lib",
       "provenance": "tracked"
+    },
+    {
+      "path": "lib/core/widgets/live_voice_scope.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "lib/core/widgets/markdown_code_block.dart",
@@ -11044,6 +11684,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/widgets/studio_transient_error.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "lib/core/widgets/subagent_timeline.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -11079,6 +11724,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/widgets/vad_settings_section.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
       "path": "lib/core/widgets/voice_input_activity.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -11100,6 +11750,16 @@
     },
     {
       "path": "lib/core/widgets/wing_app_bar.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/widgets/wing_plugin_page.dart",
+      "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "lib/core/widgets/wing_plugin_settings_card.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
     },
@@ -11139,7 +11799,112 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/fork/network_gate.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/fork/transient_send.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
       "path": "lib/main.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/background_voice.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/barge_in_coordinator.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/barge_in_policy.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/barge_in_settings.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/car_mic_session.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/chat_voice_view.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/completed_replies.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/headphone_route.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/language_guess.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/sentence_splitter.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/speech_queue.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/speech_segments.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/turn_listener.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/vad_input_round.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/vad_voice_device.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/voice_input_settings_for.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/voice_offline_prefs.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/voice_offline_settings.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/voice_offline/workspace_voice_driver.dart",
       "area": "lib",
       "provenance": "tracked"
     },
@@ -11237,6 +12002,11 @@
       "path": "scripts/test.py",
       "area": "scripts",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "scripts/test_existing_hermes_next.py",
+      "area": "scripts",
+      "provenance": "tracked"
     },
     {
       "path": "scripts/test_journeys.py",
@@ -11347,6 +12117,11 @@
       "path": "scripts/tests/test_test_runner.py",
       "area": "scripts",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "scripts/tests/test_vad_endpoint_parity.py",
+      "area": "scripts",
+      "provenance": "tracked"
     },
     {
       "path": "scripts/tests/test_vanilla_hermes_runner.py",
@@ -11814,6 +12589,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "test/bot_group_controls_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "test/bot_group_draft_session_test.dart",
       "area": "test",
       "provenance": "tracked"
@@ -11907,6 +12687,36 @@
       "path": "test/capabilities_view_dependency_guard_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_bridge_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_palette_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_screen_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_session_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_state_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/car_mode/car_mode_workspace_test.dart",
+      "area": "test",
+      "provenance": "tracked"
     },
     {
       "path": "test/chat_browser_actions_test.dart",
@@ -12194,6 +13004,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "test/connector_runtime_test.dart",
+      "area": "test",
+      "provenance": "task-authored"
+    },
+    {
       "path": "test/connectors_view_dependency_guard_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -12289,6 +13104,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/detached_work_test.dart",
+      "area": "test",
+      "provenance": "task-authored"
+    },
+    {
       "path": "test/device_preference_test.dart",
       "area": "test",
       "provenance": "tracked"
@@ -12317,6 +13137,11 @@
       "path": "test/drawer_versions_test.dart",
       "area": "test",
       "provenance": "tracked"
+    },
+    {
+      "path": "test/email_draft_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "test/event_read_recovery_test.dart",
@@ -12379,7 +13204,27 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/fixtures/vad_endpoint_cases.json",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/flutter_launcher_test.ps1",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/fork/network_gate_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/fork/offline_send_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/fork/registry_network_test.dart",
       "area": "test",
       "provenance": "tracked"
     },
@@ -12484,9 +13329,19 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/helpers/journey_controls.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/helpers/pump_markdown_widget.dart",
       "area": "test",
       "provenance": "tracked"
+    },
+    {
+      "path": "test/hermes023_administration_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "test/hermes_cloud_test.dart",
@@ -12599,6 +13454,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/journey_controls_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/large_chat_outputs_test.dart",
       "area": "test",
       "provenance": "tracked"
@@ -12607,6 +13467,21 @@
       "path": "test/live_chat_status_transport_test.dart",
       "area": "test",
       "provenance": "tracked"
+    },
+    {
+      "path": "test/live_voice_protocol_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/live_voice_session_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/live_voice_workspace_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
     },
     {
       "path": "test/loading_family_guard_test.dart",
@@ -13549,6 +14424,46 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "test/regression/daily_flow_barge_in_hint_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_conversation_loop_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_dictation_limit_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_media_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_offline_indicator_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_queue_resume_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_screen_off_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/regression/daily_flow_unsolicited_reply_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/remote_file_saver_lifetime_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -13565,6 +14480,11 @@
     },
     {
       "path": "test/reply_duration_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/reply_segment_identity_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
     },
@@ -13899,6 +14819,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/studio_error_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
       "path": "test/studio_form_actions_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -13952,6 +14877,11 @@
       "path": "test/support/backend_update_channel_fixture.dart",
       "area": "test",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/support/background_voice_fixture.dart",
+      "area": "test",
+      "provenance": "tracked"
     },
     {
       "path": "test/support/bot_display_fixture.dart",
@@ -14014,6 +14944,11 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "test/support/headphone_route_fixture.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/support/health_alerts_fixture.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -14030,6 +14965,11 @@
     },
     {
       "path": "test/support/hosted_connector_fixture.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/support/live_voice_fixture.dart",
       "area": "test",
       "provenance": "intentional-untracked"
     },
@@ -14109,7 +15049,22 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "test/support/vad_voice_fixture.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/support/voice_fixture.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/support/voice_settings_fixture.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/support/voice_workspace_fixture.dart",
       "area": "test",
       "provenance": "tracked"
     },
@@ -14244,6 +15199,21 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/vad_chunks_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/vad_endpoint_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/vad_settings_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/view_draft_write_guard_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -14257,6 +15227,121 @@
       "path": "test/voice_arbitration_owner_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/voice_offline/android_voice_segments_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/background_voice_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/barge_in_coordinator_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/barge_in_policy_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/car_mic_session_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/chat_voice_view_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/headphone_route_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/language_guess_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/sentence_splitter_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/speech_queue_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/speech_segments_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/transcription_deadline_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/turn_listener_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/vad_capture_options_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/voice_local_engine_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/voice_offline_prefs_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/voice_offline_settings_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_barge_in_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_conversation_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_listen_turn_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_live_voice_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_screen_off_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/voice_offline/workspace_vad_media_keys_test.dart",
+      "area": "test",
+      "provenance": "tracked"
     },
     {
       "path": "test/voice_preferences_lifetime_test.dart",
@@ -14279,6 +15364,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "test/voice_vad_input_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
       "path": "test/voice_view_dependency_guard_test.dart",
       "area": "test",
       "provenance": "intentional-untracked"
@@ -14290,6 +15380,16 @@
     },
     {
       "path": "test/web_preview_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/wing_plugin_settings_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/wing_session_source_test.dart",
       "area": "test",
       "provenance": "tracked"
     },
@@ -15424,6 +16524,26 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "tools/factory/ci-fetch.sh",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/factory/ci-suite.sh",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/factory/dispatch-check.sh",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/factory/upstream-diff-metrics.sh",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
       "path": "tools/fake_gateway/fake_gateway.py",
       "area": "tools",
       "provenance": "tracked"
@@ -15704,6 +16824,41 @@
       "provenance": "intentional-untracked"
     },
     {
+      "path": "tools/voice/check_sherpa_aar.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/headset_mic_reference.txt",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/make_selftest_audio.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/pull_debug_round.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/vad_endpoint.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/vad_offline_check.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
+      "path": "tools/voice/wer.py",
+      "area": "tools",
+      "provenance": "tracked"
+    },
+    {
       "path": "tools/website/capture_app_test.dart",
       "area": "tools",
       "provenance": "tracked"
@@ -15909,12 +17064,12 @@
       "provenance": "tracked"
     },
     {
-      "path": "website/assets/screenshots/message-actions-dark.png",
+      "path": "website/assets/screenshots/live-voice-away-light.png",
       "area": "website",
       "provenance": "tracked"
     },
     {
-      "path": "website/assets/screenshots/live-voice-away-light.png",
+      "path": "website/assets/screenshots/live-voice-dark.png",
       "area": "website",
       "provenance": "tracked"
     },
@@ -15924,7 +17079,7 @@
       "provenance": "tracked"
     },
     {
-      "path": "website/assets/screenshots/live-voice-dark.png",
+      "path": "website/assets/screenshots/message-actions-dark.png",
       "area": "website",
       "provenance": "tracked"
     },
@@ -16137,241 +17292,6 @@
       "path": "website/workspaces.html",
       "area": "website",
       "provenance": "tracked"
-    },
-    {
-      "path": "test/helpers/journey_controls.dart",
-      "area": "test",
-      "provenance": "tracked"
-    },
-    {
-      "path": "test/journey_controls_test.dart",
-      "area": "test",
-      "provenance": "tracked"
-    },
-    {
-      "path": "lib/core/screens/bots/bot_group_context_sheet.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/bot_group_controls_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/hermes023_administration_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/reply_segment_identity_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "docs/SCHEDULED_TASKS.md",
-      "area": "docs",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/models/detached_work.dart",
-      "area": "lib",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "test/detached_work_test.dart",
-      "area": "test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "test/connector_runtime_test.dart",
-      "area": "test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "integration_test/hermes_next_admin_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "tracked"
-    },
-    {
-      "path": "integration_test/hermes_next_conversation_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "tracked"
-    },
-    {
-      "path": "scripts/test_existing_hermes_next.py",
-      "area": "scripts",
-      "provenance": "tracked"
-    },
-    {
-      "path": "integration_test/hermes023_groups_tasks_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "integration_test/hermes023_sessions_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "integration_test/hermes023_context_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/EmailComposerChannel.kt",
-      "area": "android",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/email_composer.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/models/email_draft.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/widgets/email_draft_card.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/email_draft_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/models/wing_plugin.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/wing_plugin_releases.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/wing_plugin_session.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/widgets/wing_plugin_settings_card.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/wing_plugin_settings_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/widgets/wing_plugin_page.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/LiveVoiceService.kt",
-      "area": "android",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "integration_test/live_voice_native_test.dart",
-      "area": "integration_test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/models/live_voice_turn.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/live_voice_protocol.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/live_voice_session.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/live_voice_transport.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/profile_workspace_live_voice.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/widgets/live_voice_scope.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/live_voice_protocol_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/live_voice_session_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/live_voice_workspace_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/support/live_voice_fixture.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "integration_test/background_processes_prod_test.dart",
-      "area": "integration_test",
-      "provenance": "task-authored"
-    },
-    {
-      "path": "android/app/src/main/kotlin/com/tarkilhk/wing/AccessibilityTimeoutChannel.kt",
-      "area": "android",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/models/operational_error.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/accessibility_timeout.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/widgets/studio_transient_error.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "test/studio_error_test.dart",
-      "area": "test",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/services/transcript_resource_session.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
-    },
-    {
-      "path": "lib/core/screens/administration/admin_health_alerts.dart",
-      "area": "lib",
-      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {

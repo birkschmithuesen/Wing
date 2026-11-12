@@ -24,8 +24,9 @@ import 'profiles_repository.dart';
 import 'ws_client.dart';
 import 'server_connection_status.dart';
 import 'workspace_connection_failure.dart';
-import 'wing_session_source.dart';
 import 'connection_diagnostics.dart';
+
+part 'wing_session_source.dart';
 
 typedef ScopedGet =
     Future<Map<String, dynamic>> Function(

@@ -4,6 +4,7 @@ import '../services/android_voice.dart';
 import 'anchored_expansion_tile.dart';
 import 'compact_switch.dart';
 import 'studio_error.dart';
+import 'studio_form_actions.dart';
 import 'studio_select.dart';
 import '../../voice_offline/vad_voice_device.dart';
 import '../../voice_offline/voice_offline_prefs.dart';
@@ -69,18 +70,17 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
   Future<void> _confirmRemove() async {
     final remove = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StudioDialog(
         title: const Text('Remove speech model?'),
         content: const Text('Frees about 670 MB. Downloading it again takes a while.'),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            key: const ValueKey('vad-model-remove-confirm'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Remove'),
+          StudioFormActions(
+            confirmKey: const ValueKey('vad-model-remove-confirm'),
+            onCancel: () => Navigator.of(context).pop(false),
+            onConfirm: () => Navigator.of(context).pop(true),
+            confirmLabel: 'Remove',
+            confirmIcon: Icons.delete_outline,
+            destructive: true,
           ),
         ],
       ),

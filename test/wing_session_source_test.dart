@@ -3,7 +3,7 @@ import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/models/session_visibility.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profiles_repository.dart';
-import 'package:wing/core/services/wing_session_source.dart';
+import 'package:wing/core/services/profile_gateway.dart';
 
 Map<String, dynamic> _ready(Map<String, dynamic> payload) => {
   'jsonrpc': '2.0',

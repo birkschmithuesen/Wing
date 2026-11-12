@@ -1,6 +1,31 @@
 {
   "schema": 1,
   "files": {
+    "lib/car_mode/car_mode_bridge.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_bridge.dart"
+    },
+    "lib/car_mode/car_mode_palette.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_palette.dart"
+    },
+    "lib/car_mode/car_mode_screen.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_screen.dart"
+    },
+    "lib/car_mode/car_mode_session.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_session.dart"
+    },
+    "lib/car_mode/car_mode_state.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_state.dart"
+    },
     "lib/core/config/support_wing.dart": {
       "role": "utility",
       "feature": "app-shell",
@@ -1866,6 +1891,11 @@
       "feature": "usage-analytics",
       "library": "lib/core/services/usage_analytics_session.dart"
     },
+    "lib/core/services/vad_endpoint.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/services/vad_endpoint.dart"
+    },
     "lib/core/services/versions_controller.dart": {
       "role": "application",
       "feature": "versions-updates",
@@ -1895,6 +1925,11 @@
       "role": "application",
       "feature": "app-preferences-backup",
       "library": "lib/core/services/wing_plugin_session.dart"
+    },
+    "lib/core/services/wing_session_source.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_gateway.dart"
     },
     "lib/core/services/workspace_connection_failure.dart": {
       "role": "utility",
@@ -2631,6 +2666,11 @@
       "feature": "outputs-and-viewers",
       "library": "lib/core/widgets/user_message_attachment.dart"
     },
+    "lib/core/widgets/vad_settings_section.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/vad_settings_section.dart"
+    },
     "lib/core/widgets/voice_input_activity.dart": {
       "role": "view",
       "feature": "voice",
@@ -2701,10 +2741,115 @@
       "feature": "app-shell",
       "library": "lib/core/widgets/workspace_profile_navigation.dart"
     },
+    "lib/fork/network_gate.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/fork/network_gate.dart"
+    },
+    "lib/fork/transient_send.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/fork/transient_send.dart"
+    },
     "lib/main.dart": {
       "role": "view",
       "feature": "app-shell",
       "library": "lib/main.dart"
+    },
+    "lib/voice_offline/background_voice.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/background_voice.dart"
+    },
+    "lib/voice_offline/barge_in_coordinator.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_coordinator.dart"
+    },
+    "lib/voice_offline/barge_in_policy.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_policy.dart"
+    },
+    "lib/voice_offline/barge_in_settings.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_settings.dart"
+    },
+    "lib/voice_offline/car_mic_session.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/car_mic_session.dart"
+    },
+    "lib/voice_offline/chat_voice_view.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/chat_voice_view.dart"
+    },
+    "lib/voice_offline/completed_replies.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/completed_replies.dart"
+    },
+    "lib/voice_offline/headphone_route.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/headphone_route.dart"
+    },
+    "lib/voice_offline/language_guess.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/language_guess.dart"
+    },
+    "lib/voice_offline/sentence_splitter.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/sentence_splitter.dart"
+    },
+    "lib/voice_offline/speech_queue.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/speech_queue.dart"
+    },
+    "lib/voice_offline/speech_segments.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/speech_segments.dart"
+    },
+    "lib/voice_offline/turn_listener.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/turn_listener.dart"
+    },
+    "lib/voice_offline/vad_input_round.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/vad_input_round.dart"
+    },
+    "lib/voice_offline/vad_voice_device.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/vad_voice_device.dart"
+    },
+    "lib/voice_offline/voice_input_settings_for.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_input_settings_for.dart"
+    },
+    "lib/voice_offline/voice_offline_prefs.dart": {
+      "role": "data",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_offline_prefs.dart"
+    },
+    "lib/voice_offline/voice_offline_settings.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_offline_settings.dart"
+    },
+    "lib/voice_offline/workspace_voice_driver.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/workspace_voice_driver.dart"
     }
   }
 }

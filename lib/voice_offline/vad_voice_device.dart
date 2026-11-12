@@ -1,13 +1,13 @@
 import 'dart:async';
-import '../core/services/android_voice.dart';
+import 'package:flutter/services.dart';
 import '../core/services/vad_endpoint.dart';
 import 'voice_offline_prefs.dart';
 
 /// The vad, switch and mic-link operations of a voice device. Every production
-/// and test [VoiceDevice] also implements this.
+/// and test `VoiceDevice` also implements this.
 abstract interface class VadVoiceDevice {
-  /// The vad side of [device]; every [VoiceDevice] implements both.
-  static VadVoiceDevice of(VoiceDevice device) => device as VadVoiceDevice;
+  /// The vad side of [device]; every `VoiceDevice` implements both.
+  static VadVoiceDevice of(Object device) => device as VadVoiceDevice;
 
   /// Route vad: own capture; probabilities arrive as `{id, first, windows}` events.
   /// Answers true when a manual [VadCaptureOptions.mic] choice was not available and
@@ -43,11 +43,13 @@ abstract interface class VadVoiceDevice {
   Future<void> closeMicLink(String reason);
 }
 
-/// Platform implementation on [AndroidVoice]'s channel; mixed into [AndroidVoice].
+/// Platform implementation on the voice channel; mixed into `AndroidVoice`.
 mixin AndroidVadVoice implements VadVoiceDevice {
+  static const _channel = MethodChannel('com.tarkilhk.wing/voice');
+
   @override
   Future<bool> startVad(String id, VadCaptureOptions options) async =>
-      await AndroidVoice.channel.invokeMethod<bool>('startVad', {
+      await _channel.invokeMethod<bool>('startVad', {
         'id': id,
         ...options.toMap(),
       }) ??
@@ -59,7 +61,7 @@ mixin AndroidVadVoice implements VadVoiceDevice {
     VadEndpointConfig config, {
     List<VadChunk> chunks = const [],
   }) async =>
-      await AndroidVoice.channel.invokeMethod<String>('finishVad', {
+      await _channel.invokeMethod<String>('finishVad', {
         'id': id,
         'startWindow': decision.startWindow,
         'endWindow': decision.endWindow,
@@ -71,43 +73,43 @@ mixin AndroidVadVoice implements VadVoiceDevice {
       '';
   @override
   Future<VadModelStatus> vadModelStatus() async => VadModelStatus.fromMap(
-    await AndroidVoice.channel.invokeMapMethod<Object?, Object?>(
+    await _channel.invokeMapMethod<Object?, Object?>(
           'vadModelStatus',
         ) ??
         {},
   );
   @override
   Future<void> installVadModel() =>
-      AndroidVoice.channel.invokeMethod('installVadModel');
+      _channel.invokeMethod('installVadModel');
   @override
   Future<void> cancelVadModelInstall() =>
-      AndroidVoice.channel.invokeMethod('cancelVadModelInstall');
+      _channel.invokeMethod('cancelVadModelInstall');
   @override
   Future<void> removeVadModel() =>
-      AndroidVoice.channel.invokeMethod('removeVadModel');
+      _channel.invokeMethod('removeVadModel');
   @override
-  Future<void> prepareVad() => AndroidVoice.channel.invokeMethod('prepareVad');
+  Future<void> prepareVad() => _channel.invokeMethod('prepareVad');
   @override
-  Future<void> releaseVad() => AndroidVoice.channel.invokeMethod('releaseVad');
+  Future<void> releaseVad() => _channel.invokeMethod('releaseVad');
   @override
   Future<void> setMediaKeys(bool on) =>
-      AndroidVoice.channel.invokeMethod('setMediaKeys', {'on': on});
+      _channel.invokeMethod('setMediaKeys', {'on': on});
   @override
   Future<void> keepScreenOn(bool on) =>
-      AndroidVoice.channel.invokeMethod('keepScreenOn', {'on': on});
+      _channel.invokeMethod('keepScreenOn', {'on': on});
   @override
   Future<int> deleteVadDebugRecordings() async =>
-      await AndroidVoice.channel.invokeMethod<int>('deleteVadDebugRecordings') ??
+      await _channel.invokeMethod<int>('deleteVadDebugRecordings') ??
       0;
   @override
   Future<bool> openMicLink(String reason) async =>
-      await AndroidVoice.channel.invokeMethod<bool>('openMicLink', {
+      await _channel.invokeMethod<bool>('openMicLink', {
         'reason': reason,
       }) ??
       false;
   @override
   Future<void> closeMicLink(String reason) =>
-      AndroidVoice.channel.invokeMethod('closeMicLink', {'reason': reason});
+      _channel.invokeMethod('closeMicLink', {'reason': reason});
 }
 
 class VadCaptureOptions {
@@ -188,14 +190,14 @@ class VoiceSwitchHolders {
   static final _byDevice = Expando<Map<String, VoiceSwitchHolders>>('holders');
 
   /// Shared holder set for one native switch of [device].
-  static VoiceSwitchHolders mediaKeys(VoiceDevice device) =>
+  static VoiceSwitchHolders mediaKeys(Object device) =>
       _of(device, 'mediaKeys', VadVoiceDevice.of(device).setMediaKeys);
 
-  static VoiceSwitchHolders screenOn(VoiceDevice device) =>
+  static VoiceSwitchHolders screenOn(Object device) =>
       _of(device, 'screenOn', VadVoiceDevice.of(device).keepScreenOn);
 
   static VoiceSwitchHolders _of(
-    VoiceDevice device,
+    Object device,
     String name,
     Future<void> Function(bool) apply,
   ) => (_byDevice[device] ??= {}).putIfAbsent(

@@ -8,7 +8,6 @@ import '../core/services/android_voice.dart';
 import '../voice_offline/voice_input_settings_for.dart';
 import '../core/models/voice_processing_settings.dart';
 import 'car_mode_bridge.dart';
-import 'car_mode_screen.dart';
 import 'car_mode_state.dart';
 import '../voice_offline/vad_voice_device.dart';
 import '../voice_offline/voice_offline_prefs.dart';
@@ -19,6 +18,7 @@ class CarModeSession extends ChangeNotifier {
   CarModeSession({
     required this.device,
     required this.bridge,
+    required this.screenBuilder,
     void Function(String line)? log,
     this.retryEvery = const Duration(seconds: 20),
     this.signalGap = const Duration(milliseconds: 250),
@@ -27,6 +27,10 @@ class CarModeSession extends ChangeNotifier {
 
   final VoiceDevice device;
   final CarModeBridge bridge;
+
+  /// Builds the car-mode screen for this session. Injected so the session
+  /// library does not import the screen that observes it (no library cycle).
+  final Widget Function(CarModeSession session) screenBuilder;
   final Duration retryEvery;
   final Duration signalGap;
 
@@ -87,7 +91,7 @@ class CarModeSession extends ChangeNotifier {
     notifyListeners();
     final navigator = _navigator = Navigator.of(context);
     final route = _route = MaterialPageRoute<void>(
-      builder: (_) => CarModeScreen(session: this),
+      builder: (_) => screenBuilder(this),
     );
     await navigator.push(route);
     // Android Back popped the route; after exit() this does nothing.

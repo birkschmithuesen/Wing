@@ -31,7 +31,7 @@ if $on_main; then
 fi
 id=""
 for _ in $(seq 1 30); do
-  id=$(gh run list -R "$repo" --branch "$br" \
+  id=$(gh run list -R "$repo" --workflow "$workflow" --branch "$br" \
         --json databaseId,headSha --jq ".[] | select(.headSha==\"$sha\") | .databaseId" | head -1)
   [ -n "$id" ] && break
   sleep 5

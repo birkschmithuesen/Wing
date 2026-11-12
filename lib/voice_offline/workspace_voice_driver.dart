@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../car_mode/car_mode_bridge.dart';
+import '../car_mode/car_mode_screen.dart';
 import '../car_mode/car_mode_session.dart';
 import '../car_mode/car_mode_state.dart';
 import '../core/controllers/voice_input_controller.dart';
@@ -96,6 +97,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   late final CarModeSession car = CarModeSession(
     device: device,
+    screenBuilder: (session) => CarModeScreen(session: session),
     bridge: CarModeBridge(
       changes: Listenable.merge([
         _controller,
