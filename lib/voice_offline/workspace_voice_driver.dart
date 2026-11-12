@@ -1,7 +1,8 @@
 import 'dart:async';
 
-import 'package:flutter/widgets.dart';
+import 'package:flutter/material.dart';
 
+import '../car_mode/car_mode_bridge.dart';
 import '../car_mode/car_mode_session.dart';
 import '../car_mode/car_mode_state.dart';
 import '../core/controllers/voice_input_controller.dart';
@@ -11,6 +12,7 @@ import '../core/services/android_voice.dart';
 import '../core/services/hermes_voice.dart';
 import '../core/services/profile_workspace_controller.dart';
 import '../core/services/voice_preferences.dart';
+import '../core/widgets/studio_error.dart';
 import 'background_voice.dart';
 import 'barge_in_coordinator.dart';
 import 'barge_in_policy.dart';
@@ -25,9 +27,9 @@ import 'voice_offline_prefs.dart';
 /// What the workspace screen offers the fork voice driver. Implemented by
 /// ProfileWorkspaceScreenState, so the screen keeps only one-line hooks.
 ///
-/// The members from [car] on are temporary: they expose screen state the
-/// not-yet-moved voice code still owns (Tasks 14-16 move it into the driver
-/// and drop them).
+/// The members from [run] on expose screen state and actions the voice code
+/// reaches into: the screen's error wrapper, its composer and destination, and
+/// the voice owner it keeps for its own read-aloud.
 abstract interface class WorkspaceVoiceHost {
   bool get mounted;
   ProfileWorkspaceController get controller;
@@ -46,9 +48,6 @@ abstract interface class WorkspaceVoiceHost {
   /// The screen's error-handling wrapper around async user actions.
   Future<void> run(Future<void> Function() action);
 
-  // Screen-owned voice state, until the tasks that move it.
-  CarModeSession get car;
-  CarMicSession get carMic;
   bool get onChatsDestination;
   bool get routeIsCurrent;
   bool get appIsActive;
@@ -56,8 +55,6 @@ abstract interface class WorkspaceVoiceHost {
   /// The workspace has the focus of the chat on screen.
   bool get hasChatFocus;
 
-  /// Ends the voice session (the screen's cancel).
-  void cancelVoice();
   Map<ComposerAction, String?> composerActions(ProfileChat chat);
   TextEditingController get composer;
   Future<T?> runValue<T>(Future<T> Function() action);
@@ -82,20 +79,79 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   ProfileWorkspaceController get _controller => host.controller;
   VoiceInputController get _voiceInput => host.voiceInput;
   VoiceOutputController get _voiceOutput => host.voiceOutput;
-  CarModeSession get _car => host.car;
-  CarMicSession get _carMic => host.carMic;
 
   late final background = BackgroundVoice(
     backgroundHost ?? AndroidBackgroundVoiceHost.instance,
-    onStopped: host.cancelVoice,
+    onStopped: cancel,
   );
-  BackgroundVoice get _background => background;
+
+  /// Keeps a connected car kit's SCO link open for a whole hands-free
+  /// conversation - dictation, listening-in and read-aloud barge-in -
+  /// instead of per round (spec Birk decision 2026-10-19).
+  late final carMic = CarMicSession(device);
+
+  late final CarModeSession car = CarModeSession(
+    device: device,
+    bridge: CarModeBridge(
+      changes: Listenable.merge([
+        _controller,
+        _controller.connectionStatus,
+        _voiceInput,
+        _voiceOutput,
+        bargeIn,
+      ]),
+      read: () => carSnapshotOf(
+        _controller,
+        _voiceInput,
+        _voiceOutput,
+        bargeIn: bargeIn,
+      ),
+      preferences: _controller.preferences,
+      talk: () async {
+        final chat = _controller.notificationChat ?? _controller.current?.chat;
+        if (chat != null) await host.run(() => host.dictate(chat));
+      },
+      sendNow: () {
+        carSend = true;
+        return _voiceInput.stopHandsFree();
+      },
+      stopSpeech: _voiceOutput.stop,
+      retry: () => host.run(_controller.resumeConnection),
+      sendHeld: () async {
+        final chat = _controller.notificationChat ?? _controller.current?.chat;
+        if (chat == null) return;
+        conversation = chat.key;
+        await host.run(() => sendConversationTurn(chat));
+      },
+      leave: cancel,
+    ),
+  );
+
+  bool get carActive => car.active;
+
+  Future<void> enterCarMode(BuildContext context) => car.enter(context);
+
+  /// Car mode entry/exit changes the screen's chat focus without a dependency
+  /// change the route system would notify on its own; resync here instead.
+  void _carActiveChanged() {
+    _controller.setRouteVisibility(host, host.hasChatFocus);
+    syncMediaKeys();
+  }
+
+  /// Ends the voice session (the screen's cancel).
+  void cancel() {
+    endLoop();
+    host.voiceOwner = null;
+    autoSpeakQueue.clear();
+    unawaited(_voiceInput.cancel().catchError((Object _) {}));
+    unawaited(_voiceOutput.stop().catchError((Object _) {}));
+  }
 
   /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
   late final bargeIn = BargeInCoordinator(
     TurnListener(
       device: device,
-      carMicSession: _carMic,
+      carMicSession: carMic,
       carKitConnected: carKitConnected,
     ),
   );
@@ -109,8 +165,8 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   /// only (see [playbackBargeIn]).
   late final headphones = HeadphoneRoute(
     headphoneHost ?? AndroidHeadphoneRouteHost.instance,
-    wingCarMode: () => _car.active,
-    bargeInOverride: () => _car.bargeInOn,
+    wingCarMode: () => car.active,
+    bargeInOverride: () => car.bargeInOn,
   );
 
   /// initState part.
@@ -122,13 +178,23 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     _voiceDeviceEvents = device.events.listen(_voiceDeviceEvent);
   }
 
-  /// initState part, after the car mode listeners: follows the output route.
+  /// initState part, after [attach]: car mode and the output route.
   void attachRoute() {
-    _car.addListener(headphones.carModeChanged);
+    car.addListener(_carActiveChanged);
+    car.addListener(headphones.carModeChanged);
     headphones.addListener(_headphoneRouteChanged);
   }
 
-  /// dispose part.
+  /// dispose part, first: the car mode session and its microphone.
+  void disposeCar() {
+    car.removeListener(_carActiveChanged);
+    car.removeListener(headphones.carModeChanged);
+    car.dispose();
+    carMic.dispose();
+  }
+
+  /// dispose part, after [disposeCar]. Also disposes the screen's voice
+  /// controllers and the parts that follow them.
   void detach() {
     unawaited(_autoSpeak?.cancel());
     if (_conversationKey != null) {
@@ -136,11 +202,9 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     _voiceInput.removeListener(_voiceInputChanged);
     unawaited(_voiceDeviceEvents?.cancel());
-  }
-
-  /// dispose part, after the screen disposed its voice controllers.
-  void disposeParts() {
-    _background.dispose();
+    _voiceInput.dispose();
+    _voiceOutput.dispose();
+    background.dispose();
     bargeIn.dispose();
     headphones.dispose();
   }
@@ -162,9 +226,9 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// The app lifecycle part: whether a held background service keeps the
   /// voice session alive across [state].
-  bool keepsVoice(AppLifecycleState state) => _background.keepsVoice(state);
+  bool keepsVoice(AppLifecycleState state) => background.keepsVoice(state);
 
-  void lifecycle(AppLifecycleState state) => _background.lifecycle(state);
+  void lifecycle(AppLifecycleState state) => background.lifecycle(state);
 
   static int _liveWorkspaces = 0;
   bool _mediaKeysOn = false;
@@ -172,9 +236,9 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// Chat focus for the conversation loop; a held hold also counts when the app is paused (spec 2026-10-14).
   bool get loopFocus =>
-      (host.routeIsCurrent || _car.active) &&
+      (host.routeIsCurrent || car.active) &&
       host.onChatsDestination &&
-      (host.appIsActive || _background.held);
+      (host.appIsActive || background.held);
 
   /// Route vad: preload the phone model. Media keys are captured only while
   /// this workspace is the focused chat on the vad route (spec: foreground).
@@ -241,11 +305,11 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     if (value != _conversationKey) {
       unawaited(bargeIn.close('conversationEnd').catchError((Object _) {}));
-      if (value == null) unawaited(_carMic.end('end').catchError((Object _) {}));
+      if (value == null) unawaited(carMic.end('end').catchError((Object _) {}));
     }
     _conversationKey = value;
-    _background.sync(
-      want: value != null && vadRoute() == true && !_car.active,
+    background.sync(
+      want: value != null && vadRoute() == true && !car.active,
     );
   }
 
@@ -278,9 +342,9 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     final settings = VoicePreferences.read(_controller.preferences);
     final offline = VoiceOfflinePrefs.read(_controller.preferences);
     // Car mode's own loop switch overrides the saved setting while active.
-    final conversationLoopOn = _car.active ? _car.loopOn : offline.conversation;
+    final conversationLoopOn = car.active ? car.loopOn : offline.conversation;
     if (!conversationLoopOn) conversation = null;
-    if (!(offline.autoSpeak || offline.conversation || _car.active) ||
+    if (!(offline.autoSpeak || offline.conversation || car.active) ||
         _voiceInput.active) {
       return;
     }
@@ -359,15 +423,12 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
         !_voiceInput.active &&
         _voiceOutput.owner == null &&
         autoSpeakQueue.isEmpty &&
-        (_car.active
-            ? _car.loopOn
+        (car.active
+            ? car.loopOn
             : VoiceOfflinePrefs.read(_controller.preferences).conversation);
     if (!ok) conversation = null;
     return ok;
   }
-
-  /// The post-dictation send of a conversation-mode dictation.
-  Future<void> onDictated(ProfileChat chat) => sendConversationTurn(chat);
 
   /// Conversation mode: send a dictation the recognizer ended on its own.
   /// A running turn gets the text steered in instead of losing it, a down
@@ -376,14 +437,14 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   Future<void> sendConversationTurn(ProfileChat chat) async {
     final text = chat.voiceDraft.trim();
     // Car mode: offline, the draft waits on the device (spec §4.4).
-    if (conversation == chat.key && text.isNotEmpty && _car.holdForConnection()) {
-      _car.logDelivery(CarDelivery.queue);
+    if (conversation == chat.key && text.isNotEmpty && car.holdForConnection()) {
+      car.logDelivery(CarDelivery.queue);
       return;
     }
     // Car mode: speech while Hermes works steers the running turn (spec §6.4).
     // Barge-in (t_7e81e040) replaces this block with its decideDelivery hook;
-    // keep the _car.logDelivery call when it does.
-    if (_car.active &&
+    // keep the car.logDelivery call when it does.
+    if (car.active &&
         host.mounted &&
         chat.voiceBusy &&
         conversation == chat.key &&
@@ -395,7 +456,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
         steerAvailable: actions[ComposerAction.steer] == null,
         queueAvailable: actions[ComposerAction.queue] == null,
       );
-      _car.logDelivery(delivery);
+      car.logDelivery(delivery);
       if (delivery != CarDelivery.end) {
         awaitingReply = true;
         await host.performComposerAction(
@@ -440,7 +501,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       conversation = null;
       return;
     }
-    _car.logDelivery(CarDelivery.send);
+    car.logDelivery(CarDelivery.send);
     awaitingReply = true;
     bargeIn.beginTurn();
     // Fresh route verdict for when this turn's reply is read aloud.
@@ -521,8 +582,8 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     // Spec Birk decision 2026-10-19: the car kit itself is gone, so the held
     // SCO link means nothing any more - close it (reason=disconnect) instead
     // of waiting out the idle timeout.
-    if (_carMic.isOpen && !carKitConnected()) {
-      unawaited(_carMic.end('disconnect').catchError((Object _) {}));
+    if (carMic.isOpen && !carKitConnected()) {
+      unawaited(carMic.end('disconnect').catchError((Object _) {}));
     }
     final chat = _controller.notificationChat ?? _controller.current?.chat;
     if (!host.mounted ||
@@ -543,4 +604,102 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       openListen(chat, playback: true);
     }
   }
+
+  /// The voice status under the chat: listening row, recording and
+  /// read-aloud controls, and voice errors.
+  Widget activity(BuildContext context) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      if (bargeIn.listening && !_voiceInput.active)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: Text(
+                  bargeIn.listener.phase == ListenPhase.transcribing
+                      ? 'Transcribing…'
+                      : 'Listening',
+                ),
+              ),
+              TextButton(
+                key: const ValueKey('voice-stop-listening'),
+                onPressed: () => unawaited(bargeIn.close('stopButton')),
+                child: const Text('Stop listening'),
+              ),
+            ],
+          ),
+        ),
+      if (_voiceInput.active)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: Text(switch (_voiceInput.phase) {
+                  VoiceInputPhase.starting => 'Opening microphone…',
+                  VoiceInputPhase.recording =>
+                    'Recording · ${_voiceInput.seconds}s / ${_voiceInput.maxSeconds}s',
+                  VoiceInputPhase.transcribing => 'Transcribing…',
+                  VoiceInputPhase.idle => '',
+                }),
+              ),
+              if (_voiceInput.partial.isNotEmpty)
+                Text(
+                  _voiceInput.partial,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (_voiceInput.phase == VoiceInputPhase.recording)
+                    TextButton(
+                      onPressed: _voiceInput.stop,
+                      child: const Text('Stop recording'),
+                    ),
+                  TextButton(
+                    onPressed: () {
+                      endLoop();
+                      unawaited(_voiceInput.cancel());
+                    },
+                    child: const Text('Cancel recording'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      if (_voiceOutput.owner != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(
+                _voiceOutput.preparing ? 'Preparing speech…' : 'Reading aloud',
+              ),
+              TextButton(
+                onPressed: () {
+                  endLoop();
+                  unawaited(_voiceOutput.stop());
+                },
+                child: const Text('Stop speech'),
+              ),
+            ],
+          ),
+        ),
+      if (_voiceInput.error != null || _voiceOutput.error != null)
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: StudioError(_voiceInput.error ?? _voiceOutput.error!),
+        ),
+    ],
+  );
 }
