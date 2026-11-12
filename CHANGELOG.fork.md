@@ -17,7 +17,7 @@ the README feature list current for every future change.
 - **What:** Fork logic that lived inside upstream-owned files moved into fork-owned files
   (`lib/voice_offline/`, `lib/fork/`, `lib/car_mode/`, `voiceoffline/VoiceOfflineHandler.kt`,
   `android/app/voice-offline.gradle`, own test files); upstream files keep thin hooks. Lines in upstream
-  files: +4351/-157 (38 files) -> +756/-178 (30 files); probe-merge conflicts against `upstream/main`
+  files: +4351/-157 (38 files) -> +753/-175 (30 files); probe-merge conflicts against `upstream/main`
   e8a4089c: 27 files / 91 blocks -> 22 files / 94 blocks (blocks did not drop: the remaining hooks sit in
   heavily edited upstream code, and test-file hooks count too). Kept open: `profile_workspace_screen.dart`
   still +179/-55 (spec target about +60/-10).
