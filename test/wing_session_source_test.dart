@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/models/session_visibility.dart';
-import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 
@@ -64,7 +63,7 @@ void main() {
     test('stock gateway: create says desktop, resume sends no source', () async {
       final calls = <(String, Map<String, dynamic>)>[];
       final gateway = _gateway(calls);
-      await gateway.createSession();
+      await gateway.createSession(cwdExplicit: false, canDispatch: () => true);
       await gateway.resume('stored');
       expect(calls[0].$1, 'session.create');
       expect(calls[0].$2['source'], guiSessionSource);
@@ -77,7 +76,7 @@ void main() {
       final calls = <(String, Map<String, dynamic>)>[];
       final gateway = _gateway(calls)
         ..noteReady(_ready({'session_sources': ['wing']}));
-      await gateway.createSession();
+      await gateway.createSession(cwdExplicit: false, canDispatch: () => true);
       await gateway.resume('stored');
       expect(calls[0].$2['source'], wingSessionSource);
       expect(calls[1].$2['source'], wingSessionSource);

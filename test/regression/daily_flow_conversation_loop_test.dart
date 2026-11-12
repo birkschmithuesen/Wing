@@ -26,7 +26,7 @@ void main() {
         h.fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
         'How is the weather',
       );
-      expect(h.controller.current!.chat!.draft, isEmpty);
+      expect(h.controller.current!.chat!.composer.observation.text, isEmpty);
       h.gatewayEvent('message.complete', {'text': 'Done.'});
       await h.settle(tester);
       await tester.tap(find.text('Cancel recording'));

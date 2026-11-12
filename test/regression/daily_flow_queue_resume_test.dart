@@ -50,7 +50,7 @@ void main() {
     test(
       'R5: a flaky send right after reconnect resolves on the next reconnect instead of sticking forever',
       () async {
-        final chat = await controller.createChat();
+        final chat = await controller.createChat(canDispatch: () => true);
         await controller.updateDraft(chat, 'first');
         controller.networkUnavailable();
         await controller.queuePrompt(chat, chat.composer.observation.text);

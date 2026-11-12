@@ -25,7 +25,7 @@ void main() {
       h.fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
       'How is the weather',
     );
-    expect(h.controller.current!.chat!.draft, isEmpty);
+    expect(h.controller.current!.chat!.composer.observation.text, isEmpty);
     h.gatewayEvent('message.complete', {'text': 'Done.'});
     await h.settle(tester);
     await tester.tap(find.text('Cancel recording'));
@@ -136,7 +136,7 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     await h.sayFinal(tester, 'Just a draft');
-    expect(h.controller.current!.chat!.draft, 'Just a draft');
+    expect(h.controller.current!.chat!.composer.observation.text, 'Just a draft');
     expect(h.prompts(), 0);
   });
 
@@ -152,7 +152,7 @@ void main() {
     await tester.pump();
     h.device.stream.add({'id': id, 'text': 'Stopped words', 'final': true});
     await h.settle(tester);
-    expect(h.controller.current!.chat!.draft, 'Stopped words');
+    expect(h.controller.current!.chat!.composer.observation.text, 'Stopped words');
     expect(h.prompts(), 0);
   });
 

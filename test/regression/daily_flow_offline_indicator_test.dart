@@ -72,7 +72,7 @@ void main() {
     test(
       'R6: a message queued during a real network outage shows offline at once and sends exactly once on reconnect',
       () async {
-        final chat = await controller.createChat();
+        final chat = await controller.createChat(canDispatch: () => true);
         await controller.updateDraft(chat, 'Queue me please');
         // The gateway would throw if a drain were attempted right now; the
         // queue must not even try while the device has no network.
