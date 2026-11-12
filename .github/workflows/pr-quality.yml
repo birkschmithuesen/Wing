@@ -160,7 +160,7 @@ jobs:
         run: |
           f="$(ls -dt /tmp/wing-host-tests-* 2>/dev/null | head -1)/tests.jsonl"
           if [ -f "$f" ]; then
-            jq -nRr '[inputs|fromjson?] as $a | ($a|map(select(.type=="testStart")|{key:(.test.id|tostring),value:.test.name})|from_entries) as $n | ($a|map(select(.type=="print"))|group_by(.testID)|map({key:(.[0].testID|tostring),value:(map(.message)|join(" ")|gsub("\n";" ")|.[-900:])})|from_entries) as $p | [$a[]|select(.type=="error")|{n:($n[(.testID|tostring)] // "?"),t:.}]|group_by(.n|split(" ")[0])|map(.[0:3])|add|.[]|"\(.n) :: \($p[(.t.testID|tostring)] // "") :: \(.t.error|gsub("\n";" ")|.[0:300])"' "$f" | head -24 | paste -d"~" - - - | while IFS= read -r line; do printf '::error::TF: %s\n' "$line"; done
+            jq -nRr '[inputs|fromjson?] as $a | ($a|map(select(.type=="testStart")|{key:(.test.id|tostring),value:.test.name})|from_entries) as $n | ($a|map(select(.type=="print"))|group_by(.testID)|map({key:(.[0].testID|tostring),value:(map(.message)|join(" ")|gsub("\n";" ")|split("When the exception was thrown")[0]|.[-900:])})|from_entries) as $p | [$a[]|select(.type=="error")|{n:($n[(.testID|tostring)] // "?"),t:.}]|group_by(.n|split(" ")[0])|map(.[0:3])|add|.[]|"\(.n) :: \($p[(.t.testID|tostring)] // "") :: \(.t.error|gsub("\n";" ")|.[0:300])"' "$f" | head -24 | paste -d"~" - - - | while IFS= read -r line; do printf '::error::TF: %s\n' "$line"; done
           fi
           d="$(ls -dt /tmp/wing-host-tests-* 2>/dev/null | head -1)"
           for n in planning.stderr tests.stderr proof-compilation.stderr; do

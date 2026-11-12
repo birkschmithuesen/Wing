@@ -15,12 +15,25 @@ abstract final class TransientSend {
     return marked;
   }
 
+  /// True while [chat] is marked and not yet resumed.
+  static bool marked(Object chat) => _marked[chat] == true;
+
   static final Expando<bool> _held = Expando<bool>('transientSendHold');
+  static final Expando<bool> _spent = Expando<bool>('transientSendSpent');
+
+  /// The held chat's one admission was made (a drain submit or the replay of
+  /// its uncertain head); follow-ups wait for that turn.
+  static void spend(Object chat) => _spent[chat] = true;
+
+  static bool spent(Object chat) => _spent[chat] == true;
 
   /// While held, follow-ups of [chat] are not drained during a running turn.
   static void hold(Object chat) => _held[chat] = true;
 
   static bool holding(Object chat) => _held[chat] == true;
 
-  static void release(Object chat) => _held[chat] = null;
+  static void release(Object chat) {
+    _held[chat] = null;
+    _spent[chat] = null;
+  }
 }

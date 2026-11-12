@@ -78,8 +78,9 @@ void main() {
       host.running = false;
       // Mirrors ProfileWorkspaceRegistry.recoverConnections(), which always
       // marks the network restored before asking a controller to reconnect.
-      controller.networkRestored();
-      await controller.reconnect(chat.key.workspace);
+      // The registry's recoverConnections() restores every connection owner
+      // (the connection-wide 'default' gateway included), not only the chat's.
+      await controller.resumeConnection(networkChanged: true);
 
       expect(chat.composer.observation.queue, isEmpty);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));

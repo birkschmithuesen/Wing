@@ -6285,7 +6285,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
           connectionStatus.networkAvailable &&
           // Fork (Wing Voice): after the automatic resume the replayed head
           // owns the turn; follow-ups wait for it (drained on completion).
-          !(TransientSend.holding(chat) && chat.runtime.blocksTurnAdmission),
+          !(TransientSend.holding(chat) &&
+              (chat.runtime.blocksTurnAdmission || TransientSend.spent(chat))),
       switching: switching,
       changingAnswer: chat.runtime.changingAnswer,
       commandRunning: chat.runtime.commandRunning,
@@ -8308,6 +8309,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         );
       }
       acknowledged = true;
+      if (TransientSend.holding(chat)) TransientSend.spend(chat); // Fork
       _observeVoiceAdmission(chat, receipt);
       resource.gateway.canonical.admission(
         receipt,
@@ -8490,11 +8492,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
     try {
       final gateway = _commandOwner(chat).gateway;
-      await chat.composer.reconcileSubmissions(
-        (payload) async => CanonicalAdmission.fromJson(
+      await chat.composer.reconcileSubmissions((payload) async {
+        final receipt = CanonicalAdmission.fromJson(
           await gateway.call('prompt.submit', payload),
-        ),
-      );
+        );
+        // Fork (Wing Voice): the replayed head owns the turn (Q6=B).
+        if (TransientSend.holding(chat) || TransientSend.marked(chat)) {
+          TransientSend.spend(chat);
+        }
+        return receipt;
+      });
       await _refreshCanonicalPending(chat);
     } catch (error) {
       chat._runtime.reportError(
