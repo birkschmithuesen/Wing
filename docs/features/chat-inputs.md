@@ -93,7 +93,9 @@ Enter a requested secret in its dedicated masked form and use its icon-only
 confirmation. The form shows submitting feedback until Hermes confirms the
 original request resolved. Cancel sends an empty response. Timeout, interruption
 and connection loss never imply that the password was accepted; passwords stay
-outside drafts and saved history and are never replayed after reconnect.
+outside drafts and saved history and are never replayed after reconnect. The
+transport suite also drives the native roadmap fixture through the production
+controller, so the Android vault journey uses that same response boundary.
 
 ## Gotchas
 
@@ -104,12 +106,23 @@ count, bounded expansion, full text and exact copy with held feedback, visible
 unknown/uncertain outcomes while collapsed, capability changes, temporary
 restriction explanations, attachment-action omission and draft preservation.
 The render matrix uses both themes at 390 dp/normal text and 320 dp/200% text.
+The queue heading wraps independently of the bounded message list, so paused
+and review status cannot consume the rows' viewport at enlarged text sizes.
 `composer_steering_delivery_test.dart` distinguishes unsupported edits, unknown
 outcomes and removed entries; `profile_composer_queue_test.dart` covers exact
 server admission identity and cancellation/steering. Run:
 
 ```sh
 flutter test --no-pub test/profile_composer_actions_test.dart test/composer_steering_delivery_test.dart test/profile_composer_queue_test.dart
+```
+
+`profile_activity_status_test.dart`, `image_paste_test.dart` and
+`conversation_outbox_screen_test.dart` open the compact count before inspecting
+queued rows. They cover connection changes, queued image retention, durable
+offline FIFO and editing a newer draft while delivery remains unconfirmed:
+
+```sh
+flutter test --no-pub test/profile_activity_status_test.dart test/image_paste_test.dart test/conversation_outbox_screen_test.dart
 ```
 
 The pending API has no reliable internal-message discriminator. Keep unclassified

@@ -203,6 +203,8 @@ void main() {
           'First offline message',
           'Second offline message',
         ]);
+        await tester.tap(find.text('2 queued'));
+        await tester.pump(const Duration(milliseconds: 400));
         expect(find.text('First offline message'), findsOneWidget);
         expect(find.text('Second offline message'), findsOneWidget);
         expect(tester.takeException(), isNull);
@@ -230,7 +232,12 @@ void main() {
       await tester.pump(const Duration(milliseconds: 10));
     }
     expect(host.promptSubmitStarted!.isCompleted, isTrue);
-    expect(queuedText('First message').hitTestable(), findsOneWidget);
+    await tester.tap(find.text('1 queued'));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(
+      queuedText('Delivery unconfirmed · First message').hitTestable(),
+      findsOneWidget,
+    );
     try {
       await tester.enterText(editor, 'Second message');
       await tester.pump();
@@ -245,7 +252,10 @@ void main() {
         'First message',
         'Second message',
       ]);
-      expect(queuedText('First message'), findsOneWidget);
+      expect(
+        queuedText('Delivery unconfirmed · First message'),
+        findsOneWidget,
+      );
       expect(queuedText('Second message'), findsOneWidget);
       expect(
         host.calls.where((call) => call.$2 == 'prompt.submit'),
@@ -262,7 +272,7 @@ void main() {
     expect(chat.composer.observation.text, 'Fresh editable draft');
     expect(chat.composer.observation.queue.single.text, 'Second message');
     expect(chat.composer.observation.queue.single.serverOwned, isTrue);
-    expect(queuedText('First message'), findsNothing);
+    expect(queuedText('Delivery unconfirmed · First message'), findsNothing);
     expect(queuedText('Second message').hitTestable(), findsOneWidget);
     expect(
       tester.widget<ComposerActionButton>(send).primary,
