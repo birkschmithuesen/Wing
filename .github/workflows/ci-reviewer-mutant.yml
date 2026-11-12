@@ -1,0 +1,38 @@
+name: ci-reviewer-mutant
+# Throwaway reviewer probe (t_fbb61043): runs the Kotlin unit tests this
+# card's JUnit coverage claims to have, since pr-quality.yml only runs
+# `flutter test` and the vServer has no local JVM/Android SDK to run
+# `gradlew testDebugUnitTest` directly. Mirrors tools/factory/ci-suite.sh's
+# disposable-branch dispatch pattern. Delete after use.
+on:
+  push:
+    branches: ['ci-reviewer-mutant/**']
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          gradle-version: '9.7.1'
+      - name: Run voice-background unit tests
+        working-directory: android
+        run: |
+          set -euo pipefail
+          gradle testDebugUnitTest \
+            --tests "com.tarkilhk.wing.voicebackground.HoldIdleTimerTest" \
+            --tests "com.tarkilhk.wing.voicebackground.StopReasonTest" \
+            --info 2>&1 | tee /tmp/test.log
+          echo "---- summary ----"
+          grep -E "PASSED|FAILED|BUILD " /tmp/test.log || true
