@@ -34,15 +34,21 @@ jobs:
           gradle testDebugUnitTest \
             --tests "com.tarkilhk.wing.voicebackground.HoldIdleTimerTest" \
             --tests "com.tarkilhk.wing.voicebackground.StopReasonTest" \
-            --info 2>&1 | tee /tmp/test.log
+            --stacktrace 2>&1 | tee /tmp/test.log
           exit ${PIPESTATUS[0]}
 
       - name: Surface result as annotations
+        if: always()
         working-directory: android
         run: |
-          grep -E "Test .* (PASSED|FAILED)|BUILD (SUCCESSFUL|FAILED)" /tmp/test.log > /tmp/hits.txt || true
+          grep -nE "Test .* (PASSED|FAILED)|BUILD (SUCCESSFUL|FAILED)" /tmp/test.log > /tmp/hits.txt || true
           if [ -s /tmp/hits.txt ]; then
             while IFS= read -r line; do printf '::error::RESULT: %s\n' "$line"; done < /tmp/hits.txt
           fi
-          tail -n 60 /tmp/test.log | while IFS= read -r line; do printf '::error::TAIL: %s\n' "$line"; done
+          grep -n -A30 "FAILURE: Build failed\|What went wrong" /tmp/test.log > /tmp/why.txt || true
+          if [ -s /tmp/why.txt ]; then
+            head -40 /tmp/why.txt | while IFS= read -r line; do printf '::error::WHY: %s\n' "$line"; done
+          else
+            tail -n 60 /tmp/test.log | while IFS= read -r line; do printf '::error::TAIL: %s\n' "$line"; done
+          fi
           test "${{ steps.test.outcome }}" = "success"
