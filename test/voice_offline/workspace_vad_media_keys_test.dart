@@ -142,10 +142,12 @@ void main() {
         ),
       ),
     );
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(h.device.mediaKeysCalls, [true]);
     navigator.pop();
-    await tester.pumpAndSettle();
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 500));
     expect(h.device.mediaKeysCalls.last, isTrue);
     await tester.pumpWidget(const SizedBox());
     await tester.pump();

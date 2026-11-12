@@ -64,7 +64,7 @@ void main() {
     double scale = 1,
   }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(320, 900);
+    tester.view.physicalSize = const Size(320, 2600);
     addTearDown(tester.view.reset);
     final app = AppPreferences(prefs);
     addTearDown(app.dispose);
@@ -76,7 +76,7 @@ void main() {
           child: Scaffold(
             body: MediaQuery(
               data: MediaQueryData(
-                size: const Size(320, 900),
+                size: const Size(320, 2600),
                 textScaler: TextScaler.linear(scale),
               ),
               child: SingleChildScrollView(

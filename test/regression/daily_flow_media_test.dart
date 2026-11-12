@@ -50,15 +50,23 @@ void main() {
           return _png;
         }),
       );
-      await tester.pumpAndSettle();
       final inline = find.descendant(
         of: find.byType(DeliverableAttachment),
         matching: find.byType(Image),
       );
+      await tester.pump();
+      await tester.runAsync(
+        () => precacheImage(
+          tester.widget<Image>(inline).image,
+          tester.element(inline),
+        ),
+      );
+      await tester.pumpAndSettle();
       expect(inline, findsOneWidget);
       expect(requested, ['/srv/screenshot.png']);
       await tester.tap(inline);
-      await tester.pumpAndSettle();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
       expect(find.byType(ChatImagePreview), findsOneWidget);
       expect(tester.takeException(), isNull);
     });

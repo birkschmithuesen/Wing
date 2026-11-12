@@ -563,7 +563,7 @@ void main() {
                 )
                 .map((item) => item.value)
                 .toList();
-            expect(items, ['screen', 'outputs', 'find', 'git', 'refresh']);
+            expect(items, ['screen', 'outputs', 'find', 'git', 'car', 'refresh']);
             expect(find.byType(PopupMenuDivider), findsOneWidget);
             for (final label in [
               'View screen',

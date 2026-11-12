@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:wing/core/models/chat_runtime.dart';
 import 'support/composer_fixture.dart';
 import 'package:wing/core/models/profile_session_key.dart';
@@ -285,7 +286,11 @@ void main() {
       await registry.reconcileConnections([connection]);
       final idle = await registry.forConnection(connection);
       await idle.initialize();
-      idle.networkUnavailable();
+      // Q7=A: a lost device-network gate withholds retry timers, so the
+      // recovery is provoked by an access failure with the gate open.
+      idle.connectionStatus.accessFailed(
+        const SocketException('Network unavailable'),
+      );
       expect(idle.recovering, isTrue);
       final replacement = connection.copyWith(host: 'replacement');
       await registry.reconcileConnections([replacement]);
