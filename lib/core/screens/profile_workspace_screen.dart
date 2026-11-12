@@ -367,7 +367,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     // settle null the conversation via the isEmpty check below - so it waits
     // in this side queue, flushed one at a time once the mic and the speech
     // queue are both clear (spec t_0179b15f).
-    final unsolicited = !_conversationAwaitingReply;
+    final unsolicited = _conversationAwaitingReply;
     if (unsolicited &&
         (_voiceInput.active || _bargeIn.listening || !_autoSpeakQueue.isEmpty)) {
       _queuedUnsolicitedReplies.add(reply);
