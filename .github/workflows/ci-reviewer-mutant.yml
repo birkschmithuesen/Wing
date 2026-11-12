@@ -41,7 +41,7 @@ jobs:
         working-directory: android
         continue-on-error: true
         run: |
-          gradle testDebugUnitTest \
+          gradle :app:testDebugUnitTest \
             --tests "com.tarkilhk.wing.voicebackground.HoldIdleTimerTest" \
             --tests "com.tarkilhk.wing.voicebackground.StopReasonTest" \
             --stacktrace 2>&1 | tee /tmp/test.log
