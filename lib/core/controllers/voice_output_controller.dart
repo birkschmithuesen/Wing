@@ -2,19 +2,23 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:markdown/markdown.dart' as markdown;
 import 'package:uuid/uuid.dart';
+import '../models/media_reference.dart';
 import '../services/android_voice.dart';
 import '../services/hermes_voice.dart';
 import '../services/voice_preferences.dart';
 import 'voice_input_controller.dart';
 
 String spokenReplyText(String source) {
-  final cleaned = source.replaceAll(
-    RegExp(
-      r'<think(?:ing)?>[\s\S]*?(?:</think(?:ing)?>|$)',
-      caseSensitive: false,
-    ),
-    '',
-  );
+  final cleaned = source
+      .replaceAll(
+        RegExp(
+          r'<think(?:ing)?>[\s\S]*?(?:</think(?:ing)?>|$)',
+          caseSensitive: false,
+        ),
+        '',
+      )
+      .replaceAll(RegExp(mediaReferencePattern, caseSensitive: false), '')
+      .replaceAll(RegExp(r'\n{3,}'), '\n\n');
   final nodes = markdown.Document(
     extensionSet: markdown.ExtensionSet.gitHubFlavored,
     encodeHtml: false,

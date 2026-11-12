@@ -11,6 +11,17 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-11
+
+### Read-aloud no longer speaks MEDIA reference lines
+- **What:** Voice read-aloud (`spokenReplyText`) now strips `MEDIA:/path` reference lines — quoted and
+  backticked variants included — before building the spoken text, reusing the same `mediaReferencePattern`
+  the chat display already parses. The image/file card or thumbnail still renders; only the path is no
+  longer read aloud. A sentence that merely mentions the word "media" is unaffected.
+- **Why:** Wing's voice/conversation mode read the full reply text including `MEDIA:/home/.../file.png`
+  lines verbatim, which is noise for a listener who only hears the card's presence, not its path.
+- **Merge:** pending (branch `wt/t_256dcf56`, not yet merged to `voice-offline`) · **Card:** t_256dcf56
+
 ## 2026-11-08
 
 ### Car kit stays on the voice channel for the whole conversation
