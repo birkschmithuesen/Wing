@@ -8720,7 +8720,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
     await _drainQueuedPrompts(chat);
   }
 
+  /// Fork (Wing Voice): the chat whose queue the reconnect hook is resuming.
+  ProfileChat? _automaticResume;
+
   Future<void> resumeQueue(ProfileChat chat) async {
+    // Fork: the follow-up hold belongs to the automatic resume; a user's own
+    // resume admits follow-ups as upstream does.
+    if (!identical(_automaticResume, chat)) TransientSend.release(chat);
     final resource = _commandOwner(chat);
     if (chat._replacingExpiredRuntime) return;
     await chat.composer.resume(() async {
@@ -10412,11 +10418,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_closed || resource._retry != null || resource._reconnecting) {
       return;
     }
-    // Fork (NetworkGate): no timer retries while Android reports no network;
-    // networkRestored() + resumeConnection(networkChanged: true) retries.
-    if (!connectionStatus.networkAvailable) return;
     resource._recovering = true;
     connectionStatus.waitForRecovery(resource.scope.profileName);
+    // Fork (NetworkGate): no timer retries while Android reports no network;
+    // networkRestored() + resumeConnection(networkChanged: true) retries. The
+    // recovery stays pending (upstream tests read `recovering`), only the
+    // timer is withheld.
+    if (!connectionStatus.networkAvailable) return;
     final delay = _recoveryDelay(resource._reconnectAttempt);
     logConnectionDiagnostic(
       'workspace.recovery_scheduled',
@@ -10567,6 +10575,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         if (TransientSend.take(chat)) {
           TransientSend.hold(chat);
           try {
+            _automaticResume = chat;
             await resumeQueue(chat);
             if (chat.composer.observation.paused &&
                 chat.composer.observation.queue.isNotEmpty) {
@@ -10574,6 +10583,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
             }
           } catch (_) {
             TransientSend.mark(chat);
+          } finally {
+            _automaticResume = null;
           }
         }
         await _drainQueuedPrompts(chat);
