@@ -12,7 +12,6 @@ import '../core/services/android_voice.dart';
 import '../core/services/hermes_voice.dart';
 import '../core/services/profile_workspace_controller.dart';
 import '../core/services/voice_preferences.dart';
-import '../core/widgets/studio_error.dart';
 import 'background_voice.dart';
 import 'barge_in_coordinator.dart';
 import 'barge_in_policy.dart';
@@ -607,99 +606,42 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// The voice status under the chat: listening row, recording and
   /// read-aloud controls, and voice errors.
-  Widget activity(BuildContext context) => Column(
-    crossAxisAlignment: CrossAxisAlignment.stretch,
-    children: [
-      if (bargeIn.listening && !_voiceInput.active)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            children: [
-              Semantics(
-                liveRegion: true,
-                child: Text(
-                  bargeIn.listener.phase == ListenPhase.transcribing
-                      ? 'Transcribing…'
-                      : 'Listening',
-                ),
+  /// The "Listening" row for barge-in capture, spread into the screen's
+  /// voice activity column.
+  List<Widget> listeningRows() => [
+    if (bargeIn.listening && !_voiceInput.active)
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: Wrap(
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          children: [
+            Semantics(
+              liveRegion: true,
+              child: Text(
+                bargeIn.listener.phase == ListenPhase.transcribing
+                    ? 'Transcribing…'
+                    : 'Listening',
               ),
-              TextButton(
-                key: const ValueKey('voice-stop-listening'),
-                onPressed: () => unawaited(bargeIn.close('stopButton')),
-                child: const Text('Stop listening'),
-              ),
-            ],
-          ),
+            ),
+            TextButton(
+              key: const ValueKey('voice-stop-listening'),
+              onPressed: () => unawaited(bargeIn.close('stopButton')),
+              child: const Text('Stop listening'),
+            ),
+          ],
         ),
-      if (_voiceInput.active)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Semantics(
-                liveRegion: true,
-                child: Text(switch (_voiceInput.phase) {
-                  VoiceInputPhase.starting => 'Opening microphone…',
-                  VoiceInputPhase.recording =>
-                    'Recording · ${_voiceInput.seconds}s / ${_voiceInput.maxSeconds}s',
-                  VoiceInputPhase.transcribing => 'Transcribing…',
-                  VoiceInputPhase.idle => '',
-                }),
-              ),
-              if (_voiceInput.partial.isNotEmpty)
-                Text(
-                  _voiceInput.partial,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-              Wrap(
-                spacing: 8,
-                children: [
-                  if (_voiceInput.phase == VoiceInputPhase.recording)
-                    TextButton(
-                      onPressed: _voiceInput.stop,
-                      child: const Text('Stop recording'),
-                    ),
-                  TextButton(
-                    onPressed: () {
-                      endLoop();
-                      unawaited(_voiceInput.cancel());
-                    },
-                    child: const Text('Cancel recording'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      if (_voiceOutput.owner != null)
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Wrap(
-            crossAxisAlignment: WrapCrossAlignment.center,
-            spacing: 8,
-            children: [
-              Text(
-                _voiceOutput.preparing ? 'Preparing speech…' : 'Reading aloud',
-              ),
-              TextButton(
-                onPressed: () {
-                  endLoop();
-                  unawaited(_voiceOutput.stop());
-                },
-                child: const Text('Stop speech'),
-              ),
-            ],
-          ),
-        ),
-      if (_voiceInput.error != null || _voiceOutput.error != null)
-        Padding(
-          padding: const EdgeInsets.all(12),
-          child: StudioError(_voiceInput.error ?? _voiceOutput.error!),
-        ),
-    ],
-  );
+      ),
+  ];
+
+  /// Cancel recording / Stop speech also end the conversation loop.
+  void cancelRecording() {
+    endLoop();
+    unawaited(_voiceInput.cancel());
+  }
+
+  void stopSpeech() {
+    endLoop();
+    unawaited(_voiceOutput.stop());
+  }
 }

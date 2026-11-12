@@ -355,6 +355,74 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     );
   }
 
+  Widget _voiceActivity() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      ..._voice.listeningRows(),
+      if (_voiceInput.active)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Semantics(
+                liveRegion: true,
+                child: Text(switch (_voiceInput.phase) {
+                  VoiceInputPhase.starting => 'Opening microphone…',
+                  VoiceInputPhase.recording =>
+                    'Recording · ${_voiceInput.seconds}s / ${_voiceInput.maxSeconds}s',
+                  VoiceInputPhase.transcribing => 'Transcribing…',
+                  VoiceInputPhase.idle => '',
+                }),
+              ),
+              if (_voiceInput.partial.isNotEmpty)
+                Text(
+                  _voiceInput.partial,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (_voiceInput.phase == VoiceInputPhase.recording)
+                    TextButton(
+                      onPressed: _voiceInput.stop,
+                      child: const Text('Stop recording'),
+                    ),
+                  TextButton(
+                    onPressed: _voice.cancelRecording,
+                    child: const Text('Cancel recording'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      if (_voiceOutput.owner != null)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Wrap(
+            crossAxisAlignment: WrapCrossAlignment.center,
+            spacing: 8,
+            children: [
+              Text(
+                _voiceOutput.preparing ? 'Preparing speech…' : 'Reading aloud',
+              ),
+              TextButton(
+                onPressed: _voice.stopSpeech,
+                child: const Text('Stop speech'),
+              ),
+            ],
+          ),
+        ),
+      if (_voiceInput.error != null || _voiceOutput.error != null)
+        Padding(
+          padding: const EdgeInsets.all(12),
+          child: StudioError(_voiceInput.error ?? _voiceOutput.error!),
+        ),
+    ],
+  );
+
   bool _canPasteImage(ProfileChat chat) =>
       controller.canAddAttachment(chat) &&
       chat.editingQueuedPrompt == null &&
@@ -371,7 +439,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   // Read fresh: a route pushed before car mode was entered (e.g. the "Chat
   // actions" menu) can leave [_routeIsCurrent] stuck false with no further
   // dependency change to correct it (spec: car mode keeps the chat's focus).
-  bool get _hasWorkspaceFocus => (_routeIsCurrent || _voice.carActive) && _appIsActive;
+  bool get _hasWorkspaceFocus =>
+      (_routeIsCurrent || _voice.carActive) && _appIsActive;
 
   bool get _hasChatFocus =>
       _hasWorkspaceFocus && _destination == AppDestination.chats;
@@ -1669,7 +1738,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
                                     ),
                                   ),
                                 ),
-                              _voice.activity(context),
+                              _voiceActivity(),
                               TextField(
                                 key: const Key('profile-message-composer'),
                                 controller: _composer,
