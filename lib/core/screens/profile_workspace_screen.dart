@@ -319,6 +319,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (!_voiceInput.active && _voiceInput.error != null) _conversation = null;
   }
 
+  void _bargeInChanged() {
+    _background.listening(_bargeIn.listening);
+    if (!_bargeIn.listening) _flushQueuedReplies();
+  }
+
   StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
 
   /// Serializes auto-spoken replies: a newer one waits for the one already
@@ -326,6 +331,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// actions (mic tap, stop, manual read-aloud, barge-in) clear it instead of
   /// going through it.
   final _autoSpeakQueue = SpeechQueue();
+
+  /// Unsolicited replies (e.g. a background job's own turn) that arrived
+  /// while the mic or _autoSpeakQueue was busy: an unsolicited reply never
+  /// speaks over an open mic, and never shares _autoSpeakQueue with another
+  /// reply still playing (spec t_0179b15f), so it waits here one at a time
+  /// until recording, the barge-in listen round and the speech queue are
+  /// all clear.
+  final _queuedUnsolicitedReplies = <({ProfileChat chat, String text})>[];
 
   /// Hands-free voice chat: read a finished reply aloud when the user enabled
   /// "Spoken replies" or "Conversation mode", the chat is on screen and nobody
@@ -340,15 +353,27 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     // Car mode's own loop switch overrides the saved setting while active.
     final conversationLoopOn = _car.active ? _car.loopOn : settings.conversation;
     if (!conversationLoopOn) _conversation = null;
-    if (!(settings.autoSpeak || settings.conversation || _car.active) ||
-        _voiceInput.active) {
+    if (!(settings.autoSpeak || settings.conversation || _car.active)) {
       return;
     }
     final chat = reply.chat;
     if ((controller.notificationChat ?? controller.current?.chat) != chat) {
       return;
     }
-    if (!_conversationAwaitingReply) _conversation = null;
+    // An unsolicited reply (e.g. a background job's own turn) must never end
+    // a conversation loop it did not start, and it never speaks over an open
+    // mic. It also never shares _autoSpeakQueue with another reply still
+    // playing - two entries resident there at once make the first one's own
+    // settle null the conversation via the isEmpty check below - so it waits
+    // in this side queue, flushed one at a time once the mic and the speech
+    // queue are both clear (spec t_0179b15f).
+    final unsolicited = !_conversationAwaitingReply;
+    if (unsolicited &&
+        (_voiceInput.active || _bargeIn.listening || !_autoSpeakQueue.isEmpty)) {
+      _queuedUnsolicitedReplies.add(reply);
+      return;
+    }
+    if (_voiceInput.active) return;
     _conversationAwaitingReply = false;
     if (_bargeIn.chat == chat.key && _bargeIn.listener.speechInProgress) {
       // D3: the user is already talking; the reply stays in the chat and
@@ -399,11 +424,31 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     );
   }
 
+  /// Speaks the oldest reply a background turn pushed while the mic or the
+  /// speech queue was busy, now that both have cleared; a no-op otherwise or
+  /// with nothing queued (spec t_0179b15f: never speak over an open mic, and
+  /// never alongside another reply in _autoSpeakQueue).
+  void _flushQueuedReplies() {
+    if (_queuedUnsolicitedReplies.isEmpty ||
+        _voiceInput.active ||
+        _bargeIn.listening ||
+        !_autoSpeakQueue.isEmpty) {
+      return;
+    }
+    _speakCompletedReply(_queuedUnsolicitedReplies.removeAt(0));
+  }
+
   /// The microphone never reopens unasked: only for the conversation's own
   /// chat, on screen, idle, with nothing waiting for the user's input, and
   /// with the auto-speak queue (spec 2026-10-15) fully drained — a reply
-  /// still waiting its turn must finish before the mic opens.
+  /// still waiting its turn must finish before the mic opens. A queued
+  /// unsolicited reply (spec t_0179b15f) takes that turn first instead,
+  /// without ending the loop.
   bool _canContinueConversation(ProfileChat chat) {
+    if (_queuedUnsolicitedReplies.isNotEmpty) {
+      _flushQueuedReplies();
+      return false;
+    }
     final ok =
         mounted &&
         _conversation == chat.key &&
@@ -517,6 +562,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _conversation = null;
     _voiceOwner = null;
     _autoSpeakQueue.clear();
+    _queuedUnsolicitedReplies.clear();
     unawaited(_voiceInput.cancel().catchError((Object _) {}));
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
   }
@@ -572,6 +618,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             playback: playback,
             onBarge: () {
               _autoSpeakQueue.clear();
+              _queuedUnsolicitedReplies.clear();
               bargeLog(_headphones.logLine);
               return _voiceOutput.stop();
             },
@@ -699,6 +746,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Future<void> _dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
     _autoSpeakQueue.clear();
+    _queuedUnsolicitedReplies.clear();
     await _bargeIn.close('dictate');
     _carSend = false;
     if (!mounted ||
@@ -759,6 +807,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   ) async {
     _conversation = null;
     _autoSpeakQueue.clear();
+    _queuedUnsolicitedReplies.clear();
     final owner = (chat.key, answerMessageId(message) ?? message);
     if (_voiceOutput.owner == owner) {
       await _voiceOutput.stop();
@@ -916,7 +965,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void initState() {
     super.initState();
-    _bargeIn.addListener(() => _background.listening(_bargeIn.listening));
+    _bargeIn.addListener(_bargeInChanged);
     _liveWorkspaces++;
     _destination = widget.initialDestination;
     _appIsActive =

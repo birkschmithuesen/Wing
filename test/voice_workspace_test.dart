@@ -510,13 +510,14 @@ void main() {
       device.playbackDelay = null;
       await settle(tester);
       // Both replies played in full, in arrival order, and neither was cut
-      // off. (Whether the mic reopens afterwards depends on the turn that
-      // produced the second reply also having kept the conversation's own
-      // awaiting-reply flag alive, which a synthetic second completion here
-      // does not model; that half is covered at the unit level by
-      // SpeechQueue.isEmpty and the _autoSpeakQueue.isEmpty guard added to
-      // _canContinueConversation.)
+      // off. The second reply is unsolicited (the conversation's own
+      // awaiting-reply flag was already consumed by the first); per
+      // t_0179b15f that no longer ends the loop, so the mic reopens once
+      // both have been spoken - exercised directly by the dedicated
+      // unsolicited-reply tests below.
       expect(device.spoken, 'Answer two.');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
     },
   );
 
@@ -551,6 +552,101 @@ void main() {
       // The queued second reply must never speak: the tap cleared it.
       expect(device.calls.where((c) => c == 'speak').length, 1);
       expect(device.spoken, 'Answer one.');
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'an unsolicited reply while recording queues instead of cutting the '
+    'recording off or ending the loop',
+    (tester) async {
+      await conversationMode(true);
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Question one');
+      await completeReply(tester, 'Answer one.');
+      expect(device.spoken, 'Answer one.');
+      expect(starts(), 2, reason: 'the mic reopened for the next round');
+      expect(find.textContaining('Recording ·'), findsOneWidget);
+      // A background job's own turn completes for this chat while the user
+      // is recording their next utterance; it is unsolicited (the
+      // conversation's own awaiting-reply flag was already consumed by the
+      // first reply) and must not cut the recording off or break the loop.
+      controller.current!.chat!.status = ProfileTurnStatus.running;
+      await completeReply(tester, 'Unsolicited answer.');
+      expect(
+        device.spoken,
+        'Answer one.',
+        reason: 'the unsolicited reply never speaks over the open mic',
+      );
+      expect(
+        find.textContaining('Recording ·'),
+        findsOneWidget,
+        reason: 'the recording was not cut off',
+      );
+      // The user finishes their own turn; its reply speaks first, then the
+      // queued unsolicited one, and the loop stays on afterwards.
+      await sayFinal(tester, 'Question two');
+      await completeReply(tester, 'Answer two.');
+      expect(
+        device.spoken,
+        'Unsolicited answer.',
+        reason: 'the queued reply speaks after the regular one, in order',
+      );
+      expect(
+        starts(),
+        3,
+        reason: 'the loop stays on after the queued reply speaks',
+      );
+      await tester.tap(find.text('Cancel recording'));
+      await settle(tester);
+    },
+  );
+
+  testWidgets(
+    'an unsolicited reply while idle is spoken and the loop stays on',
+    (tester) async {
+      await conversationMode(true);
+      device.playbackDelay = Completer<void>();
+      await show(tester);
+      await tester.tap(find.byTooltip('Dictate message'));
+      await tester.pump();
+      await sayFinal(tester, 'Question');
+      await completeReply(tester, 'Answer.');
+      expect(device.spoken, 'Answer.');
+      // The regular reply is still playing: the mic has not reopened yet,
+      // so it is genuinely idle from the mic's point of view. A background
+      // job's own turn now completes for the same chat; it is unsolicited
+      // (the conversation's own awaiting-reply flag was already consumed by
+      // the first reply).
+      controller.current!.chat!.status = ProfileTurnStatus.running;
+      gatewayEvent('message.complete', {'text': 'Unsolicited answer.'});
+      await tester.pump();
+      await tester.pump();
+      expect(
+        starts(),
+        1,
+        reason:
+            'the microphone has not reopened yet: both replies queue '
+            'behind playback',
+      );
+      // The regular reply finishes; the unsolicited one plays next instead
+      // of being dropped or ending the loop.
+      device.playbackDelay!.complete();
+      device.playbackDelay = Completer<void>();
+      await tester.pump();
+      await tester.pump();
+      expect(device.spoken, 'Unsolicited answer.');
+      device.playbackDelay!.complete();
+      device.playbackDelay = null;
+      await settle(tester);
+      expect(
+        starts(),
+        2,
+        reason: 'the loop stays on: the mic reopens like after a normal reply',
+      );
       await tester.tap(find.text('Cancel recording'));
       await settle(tester);
     },
