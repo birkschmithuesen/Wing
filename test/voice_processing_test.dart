@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/controllers/voice_output_controller.dart';
 import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/vad_input_round.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/voice_fixture.dart';
 

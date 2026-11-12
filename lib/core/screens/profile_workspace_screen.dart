@@ -80,6 +80,7 @@ import '../../voice_offline/car_mic_session.dart';
 import '../../voice_offline/headphone_route.dart';
 import '../../voice_offline/speech_queue.dart';
 import '../../voice_offline/turn_listener.dart';
+import '../../voice_offline/vad_input_round.dart';
 import '../../voice_offline/vad_voice_device.dart';
 import '../../voice_offline/voice_offline_prefs.dart';
 
@@ -194,9 +195,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       controller.connection,
       _voiceOwner!.workspace.profileName,
     ),
-    carMicSession: _carMic,
-    carKitConnected: _carKitConnected,
-    carModeActive: () => _car.active,
+    vadRound: VadInputRound(
+      device: VadVoiceDevice.of(widget.voiceDevice ?? AndroidVoice.instance),
+      carMicSession: _carMic,
+      carKitConnected: _carKitConnected,
+      carModeActive: () => _car.active,
+    ),
   );
   late final _voiceOutput = VoiceOutputController(
     widget.voiceDevice ?? AndroidVoice.instance,
@@ -751,9 +755,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         }),
       );
     });
-    final micHint = _voiceInput.micFallbackHint;
+    final micHint = _voiceInput.vadRound?.takeMicFallbackHint();
     if (micHint != null && mounted) {
-      _voiceInput.micFallbackHint = null;
       showStudioError(context, micHint);
     }
   }

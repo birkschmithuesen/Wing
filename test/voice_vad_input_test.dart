@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
 import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/vad_input_round.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/voice_fixture.dart';
 
@@ -30,6 +31,7 @@ void main() {
     recorder = VoiceInputController(
       device: device,
       createRemote: () => throw StateError('vad never uses Hermes'),
+      vadRound: VadInputRound(device: device),
     );
     result = null;
   });
@@ -64,6 +66,7 @@ void main() {
       recorder = VoiceInputController(
         device: device,
         createRemote: () => throw StateError('vad never uses Hermes'),
+        vadRound: VadInputRound(device: device),
       );
       await recorder.start(
         settings,
@@ -87,7 +90,7 @@ void main() {
       (value) => result = value,
     );
     expect(device.vadOptions!.mic, VoiceMicRoute.bluetooth);
-    expect(recorder.micFallbackHint, isNotNull);
+    expect(recorder.vadRound!.takeMicFallbackHint(), isNotNull);
     expect(recorder.error, isNull, reason: 'a fallback is not a failure');
     expect(recorder.phase, VoiceInputPhase.recording);
   });
@@ -103,13 +106,13 @@ void main() {
       const TextEditingValue(text: ''),
       (value) => result = value,
     );
-    expect(recorder.micFallbackHint, isNotNull);
+    expect(recorder.vadRound!.takeMicFallbackHint(), isNotNull);
     device.emitWindows(_p(0.9, 20));
     await recorder.stop();
     await pumpEventQueue();
     device.micFallback = false;
     await start();
-    expect(recorder.micFallbackHint, isNull);
+    expect(recorder.vadRound!.takeMicFallbackHint(), isNull);
   });
 
   test('a pause ends the round by itself and inserts the phone transcript', () async {
@@ -216,6 +219,7 @@ void main() {
     recorder = VoiceInputController(
       device: device,
       createRemote: () => throw StateError('vad never uses Hermes'),
+      vadRound: VadInputRound(device: device),
     );
     device.finishDelay = Completer<String>();
     await start();
