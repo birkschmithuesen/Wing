@@ -13,6 +13,20 @@ the README feature list current for every future change.
 
 ## 2026-11-12
 
+### Optional "ready" beep when conversation listening starts
+- **What:** A new voice setting, "Signalton, wenn Zuhören beginnt" (default **on**, including for
+  existing installs), plays a short beep when a conversation listen round opens the microphone for
+  the user's turn after read-aloud has fully ended. It never plays for a round this listener
+  restarts for itself while read-aloud is playing or might follow next: the barge-in round that
+  stays open across playback (`keepPlayback`), or the round reopened right after an utterance was
+  transcribed, before the reply exists. `TurnListener.open()` is the only call site eligible for
+  the cue, and only when it is not opening for playback.
+- **Why:** Birk, t_4f90f54c, 2026-11-12: wants an audible cue for exactly when the mic opens for his
+  turn, without a beep every time the round silently restarts or barges into a reply.
+  Reason: the default is ON per Birk's explicit instruction (card t_4f90f54c, 2026-11-12), a
+  deliberate behaviour change for existing installs too, since this fork had no such cue before.
+- **Merge:** pending (this card, t_4f90f54c) · **Card:** t_4f90f54c
+
 ### An unsolicited reply no longer breaks conversation mode or cuts the recording
 - **What:** A reply that arrives while the conversation loop is not awaiting one (e.g. a background job's own
   turn finishing) no longer ends Conversation mode. While the user is recording or a barge-in listen round is

@@ -39,6 +39,7 @@ class VoicePreferences {
   static const listenMinSpeechKey = 'voice.listen_min_speech_ms';
   static const bargeInPlaybackKey = 'voice.barge_in_playback';
   static const micRouteKey = 'voice.mic_route';
+  static const conversationStartCueKey = 'voice.conversation_start_cue';
   static const keys = {
     inputKey,
     outputKey,
@@ -59,6 +60,7 @@ class VoicePreferences {
     listenMinSpeechKey,
     bargeInPlaybackKey,
     micRouteKey,
+    conversationStartCueKey,
   };
   static const vadPauseChoices = [
     '1000',
@@ -85,7 +87,8 @@ class VoicePreferences {
     vadCuesKey ||
     vadDebugKey ||
     listenTurnKey ||
-    bargeInPlaybackKey => value == 'on' || value == 'off',
+    bargeInPlaybackKey ||
+    conversationStartCueKey => value == 'on' || value == 'off',
     vadPauseKey => vadPauseChoices.contains(value),
     vadMinSpeechKey => vadMinSpeechChoices.contains(value),
     vadPreRollKey => vadPreRollChoices.contains(value),
@@ -137,6 +140,12 @@ class VoicePreferences {
   /// Microphone for vad rounds (dictation, conversation loop re-opens).
   final VoiceMicRoute micRoute;
 
+  /// Short "ready" cue when a conversation listen round opens the mic for
+  /// the user's turn after read-aloud has fully ended. Never plays for a
+  /// round that opens during or around playback (barge-in/steer rounds),
+  /// regardless of this setting.
+  final bool conversationStartCue;
+
   const VoicePreferences({
     this.input = VoiceInputRoute.local,
     this.output = VoiceProcessing.local,
@@ -153,6 +162,7 @@ class VoicePreferences {
     this.listenMinSpeech = const Duration(milliseconds: 400),
     this.bargeInPlayback = false,
     this.micRoute = VoiceMicRoute.auto,
+    this.conversationStartCue = true,
   });
 
   factory VoicePreferences.read(SharedPreferences preferences) {
@@ -213,6 +223,8 @@ class VoicePreferences {
         'wired' => VoiceMicRoute.wired,
         _ => VoiceMicRoute.auto,
       },
+      conversationStartCue:
+          preferences.getString(conversationStartCueKey) != 'off',
     );
   }
 

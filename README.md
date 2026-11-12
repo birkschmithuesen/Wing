@@ -14,6 +14,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Car kit stays on the voice channel for the whole conversation](docs/VAD_INPUT.md#car-kit-sco-hold-conversation-wide-birk-decision-2026-10-19)
 - [Offline behaviour](docs/CAR_MODE.md)
 - [Conversation mode releases its microphone wakelock when the loop ends](CHANGELOG.fork.md#backgroundvoiceservice-now-releases-its-wakelock-when-the-conversation-loop-ends)
+- [Optional "ready" beep when conversation listening starts](docs/VOICE_BARGE_IN.md#settings)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

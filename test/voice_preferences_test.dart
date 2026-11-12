@@ -288,6 +288,53 @@ void main() {
     ]));
   });
 
+  test(
+    'conversation start cue: defaults on, persists and rejects unknown values',
+    () async {
+      final prefs = await SharedPreferences.getInstance();
+      expect(VoicePreferences.read(prefs).conversationStartCue, isTrue);
+      expect(
+        VoicePreferences.keys,
+        contains(VoicePreferences.conversationStartCueKey),
+      );
+      expect(
+        VoicePreferences.accepts(
+          VoicePreferences.conversationStartCueKey,
+          'on',
+        ),
+        isTrue,
+      );
+      expect(
+        VoicePreferences.accepts(
+          VoicePreferences.conversationStartCueKey,
+          'off',
+        ),
+        isTrue,
+      );
+      expect(
+        VoicePreferences.accepts(
+          VoicePreferences.conversationStartCueKey,
+          'maybe',
+        ),
+        isFalse,
+      );
+      await saveDevicePreference(
+        prefs,
+        VoicePreferences.conversationStartCueKey,
+        'off',
+      );
+      await prefs.reload();
+      expect(VoicePreferences.read(prefs).conversationStartCue, isFalse);
+      await saveDevicePreference(
+        prefs,
+        VoicePreferences.conversationStartCueKey,
+        'on',
+      );
+      await prefs.reload();
+      expect(VoicePreferences.read(prefs).conversationStartCue, isTrue);
+    },
+  );
+
   test('mic route: defaults to automatic, persists and rejects unknown values', () async {
     final prefs = await SharedPreferences.getInstance();
     expect(VoicePreferences.read(prefs).micRoute, VoiceMicRoute.auto);
@@ -409,6 +456,24 @@ void main() {
     expect(VoicePreferences.read(prefs).listenTurn, isFalse);
     expect(find.text('Speech needed to steer'), findsNothing);
   });
+
+  testWidgets(
+    'listening-start cue switch appears only with vad conversation and saves',
+    (tester) async {
+      final device = VoiceDeviceFixture();
+      addTearDown(device.stream.close);
+      SharedPreferences.setMockInitialValues({});
+      await show(tester, await SharedPreferences.getInstance(), device);
+      expect(find.text('Signalton, wenn Zuhören beginnt'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      final prefs = await vadConversation();
+      await show(tester, prefs, device);
+      await tester.ensureVisible(find.text('Signalton, wenn Zuhören beginnt'));
+      await tester.tap(find.byKey(const ValueKey('voice-conversation-start-cue')));
+      await tester.pumpAndSettle();
+      expect(VoicePreferences.read(prefs).conversationStartCue, isFalse);
+    },
+  );
 
   testWidgets('echo probe plays the synthetic text while a listen round records', (
     tester,

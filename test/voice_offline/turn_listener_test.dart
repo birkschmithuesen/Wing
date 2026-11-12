@@ -48,7 +48,10 @@ void main() {
   test('an utterance is transcribed, handed over and the next round starts', () async {
     await listener.open(settings);
     expect(device.vadOptions!.keepPlayback, isTrue);
-    expect(device.vadOptions!.startCue, isFalse);
+    // conversationStartCue defaults to true (card t_4f90f54c, Birk
+    // 2026-11-12): this fresh, non-playback round is the user's turn
+    // starting, so it plays the start cue.
+    expect(device.vadOptions!.startCue, isTrue);
     expect(device.vadOptions!.mic, VoiceMicRoute.phone);
     expect(listener.phase, ListenPhase.listening);
     await say(0.9, 20);
@@ -197,6 +200,55 @@ void main() {
     await say(0.1, 60);
     expect(barged, [true, false]);
     expect(listener.utteranceBarged, isFalse);
+  });
+
+  group('optional listening-start cue (card t_4f90f54c)', () {
+    // Behaviour change (Birk, 2026-11-12, card t_4f90f54c): the default is
+    // now ON for existing installs too, unless the user explicitly turned
+    // it off. `settings` above never sets conversationStartCue, so it
+    // exercises that default.
+    const cueOff = VoicePreferences(
+      input: VoiceInputRoute.vad,
+      conversation: true,
+      vad: VadEndpointConfig(
+        pause: Duration(milliseconds: 960),
+        maxDuration: Duration(seconds: 2),
+      ),
+      conversationStartCue: false,
+    );
+
+    test(
+      'pref unset (default), normal round (mic opens for the user after playback ended): start cue plays',
+      () async {
+        await listener.open(settings);
+        expect(device.vadOptions!.startCue, isTrue);
+      },
+    );
+
+    test('pref explicitly off (user opted out): no start cue', () async {
+      await listener.open(cueOff);
+      expect(device.vadOptions!.startCue, isFalse);
+    });
+
+    test(
+      'pref on/default, barge-in round opened during playback (keepPlayback): no start cue',
+      () async {
+        await listener.open(settings, playback: true);
+        expect(device.vadOptions!.startCue, isFalse);
+      },
+    );
+
+    test(
+      'pref on/default, steer round the listener reopens for itself before the playback that may follow: no start cue',
+      () async {
+        await listener.open(settings);
+        expect(device.vadOptionsHistory[0].startCue, isTrue);
+        await say(0.9, 20);
+        await say(0.1, 60);
+        expect(device.vadStarts, 2);
+        expect(device.vadOptionsHistory[1].startCue, isFalse);
+      },
+    );
   });
 
   group('car-kit SCO hold (spec Birk decision 2026-10-19, device filter)', () {

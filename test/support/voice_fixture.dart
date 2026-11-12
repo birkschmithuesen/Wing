@@ -21,6 +21,7 @@ class VoiceDeviceFixture implements VoiceDevice {
   Duration? lastStopTimeout;
   int vadStarts = 0;
   VadCaptureOptions? vadOptions;
+  final vadOptionsHistory = <VadCaptureOptions>[];
   bool micFallback = false;
   final finishes = <VadDecision>[];
   final finishChunks = <List<VadChunk>>[];
@@ -67,6 +68,7 @@ class VoiceDeviceFixture implements VoiceDevice {
     recording = id;
     local = true;
     vadOptions = options;
+    vadOptionsHistory.add(options);
     _firstWindow = 0;
     if (startError != null) throw startError!;
     await startDelay?.future;
