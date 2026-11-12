@@ -78,6 +78,28 @@ void main() {
     expect(find.text('Speech needed to steer'), findsNothing);
   });
 
+  testWidgets(
+    'listening-start cue switch appears only with vad conversation and saves',
+    (tester) async {
+      final device = VoiceDeviceFixture();
+      addTearDown(device.stream.close);
+      SharedPreferences.setMockInitialValues({});
+      await showVoiceSettings(
+        tester,
+        await SharedPreferences.getInstance(),
+        device,
+      );
+      expect(find.text('Signalton, wenn Zuhören beginnt'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      final prefs = await vadConversation();
+      await showVoiceSettings(tester, prefs, device);
+      await tester.ensureVisible(find.text('Signalton, wenn Zuhören beginnt'));
+      await tester.tap(find.byKey(const ValueKey('voice-conversation-start-cue')));
+      await tester.pumpAndSettle();
+      expect(VoiceOfflinePrefs.read(prefs).conversationStartCue, isFalse);
+    },
+  );
+
   testWidgets('echo probe plays the synthetic text while a listen round records', (
     tester,
   ) async {

@@ -123,6 +123,16 @@ class _BargeInSettingsState extends State<BargeInSettings> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         CompactSwitchListTile(
+          key: const ValueKey('voice-conversation-start-cue'),
+          contentPadding: EdgeInsets.zero,
+          title: const Text('Signalton, wenn Zuhören beginnt'),
+          value: s.conversationStartCue,
+          onChanged: widget.saving
+              ? null
+              : (value) =>
+                    _toggle(VoiceOfflinePrefs.conversationStartCueKey, value),
+        ),
+        CompactSwitchListTile(
           key: const ValueKey('voice-listen-turn'),
           contentPadding: EdgeInsets.zero,
           title: const Text('Listen while Hermes works'),

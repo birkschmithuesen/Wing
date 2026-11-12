@@ -46,9 +46,22 @@ Conversation mode on):
 
 | Key | Default | Choices |
 |---|---|---|
+| `voice.conversation_start_cue` ("Signalton, wenn Zuhören beginnt") | `on` | `on` / `off` |
 | `voice.listen_turn` ("Listen while Hermes works") | `on` | `on` / `off` |
 | `voice.listen_min_speech_ms` ("Speech needed to steer") | `400` | `250` / `400` / `600` |
 | `voice.barge_in_playback` ("Interrupt read-aloud by speaking") | `off` | `on` / `off`; row shown since `bargeInPlaybackAvailable` is `true` (Task 7) |
+
+`voice.conversation_start_cue` (card t_4f90f54c, Birk 2026-11-12, default on for
+existing installs too) plays a short "ready" beep when a conversation listen
+round opens the microphone for the user's turn *after read-aloud has fully
+ended*. It never plays for a round this listener restarts for itself while
+read-aloud plays or might follow — the Mithören/Reinreden round that stays
+open across playback (`keepPlayback`), and the round `TurnListener` reopens
+for itself right after an utterance is transcribed, before the reply (and its
+read-aloud) exists yet. `TurnListener.open()` is the only call site eligible
+for the cue, and only when it is not opening for playback; every internal
+restart (`_decided`, `_replace`, the probe) stays cue-less regardless of this
+setting.
 
 The row's subtitle states the current restriction:
 

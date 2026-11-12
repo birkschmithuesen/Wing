@@ -81,7 +81,10 @@ class TurnListener extends ChangeNotifier {
       return;
     }
     bargeLog('listen open mode=${playback ? 'playback' : 'turn'}');
-    await _startRound(playback: playback);
+    // Only this external, non-playback open is the user's turn starting
+    // after read-aloud has fully ended; every round this listener restarts
+    // for itself (steer, barge-in, silent retry) stays cue-less.
+    await _startRound(playback: playback, startCue: !playback);
   }
 
   /// Read-aloud started or ended; only playback needs the stricter gate.
@@ -90,7 +93,11 @@ class TurnListener extends ChangeNotifier {
     _gate = playing ? (_gate ?? PlaybackGate()) : null;
   }
 
-  Future<void> _startRound({required bool playback, bool cues = true}) async {
+  Future<void> _startRound({
+    required bool playback,
+    bool cues = true,
+    bool startCue = false,
+  }) async {
     final settings = _settings;
     if (settings == null || _disposed) return;
     final id = const Uuid().v4();
@@ -120,7 +127,7 @@ class TurnListener extends ChangeNotifier {
         id,
         VadCaptureOptions(
           cues: cues && settings.cues,
-          startCue: false,
+          startCue: startCue && settings.cues && settings.conversationStartCue,
           keepPlayback: true,
           mic: mic,
           holdMic: holdMic,

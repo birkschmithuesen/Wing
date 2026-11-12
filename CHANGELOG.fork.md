@@ -13,6 +13,20 @@ the README feature list current for every future change.
 
 ## 2026-11-12
 
+### Optional "ready" beep when conversation listening starts
+- **What:** A new voice setting, "Signalton, wenn Zuhören beginnt" (default **on**, including for
+  existing installs), plays a short beep when a conversation listen round opens the microphone for
+  the user's turn after read-aloud has fully ended. It never plays for a round this listener
+  restarts for itself while read-aloud is playing or might follow next: the barge-in round that
+  stays open across playback (`keepPlayback`), or the round reopened right after an utterance was
+  transcribed, before the reply exists. `TurnListener.open()` is the only call site eligible for
+  the cue, and only when it is not opening for playback.
+- **Why:** Birk, t_4f90f54c, 2026-11-12: wants an audible cue for exactly when the mic opens for his
+  turn, without a beep every time the round silently restarts or barges into a reply.
+  Reason: the default is ON per Birk's explicit instruction (card t_4f90f54c, 2026-11-12), a
+  deliberate behaviour change for existing installs too, since this fork had no such cue before.
+- **Merge:** [t_2c3aeb29] · **Card:** t_4f90f54c
+
 ### Internal: fork code moved out of upstream files (no behaviour change)
 - **What:** Fork logic that lived inside upstream-owned files moved into fork-owned files
   (`lib/voice_offline/`, `lib/fork/`, `lib/car_mode/`, `voiceoffline/VoiceOfflineHandler.kt`,
@@ -23,7 +37,7 @@ the README feature list current for every future change.
   still +179/-55 (spec target about +60/-10).
 - **Why:** Birk 2026-11-11: own code in own files keeps every later upstream merge small; the upstream
   merge card t_d1d49ff1 runs after this one.
-- **Merge:** pending [Merge] card · **Card:** t_09ff7726 (parent t_ba3601fa)
+- **Merge:** [t_3b4d8603] · **Card:** t_09ff7726 (parent t_ba3601fa)
 
 ### An unsolicited reply no longer breaks conversation mode or cuts the recording
 - **What:** A reply that arrives while the conversation loop is not awaiting one (e.g. a background job's own

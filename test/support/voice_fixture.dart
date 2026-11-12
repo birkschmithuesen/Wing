@@ -25,6 +25,15 @@ class VoiceDeviceFixture with VadVoiceFixture implements VoiceDevice, VadVoiceDe
   Completer<void>? playbackDelay;
   @override
   Object? startError;
+  final vadOptionsHistory = <VadCaptureOptions>[];
+
+  @override
+  Future<bool> startVad(String id, VadCaptureOptions options) async {
+    final result = await super.startVad(id, options);
+    vadOptionsHistory.add(vadOptions!);
+    return result;
+  }
+
   AndroidVoiceCapabilities capabilitiesValue = const AndroidVoiceCapabilities(
     recognitionAvailable: true,
     installedLanguages: ['en-US', 'fr-FR'],
