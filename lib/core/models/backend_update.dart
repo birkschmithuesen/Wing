@@ -96,11 +96,12 @@ class BackendUpdateChannel {
       home == other.home &&
       currentSha == other.currentSha;
 
-  bool sameTarget(BackendUpdateChannel other) =>
+  /// Main follows the approved branch's moving tip. Release targets are fixed.
+  bool sameUpdateIntent(BackendUpdateChannel other) =>
       sameInstallation(other) &&
       name == other.name &&
       branch == other.branch &&
-      targetSha == other.targetSha &&
+      (name == 'main' || targetSha == other.targetSha) &&
       rollback == other.rollback;
 }
 

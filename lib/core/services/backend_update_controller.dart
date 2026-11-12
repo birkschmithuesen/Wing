@@ -19,6 +19,7 @@ class BackendUpdateController extends ChangeNotifier {
     readHealth: _readHealth,
   );
   Future<Map<String, dynamic>>? _healthRead;
+  Future<void>? _availabilityRead;
 
   Future<Map<String, dynamic>> _readHealth() async {
     final request = _healthRead ??= gateway.read('health');
@@ -68,7 +69,6 @@ class BackendUpdateController extends ChangeNotifier {
 
   bool get canOpenChannelEditor =>
       !cloudManaged &&
-      !checking &&
       !statusLoading &&
       !starting &&
       !channelSaving &&
@@ -79,6 +79,7 @@ class BackendUpdateController extends ChangeNotifier {
 
   bool get canSelectChannel =>
       canOpenChannelEditor &&
+      !checking &&
       check?.canApply == true &&
       channel?.canSelect == true;
 
@@ -150,20 +151,26 @@ class BackendUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> checkForUpdate() async {
+  Future<void> checkForUpdate() {
     if (cloudManaged) {
-      await _readInstalledVersion();
-      return;
+      return _readInstalledVersion();
     }
-    if (checking ||
-        channelSaving ||
+    if (channelSaving ||
         starting ||
         _requestOutstanding ||
         phase == BackendUpdatePhase.running ||
         _disposed) {
-      return;
+      return Future.value();
     }
-    await Future.wait([_readInstalledVersion(), _checkForUpdate()]);
+    return _availabilityRead ??= _refreshAvailability();
+  }
+
+  Future<void> _refreshAvailability() async {
+    try {
+      await Future.wait([_readInstalledVersion(), _checkForUpdate()]);
+    } finally {
+      _availabilityRead = null;
+    }
   }
 
   Future<void> _checkForUpdate() async {
@@ -233,7 +240,7 @@ class BackendUpdateController extends ChangeNotifier {
         return false;
       }
       _publishCheck(fresh, track);
-      if (track == null || !approvedChannel.sameTarget(track)) {
+      if (track == null || !approvedChannel.sameUpdateIntent(track)) {
         phase = BackendUpdatePhase.refused;
         message = track == null
             ? 'The update channel could not be verified. Nothing was started.'

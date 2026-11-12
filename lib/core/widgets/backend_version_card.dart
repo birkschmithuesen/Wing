@@ -180,7 +180,8 @@ class _BackendVersionCardState extends State<BackendVersionCard>
         _refreshRotation.value = 0;
       }
       final showUpdate =
-          controller.updateAttempt > 0 ||
+          (controller.updateAttempt > 0 &&
+              controller.phase != BackendUpdatePhase.refused) ||
           status != null ||
           controller.statusLoading;
       final lines = status?.lines ?? const <String>[];
@@ -352,10 +353,10 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                       controller.message == null)
                     Text(_phaseLabel(controller.phase)),
                   if (controller.message case final message?
-                      when message != checkMessage)
+                      when message != checkMessage &&
+                          controller.phase != BackendUpdatePhase.refused)
                     const {
                           BackendUpdatePhase.failed,
-                          BackendUpdatePhase.refused,
                           BackendUpdatePhase.partial,
                         }.contains(controller.phase)
                         ? StudioError(message)
@@ -415,60 +416,72 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                 const SizedBox(height: 8),
                 Align(
                   alignment: AlignmentDirectional.centerEnd,
-                  child: Wrap(
-                    spacing: 8,
-                    runSpacing: 4,
-                    children: [
-                      if (check?.updateAvailable == true)
+                  child: StudioTransientErrorAnchor(
+                    errorKey: controller.phase == BackendUpdatePhase.refused
+                        ? (controller, controller.updateAttempt)
+                        : null,
+                    message: controller.phase == BackendUpdatePhase.refused
+                        ? controller.message
+                        : null,
+                    severity: StudioErrorSeverity.error,
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        if (check?.updateAvailable == true)
+                          StudioButtonPress(
+                            child: IconButton(
+                              tooltip: 'Changes in this update',
+                              onPressed:
+                                  controller.checking || controller.starting
+                                  ? null
+                                  : () => Navigator.of(context).push(
+                                      MaterialPageRoute<void>(
+                                        builder: (_) =>
+                                            BackendUpdateChangesScreen(
+                                              check: check!,
+                                              connectionLabel: connectionLabel,
+                                            ),
+                                      ),
+                                    ),
+                              icon: const Icon(Icons.notes_outlined, size: 18),
+                            ),
+                          ),
+                        if (check?.canStart == true &&
+                            channel?.error == null &&
+                            channel?.targetSha != null)
+                          StudioButtonPress(
+                            child: IconButton.filled(
+                              tooltip: 'Update backend',
+                              onPressed: controller.canStart
+                                  ? _confirmAndStart
+                                  : null,
+                              icon: const Icon(
+                                Icons.system_update_alt,
+                                size: 18,
+                              ),
+                            ),
+                          ),
                         StudioButtonPress(
                           child: IconButton(
-                            tooltip: 'Changes in this update',
-                            onPressed:
-                                controller.checking || controller.starting
+                            tooltip: controller.requestOutstanding
+                                ? 'Check update progress'
+                                : controller.cloudManaged
+                                ? 'Refresh server version'
+                                : 'Check for updates',
+                            onPressed: busy
                                 ? null
-                                : () => Navigator.of(context).push(
-                                    MaterialPageRoute<void>(
-                                      builder: (_) =>
-                                          BackendUpdateChangesScreen(
-                                            check: check!,
-                                            connectionLabel: connectionLabel,
-                                          ),
-                                    ),
-                                  ),
-                            icon: const Icon(Icons.notes_outlined, size: 18),
+                                : controller.requestOutstanding
+                                ? controller.refreshStatus
+                                : controller.checkForUpdate,
+                            icon: RotationTransition(
+                              turns: _refreshRotation,
+                              child: const Icon(Icons.sync, size: 18),
+                            ),
                           ),
                         ),
-                      if (check?.canStart == true &&
-                          channel?.error == null &&
-                          channel?.targetSha != null)
-                        StudioButtonPress(
-                          child: IconButton.filled(
-                            tooltip: 'Update backend',
-                            onPressed: controller.canStart
-                                ? _confirmAndStart
-                                : null,
-                            icon: const Icon(Icons.system_update_alt, size: 18),
-                          ),
-                        ),
-                      StudioButtonPress(
-                        child: IconButton(
-                          tooltip: controller.requestOutstanding
-                              ? 'Check update progress'
-                              : controller.cloudManaged
-                              ? 'Refresh server version'
-                              : 'Check for updates',
-                          onPressed: busy
-                              ? null
-                              : controller.requestOutstanding
-                              ? controller.refreshStatus
-                              : controller.checkForUpdate,
-                          icon: RotationTransition(
-                            turns: _refreshRotation,
-                            child: const Icon(Icons.sync, size: 18),
-                          ),
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],
@@ -549,7 +562,7 @@ class _BackendChannelDialogState extends State<_BackendChannelDialog> {
   @override
   void initState() {
     super.initState();
-    if (_initial == null) {
+    if (_initial == null || widget.controller.checking) {
       _loading = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _readChannel();

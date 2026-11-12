@@ -187,6 +187,67 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
+        'changed-target warning expires after four seconds ${brightness.name} $scale',
+        (tester) async {
+          final host = _UpdateHost();
+          host.source
+            ..channel = 'stable'
+            ..branch = null;
+          tester.view.physicalSize = const Size(390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: true,
+                ),
+                child: RepaintBoundary(
+                  key: const ValueKey('channels-capture'),
+                  child: child!,
+                ),
+              ),
+              home: VersionsUpdatesScreen(
+                controllerFactory: (_) =>
+                    VersionsController(gateway: host.gateway),
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          const message =
+              'The update channel or target changed. Review it before updating.';
+          for (final sha in [
+            '3333333333333333333333333333333333333333',
+            '4444444444444444444444444444444444444444',
+          ]) {
+            final update = find.byTooltip('Update backend');
+            await tester.ensureVisible(update);
+            await tester.tap(update);
+            await tester.pumpAndSettle();
+            host.source.targetSha = sha;
+            await tester.tap(find.byTooltip('Update backend').last);
+            await tester.pumpAndSettle();
+            expect(host.posts, isEmpty);
+            expect(find.text(message), findsOneWidget);
+            await snapshot(tester, '${brightness.name}-$scale-target-refused');
+            await tester.pump(const Duration(seconds: 3));
+            expect(find.text(message), findsOneWidget);
+            await tester.pump(const Duration(seconds: 1));
+            await tester.pumpAndSettle();
+            expect(find.text(message), findsNothing);
+            expect(
+              find.byTooltip('Update backend').hitTestable(),
+              findsOneWidget,
+            );
+            expect(tester.takeException(), isNull);
+          }
+        },
+      );
+
+      testWidgets(
         'server version refresh fails with retained data ${brightness.name} $scale',
         (tester) async {
           final host = _UpdateHost();
@@ -972,6 +1033,7 @@ void main() {
     _UpdateHost host, {
     Size size = const Size(800, 900),
     double textScale = 1,
+    Brightness? brightness,
   }) async {
     final controller = BackendUpdateController(host.gateway);
     tester.view.physicalSize = size;
@@ -981,11 +1043,16 @@ void main() {
       _UpdateCardOwner(
         controller: controller,
         child: MaterialApp(
+          theme: brightness == null ? null : wingTheme(brightness),
           builder: (context, child) => MediaQuery(
-            data: MediaQuery.of(
-              context,
-            ).copyWith(textScaler: TextScaler.linear(textScale)),
-            child: child!,
+            data: MediaQuery.of(context).copyWith(
+              textScaler: TextScaler.linear(textScale),
+              disableAnimations: textScale == 2,
+            ),
+            child: RepaintBoundary(
+              key: const ValueKey('channels-capture'),
+              child: child!,
+            ),
           ),
           home: Scaffold(
             body: SingleChildScrollView(
@@ -1008,6 +1075,110 @@ void main() {
     await tester.tap(find.byTooltip('Update backend'));
     await tester.pumpAndSettle();
   }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'channel editor opens during an availability refresh ${brightness.name} $scale',
+        (tester) async {
+          final host = _UpdateHost();
+          await showCard(
+            tester,
+            host,
+            size: const Size(390, 844),
+            textScale: scale,
+            brightness: brightness,
+          );
+          await tester.pumpAndSettle();
+          final held = Completer<Map<String, dynamic>>();
+          host.pendingCheck = held;
+          await tester.tap(find.byTooltip('Check for updates'));
+          await tester.pump();
+          await tester.tap(find.byTooltip('Change update channel'));
+          await tester.pump();
+          expect(find.text('Update channel'), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsOneWidget);
+          expect(find.byTooltip('Cancel').hitTestable(), findsOneWidget);
+          await tester.pump(const Duration(milliseconds: 200));
+          await snapshot(
+            tester,
+            '${brightness.name}-$scale-editor-during-refresh',
+          );
+          held.complete(_available);
+          await tester.pumpAndSettle();
+          expect(find.text('Main branch'), findsOneWidget);
+          expect(find.byType(CircularProgressIndicator), findsNothing);
+          expect(
+            host.reads.where((r) => r.$1 == 'hermes/update/check'),
+            hasLength(2),
+          );
+          expect(host.posts, isEmpty);
+          expect(host.source.writes, isEmpty);
+          await tester.tap(find.byTooltip('Cancel'));
+          await tester.pumpAndSettle();
+        },
+      );
+    }
+  }
+
+  for (final leave in [false, true]) {
+    testWidgets('channel editor held refresh failure, departure=$leave', (
+      tester,
+    ) async {
+      final host = _UpdateHost();
+      await showCard(tester, host);
+      await tester.pumpAndSettle();
+      final held = Completer<Map<String, dynamic>>();
+      host.pendingCheck = held;
+      await tester.tap(find.byTooltip('Check for updates'));
+      await tester.pump();
+      await tester.tap(find.byTooltip('Change update channel'));
+      await tester.pump();
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      if (leave) {
+        await tester.tap(find.byTooltip('Cancel'));
+        await tester.pump(const Duration(milliseconds: 300));
+      }
+      held.completeError(StateError('offline'));
+      await tester.pumpAndSettle();
+      if (leave) {
+        expect(find.byType(AlertDialog), findsNothing);
+      } else {
+        expect(
+          find.textContaining('Check again to enable saving'),
+          findsOneWidget,
+        );
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+        host.pendingCheck = null;
+        await tester.tap(find.byTooltip('Check update channel'));
+        await tester.pumpAndSettle();
+        expect(find.text('Main branch'), findsOneWidget);
+        expect(
+          find.textContaining('Check again to enable saving'),
+          findsNothing,
+        );
+        await tester.tap(find.byTooltip('Cancel'));
+        await tester.pumpAndSettle();
+      }
+      expect(host.posts, isEmpty);
+      expect(host.source.writes, isEmpty);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  testWidgets('confirmed Main update follows an advancing branch', (
+    tester,
+  ) async {
+    final host = _UpdateHost();
+    await showCard(tester, host);
+    await tester.pumpAndSettle();
+    await openConfirmation(tester);
+    host.source.targetSha = '4444444444444444444444444444444444444444';
+    await tester.tap(find.byTooltip('Update backend').last);
+    await tester.pumpAndSettle();
+    expect(host.posts, hasLength(1));
+    expect(find.textContaining('Review it before updating'), findsNothing);
+  });
 
   for (final next in ['main', 'stable']) {
     testWidgets('channel refresh reconciles a retired preview with $next', (

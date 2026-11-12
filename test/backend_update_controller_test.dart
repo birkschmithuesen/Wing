@@ -298,17 +298,46 @@ void main() {
     expect(host.posts, isEmpty);
   });
 
-  for (final changed in ['channel', 'target']) {
+  test(
+    'main advancement after confirmation starts the approved branch update',
+    () async {
+      final host = _UpdateHost();
+      final controller = BackendUpdateController(host.gateway);
+      addTearDown(controller.dispose);
+      await controller.checkForUpdate();
+      final approved = controller.channel!;
+      host.source.targetSha = '4444444444444444444444444444444444444444';
+      expect(
+        await controller.startUpdate(
+          approvedChannel: approved,
+          canDispatch: () => true,
+        ),
+        isTrue,
+      );
+      expect(host.posts, hasLength(1));
+    },
+  );
+
+  for (final changed in ['channel', 'branch', 'release target', 'rollback']) {
     test(
       'a changed $changed after confirmation cannot start an update',
       () async {
         final host = _UpdateHost();
+        if (changed == 'release target') {
+          host.source
+            ..channel = 'stable'
+            ..branch = null;
+        }
         final controller = BackendUpdateController(host.gateway);
         addTearDown(controller.dispose);
         await controller.checkForUpdate();
         final approved = controller.channel!;
         if (changed == 'channel') {
           host.source.channel = 'stable';
+        } else if (changed == 'branch') {
+          host.source.branch = 'another-branch';
+        } else if (changed == 'rollback') {
+          host.source.rollback = true;
         } else {
           host.source.targetSha = '4444444444444444444444444444444444444444';
         }

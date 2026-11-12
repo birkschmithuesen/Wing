@@ -1,6 +1,6 @@
 # Inspect versions and control updates
 
-Check available versions, confirm an exact update target, follow status and read long logs; refuse a stale or changed target.
+Check available versions, confirm the update channel, follow status and read long logs. Main follows the selected branch's latest commit; release updates retain their reviewed target.
 
 Feature ID: `versions-updates`.
 
@@ -9,8 +9,8 @@ Feature ID: `versions-updates`.
 - `versions-updates.check` — Read current and available versions. Cloud-managed
   instances show installed identity with Refresh server version; host update and
   channel controls are omitted and cannot dispatch.
-- `versions-updates.channel` — Use the tune icon beside the channel to choose Stable releases or Main branch. The editor stays reachable after a failed update/channel check and can retry reading the current channel before saving.
-- `versions-updates.confirm` — Admit only the exact confirmed update target.
+- `versions-updates.channel` — Use the tune icon beside the channel to choose Stable releases or Main branch. The editor opens immediately during an availability refresh, shows progress until that shared read settles, and stays reachable after failed checks with retry before saving.
+- `versions-updates.confirm` — Main can advance on the same approved branch. Changed installation, channel, branch, rollback intent or release target requires review. A refused attempt shows a timed warning beside the update actions.
 - `versions-updates.follow` — Follow progress automatically and scroll newest-first logs in a viewer capped at 16 text rows. The single rightmost sync control checks progress while an update is outstanding and availability otherwise.
 
 The separate [Wing plugin section in App settings](app-preferences-backup.md)
@@ -39,12 +39,23 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
 ## Gotchas
 
-The fixture journey proves refusal of a changed target, not a real server upgrade. A deployed update requires separate operator authorization. Readable log scrolling must not move surrounding actions. The sync control keeps its horizontal position before, during and after an update; explicit progress reads acknowledge the wait, while automatic snapshots remain quiet. The host card suite checks both themes and enlarged text, independent inner scrolling and the 16-row viewport.
+The fixture journey proves update refusal, not a real server upgrade. A deployed update requires separate operator authorization. Readable log scrolling must not move surrounding actions. The sync control keeps its horizontal position before, during and after an update; explicit progress reads acknowledge the wait, while automatic snapshots remain quiet. The host card suite checks both themes and enlarged text, independent inner scrolling and the 16-row viewport.
+
+Refusal warnings expire four seconds after appearing, extended by Android's
+accessibility timeout. Reopening confirmation reviews the refreshed target;
+a new refused attempt can show a new warning. Refusals without update output
+do not open an empty log area. The host card suite drives changed-target
+release confirmation twice in both themes at normal and enlarged text and checks expiry.
+Unconfirmed update requests and failed or partial update outcomes retain their
+status and recovery information.
 
 The channel selector remains visible when a check fails. Opening it without a
 verified channel immediately shows progress; its Check update channel control
 retries failures. Saving requires verified installation details. Closing the
 editor during a read retires its presentation without saving.
+The host card suite also checks opening during a held page refresh in both
+themes/text sizes, shared-read completion, failure/retry and departure, plus
+confirmation followed by a Main target advancing before dispatch.
 Refreshing also reconciles a preview channel changed on the server while
 preserving an unsaved Stable/Main choice.
 
