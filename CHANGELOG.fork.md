@@ -11,6 +11,20 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-12
+
+### An unsolicited reply no longer breaks conversation mode or cuts the recording
+- **What:** A reply that arrives while the conversation loop is not awaiting one (e.g. a background job's own
+  turn finishing) no longer ends Conversation mode. While the user is recording or a barge-in listen round is
+  open, the reply is queued instead of being spoken over the open mic or silently dropped; it plays once the
+  mic closes and, if a regular reply is also queued, after that one. While idle it speaks normally and the
+  loop still reopens the mic afterwards, exactly as after any other reply. A solicited reply (the loop's own
+  turn) is unaffected.
+- **Why:** Birk, t_0179b15f, 2026-11-12: `_speakCompletedReply` treated "no awaited reply" as reason enough to
+  unconditionally null the conversation key, so any reply the loop had not itself requested tore the loop down
+  — or, while the mic was open for it, got silently dropped instead of queued.
+- **Merge:** pending (this card, t_0179b15f) · **Card:** t_0179b15f
+
 ## 2026-11-08
 
 ### Car kit stays on the voice channel for the whole conversation
