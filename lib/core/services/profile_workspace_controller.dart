@@ -8499,6 +8499,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
         // Fork (Wing Voice): the replayed head owns the turn (Q6=B).
         if (TransientSend.holding(chat) || TransientSend.marked(chat)) {
           TransientSend.spend(chat);
+          // The replayed head starts a turn the resumed snapshot may not
+          // show yet; its completion event must find a running turn.
+          if (receipt.status == 'started' && !chat.runtime.blocksTurnAdmission) {
+            chat._runtime.acceptTurn();
+          }
         }
         return receipt;
       });
