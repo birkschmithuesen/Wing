@@ -98,6 +98,8 @@ Estimated residual lines are targets, not guarantees. The implementer measures t
 | `AndroidManifest.xml` | +7 | +7 | — (a `<service>` cannot move without a library module) | 3 permissions + `BackgroundVoiceService` element |
 | `MainActivity.kt` | +1 | +1 | — | `voiceChannel?.resume()` |
 
+> Implementation note (§4.2): the script is Groovy `android/app/voice-offline.gradle`, applied with `apply(from = "voice-offline.gradle")`. The Kotlin DSL script plugin could not resolve AGP types (Task 3 fallback; NATIVE ok run 43109516679).
+
 ### 4.3 Tests
 
 Our tests leave upstream test files. Shared helpers move into own fixtures.

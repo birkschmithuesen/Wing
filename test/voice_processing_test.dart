@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/controllers/voice_output_controller.dart';
 import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/voice_fixture.dart';
 
 void main() {
@@ -37,6 +38,7 @@ void main() {
         TextEditingValue? result;
         await recorder.start(
           settings,
+          const VoiceOfflinePrefs(),
           const TextEditingValue(
             text: 'Draft: ',
             selection: TextSelection.collapsed(offset: 7),
@@ -111,6 +113,7 @@ void main() {
       var edits = 0;
       final start = controller.start(
         const VoicePreferences(),
+        const VoiceOfflinePrefs(),
         TextEditingValue.empty,
         (_) => edits++,
       );
@@ -139,6 +142,7 @@ void main() {
       var edits = 0;
       await controller.start(
         const VoicePreferences(input: VoiceInputRoute.hermes),
+        const VoiceOfflinePrefs(),
         TextEditingValue.empty,
         (_) => edits++,
       );
@@ -149,6 +153,7 @@ void main() {
       expect(remote.closed, true);
       await controller.start(
         const VoicePreferences(),
+        const VoiceOfflinePrefs(),
         TextEditingValue.empty,
         (_) => edits++,
       );
@@ -171,6 +176,7 @@ void main() {
         );
         await controller.start(
           const VoicePreferences(),
+          const VoiceOfflinePrefs(),
           TextEditingValue.empty,
           (_) => fail('Unexpected draft edit'),
         );
@@ -195,6 +201,7 @@ void main() {
       addTearDown(device.stream.close);
       await controller.start(
         const VoicePreferences(input: VoiceInputRoute.hermes),
+        const VoiceOfflinePrefs(),
         TextEditingValue.empty,
         (_) => fail('Unexpected draft edit'),
       );
@@ -271,6 +278,7 @@ void main() {
       addTearDown(device.stream.close);
       await controller.start(
         const VoicePreferences(),
+        const VoiceOfflinePrefs(),
         TextEditingValue.empty,
         (_) => fail('Unexpected draft edit'),
       );
@@ -288,36 +296,6 @@ void main() {
       });
       expect(controller.error, 'Recognition timed out');
       expect(controller.active, false);
-    },
-  );
-  test(
-    'stop() asks the native layer to wait longer for longer recordings',
-    () async {
-      expect(transcriptionDeadlineFor(0), const Duration(milliseconds: 5000));
-      expect(
-        transcriptionDeadlineFor(50),
-        const Duration(milliseconds: 30000),
-      );
-      expect(
-        transcriptionDeadlineFor(500),
-        const Duration(milliseconds: 90000),
-      );
-
-      final device = VoiceDeviceFixture();
-      final controller = VoiceInputController(
-        device: device,
-        createRemote: RemoteVoiceFixture.new,
-      );
-      addTearDown(controller.dispose);
-      addTearDown(device.stream.close);
-      await controller.start(
-        const VoicePreferences(),
-        TextEditingValue.empty,
-        (_) => fail('Unexpected draft edit'),
-      );
-      controller.seconds = 50;
-      await controller.stop();
-      expect(device.lastStopTimeout, const Duration(milliseconds: 30000));
     },
   );
   test('insertion preserves text around selected range and cursor', () {

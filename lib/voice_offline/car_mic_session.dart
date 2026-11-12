@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../core/services/android_voice.dart';
+import 'vad_voice_device.dart';
 
 /// Hands-free / car-kit Bluetooth device classes (BluetoothClass.Device),
 /// the same ones HeadsetMicRoute.kt already recognises as a valid mic
@@ -51,7 +52,7 @@ class CarMicSession {
   Future<bool> beginRound(String reason) async {
     _touchIdle();
     if (_open) return true;
-    final ready = await device.openMicLink(reason);
+    final ready = await VadVoiceDevice.of(device).openMicLink(reason);
     if (!ready) {
       _log('WingMic sco=fail fallback=phone');
       return false;
@@ -66,7 +67,7 @@ class CarMicSession {
     _cancelIdle();
     if (!_open) return;
     _open = false;
-    await device.closeMicLink(reason);
+    await VadVoiceDevice.of(device).closeMicLink(reason);
     _log('WingMic sco=close reason=$reason');
   }
 

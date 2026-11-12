@@ -1,0 +1,86 @@
+// Fork (Wing Voice): on-device speech dependencies and the side-by-side variant.
+// Applied at the end of build.gradle.kts so these overrides run after upstream's.
+// Groovy on purpose: a .kts script applied from the app script crashes AGP lint analysis.
+import java.security.MessageDigest
+
+/** Downloads a pinned artifact once and verifies its SHA256 (never committed to git). */
+abstract class FetchVerifiedFile extends DefaultTask {
+    @Input
+    abstract Property<String> getUrl()
+
+    @Input
+    abstract Property<String> getSha256()
+
+    @Input
+    abstract Property<String> getFileName()
+
+    @OutputDirectory
+    abstract DirectoryProperty getOutputDirectory()
+
+    @TaskAction
+    void fetch() {
+        File target = outputDirectory.file(fileName).get().asFile
+        if (target.isFile() && digest(target) == sha256.get()) return
+        target.parentFile.mkdirs()
+        File part = new File(target.path + ".part")
+        new URI(url.get()).toURL().openStream().withCloseable { input ->
+            part.withOutputStream { out -> out << input }
+        }
+        String actual = digest(part)
+        if (actual != sha256.get()) throw new IllegalStateException("SHA256 mismatch for ${url.get()}: $actual")
+        if (!part.renameTo(target)) throw new IllegalStateException("Could not move $part to $target")
+    }
+
+    private static String digest(File file) {
+        MessageDigest md = MessageDigest.getInstance("SHA-256")
+        file.withInputStream { stream ->
+            byte[] buffer = new byte[1 << 16]
+            int n
+            while ((n = stream.read(buffer)) >= 0) md.update(buffer, 0, n)
+        }
+        return md.digest().collect { String.format("%02x", it) }.join("")
+    }
+}
+
+def fetchSherpaOnnxAar = tasks.register("fetchSherpaOnnxAar", FetchVerifiedFile) { task ->
+    task.url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar")
+    task.sha256.set("633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96")
+    task.fileName.set("sherpa-onnx-1.13.8.aar")
+    task.outputDirectory.set(layout.projectDirectory.dir("libs"))
+}
+def fetchSileroVad = tasks.register("fetchSileroVad", FetchVerifiedFile) { task ->
+    task.url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx")
+    task.sha256.set("9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6")
+    task.fileName.set("silero_vad.onnx")
+    task.outputDirectory.set(layout.buildDirectory.dir("generated/vadAssets"))
+}
+// preBuild is created by AGP per variant; match it lazily.
+tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchSherpaOnnxAar) }
+
+// Local side-by-side variant ("Wing Voice"): own package id and label, so it
+// installs next to the official Wing release and signs with a local key.
+def voiceVariant = providers.gradleProperty("voiceVariant").getOrNull() == "true"
+
+android {
+    buildTypes {
+        getByName("release") {
+            proguardFiles("proguard-rules.pro")
+            if (voiceVariant) manifestPlaceholders["appLabel"] = "Wing Voice"
+        }
+    }
+}
+
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        if (voiceVariant) variant.applicationId.set("com.tarkilhk.wing.voice")
+    }
+    onVariants(selector().all()) { variant ->
+        variant.sources.assets?.addGeneratedSourceDirectory(fetchSileroVad, { task -> task.outputDirectory })
+    }
+}
+
+dependencies {
+    add("implementation", files("libs/sherpa-onnx-1.13.8.aar"))
+    add("implementation", "org.apache.commons:commons-compress:1.27.1")
+    add("testImplementation", "junit:junit:4.13.2")
+}

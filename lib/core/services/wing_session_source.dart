@@ -6,6 +6,8 @@
 /// unmodified gateway sees exactly the traffic it always saw.
 library;
 
+import 'profile_gateway.dart';
+
 const String wingSessionSource = 'wing';
 const String desktopSessionSource = 'desktop';
 
@@ -18,4 +20,21 @@ bool gatewayAdvertisesWingSource(Map<String, dynamic> readyFrame) {
   if (payload is! Map) return false;
   final sources = payload['session_sources'];
   return sources is List && sources.contains(wingSessionSource);
+}
+
+final Expando<bool> _wingAdvertised = Expando<bool>();
+
+extension WingGatewaySource on ProfileGateway {
+  /// Set from `gateway.ready` on every socket open (true and false, so a
+  /// reconnect to an older gateway resets it).
+  void noteReady(Map<String, dynamic>? ready) {
+    _wingAdvertised[this] =
+        ready != null && gatewayAdvertisesWingSource(ready);
+  }
+
+  bool get wingSourceAdvertised => _wingAdvertised[this] ?? false;
+
+  /// The session `source` this gateway accepts from Wing.
+  String sourceFor(String fallback) =>
+      wingSourceAdvertised ? wingSessionSource : fallback;
 }

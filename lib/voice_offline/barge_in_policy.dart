@@ -8,7 +8,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 
 import '../core/services/vad_endpoint.dart';
-import '../core/services/voice_preferences.dart';
+import 'voice_offline_prefs.dart';
 
 /// Offer "Interrupt read-aloud by speaking" (set by the echo gate, Task 7).
 const bool bargeInPlaybackAvailable = true;
@@ -35,7 +35,7 @@ void bargeLog(String message) => debugPrint('WingBargeIn $message');
 /// Endpointing for listen rounds: same pause and lead-in as dictation, a
 /// higher minimum speech, and no early no-speech stop (a tool turn can run
 /// for minutes; the round restarts at its maximum duration instead).
-VadEndpointConfig listenConfig(VoicePreferences settings) => VadEndpointConfig(
+VadEndpointConfig listenConfig(VoiceOfflinePrefs settings) => VadEndpointConfig(
   pause: settings.vad.pause,
   minSpeech: settings.listenMinSpeech,
   preRoll: settings.vad.preRoll,

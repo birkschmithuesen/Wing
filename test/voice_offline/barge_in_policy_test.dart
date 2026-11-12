@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/barge_in_policy.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 
 void main() {
   group('listenConfig', () {
     test('keeps the pause, uses the listen minimum and never times out early', () {
-      const settings = VoicePreferences(
+      const settings = VoiceOfflinePrefs(
         vad: VadEndpointConfig(
           pause: Duration(milliseconds: 1400),
           maxDuration: Duration(seconds: 900),
@@ -21,7 +21,7 @@ void main() {
     });
 
     test('a cough of 10 windows does not start speech at the 400 ms default', () {
-      final endpointer = VadEndpointer(listenConfig(const VoicePreferences()));
+      final endpointer = VadEndpointer(listenConfig(const VoiceOfflinePrefs()));
       endpointer.feedAll([...List.filled(10, 0.9), ...List.filled(5, 0.1)]);
       expect(endpointer.speechStarted, isFalse);
       endpointer.feedAll(List.filled(13, 0.9));

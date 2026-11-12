@@ -9,6 +9,8 @@ import '../core/services/voice_preferences.dart';
 import 'car_mode_bridge.dart';
 import 'car_mode_screen.dart';
 import 'car_mode_state.dart';
+import '../voice_offline/vad_voice_device.dart';
+import '../voice_offline/voice_offline_prefs.dart';
 
 /// One car-mode visit over one chat. Owns the route, the screen-on holder, the
 /// held recording and the text-free log (spec §4, §7).
@@ -49,7 +51,7 @@ class CarModeSession extends ChangeNotifier {
 
   /// The in-session conversation-mode switch (hands-free, automatic end of
   /// turn). Session-local only; never reads or changes the saved
-  /// [VoicePreferences.conversation].
+  /// [VoiceOfflinePrefs.conversation].
   bool get loopOn => _loopOn;
 
   /// The in-session "Interrupt by speaking" switch. Session-local only;
@@ -245,8 +247,8 @@ class CarModeSession extends ChangeNotifier {
   }
 
   /// Case 2 (loop switch off): rounds end by tap only (spec §4.2). Reads the
-  /// session-local switch, never the saved [VoicePreferences.conversation].
-  VoicePreferences roundSettings(VoicePreferences settings) =>
+  /// session-local switch, never the saved [VoiceOfflinePrefs.conversation].
+  VoiceOfflinePrefs roundSettings(VoiceOfflinePrefs settings) =>
       _active && !_loopOn ? carTapOnlySettings(settings) : settings;
 
   /// The status-row switch (spec: top row, outside the tap area). Session-

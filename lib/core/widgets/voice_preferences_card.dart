@@ -1,15 +1,14 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../voice_offline/voice_offline_settings.dart';
 import '../controllers/voice_output_controller.dart';
 import '../services/android_voice.dart';
 import '../services/device_preference.dart';
 import '../services/voice_preferences.dart';
 import '../services/voice_sample.dart';
-import '../../voice_offline/barge_in_settings.dart';
 import 'studio_error.dart';
 import 'studio_select.dart';
-import 'vad_settings_section.dart';
 
 class VoicePreferencesPage extends StatelessWidget {
   const VoicePreferencesPage({
@@ -125,6 +124,10 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
     }
   }
 
+  void _setSaving(bool saving) {
+    if (mounted) setState(() => _saving = saving);
+  }
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if ({
@@ -148,15 +151,9 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
 
   Future<void> _saveInput(String value) async {
     final device = widget.device ?? AndroidVoice.instance;
-    final wasVad = _preferences.input == VoiceInputRoute.vad;
+    final from = _preferences.input;
     await _save(VoicePreferences.inputKey, value);
-    final isVad = _preferences.input == VoiceInputRoute.vad;
-    if (isVad == wasVad) return;
-    try {
-      await (isVad ? device.prepareVad() : device.releaseVad());
-    } catch (_) {
-      // The workspace owns media keys and retries on resume; settings stay saved.
-    }
+    await onVoiceInputRouteChanged(device, from, _preferences.input);
   }
 
   Widget _engine(String title, String key, VoiceProcessing selected) =>
@@ -256,10 +253,10 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           key: ValueKey('voice-input-${_preferences.input.name}'),
           label: 'Voice input',
           value: _preferences.input.name,
-          options: const [
-            (value: 'local', label: 'Local · Android'),
-            (value: 'hermes', label: 'Hermes · server profile'),
-            (value: 'vad', label: 'On this phone · Parakeet'),
+          options: [
+            const (value: 'local', label: 'Local · Android'),
+            const (value: 'hermes', label: 'Hermes · server profile'),
+            vadInputChoice(context),
           ],
           onChanged: _saving
               ? null
@@ -276,40 +273,16 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           VoiceInputRoute.vad =>
             'Recognize on this phone. Pauses end each message automatically.',
         }),
-        if (_preferences.input == VoiceInputRoute.vad) ...[
-          const SizedBox(height: 12),
-          StudioSelect<String>(
-            key: ValueKey('voice-mic-route-${_preferences.micRoute.name}'),
-            label: 'Microphone',
-            value: _preferences.micRoute.name,
-            options: const [
-              (value: 'auto', label: 'Automatic'),
-              (value: 'phone', label: 'Phone mic'),
-              (value: 'bluetooth', label: 'Bluetooth device'),
-              (value: 'wired', label: 'Wired headset'),
-            ],
-            onChanged: _saving
-                ? null
-                : (value) {
-                    if (value != null) {
-                      _save(VoicePreferences.micRouteKey, value);
-                    }
-                  },
-          ),
-          const SizedBox(height: 12),
-          Text(
-            _preferences.micRoute == VoiceMicRoute.auto
-                ? 'Prefers a connected Bluetooth or wired headset mic, otherwise the phone.'
-                : 'If this microphone is not connected when recording starts, Wing uses Automatic instead.',
-          ),
-          const SizedBox(height: 12),
-          VadSettingsSection(
-            settings: _preferences,
+        if (_preferences.input == VoiceInputRoute.vad)
+          VoiceOfflineSettings(
+            part: VoiceOfflineSettingsPart.vadRoute,
+            preferences: widget.preferences,
             device: widget.device ?? AndroidVoice.instance,
+            route: _preferences.input,
             saving: _saving,
-            onSave: _save,
+            onSaving: _setSaving,
+            stopPreview: _preview.stop,
           ),
-        ],
         if (_preferences.input == VoiceInputRoute.local) ...[
           const SizedBox(height: 12),
           if (_capabilities?.recognitionAvailable == false)
@@ -331,40 +304,14 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
               ? 'Read aloud with an installed offline Android voice.'
               : 'Send reply text to the selected Hermes profile for speech generation.',
         ),
-        SwitchListTile(
-          key: const ValueKey('voice-auto-speak'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Spoken replies'),
-          subtitle: const Text(
-            'Read each finished reply aloud automatically while the chat is open.',
-          ),
-          value: _preferences.autoSpeak,
-          onChanged: _saving
-              ? null
-              : (value) =>
-                    _save(VoicePreferences.autoSpeakKey, value ? 'on' : 'off'),
-        ),
-        SwitchListTile(
-          key: const ValueKey('voice-conversation'),
-          contentPadding: EdgeInsets.zero,
-          title: const Text('Conversation mode'),
-          subtitle: const Text(
-            'Send dictation when you stop speaking, read the reply aloud and '
-            'listen again. Stop, Cancel or silence ends the conversation.',
-          ),
-          value: _preferences.conversation,
-          onChanged: _saving
-              ? null
-              : (value) => _save(
-                  VoicePreferences.conversationKey,
-                  value ? 'on' : 'off',
-                ),
-        ),
-        BargeInSettings(
-          settings: _preferences,
+        VoiceOfflineSettings(
+          part: VoiceOfflineSettingsPart.replies,
+          preferences: widget.preferences,
           device: widget.device ?? AndroidVoice.instance,
+          route: _preferences.input,
           saving: _saving,
-          onSave: _save,
+          onSaving: _setSaving,
+          stopPreview: _preview.stop,
         ),
         if (_preferences.output == VoiceProcessing.local && !_loading) ...[
           const SizedBox(height: 12),

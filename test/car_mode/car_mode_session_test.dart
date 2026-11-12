@@ -7,7 +7,7 @@ import 'package:wing/car_mode/car_mode_screen.dart';
 import 'package:wing/car_mode/car_mode_session.dart';
 import 'package:wing/car_mode/car_mode_state.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
-import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/voice_fixture.dart';
 
 class _World extends ChangeNotifier {
@@ -229,8 +229,8 @@ void main() {
   });
 
   testWidgets('roundSettings: tap-only while the loop switch is off, no matter the saved setting', (tester) async {
-    const off = VoicePreferences();
-    const on = VoicePreferences(conversation: true);
+    const off = VoiceOfflinePrefs();
+    const on = VoiceOfflinePrefs(conversation: true);
     expect(identical(session.roundSettings(off), off), isTrue); // not in car mode
     await open(tester);
     expect(session.roundSettings(off).vad.pause, off.vad.maxDuration);
@@ -246,11 +246,11 @@ void main() {
 
   testWidgets('a saved conversation=on still enters with loop=off (spec: never starts hands-free)', (tester) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString(VoicePreferences.conversationKey, 'on');
+    await prefs.setString(VoiceOfflinePrefs.conversationKey, 'on');
     await open(tester);
     expect(logs.first, 'WingCar enter route=local loop=off');
     expect(session.loopOn, isFalse);
-    const saved = VoicePreferences(conversation: true);
+    const saved = VoiceOfflinePrefs(conversation: true);
     // Tap-only: the vad pause can never end the round before the limit.
     expect(session.roundSettings(saved).vad.pause, saved.vad.maxDuration);
     session.exit('test');
@@ -263,14 +263,14 @@ void main() {
     session.setLoop(true);
     expect(session.loopOn, isTrue);
     expect(logs.last, 'WingCar loop=on source=toggle');
-    const saved = VoicePreferences();
+    const saved = VoiceOfflinePrefs();
     expect(identical(session.roundSettings(saved), saved), isTrue); // loop on: pass through
     session.setLoop(false);
     expect(logs.last, 'WingCar loop=off source=toggle');
     expect(session.roundSettings(saved).vad.pause, saved.vad.maxDuration); // loop off: tap-only again
-    // The saved VoicePreferences.conversation flag never changes.
+    // The saved VoiceOfflinePrefs.conversation flag never changes.
     final prefs = await SharedPreferences.getInstance();
-    expect(prefs.getString(VoicePreferences.conversationKey), isNull);
+    expect(prefs.getString(VoiceOfflinePrefs.conversationKey), isNull);
     session.exit('test');
     await tester.pumpAndSettle();
     await open(tester); // re-enter: back to off

@@ -7,8 +7,8 @@ import '../core/models/gateway_activity.dart';
 import '../core/services/profile_workspace_controller.dart';
 import '../core/services/server_connection_status.dart';
 import '../core/services/vad_endpoint.dart';
-import '../core/services/voice_preferences.dart';
 import '../voice_offline/barge_in_coordinator.dart';
+import '../voice_offline/voice_offline_prefs.dart';
 import 'car_mode_state.dart';
 
 /// What car mode may do in the chat workspace. The workspace builds it from
@@ -49,26 +49,23 @@ class CarModeBridge {
 }
 
 /// Case 2 (spec §4.2): the vad pause can never end the round before the
-/// limit, so only a tap (or the media key) does. Copies every field.
-VoicePreferences carTapOnlySettings(VoicePreferences s) => VoicePreferences(
-  input: s.input,
-  output: s.output,
-  language: s.language,
-  voice: s.voice,
-  rate: s.rate,
-  autoSpeak: s.autoSpeak,
-  conversation: s.conversation,
-  vad: VadEndpointConfig(
-    pause: s.vad.maxDuration,
-    minSpeech: s.vad.minSpeech,
-    preRoll: s.vad.preRoll,
-    maxDuration: s.vad.maxDuration,
-    noSpeechTimeout: s.vad.noSpeechTimeout,
-  ),
-  cues: s.cues,
-  debugRecordings: s.debugRecordings,
-  audioSource: s.audioSource,
-);
+/// limit, so only a tap (or the media key) does. Copies the fields listed below and sets
+/// `pause` to the maximum duration; all other fields keep their defaults.
+VoiceOfflinePrefs carTapOnlySettings(VoiceOfflinePrefs s) =>
+    VoiceOfflinePrefs(
+      autoSpeak: s.autoSpeak,
+      conversation: s.conversation,
+      vad: VadEndpointConfig(
+        pause: s.vad.maxDuration,
+        minSpeech: s.vad.minSpeech,
+        preRoll: s.vad.preRoll,
+        maxDuration: s.vad.maxDuration,
+        noSpeechTimeout: s.vad.noSpeechTimeout,
+      ),
+      cues: s.cues,
+      debugRecordings: s.debugRecordings,
+      audioSource: s.audioSource,
+    );
 
 /// Spec §4.4. [sendBlocked]: the workspace would refuse a send right now
 /// (`recovering`, chat opening or offline snapshot).

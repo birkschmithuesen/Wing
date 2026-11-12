@@ -2,9 +2,9 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 
-import '../core/services/voice_preferences.dart';
 import 'barge_in_policy.dart';
 import 'turn_listener.dart';
+import 'voice_offline_prefs.dart';
 
 /// What the coordinator needs from one chat. The workspace screen adapts
 /// its controller to this, so this file never imports the chat types.
@@ -71,7 +71,7 @@ class BargeInCoordinator extends ChangeNotifier {
   Future<void> open(
     Object chat,
     ListenTarget target,
-    VoicePreferences settings, {
+    VoiceOfflinePrefs settings, {
     bool playback = false,
     Future<void> Function()? onBarge,
   }) async {

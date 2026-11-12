@@ -5,6 +5,8 @@
 **Goal:** Move every fork change that sits inside an upstream-owned file into fork-owned files, leaving
 only thin hooks, with no behaviour change, so the later upstream merge (`t_d1d49ff1`) is small.
 
+> Implementation note: the fork build script is Groovy `android/app/voice-offline.gradle` (not `.kts`): the Kotlin DSL script plugin could not resolve AGP types (Task 3 fallback; NATIVE ok run 43109516679). Names below are the original plan.
+
 **Architecture:** Own units with narrow interfaces (`VadVoiceDevice` mixin, `VoiceOfflinePrefs`,
 `VadInputRound`, `VoiceOfflineSettings`, `WorkspaceVoiceDriver` + `WorkspaceVoiceHost`, `NetworkGate`,
 `CompletedReplies`, `InlineMediaThumbnail`, `VoiceOfflineHandler.kt`, `RecognizerSelection.kt`,

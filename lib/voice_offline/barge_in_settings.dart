@@ -11,6 +11,7 @@ import '../core/widgets/studio_select.dart';
 import 'barge_in_policy.dart';
 import 'headphone_route.dart';
 import 'turn_listener.dart';
+import 'voice_offline_prefs.dart';
 
 /// Conversation-mode rows for listening while Hermes works, and the debug
 /// echo probe. Shown only on the vad route with Conversation mode on.
@@ -18,6 +19,7 @@ class BargeInSettings extends StatefulWidget {
   const BargeInSettings({
     super.key,
     required this.settings,
+    required this.offline,
     required this.device,
     required this.saving,
     required this.onSave,
@@ -26,6 +28,7 @@ class BargeInSettings extends StatefulWidget {
   });
 
   final VoicePreferences settings;
+  final VoiceOfflinePrefs offline;
   final VoiceDevice device;
   final bool saving;
   final Future<void> Function(String key, String value) onSave;
@@ -62,7 +65,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   /// on it.
   Future<void> _togglePlayback(bool on) async {
     unawaited(
-      widget.onSave(VoicePreferences.bargeInPlaybackKey, on ? 'on' : 'off'),
+      widget.onSave(VoiceOfflinePrefs.bargeInPlaybackKey, on ? 'on' : 'off'),
     );
     if (!on) return;
     await _route.requestBluetooth();
@@ -79,11 +82,12 @@ class _BargeInSettingsState extends State<BargeInSettings> {
     final listener = _listener ??= TurnListener(device: widget.device);
     final output = _output ??= VoiceOutputController(widget.device);
     final settings = widget.settings;
+    final offline = widget.offline;
     setState(() => _probing = true);
     final route = await _route.current();
     bargeLog(routeLogLine(route, classifyRoute(route, wingCarMode: false)));
     try {
-      await listener.probe(settings, () async {
+      await listener.probe(offline, () async {
         await output.speak(
           'echo-probe',
           echoProbeText,
@@ -111,8 +115,8 @@ class _BargeInSettingsState extends State<BargeInSettings> {
 
   @override
   Widget build(BuildContext context) {
-    final s = widget.settings;
-    if (s.input != VoiceInputRoute.vad || !s.conversation) {
+    final s = widget.offline;
+    if (widget.settings.input != VoiceInputRoute.vad || !s.conversation) {
       return const SizedBox.shrink();
     }
     return Column(
@@ -126,7 +130,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
           value: s.listenTurn,
           onChanged: widget.saving
               ? null
-              : (value) => _toggle(VoicePreferences.listenTurnKey, value),
+              : (value) => _toggle(VoiceOfflinePrefs.listenTurnKey, value),
         ),
         if (s.listenTurn) ...[
           const SizedBox(height: 12),
@@ -137,7 +141,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
             label: 'Speech needed to steer',
             value: s.listenMinSpeech.inMilliseconds.toString(),
             options: [
-              for (final value in VoicePreferences.listenMinSpeechChoices)
+              for (final value in VoiceOfflinePrefs.listenMinSpeechChoices)
                 (value: value, label: _seconds(value)),
             ],
             onChanged: widget.saving
@@ -146,7 +150,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
                     if (value != null) {
                       unawaited(
                         widget.onSave(
-                          VoicePreferences.listenMinSpeechKey,
+                          VoiceOfflinePrefs.listenMinSpeechKey,
                           value,
                         ),
                       );

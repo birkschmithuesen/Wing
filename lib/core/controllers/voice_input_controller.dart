@@ -4,20 +4,11 @@ import 'package:flutter/widgets.dart';
 import 'package:uuid/uuid.dart';
 import '../services/android_voice.dart';
 import '../services/hermes_voice.dart';
-import '../services/vad_endpoint.dart';
 import '../services/voice_preferences.dart';
-import '../../voice_offline/car_mic_session.dart';
+import '../../voice_offline/vad_input_round.dart';
+import '../../voice_offline/voice_offline_prefs.dart';
 
 enum VoiceInputPhase { idle, starting, recording, transcribing }
-
-/// How long to let the native recognizer finish after stop(), scaled with
-/// how long the user spoke: a fixed short window cuts off longer on-device
-/// transcriptions before the model is done (card t_49d11117 - ~50s of audio
-/// needs well over 5s to finalize on this hardware).
-Duration transcriptionDeadlineFor(int recordedSeconds) {
-  final ms = 5000 + recordedSeconds * 500;
-  return Duration(milliseconds: ms < 90000 ? ms : 90000);
-}
 
 /// A single capture, tied to a draft snapshot and an immutable remote owner.
 /// Only a completed transcript edits the draft; cancellation preserves it exactly.
@@ -29,27 +20,12 @@ class VoiceInputController extends ChangeNotifier {
   final VoiceDevice device;
   final RemoteVoice Function() createRemote;
 
-  /// Holds a connected car kit's SCO link open for the whole hands-free
-  /// conversation, starting with the first dictation round (spec Birk
-  /// decision 2026-10-19). Null keeps today's per-round behaviour (e.g.
-  /// headphone routes never pass one in, see [_carKitConnected]).
-  final CarMicSession? carMicSession;
-  final bool Function() _carKitConnected;
-
-  /// True while Wing's own car-mode screen is the current route (spec: SCO
-  /// also opens on entering car mode with a car connected, not only on the
-  /// first dictation of Conversation mode).
-  final bool Function() _carModeActive;
+  final VadInputRound? vadRound;
   late final StreamSubscription<Map<String, dynamic>> _events;
   VoiceInputPhase phase = VoiceInputPhase.idle;
   String partial = '';
   String? error;
   int seconds = 0;
-
-  /// Set once, right after [start], when a manual [VoicePreferences.micRoute]
-  /// choice was not available and this round fell back to Automatic. The
-  /// caller shows it once (e.g. a snackbar) and clears it.
-  String? micFallbackHint;
 
   /// Whether the last transcript arrived because the recognizer ended the
   /// utterance itself (end of speech), not because the user pressed Stop or
@@ -59,13 +35,12 @@ class VoiceInputController extends ChangeNotifier {
   String? _id;
   bool _disposed = false;
   RemoteVoice? _remote;
-  VadEndpointer? _endpointer;
 
   /// Upper bound shown while recording ("Recording · 12s / 600s" on vad).
   int maxSeconds = 120;
 
   /// True while a round on the vad route is active.
-  bool get vad => _endpointer != null;
+  bool get vad => vadRound?.active ?? false;
   Timer? _timer;
   TextEditingValue? _draft;
   void Function(TextEditingValue)? _onResult;
@@ -73,15 +48,11 @@ class VoiceInputController extends ChangeNotifier {
   VoiceInputController({
     required this.device,
     required this.createRemote,
-    this.carMicSession,
-    bool Function()? carKitConnected,
-    bool Function()? carModeActive,
-  }) : _carKitConnected = carKitConnected ?? _never,
-       _carModeActive = carModeActive ?? _never {
+    this.vadRound,
+  }) {
     _events = device.events.listen(_event);
   }
 
-  static bool _never() => false;
   bool get active => phase != VoiceInputPhase.idle;
   void _notify() {
     if (!_disposed) notifyListeners();
@@ -89,6 +60,7 @@ class VoiceInputController extends ChangeNotifier {
 
   Future<void> start(
     VoicePreferences settings,
+    VoiceOfflinePrefs offline,
     TextEditingValue draft,
     void Function(TextEditingValue) onResult,
   ) async {
@@ -98,7 +70,6 @@ class VoiceInputController extends ChangeNotifier {
     _draft = draft;
     _onResult = onResult;
     error = null;
-    micFallbackHint = null;
     partial = '';
     seconds = 0;
     finishedOnItsOwn = false;
@@ -107,36 +78,13 @@ class VoiceInputController extends ChangeNotifier {
     _notify();
     try {
       if (settings.input == VoiceInputRoute.vad) {
-        _endpointer = VadEndpointer(settings.vad);
-        maxSeconds = settings.vad.maxDuration.inSeconds;
-        // Spec Birk decision 2026-10-19: the first dictation of a hands-free
-        // conversation (or any dictation while Wing's own car mode is on,
-        // with a car connected) opens the car kit's SCO link for the whole
-        // conversation instead of just this round. A manual phone/wired mic
-        // choice is left alone - it already skips the Bluetooth path.
-        var mic = settings.micRoute;
-        var holdMic = false;
-        final session = carMicSession;
-        if (session != null &&
-            _carKitConnected() &&
-            (settings.conversation || _carModeActive()) &&
-            (mic == VoiceMicRoute.auto || mic == VoiceMicRoute.bluetooth)) {
-          holdMic = await session.beginRound('conversation');
-          if (holdMic) mic = VoiceMicRoute.bluetooth;
-        }
-        if (_id != id || _disposed) return;
-        final fellBack = await device.startVad(
+        maxSeconds = offline.vad.maxDuration.inSeconds;
+        final current = await vadRound!.begin(
           id,
-          VadCaptureOptions(
-            cues: settings.cues,
-            debug: settings.debugRecordings,
-            source: settings.audioSource,
-            maxDuration: settings.vad.maxDuration,
-            mic: mic,
-            holdMic: holdMic,
-          ),
+          offline,
+          isCurrent: () => _id == id && !_disposed,
         );
-        if (fellBack) micFallbackHint = micFallbackMessage(settings.micRoute);
+        if (!current) return;
       } else {
         maxSeconds = maxRecordingSeconds;
         if (settings.input == VoiceInputRoute.hermes) _remote = createRemote();
@@ -156,7 +104,7 @@ class VoiceInputController extends ChangeNotifier {
         seconds++;
         _notify();
         // The vad endpointer owns its own limit.
-        if (_endpointer == null && seconds >= maxRecordingSeconds) {
+        if (!vad && seconds >= maxRecordingSeconds) {
           unawaited(stop());
         }
       });
@@ -175,13 +123,13 @@ class VoiceInputController extends ChangeNotifier {
       unawaited(stop());
       return;
     }
-    if (event['windows'] case final List<Object?> windows) {
-      final endpointer = _endpointer;
-      if (endpointer == null || phase != VoiceInputPhase.recording) return;
-      final decision = endpointer.feedAll(
-        windows.map((value) => (value as num).toDouble()),
-      );
-      if (decision != null) unawaited(_finishVad(decision));
+    if (vadRound?.onEvent(
+          event,
+          transcribing: _vadTranscribing,
+          finish: _finish,
+          fail: _fail,
+        ) ??
+        false) {
       return;
     }
     if (event['text'] case final String text) {
@@ -197,10 +145,12 @@ class VoiceInputController extends ChangeNotifier {
   Future<void> stop() async {
     final id = _id;
     if (id == null || phase != VoiceInputPhase.recording) return;
-    final endpointer = _endpointer;
-    if (endpointer != null) {
-      await _finishVad(endpointer.forceEnd(VadEndReason.manual));
-      return;
+    if (vad) {
+      return vadRound!.forceEnd(
+        transcribing: _vadTranscribing,
+        finish: _finish,
+        fail: _fail,
+      );
     }
     _stopRequested = true;
     _timer?.cancel();
@@ -228,49 +178,19 @@ class VoiceInputController extends ChangeNotifier {
 
   /// Media key: ends the round as a hands-free action (sent in conversation mode).
   Future<void> stopHandsFree() async {
-    final endpointer = _endpointer;
     if (_id == null || phase != VoiceInputPhase.recording) return;
-    if (endpointer == null) return stop();
-    await _finishVad(endpointer.forceEnd(VadEndReason.mediaKey));
+    if (!vad) return stop();
+    await vadRound!.stopHandsFree(
+      transcribing: _vadTranscribing,
+      finish: _finish,
+      fail: _fail,
+    );
   }
 
-  Future<void> _finishVad(VadDecision decision) async {
-    final id = _id;
-    final endpointer = _endpointer;
-    if (id == null || endpointer == null || phase != VoiceInputPhase.recording) {
-      return;
-    }
+  void _vadTranscribing() {
     _timer?.cancel();
-    if (!decision.hasSpeech) {
-      // Tell the phone why the round ended (debug JSON reason "noSpeech"; Kotlin
-      // skips recognition for it), then end the round. Channel calls keep their
-      // order, so the following cancel finds no round left.
-      unawaited(
-        device
-            .finishVad(id, decision, endpointer.config)
-            .then((_) {}, onError: (Object _) {}),
-      );
-      _fail(StateError('No speech detected. Try again.'));
-      return;
-    }
-    _stopRequested =
-        decision.reason != VadEndReason.pause &&
-        decision.reason != VadEndReason.mediaKey;
     phase = VoiceInputPhase.transcribing;
     _notify();
-    try {
-      final chunks = vadChunksFor(
-        endpointer.probabilities,
-        decision.startWindow,
-        decision.endWindow,
-      );
-      final text = await device
-          .finishVad(id, decision, endpointer.config, chunks: chunks)
-          .timeout(vadRecognitionBudget(decision.segment, chunks: chunks.length));
-      if (_id == id && !_disposed) _finish(text);
-    } catch (failure) {
-      if (_id == id) _fail(failure);
-    }
   }
 
   void _finish(String transcript) {
@@ -280,7 +200,9 @@ class VoiceInputController extends ChangeNotifier {
     }
     final draft = _draft!;
     final callback = _onResult;
-    finishedOnItsOwn = !_stopRequested && _remote == null;
+    finishedOnItsOwn = vad
+        ? vadRound!.finishedOnItsOwn
+        : !_stopRequested && _remote == null;
     final result = insertVoiceTranscript(draft, transcript.trim());
     _clear();
     callback?.call(result);
@@ -301,7 +223,7 @@ class VoiceInputController extends ChangeNotifier {
     _timer = null;
     _remote?.close();
     _remote = null;
-    _endpointer = null;
+    vadRound?.clear();
     _draft = null;
     _onResult = null;
     phase = VoiceInputPhase.idle;
@@ -349,14 +271,6 @@ TextEditingValue insertVoiceTranscript(TextEditingValue draft, String text) {
     ),
   );
 }
-
-String micFallbackMessage(VoiceMicRoute chosen) => switch (chosen) {
-  VoiceMicRoute.bluetooth =>
-    'Bluetooth microphone not found. Used the automatic microphone for this recording.',
-  VoiceMicRoute.wired =>
-    'Wired microphone not found. Used the automatic microphone for this recording.',
-  _ => 'Chosen microphone not available. Used the automatic microphone for this recording.',
-};
 
 String voiceFailureMessage(Object failure) => switch (failure) {
   PlatformException error => error.message ?? 'Android voice is unavailable.',

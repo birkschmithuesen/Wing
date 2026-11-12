@@ -13,6 +13,18 @@ the README feature list current for every future change.
 
 ## 2026-11-12
 
+### Internal: fork code moved out of upstream files (no behaviour change)
+- **What:** Fork logic that lived inside upstream-owned files moved into fork-owned files
+  (`lib/voice_offline/`, `lib/fork/`, `lib/car_mode/`, `voiceoffline/VoiceOfflineHandler.kt`,
+  `android/app/voice-offline.gradle`, own test files); upstream files keep thin hooks. Lines in upstream
+  files: +4351/-157 (38 files) -> +753/-175 (30 files); probe-merge conflicts against `upstream/main`
+  e8a4089c: 27 files / 91 blocks -> 22 files / 94 blocks (blocks did not drop: the remaining hooks sit in
+  heavily edited upstream code, and test-file hooks count too). Kept open: `profile_workspace_screen.dart`
+  still +179/-55 (spec target about +60/-10).
+- **Why:** Birk 2026-11-11: own code in own files keeps every later upstream merge small; the upstream
+  merge card t_d1d49ff1 runs after this one.
+- **Merge:** pending [Merge] card · **Card:** t_09ff7726 (parent t_ba3601fa)
+
 ### An unsolicited reply no longer breaks conversation mode or cuts the recording
 - **What:** A reply that arrives while the conversation loop is not awaiting one (e.g. a background job's own
   turn finishing) no longer ends Conversation mode. While the user is recording or a barge-in listen round is

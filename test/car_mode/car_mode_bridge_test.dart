@@ -8,10 +8,10 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/barge_in_coordinator.dart';
 import 'package:wing/voice_offline/barge_in_policy.dart';
 import 'package:wing/voice_offline/turn_listener.dart';
+import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/profile_browser_fixture.dart';
 import '../support/voice_fixture.dart';
 
@@ -28,12 +28,7 @@ class _NoopListenTarget implements ListenTarget {
 
 void main() {
   test('carTapOnlySettings copies every field and only stretches the vad pause', () {
-    const s = VoicePreferences(
-      input: VoiceInputRoute.vad,
-      output: VoiceProcessing.hermes,
-      language: 'de-DE',
-      voice: 'v1',
-      rate: 1.2,
+    const s = VoiceOfflinePrefs(
       autoSpeak: true,
       conversation: false,
       vad: VadEndpointConfig(
@@ -48,11 +43,6 @@ void main() {
       audioSource: VadAudioSource.recognition,
     );
     final t = carTapOnlySettings(s);
-    expect(t.input, s.input);
-    expect(t.output, s.output);
-    expect(t.language, s.language);
-    expect(t.voice, s.voice);
-    expect(t.rate, s.rate);
     expect(t.autoSpeak, s.autoSpeak);
     expect(t.conversation, s.conversation);
     expect(t.cues, s.cues);
@@ -70,7 +60,7 @@ void main() {
     expect(normal.feedAll(List.filled(30, .9)), isNull);
     expect(normal.feedAll(List.filled(60, .1))?.reason, VadEndReason.pause);
 
-    final tapOnly = VadEndpointer(carTapOnlySettings(const VoicePreferences()).vad);
+    final tapOnly = VadEndpointer(carTapOnlySettings(const VoiceOfflinePrefs()).vad);
     expect(tapOnly.feedAll(List.filled(30, .9)), isNull);
     expect(tapOnly.feedAll(List.filled(200, .1)), isNull);
     expect(tapOnly.forceEnd(VadEndReason.mediaKey).reason, VadEndReason.mediaKey);
@@ -129,7 +119,7 @@ void main() {
       await bargeIn.open(
         chat.key,
         _NoopListenTarget(),
-        const VoicePreferences(input: VoiceInputRoute.vad),
+        const VoiceOfflinePrefs(),
       );
       expect(
         carSnapshotOf(controller, input, output, bargeIn: bargeIn).listenOpen,

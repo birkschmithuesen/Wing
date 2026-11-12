@@ -1,8 +1,5 @@
 import com.android.build.gradle.internal.api.ApkVariantOutputImpl
-import java.io.File
 import java.io.FileInputStream
-import java.net.URI
-import java.security.MessageDigest
 import java.util.Properties
 
 plugins {
@@ -31,63 +28,6 @@ abstract class GenerateLauncherShortcuts : DefaultTask() {
     }
 }
 
-/** Downloads a pinned artifact once and verifies its SHA256 (never committed to git). */
-abstract class FetchVerifiedFile : DefaultTask() {
-    @get:Input
-    abstract val url: Property<String>
-
-    @get:Input
-    abstract val sha256: Property<String>
-
-    @get:Input
-    abstract val fileName: Property<String>
-
-    @get:OutputDirectory
-    abstract val outputDirectory: DirectoryProperty
-
-    @TaskAction
-    fun fetch() {
-        val target = outputDirectory.file(fileName).get().asFile
-        if (target.isFile && digest(target) == sha256.get()) return
-        target.parentFile.mkdirs()
-        val part = File(target.path + ".part")
-        URI(url.get()).toURL().openStream().use { input ->
-            part.outputStream().use { input.copyTo(it) }
-        }
-        val actual = digest(part)
-        check(actual == sha256.get()) { "SHA256 mismatch for ${url.get()}: $actual" }
-        check(part.renameTo(target)) { "Could not move $part to $target" }
-    }
-
-    private fun digest(file: File): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        file.inputStream().use { stream ->
-            val buffer = ByteArray(1 shl 16)
-            while (true) {
-                val n = stream.read(buffer)
-                if (n < 0) break
-                md.update(buffer, 0, n)
-            }
-        }
-        return md.digest().joinToString("") { "%02x".format(it) }
-    }
-}
-
-val fetchSherpaOnnxAar = tasks.register<FetchVerifiedFile>("fetchSherpaOnnxAar") {
-    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-1.13.8.aar")
-    sha256.set("633c24321e06b1fe79feafa03ea16cbc0f8a286641e2da3559bac91bdb13bd96")
-    fileName.set("sherpa-onnx-1.13.8.aar")
-    outputDirectory.set(layout.projectDirectory.dir("libs"))
-}
-val fetchSileroVad = tasks.register<FetchVerifiedFile>("fetchSileroVad") {
-    url.set("https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx")
-    sha256.set("9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6")
-    fileName.set("silero_vad.onnx")
-    outputDirectory.set(layout.buildDirectory.dir("generated/vadAssets"))
-}
-// preBuild is created by AGP per variant; match it lazily.
-tasks.matching { it.name == "preBuild" }.configureEach { dependsOn(fetchSherpaOnnxAar) }
-
 val keystoreProperties = Properties()
 val keystorePath = rootProject.projectDir.parentFile.resolve("key.properties")
 val minimumInstalledVersionCode = 2127
@@ -113,9 +53,6 @@ val hasReleaseSigning = keystoreProperties.containsKey("storeFile")
 // their separate Dev identity and debug signing key.
 val notificationQa = providers.gradleProperty("notificationQa").orNull == "true"
 val wingDevelopment = providers.gradleProperty("wingDevelopment").orNull == "true"
-// Local side-by-side variant ("Wing Voice"): own package id and label, so it
-// installs next to the official Wing release and signs with a local key.
-val voiceVariant = providers.gradleProperty("voiceVariant").orNull == "true"
 check(!(notificationQa && wingDevelopment)) { "Notification QA must use its isolated package" }
 check(!wingDevelopment || signingEnvironment.keys.all {
     !keystoreProperties.getProperty(it).isNullOrBlank()
@@ -182,8 +119,7 @@ android {
            // the private distribution keystore. Never fall back to the debug
            // key: leave the APK explicitly unsigned until the real
            // key.properties file is supplied.
-           proguardFiles("proguard-rules.pro")
-           manifestPlaceholders["appLabel"] = if (voiceVariant) "Wing Voice" else "Wing"
+           manifestPlaceholders["appLabel"] = "Wing"
            if (hasReleaseSigning) {
                signingConfig = signingConfigs.getByName("release")
            }
@@ -199,7 +135,7 @@ androidComponents {
         }
     }
     onVariants(selector().withBuildType("release")) { variant ->
-        variant.applicationId.set(if (voiceVariant) "com.tarkilhk.wing.voice" else "com.tarkilhk.wing")
+        variant.applicationId.set("com.tarkilhk.wing")
     }
     onVariants { variant ->
         // Android parses shortcut intents with system resources, so the target
@@ -213,9 +149,6 @@ androidComponents {
         }
         variant.sources.res?.addGeneratedSourceDirectory(
             generateShortcuts, GenerateLauncherShortcuts::outputDirectory
-        )
-        variant.sources.assets?.addGeneratedSourceDirectory(
-            fetchSileroVad, FetchVerifiedFile::outputDirectory
         )
     }
 }
@@ -247,7 +180,7 @@ android.applicationVariants.configureEach {
 
 dependencies {
    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
-   implementation(files("libs/sherpa-onnx-1.13.8.aar"))
-   implementation("org.apache.commons:commons-compress:1.27.1")
-   testImplementation("junit:junit:4.13.2")
 }
+
+// Fork (Wing Voice): own build additions, see voice-offline.gradle.
+apply(from = "voice-offline.gradle")
