@@ -108,9 +108,9 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
       await _preview.stop();
       await saveDevicePreference(widget.preferences, key, value);
       if (mounted) {
-        setState(() {
-          _preferences = VoicePreferences.read(widget.preferences);
-        });
+        setState(
+          () => _preferences = VoicePreferences.read(widget.preferences),
+        );
       }
     } catch (_) {
       if (mounted) {
