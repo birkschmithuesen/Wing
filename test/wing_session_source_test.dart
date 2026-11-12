@@ -70,17 +70,18 @@ void main() {
       expect(calls[0].$2['source'], desktopSessionSource);
       expect(calls[1].$1, 'session.resume');
       expect(calls[1].$2.containsKey('source'), isFalse);
-      expect(gateway.sessionSource, desktopSessionSource);
+      expect(gateway.sourceFor(desktopSessionSource), desktopSessionSource);
     });
 
     test('advertising gateway: create and resume say wing', () async {
       final calls = <(String, Map<String, dynamic>)>[];
-      final gateway = _gateway(calls)..wingSourceAdvertised = true;
+      final gateway = _gateway(calls)
+        ..noteReady(_ready({'session_sources': ['wing']}));
       await gateway.createSession();
       await gateway.resume('stored');
       expect(calls[0].$2['source'], wingSessionSource);
       expect(calls[1].$2['source'], wingSessionSource);
-      expect(gateway.sessionSource, wingSessionSource);
+      expect(gateway.sourceFor(desktopSessionSource), wingSessionSource);
     });
   });
 

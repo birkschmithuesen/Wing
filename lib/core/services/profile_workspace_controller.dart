@@ -41,6 +41,9 @@ import '../widgets/model_chooser.dart';
 import '../models/gateway_approval.dart';
 import '../models/gateway_sensitive_prompt.dart';
 import 'android_share_intent_service.dart';
+import '../../fork/offline_queue.dart';
+import '../../voice_offline/completed_replies.dart';
+import 'wing_session_source.dart';
 import '../models/notification_focus.dart';
 import 'chat_notification_coordinator.dart';
 
@@ -369,10 +372,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   final _composerChanges = ChangeNotifier();
   Listenable get composerChanges => _composerChanges;
 
-  /// Successful turn completions with their final reply text, for hands-free
-  /// read-aloud. Emitted once per settled turn; failures and stops are skipped.
-  final _completedReplies =
-      StreamController<({ProfileChat chat, String text})>.broadcast();
+  final _completedReplies = CompletedReplies();
   Stream<({ProfileChat chat, String text})> get completedReplies =>
       _completedReplies.stream;
 
@@ -2585,7 +2585,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       key: ProfileSessionKey(resource.scope, id),
       runtimeId: response['session_id'] as String,
       title: 'New chat',
-      source: resource.gateway.sessionSource,
+      source: resource.gateway.sourceFor(desktopSessionSource),
       projectId: project?['id'] as String?,
     ).._replaceableUnsubmittedRuntime = true;
     resource.chats[id] = chat;
@@ -5387,25 +5387,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
-  /// Returns null when the server's own history can't be read right now
-  /// (undecidable: the caller must pause and ask the user, never guess).
-  Future<bool?> _queuedHeadDelivered(
-    ProfileChat chat,
-    QueuedPromptDraft queued,
-  ) async {
-    try {
-      final page = await _owned(chat).gateway.history(
-        chat.key.sessionId,
-        runtimeId: chat.runtimeId,
-      );
-      return page.rows.any(
-        (row) => row['role'] == 'user' && row['content'] == queued.text,
-      );
-    } catch (_) {
-      return null;
-    }
-  }
-
   void _receiveApproval(
     ProfileChat chat,
     Map<String, dynamic> request, {
@@ -6177,7 +6158,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     chat._commandPreflightReturnStatus = null;
     final finalText = completion['text']?.toString() ?? chat.streaming;
     if (!failed && !cancelled && finalText.trim().isNotEmpty && !_closed) {
-      _completedReplies.add((chat: chat, text: finalText));
+      _completedReplies.offer(chat, finalText);
     }
     final notification = _notification(
       chat,
@@ -6847,7 +6828,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
           // the moment to resolve an uncertain head against the server's
           // own history, instead of leaving it for Birk to check by hand.
           final queued = chat.queuedPrompts.first;
-          final delivered = await _queuedHeadDelivered(chat, queued);
+          final delivered = await queuedHeadDelivered(
+            () => _owned(chat).gateway,
+            chat,
+            queued,
+          );
           if (delivered != null) {
             chat.draftSubmissionUncertain = false;
             chat.queuePaused = false;
