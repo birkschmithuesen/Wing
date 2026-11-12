@@ -27,7 +27,7 @@
             </intent-filter>
         </service>
         <activity android:name=".porterwake.PorterActionActivity" android:exported="false"
-            android:excludeFromRecents="true" android:theme="@style/NotificationActionTheme" />
+            android:taskAffinity="" android:excludeFromRecents="true" android:theme="@style/NotificationActionTheme" />
         <service
             android:name=".BackgroundMonitoringService"
             android:exported="false"

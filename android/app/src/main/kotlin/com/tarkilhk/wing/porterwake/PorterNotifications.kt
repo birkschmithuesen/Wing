@@ -27,6 +27,8 @@ object PorterNotifications {
         val identity = Uri.Builder().scheme("wing-porter").authority("action")
             .appendPath(data["notice_id"].toString()).appendPath(action).appendPath(value ?: "").build()
         val target = Intent(context, PorterActionActivity::class.java).setData(identity)
+            // Own task (empty affinity), so Wing's task is not pulled forward.
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION)
             .putExtra(PorterWakeNative.extra, event.toString())
         return PendingIntent.getActivity(context, 0, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }

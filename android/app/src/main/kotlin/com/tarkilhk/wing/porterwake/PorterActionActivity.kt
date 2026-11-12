@@ -20,8 +20,8 @@ class PorterActionActivity : Activity() {
         if (keyguard.isKeyguardLocked && Build.VERSION.SDK_INT >= 26) {
             keyguard.requestDismissKeyguard(this, object : KeyguardManager.KeyguardDismissCallback() {
                 override fun onDismissSucceeded() { deliver() }
-                override fun onDismissCancelled() { finish() }
-                override fun onDismissError() { finish() }
+                override fun onDismissCancelled() { finishAndRemoveTask() }
+                override fun onDismissError() { finishAndRemoveTask() }
             })
         } else if (keyguard.isKeyguardLocked) openMain()
     }
@@ -32,18 +32,18 @@ class PorterActionActivity : Activity() {
     private fun deliver() {
         if (!resumed || sent || getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
         sent = true
-        val raw = intent.getStringExtra(PorterWakeNative.extra) ?: return finish()
-        val value = try { JSONObject(raw) } catch (_: Exception) { return finish() }
+        val raw = intent.getStringExtra(PorterWakeNative.extra) ?: return finishAndRemoveTask()
+        val value = try { JSONObject(raw) } catch (_: Exception) { return finishAndRemoveTask() }
         if (value.optString("action") == "open") return openMain()
         val event = PorterWakeNative.asMap(value)
         // Stay resumed until Dart replied: a resumed activity keeps network access.
-        PorterWakeNative.interact(this, event) { runOnUiThread { finish() } }
+        PorterWakeNative.interact(this, event) { runOnUiThread { finishAndRemoveTask() } }
     }
 
     private fun openMain() {
         startActivity(Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .putExtra(PorterWakeNative.extra, intent.getStringExtra(PorterWakeNative.extra)))
-        finish()
+        finishAndRemoveTask()
     }
 }
