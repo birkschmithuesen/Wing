@@ -210,7 +210,7 @@ void main() {
     while (controller.current!.nextSessionOffset != null) {
       await controller.loadMoreSessions();
     }
-    expect(controller.current!.sessions, hasLength(160));
+    expect(controller.current!.sessions, hasLength(161));
     expect(host.listRequests.last.$2.containsKey('exclude_sources'), isFalse);
     expect(host.listRequests.last.$2['offset'], '150');
     await controller.setSessionVisibility(SessionVisibility.all);

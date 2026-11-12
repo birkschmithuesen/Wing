@@ -516,6 +516,16 @@ class Host {
         }
         if (method == 'image.attach_bytes') return imageAttachResult;
         if (method == 'prompt.submit') {
+          // Injected transient failure: the connection closes before the
+          // server admits anything, so no receipt exists for this attempt.
+          if (promptSubmitFailures > 0) {
+            promptSubmitFailures--;
+            throw JsonRpcError(
+              method,
+              'Connection closed',
+              reason: 'connection_closed',
+            );
+          }
           if (params['submission_id'] is! String) {
             throw const FormatException('Missing canonical submission ID');
           }
@@ -597,14 +607,6 @@ class Host {
             'execution_generation': params['expected_generation'],
             'status': 'applied',
           };
-        }
-        if (method == 'prompt.submit' && promptSubmitFailures > 0) {
-          promptSubmitFailures--;
-          throw JsonRpcError(
-            method,
-            'Connection closed',
-            reason: 'connection_closed',
-          );
         }
         if (method == 'approval.pending') {
           final pending =

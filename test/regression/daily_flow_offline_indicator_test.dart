@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
@@ -11,28 +13,37 @@ void main() {
     late Host host;
     late ProfileWorkspaceController controller;
     late SharedPreferences preferences;
+    late AppPreferences appPreferences;
     // SETUP
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       preferences = await SharedPreferences.getInstance();
+      appPreferences = AppPreferences(preferences);
       host = Host();
       controller = ProfileWorkspaceController(
         connectionIdentity: 'original-settings',
-        connection: SavedConnection(
-          id: 'host',
-          label: 'Host',
-          host: 'localhost',
-          port: 1,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'host',
+            label: 'Host',
+            host: 'localhost',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
         preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: host.gateway,
         onAttention: (notification) async {},
       );
       await controller.initialize();
     });
     // SETUP
-    tearDown(() => controller.dispose());
+    tearDown(() {
+      controller.dispose();
+      appPreferences.dispose();
+    });
 
     test(
       'R6: a lost device network reports offline at once, even mid-recovery, until restored',
@@ -77,10 +88,10 @@ void main() {
           ServerConnectionPhase.disconnected,
         );
 
-        await controller.queuePrompt(chat, chat.draft);
+        await controller.queuePrompt(chat, chat.composer.observation.text);
 
-        expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
-        expect(chat.queuePaused, isFalse);
+        expect(chat.composer.observation.queue.map((p) => p.text), ['Queue me please']);
+        expect(chat.composer.observation.paused, isFalse);
         expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
 
         host.promptSubmitFails = false;
@@ -93,7 +104,7 @@ void main() {
         controller.networkRestored();
         await controller.reconnect(chat.key.workspace);
 
-        expect(chat.queuedPrompts, isEmpty);
+        expect(chat.composer.observation.queue, isEmpty);
         expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
         expect(
           controller.connectionStatus.phase,

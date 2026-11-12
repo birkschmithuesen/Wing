@@ -25,4 +25,18 @@ void main() {
       expect(status.phase, ServerConnectionPhase.connected);
     },
   );
+
+  test('lost gate wins over a scheduled recovery', () {
+    final status = ServerConnectionStatus('Claw');
+    addTearDown(status.dispose);
+    status.accessAvailable();
+    status.liveChanged('work', true);
+    status.networkLost();
+    // A recovery that is waiting to start (as after a dropped socket) must
+    // not turn the display back to reconnecting while the radio is down.
+    status.waitForRecovery('work');
+    expect(status.phase, ServerConnectionPhase.disconnected);
+    status.networkRestored();
+    expect(status.phase, ServerConnectionPhase.reconnecting);
+  });
 }

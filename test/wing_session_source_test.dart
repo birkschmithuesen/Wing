@@ -67,10 +67,10 @@ void main() {
       await gateway.createSession();
       await gateway.resume('stored');
       expect(calls[0].$1, 'session.create');
-      expect(calls[0].$2['source'], desktopSessionSource);
+      expect(calls[0].$2['source'], guiSessionSource);
       expect(calls[1].$1, 'session.resume');
       expect(calls[1].$2.containsKey('source'), isFalse);
-      expect(gateway.sourceFor(desktopSessionSource), desktopSessionSource);
+      expect(gateway.sourceFor(guiSessionSource), guiSessionSource);
     });
 
     test('advertising gateway: create and resume say wing', () async {
@@ -81,7 +81,7 @@ void main() {
       await gateway.resume('stored');
       expect(calls[0].$2['source'], wingSessionSource);
       expect(calls[1].$2['source'], wingSessionSource);
-      expect(gateway.sourceFor(desktopSessionSource), wingSessionSource);
+      expect(gateway.sourceFor(guiSessionSource), wingSessionSource);
     });
   });
 

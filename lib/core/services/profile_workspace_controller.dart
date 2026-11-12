@@ -8331,9 +8331,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
             'admission_conflict',
           }.contains(error.reason);
       final uncertain = submitted && !rejected;
-      if (!submitted && isTemporaryWorkspaceFailure(error)) {
-        TransientSend.mark(chat);
-      }
+      // Fork hook (Q6=B): a connection-level failure, before or during the
+      // submit call, resumes the paused queue on the next reconnect. An
+      // uncertain head is replayed by its submission ID first, so this never
+      // sends a prompt twice.
+      if (isTemporaryWorkspaceFailure(error)) TransientSend.mark(chat);
       _observeCanonicalPending(chat);
       chat._runtime.reportError(
         acknowledged
@@ -10557,7 +10559,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
       resource._offlineSnapshot = false;
       connectionStatus.endRecovery(resource.scope.profileName);
       for (final chat in resumedChats) {
-        if (TransientSend.take(chat)) await resumeQueue(chat);
+        if (TransientSend.take(chat)) {
+          try {
+            await resumeQueue(chat);
+          } on StateError {
+            // Head still unconfirmed (replay not finished); retry next time.
+            TransientSend.mark(chat);
+          }
+        }
         await _drainQueuedPrompts(chat);
       }
       if (_failedSwitchProfile == resource.scope.profileName) {

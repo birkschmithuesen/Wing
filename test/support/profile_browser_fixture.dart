@@ -400,6 +400,14 @@ class ProfileBrowserFixture {
         };
       }
       if (method == 'prompt.submit') {
+        if (promptSubmitFailures > 0) {
+          promptSubmitFailures--;
+          throw JsonRpcError(
+            method,
+            'Connection closed',
+            reason: 'connection_closed',
+          );
+        }
         if (params['submission_id'] is! String) {
           throw const FormatException('Missing submission identity');
         }
@@ -450,10 +458,6 @@ class ProfileBrowserFixture {
         };
       }
       if (method == 'session.steer') return steerResult;
-      if (method == 'prompt.submit' && promptSubmitFailures > 0) {
-        promptSubmitFailures--;
-        throw JsonRpcError(method, 'Connection closed', reason: 'connection_closed');
-      }
       return {};
     },
   );

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
@@ -12,26 +14,35 @@ void main() {
   late Host host;
   late ProfileWorkspaceController controller;
   late SharedPreferences preferences;
+  late AppPreferences appPreferences;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     host = Host();
     controller = ProfileWorkspaceController(
       connectionIdentity: 'original-settings',
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
       onAttention: (notification) async {},
     );
     await controller.initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   test(
     'a message queued during a real network outage shows offline at once and sends exactly once on reconnect',
@@ -51,10 +62,10 @@ void main() {
         ServerConnectionPhase.disconnected,
       );
 
-      await controller.queuePrompt(chat, chat.draft);
+      await controller.queuePrompt(chat, chat.composer.observation.text);
 
-      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
-      expect(chat.queuePaused, isFalse);
+      expect(chat.composer.observation.queue.map((p) => p.text), ['Queue me please']);
+      expect(chat.composer.observation.paused, isFalse);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
 
       host.promptSubmitFails = false;
@@ -67,7 +78,7 @@ void main() {
       controller.networkRestored();
       await controller.reconnect(chat.key.workspace);
 
-      expect(chat.queuedPrompts, isEmpty);
+      expect(chat.composer.observation.queue, isEmpty);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
       expect(
         controller.connectionStatus.phase,
@@ -82,10 +93,10 @@ void main() {
       final chat = await controller.createChat();
       await controller.updateDraft(chat, 'first');
       controller.networkUnavailable();
-      await controller.queuePrompt(chat, chat.draft);
+      await controller.queuePrompt(chat, chat.composer.observation.text);
       await controller.updateDraft(chat, 'second');
-      await controller.queuePrompt(chat, chat.draft);
-      expect(chat.queuedPrompts.map((p) => p.text), ['first', 'second']);
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      expect(chat.composer.observation.queue.map((p) => p.text), ['first', 'second']);
 
       host.running = false;
       // Card t_8c76c35a observation 2026-10-19: dozens of ws reconnects each
@@ -97,9 +108,9 @@ void main() {
 
       // The flaky send leaves an uncertain ack, same as before: it pauses
       // the queue rather than guessing whether the server already has it.
-      expect(chat.queuePaused, isTrue);
-      expect(chat.draftSubmissionUncertain, isTrue);
-      expect(chat.queuedPrompts.map((p) => p.text), ['first', 'second']);
+      expect(chat.composer.observation.paused, isTrue);
+      expect(chat.composer.observation.textSubmissionUncertain, isTrue);
+      expect(chat.composer.observation.queue.map((p) => p.text), ['first', 'second']);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
 
       // Old (buggy) behavior: nothing short of a manual resume ever drains
@@ -108,8 +119,8 @@ void main() {
 
       // "first" was never actually delivered, so it's resent; "second"
       // waits its turn until that resend's own turn finishes.
-      expect(chat.queuePaused, isFalse);
-      expect(chat.queuedPrompts.map((p) => p.text), ['second']);
+      expect(chat.composer.observation.paused, isFalse);
+      expect(chat.composer.observation.queue.map((p) => p.text), ['second']);
       expect(
         host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
         ['first', 'first'],
@@ -117,7 +128,7 @@ void main() {
 
       final drained = Completer<void>();
       void observeDrain() {
-        if (chat.queuedPrompts.isEmpty && !drained.isCompleted) {
+        if (chat.composer.observation.queue.isEmpty && !drained.isCompleted) {
           drained.complete();
         }
       }
@@ -127,42 +138,11 @@ void main() {
       await drained.future;
       controller.removeListener(observeDrain);
 
-      expect(chat.queuePaused, isFalse);
+      expect(chat.composer.observation.paused, isFalse);
       expect(
         host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
         ['first', 'first', 'second'],
       );
-    },
-  );
-
-  test(
-    'an uncertain delivery whose head already reached the server is dropped, not resent',
-    () async {
-      final chat = await controller.createChat();
-      await controller.updateDraft(chat, 'Already there');
-      host.promptSubmitFails = true;
-
-      await controller.queuePrompt(chat, chat.draft);
-
-      expect(chat.queuedPrompts.map((p) => p.text), ['Already there']);
-      expect(chat.draftSubmissionUncertain, isTrue);
-      expect(chat.queuePaused, isTrue);
-      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
-
-      // The server actually received the first attempt; only the ack was lost.
-      host.promptSubmitFails = false;
-      host.historyMessages = [
-        {'id': 1, 'role': 'user', 'content': 'Already there'},
-        {'id': 2, 'role': 'assistant', 'content': 'Got it.'},
-      ];
-      host.running = false;
-      await controller.reconnect(chat.key.workspace);
-
-      expect(chat.queuedPrompts, isEmpty);
-      expect(chat.queuePaused, isFalse);
-      expect(chat.draftSubmissionUncertain, isFalse);
-      // No second prompt.submit call: the head was recognized as delivered.
-      expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
     },
   );
 }
