@@ -43,7 +43,6 @@ jobs:
           grep -E "Test .* (PASSED|FAILED)|BUILD (SUCCESSFUL|FAILED)" /tmp/test.log > /tmp/hits.txt || true
           if [ -s /tmp/hits.txt ]; then
             while IFS= read -r line; do printf '::error::RESULT: %s\n' "$line"; done < /tmp/hits.txt
-          else
-            tail -n 40 /tmp/test.log | while IFS= read -r line; do printf '::error::TAIL: %s\n' "$line"; done
           fi
+          tail -n 60 /tmp/test.log | while IFS= read -r line; do printf '::error::TAIL: %s\n' "$line"; done
           test "${{ steps.test.outcome }}" = "success"
