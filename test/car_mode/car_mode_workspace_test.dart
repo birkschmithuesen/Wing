@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/car_mode/car_mode_screen.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import '../support/voice_workspace_fixture.dart';
 
