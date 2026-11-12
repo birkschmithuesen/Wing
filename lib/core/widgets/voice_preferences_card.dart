@@ -248,14 +248,15 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
             builder: (context, parakeet) => Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                if (!parakeet &&
-                    state.languageUnavailableNotice case final notice?) ...[
-                  const SizedBox(height: 12),
-                  Text(notice),
-                ],
-                if (!parakeet && state.showLanguage) ...[
-                  const SizedBox(height: 12),
-                  _languageChoice(state),
+                if (!parakeet) ...[
+                  if (state.languageUnavailableNotice case final notice?) ...[
+                    const SizedBox(height: 12),
+                    Text(notice),
+                  ],
+                  if (state.showLanguage) ...[
+                    const SizedBox(height: 12),
+                    _languageChoice(state),
+                  ],
                 ],
               ],
             ),

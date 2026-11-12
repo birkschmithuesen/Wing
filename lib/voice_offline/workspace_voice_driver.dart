@@ -9,6 +9,7 @@ import '../car_mode/car_mode_state.dart';
 import '../core/controllers/voice_input_controller.dart';
 import '../core/controllers/voice_output_controller.dart';
 import '../core/models/composer_action.dart';
+import '../core/models/profile_session_key.dart';
 import '../core/models/voice_processing_settings.dart';
 import '../core/services/android_voice.dart';
 import '../core/services/hermes_voice.dart';
@@ -391,7 +392,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     if (!bargeIn.listening) _flushQueuedReplies();
   }
 
-  StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
+  StreamSubscription<({Object chat, String text})>? _autoSpeak;
 
   /// Serializes auto-spoken replies: a newer one waits for the one already
   /// playing instead of cutting it off (spec 2026-10-15 queue). Explicit

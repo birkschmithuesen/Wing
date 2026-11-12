@@ -161,7 +161,7 @@ void main() {
     await h.tapCar(tester);
     expect(h.prompts(), 0);
     expect(find.text('Waiting for connection'), findsOneWidget);
-    expect(h.controller.current!.chat!.draft, 'Hello from the phone'); // kept on the device
+    expect(h.controller.current!.chat!.composer.observation.text, 'Hello from the phone'); // kept on the device
     h.controller.connectionStatus.endRecovery('car-test');
     await h.settle(tester);
     expect(h.prompts(), 1);
@@ -197,7 +197,7 @@ void main() {
       await h.tapCar(tester);
       expect(h.prompts(), 0);
       expect(find.text('Waiting for connection'), findsOneWidget);
-      expect(h.controller.current!.chat!.draft, 'Hello from the phone'); // kept on the device
+      expect(h.controller.current!.chat!.composer.observation.text, 'Hello from the phone'); // kept on the device
       h.controller.networkRestored();
       await tester.runAsync(
         () => h.controller.resumeConnection(networkChanged: true),
