@@ -11,6 +11,26 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-11
+
+### BackgroundVoiceService now releases its wakelock when the conversation loop ends
+- **What:** `BackgroundVoiceService` stops itself and releases its `PARTIAL_WAKE_LOCK` on every
+  path that ends the background conversation loop (stop command from the notification, silence
+  or a recognizer error ending the Dart hold, a phone call starting, the notification being
+  dismissed, the hosting activity closing, a failed start) instead of only on some of them. A new
+  10-minute safety idle timeout force-stops the hold if no `listening()` round activity happens
+  for that long, so a hold can no longer dangle for hours even if some other end-of-loop signal
+  never arrives. The "first reason wins" stop bookkeeping and the idle-timeout deadline math were
+  pulled into plain `StopReason`/`HoldIdleTimer` Kotlin classes with JUnit tests (no Android
+  framework dependency); the Service itself still needs instrumentation to verify, since
+  `PowerManager`/`Service` lifecycle calls are not unit-testable without it, and this repo's CI
+  (`pr-quality.yml`) only runs `flutter test`, not a Gradle/Kotlin test task.
+- **Why:** Birk's phone, 2026-11-11: last `rec stop` 20:42:49, wakelock `$packageName:voice-conversation`
+  acquired ~20:37 and still held at 23:26 (2h49m); `batterystats` since charge showed Wing as the
+  top consumer (435 mAh) with `wakelock:fgs` held 3h05m and ~100 mAh/h screen-off drain. Fixed
+  manually on the day by `am force-stop`; this card makes the service self-terminate instead.
+- **Merge:** TBD (branch `wt/t_8f6a3d26`, not yet merged to `voice-offline`) · **Card:** t_8f6a3d26
+
 ## 2026-11-08
 
 ### Car kit stays on the voice channel for the whole conversation
