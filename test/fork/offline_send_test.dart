@@ -7,6 +7,7 @@ import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
+import 'package:wing/fork/transient_send.dart';
 
 import '../profile_workspace_controller_test.dart' show Host;
 
@@ -109,7 +110,7 @@ void main() {
       // The flaky send leaves an uncertain ack, same as before: it pauses
       // the queue rather than guessing whether the server already has it.
       expect(chat.composer.observation.paused, isTrue);
-      expect(chat.composer.observation.textSubmissionUncertain, isTrue);
+      expect(chat.composer.observation.submissionUncertain, isTrue);
       expect(chat.composer.observation.queue.map((p) => p.text), ['first', 'second']);
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
 
@@ -145,4 +146,19 @@ void main() {
       );
     },
   );
+
+  test('a re-marked chat is resumed again; a released hold stops gating', () {
+    final chat = Object();
+    TransientSend.mark(chat);
+    expect(TransientSend.take(chat), isTrue);
+    expect(TransientSend.take(chat), isFalse);
+    // Failed resume path re-marks, so the next reconnect retries.
+    TransientSend.mark(chat);
+    expect(TransientSend.take(chat), isTrue);
+
+    TransientSend.hold(chat);
+    expect(TransientSend.holding(chat), isTrue);
+    TransientSend.release(chat);
+    expect(TransientSend.holding(chat), isFalse);
+  });
 }

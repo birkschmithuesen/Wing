@@ -6283,7 +6283,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
           resource?._offlineSnapshot == false &&
           connectionStatus.access == ConnectionAvailability.available &&
           connectionStatus.liveAvailable(chat._key.workspace.profileName) &&
-          connectionStatus.networkAvailable,
+          connectionStatus.networkAvailable &&
+          // Fork (Wing Voice): after the automatic resume the replayed head
+          // owns the turn; follow-ups wait for it (drained on completion).
+          !(TransientSend.holding(chat) && chat.runtime.blocksTurnAdmission),
       switching: switching,
       changingAnswer: chat.runtime.changingAnswer,
       commandRunning: chat.runtime.commandRunning,
@@ -9796,6 +9799,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
     await _journal();
     if (!isCurrentTurn()) return;
+    TransientSend.release(chat); // Fork (Wing Voice)
     if (!failed && !cancelled) {
       unawaited(_drainQueuedPrompts(chat));
     }
@@ -10559,11 +10563,17 @@ class ProfileWorkspaceController extends ChangeNotifier {
       resource._offlineSnapshot = false;
       connectionStatus.endRecovery(resource.scope.profileName);
       for (final chat in resumedChats) {
+        // Fork (Wing Voice): automatic queue resume (Q6=B). Any failure or a
+        // still-paused queue keeps the mark for the next reconnect.
         if (TransientSend.take(chat)) {
+          TransientSend.hold(chat);
           try {
             await resumeQueue(chat);
-          } on StateError {
-            // Head still unconfirmed (replay not finished); retry next time.
+            if (chat.composer.observation.paused &&
+                chat.composer.observation.queue.isNotEmpty) {
+              TransientSend.mark(chat);
+            }
+          } catch (_) {
             TransientSend.mark(chat);
           }
         }

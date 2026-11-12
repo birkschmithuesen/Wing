@@ -14,4 +14,13 @@ abstract final class TransientSend {
     _marked[chat] = null;
     return marked;
   }
+
+  static final Expando<bool> _held = Expando<bool>('transientSendHold');
+
+  /// While held, follow-ups of [chat] are not drained during a running turn.
+  static void hold(Object chat) => _held[chat] = true;
+
+  static bool holding(Object chat) => _held[chat] == true;
+
+  static void release(Object chat) => _held[chat] = null;
 }
