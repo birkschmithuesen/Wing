@@ -21,6 +21,10 @@ Feature ID: `notifications`.
   The same conversation appears once across live and detached observations.
   Failed roster reads retain its last known work as reconnecting; a successful
   empty roster retires that observation without generating a reply alert.
+  Repeated observations of a certain, still-working runtime refresh its verified
+  owner's metadata without checking unrelated profiles. Input, completion,
+  changed identities and uncertainty keep full ownership verification. These
+  observations do not save unchanged conversation history.
 
 ## How to get to it (user POV)
 

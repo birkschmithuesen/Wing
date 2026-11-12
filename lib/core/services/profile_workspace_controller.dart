@@ -1057,7 +1057,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       clearRead: (target, sequence) async =>
           onGroupAnswerRead?.call(target, sequence),
     );
-    _groupNotifications.addListener(_changed);
+    _groupNotifications.addListener(_monitoringChanged);
     connectionStatus.retry = resumeConnection;
     connectionStatus.onInterruption = () {
       final resource = _current;
@@ -2030,6 +2030,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Presence, delivery and group cursors do not change saved reading history.
+  // Keep publishing these observations, including failures and settlement.
+  void _monitoringChanged() => _changed(saveReading: false);
+
   void _streamChanged(ProfileChat chat, {required bool immediate}) {
     if (immediate || _streamPresentationTimer == null) {
       // Live text and reasoning are not part of the reading cache. Saving the
@@ -2958,7 +2962,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     return _detachedWorkRefresh ??= _readDetachedWork(source, discovery)
         .whenComplete(() {
           _detachedWorkRefresh = null;
-          _changed();
+          _monitoringChanged();
         });
   }
 
@@ -2988,7 +2992,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         for (final entry in _detachedWorkErrors.entries)
           if (names.contains(entry.key)) entry.key: entry.value,
       });
-      _changed();
+      _monitoringChanged();
       await Future.wait(
         profiles.profiles.map((profile) async {
           final resource = _resource(profile.name);
@@ -3067,7 +3071,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
             if (failed)
               profile.name: 'Background work unavailable for ${profile.label}.',
           });
-          _changed();
+          _monitoringChanged();
         }),
       );
     } catch (_) {
@@ -10029,6 +10033,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
                       ).map((input) => input.toJson()).toList(),
                     )) {
               _hydrate(loaded, resumed);
+              _readingSnapshotDirty = true;
               loaded._runtime.recovered();
               final continuation = _captureResume(
                 owner,
@@ -10064,11 +10069,40 @@ class ProfileWorkspaceController extends ChangeNotifier {
       final sessionIds = rows
           .map((row) => row['session_key'] as String)
           .toSet();
+      final profileNames = profiles.profiles.map((p) => p.name).toSet();
+      final workingOwners = <String, WorkspaceScope>{};
+      final requireOwnershipScan = <String>{};
+      for (final row in rows) {
+        final runtimeId = row['id'] as String;
+        final sessionId = row['session_key'] as String;
+        final known = _notificationSnapshot?[runtimeId];
+        if (row['status'] != 'working' ||
+            known == null ||
+            known.activity != _NotificationActivity.running ||
+            known.chat._key.sessionId != sessionId ||
+            _uncertainNotificationRuntimes.contains(runtimeId) ||
+            !profileNames.contains(known.chat._key.workspace.profileName)) {
+          requireOwnershipScan.add(sessionId);
+          continue;
+        }
+        final scope = known.chat._key.workspace;
+        if (workingOwners[sessionId] case final previous?
+            when previous != scope) {
+          requireOwnershipScan.add(sessionId);
+        }
+        workingOwners[sessionId] = scope;
+      }
+      workingOwners.removeWhere((id, _) => requireOwnershipScan.contains(id));
       final ownership = await Future.wait(
         profiles.profiles.map((profile) async {
           final resource = _resource(profile.name);
           final matches = <String, Map<String, dynamic>>{};
           for (final sessionId in sessionIds) {
+            // Reuse only a certain, still-working runtime's verified identity.
+            // Read its metadata again, but leave unrelated profiles alone.
+            // Input, completion and recovery retain full ownership validation.
+            final knownOwner = workingOwners[sessionId];
+            if (knownOwner != null && knownOwner != resource.scope) continue;
             final metadata = await resource.gateway.sessionMetadata(sessionId);
             if (metadata != null) matches[sessionId] = metadata;
           }
@@ -10205,7 +10239,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       // transition history; only a genuinely cold connection needs a baseline.
       _uncertainNotificationRuntimes.addAll(_backgroundChats.keys);
     } finally {
-      _changed();
+      _monitoringChanged();
     }
   }
 
@@ -11025,7 +11059,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   @override
   void dispose() {
-    _groupNotifications.removeListener(_changed);
+    _groupNotifications.removeListener(_monitoringChanged);
     _groupNotifications.dispose();
     groupObservations.dispose();
     appPreferences.state.removeListener(_visibilityChanged);

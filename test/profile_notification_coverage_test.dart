@@ -42,6 +42,7 @@ class NotificationCoverageHost {
   final groupStates = <String, Map<String, dynamic>>{};
   final groupLogs = <String, List<Map<String, dynamic>>>{};
   int activeReads = 0;
+  final metadataReads = <({String profile, String session})>[];
   final resumeCalls = <Map<String, dynamic>>[];
   Completer<void>? resumeDelay;
   final resumeDelays = <int, Completer<void>>{};
@@ -100,10 +101,11 @@ class NotificationCoverageHost {
           };
         }
         if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+          final id = Uri.decodeComponent(path.split('/')[1]);
+          metadataReads.add((profile: scope.profileName, session: id));
           if (failedMetadataProfiles.contains(scope.profileName)) {
             throw StateError('profile unavailable');
           }
-          final id = Uri.decodeComponent(path.split('/')[1]);
           await metadataDelays[(scope.profileName, id)]?.future;
           final rows =
               (saved[scope.profileName] ?? const <Map<String, dynamic>>[])
