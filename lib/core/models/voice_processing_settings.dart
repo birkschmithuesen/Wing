@@ -63,13 +63,8 @@ final class VoiceReply {
 }
 
 /// Fork (Wing Voice): local recognition through the on-phone VAD + Parakeet
-
 /// route. Field-less: this library is domain-only; the round reads its
-
 /// settings from VadInputRound.roundSettings.
-
 final class VadVoiceInputSettings extends VoiceInputSettings {
-
   const VadVoiceInputSettings();
-
 }

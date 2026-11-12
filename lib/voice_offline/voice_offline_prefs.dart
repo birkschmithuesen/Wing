@@ -12,12 +12,12 @@ enum VadAudioSource { communication, recognition }
 /// side and is reported once so the UI can show a hint (spec 2026-10-18).
 enum VoiceMicRoute { auto, phone, bluetooth, wired }
 
-/// Device-owned voice choices of the offline (vad) route and the
-/// hands-free conversation. Upstream's AppPreferences keeps the other choices.
 /// Which on-phone recognizer the Local voice input uses. [parakeet] is the
 /// fork's VAD + Parakeet route (formerly `voice.input = vad`).
 enum VoiceLocalEngine { system, parakeet }
 
+/// Device-owned voice choices of the offline (vad) route and the
+/// hands-free conversation. Upstream's AppPreferences keeps the other choices.
 class VoiceOfflinePrefs {
   static const localEngineKey = 'voice.local_engine';
   static const autoSpeakKey = 'voice.auto_speak';

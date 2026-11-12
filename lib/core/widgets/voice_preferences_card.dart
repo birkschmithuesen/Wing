@@ -241,14 +241,25 @@ class _VoicePreferencesCardState extends State<VoicePreferencesCard>
           if (state.inputDescription case final description?) Text(description),
           if (state.input.selected == AppVoiceProcessing.local)
             VoiceOfflineInputRows(session: _session),
-          if (state.languageUnavailableNotice case final notice?) ...[
-            const SizedBox(height: 12),
-            Text(notice),
-          ],
-          if (state.showLanguage) ...[
-            const SizedBox(height: 12),
-            _languageChoice(state),
-          ],
+          // Fork (Wing Voice): Parakeet does not use the Android recognizer's
+          // language, so neither the language row nor its notice applies.
+          VoiceOfflineEngineBuilder(
+            session: _session,
+            builder: (context, parakeet) => Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (!parakeet &&
+                    state.languageUnavailableNotice case final notice?) ...[
+                  const SizedBox(height: 12),
+                  Text(notice),
+                ],
+                if (!parakeet && state.showLanguage) ...[
+                  const SizedBox(height: 12),
+                  _languageChoice(state),
+                ],
+              ],
+            ),
+          ),
           const SizedBox(height: 24),
           _select('Voice output', state.output, _engines, 'voice.output'),
           const SizedBox(height: 12),

@@ -112,6 +112,8 @@ void main() {
     device.modelStatus = const VadModelStatus(state: VadModelState.absent);
     await show(tester);
     expect(engine(tester).value, VoiceLocalEngine.parakeet);
+    expect(find.text('Recognition language'), findsNothing);
+    expect(find.textContaining('On-device recognition is unavailable'), findsNothing);
     expect(find.text('Speech model · 487 MB download'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('vad-model-download')));
     await tester.pump();

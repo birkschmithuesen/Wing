@@ -78,6 +78,30 @@ void main() {
     expect(find.text('Speech needed to steer'), findsNothing);
   });
 
+  testWidgets('changing the engine shows and hides the conversation rows at once', (
+    tester,
+  ) async {
+    final device = VoiceDeviceFixture();
+    addTearDown(device.stream.close);
+    SharedPreferences.setMockInitialValues({
+      'voice.input': 'local',
+      VoiceOfflinePrefs.conversationKey: 'on',
+    });
+    await showVoiceSettings(tester, await SharedPreferences.getInstance(), device);
+    StudioSelect<VoiceLocalEngine> engine() => tester
+        .widget<StudioSelect<VoiceLocalEngine>>(
+          find.byType(StudioSelect<VoiceLocalEngine>),
+        );
+    expect(find.text('Listen while Hermes works'), findsNothing);
+    engine().onChanged!(VoiceLocalEngine.parakeet);
+    await tester.pumpAndSettle();
+    expect(find.text('Listen while Hermes works'), findsOneWidget);
+    expect(find.text('Recognition language'), findsNothing);
+    engine().onChanged!(VoiceLocalEngine.system);
+    await tester.pumpAndSettle();
+    expect(find.text('Listen while Hermes works'), findsNothing);
+  });
+
   testWidgets('echo probe plays the synthetic text while a listen round records', (
     tester,
   ) async {

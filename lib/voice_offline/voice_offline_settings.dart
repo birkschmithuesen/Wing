@@ -32,20 +32,75 @@ Future<void> onVoiceInputRouteChanged(
   }
 }
 
+/// The fork prefs of one voice settings session, shared by every fork row
+/// block and the card's language rows, so an engine change reaches all of
+/// them at once.
+class VoiceOfflineModel extends ValueNotifier<VoiceOfflinePrefs> {
+  VoiceOfflineModel() : super(const VoiceOfflinePrefs());
+
+  static final _models = Expando<VoiceOfflineModel>();
+
+  static VoiceOfflineModel of(VoicePreferencesSession session) {
+    final existing = _models[session];
+    if (existing != null) return existing;
+    final model = _models[session] = VoiceOfflineModel();
+    SharedPreferences.getInstance().then(
+      (preferences) => model.value = VoiceOfflinePrefs.read(preferences),
+      onError: (_) {},
+    );
+    return model;
+  }
+}
+
+/// Fork (Wing Voice): rebuilds [builder] with whether the Local engine is
+/// Parakeet, which does not use the Android recognizer's language.
+class VoiceOfflineEngineBuilder extends StatelessWidget {
+  const VoiceOfflineEngineBuilder({
+    super.key,
+    required this.session,
+    required this.builder,
+  });
+
+  final VoicePreferencesSession session;
+  final Widget Function(BuildContext context, bool parakeet) builder;
+
+  @override
+  Widget build(BuildContext context) => ValueListenableBuilder(
+    valueListenable: VoiceOfflineModel.of(session),
+    builder: (context, offline, _) =>
+        builder(context, offline.localEngine == VoiceLocalEngine.parakeet),
+  );
+}
+
 /// Loads the device preferences once and saves one row at a time. Each row
-/// block owns its own `_saving`.
+/// block owns its own `_saving`; the prefs themselves live in the session's
+/// [VoiceOfflineModel].
 mixin _ForkRows<T extends StatefulWidget> on State<T> {
   SharedPreferences? _preferences;
   VoiceOfflinePrefs _offline = const VoiceOfflinePrefs();
   bool _saving = false;
+  VoiceOfflineModel? _model;
 
-  Future<void> _load() async {
+  void _modelChanged() {
+    if (mounted) setState(() => _offline = _model!.value);
+  }
+
+  Future<void> _load(VoicePreferencesSession session) async {
+    final model = _model = VoiceOfflineModel.of(session);
     final preferences = await SharedPreferences.getInstance();
     if (!mounted) return;
+    model.addListener(_modelChanged);
+    model.value = VoiceOfflinePrefs.read(preferences);
     setState(() {
       _preferences = preferences;
-      _offline = VoiceOfflinePrefs.read(preferences);
+      _offline = model.value;
     });
+  }
+
+  @override
+  void dispose() {
+    _model?.removeListener(_modelChanged);
+    super.dispose();
   }
 
   Future<void> _save(String key, String value) async {
@@ -54,9 +109,7 @@ mixin _ForkRows<T extends StatefulWidget> on State<T> {
     setState(() => _saving = true);
     try {
       await saveDevicePreference(preferences, key, value);
-      if (mounted) {
-        setState(() => _offline = VoiceOfflinePrefs.read(preferences));
-      }
+      _model?.value = VoiceOfflinePrefs.read(preferences);
     } catch (_) {
       if (mounted) {
         showStudioError(
@@ -86,7 +139,7 @@ class _VoiceOfflineInputRowsState extends State<VoiceOfflineInputRows>
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(widget.session);
   }
 
   Future<void> _chooseEngine(VoiceLocalEngine engine) async {
@@ -178,7 +231,7 @@ class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings>
   @override
   void initState() {
     super.initState();
-    _load();
+    _load(widget.session);
   }
 
   @override

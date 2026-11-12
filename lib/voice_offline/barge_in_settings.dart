@@ -32,7 +32,8 @@ class BargeInSettings extends StatefulWidget {
   /// True while the Local input uses the Parakeet engine.
   final bool vad;
 
-  /// The Android voice and speed of the echo probe; null when output is Hermes.
+  /// The Android voice and speed of the echo probe, the saved ones whatever
+  /// the output choice; null only while they are unverified.
   final LocalVoiceOutputSettings? output;
   final VoiceOfflinePrefs offline;
   final VoiceDevice device;

@@ -303,7 +303,7 @@ class CarModeSession extends ChangeNotifier {
       VadVoiceInputSettings() => 'vad',
       LocalVoiceInputSettings() => 'local',
       HermesVoiceInputSettings() => 'hermes',
-      null => 'local',
+      null => 'unknown',
     };
   }
 
