@@ -8,7 +8,7 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
     'stop() asks the native layer to wait longer for longer recordings',
-    () (tester) async {
+    (tester) async {
       expect(transcriptionDeadlineFor(0), const Duration(milliseconds: 5000));
       expect(
         transcriptionDeadlineFor(50),
