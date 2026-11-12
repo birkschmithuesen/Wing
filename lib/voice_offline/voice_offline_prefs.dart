@@ -1,7 +1,6 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/services/vad_endpoint.dart';
-import '../core/services/voice_preferences.dart';
 
 /// communication = platform noise/echo processing; recognition = raw-ish.
 enum VadAudioSource { communication, recognition }
@@ -14,8 +13,13 @@ enum VadAudioSource { communication, recognition }
 enum VoiceMicRoute { auto, phone, bluetooth, wired }
 
 /// Device-owned voice choices of the offline (vad) route and the
-/// hands-free conversation. [VoicePreferences] keeps the upstream choices.
+/// hands-free conversation. Upstream's AppPreferences keeps the other choices.
+/// Which on-phone recognizer the Local voice input uses. [parakeet] is the
+/// fork's VAD + Parakeet route (formerly `voice.input = vad`).
+enum VoiceLocalEngine { system, parakeet }
+
 class VoiceOfflinePrefs {
+  static const localEngineKey = 'voice.local_engine';
   static const autoSpeakKey = 'voice.auto_speak';
   static const conversationKey = 'voice.conversation';
   static const vadPauseKey = 'voice.vad_pause_ms';
@@ -31,6 +35,7 @@ class VoiceOfflinePrefs {
   static const bargeInPlaybackKey = 'voice.barge_in_playback';
   static const micRouteKey = 'voice.mic_route';
   static const keys = {
+    localEngineKey,
     autoSpeakKey,
     conversationKey,
     vadPauseKey,
@@ -62,6 +67,7 @@ class VoiceOfflinePrefs {
   static const listenMinSpeechChoices = ['250', '400', '600'];
 
   static bool accepts(String key, Object value) => switch (key) {
+    localEngineKey => value == 'system' || value == 'parakeet',
     autoSpeakKey ||
     conversationKey ||
     vadCuesKey ||
@@ -86,11 +92,14 @@ class VoiceOfflinePrefs {
   /// Read each completed reply aloud automatically (hands-free voice chat).
   final bool autoSpeak;
 
+  /// Recognizer behind the Local voice input.
+  final VoiceLocalEngine localEngine;
+
   /// Hands-free loop: a dictation that ends on its own is sent, the reply is
   /// read aloud (even with [autoSpeak] off) and the microphone reopens.
   final bool conversation;
 
-  /// End-of-utterance settings for [VoiceInputRoute.vad].
+  /// End-of-utterance settings for the Parakeet route.
   final VadEndpointConfig vad;
 
   /// Short tones for "listening" and "got it" on the vad route.
@@ -124,6 +133,7 @@ class VoiceOfflinePrefs {
     this.listenMinSpeech = const Duration(milliseconds: 400),
     this.bargeInPlayback = false,
     this.micRoute = VoiceMicRoute.auto,
+    this.localEngine = VoiceLocalEngine.system,
   });
 
   /// Never throws: an unknown stored value falls back to its default.
@@ -169,16 +179,21 @@ class VoiceOfflinePrefs {
         'wired' => VoiceMicRoute.wired,
         _ => VoiceMicRoute.auto,
       },
+      localEngine: preferences.getString(localEngineKey) == 'parakeet'
+          ? VoiceLocalEngine.parakeet
+          : VoiceLocalEngine.system,
     );
   }
-}
 
-/// [VoicePreferences.read], or null where it throws a [FormatException]
-/// (unknown `voice.input` / `voice.output` value).
-VoicePreferences? tryReadVoicePreferences(SharedPreferences preferences) {
-  try {
-    return VoicePreferences.read(preferences);
-  } on FormatException {
-    return null;
+  /// One-time move of the pre-merge route value `voice.input = vad`, which
+  /// upstream's preference schema rejects, to `voice.input = local` plus
+  /// `voice.local_engine = parakeet`. Idempotent; runs before AppPreferences
+  /// reads the store.
+  static Future<void> migrateLegacyVadRoute(
+    SharedPreferences preferences,
+  ) async {
+    if (preferences.getString('voice.input') != 'vad') return;
+    await preferences.setString(localEngineKey, 'parakeet');
+    await preferences.setString('voice.input', 'local');
   }
 }

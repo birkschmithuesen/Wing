@@ -5,7 +5,8 @@ import 'package:flutter/services.dart';
 
 import '../core/controllers/voice_input_controller.dart';
 import '../core/services/android_voice.dart';
-import '../core/services/voice_preferences.dart';
+import '../voice_offline/voice_input_settings_for.dart';
+import '../core/models/voice_processing_settings.dart';
 import 'car_mode_bridge.dart';
 import 'car_mode_screen.dart';
 import 'car_mode_state.dart';
@@ -295,11 +296,15 @@ class CarModeSession extends ChangeNotifier {
   }
 
   String _routeName() {
-    try {
-      return VoicePreferences.read(bridge.preferences).input.name;
-    } on FormatException {
-      return 'unknown';
-    }
+    return switch (voiceInputSettingsFor(
+      bridge.appPreferences,
+      bridge.preferences,
+    )) {
+      VadVoiceInputSettings() => 'vad',
+      LocalVoiceInputSettings() => 'local',
+      HermesVoiceInputSettings() => 'hermes',
+      null => 'local',
+    };
   }
 
   String _loopName() => _loopOn ? 'on' : 'off';

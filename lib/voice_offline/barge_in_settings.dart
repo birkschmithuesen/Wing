@@ -4,7 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../core/controllers/voice_output_controller.dart';
 import '../core/services/android_voice.dart';
-import '../core/services/voice_preferences.dart';
+import '../core/models/app_preferences.dart';
+import '../core/models/voice_processing_settings.dart';
 import '../core/widgets/compact_switch.dart';
 import '../core/widgets/studio_error.dart';
 import '../core/widgets/studio_select.dart';
@@ -18,7 +19,8 @@ import 'voice_offline_prefs.dart';
 class BargeInSettings extends StatefulWidget {
   const BargeInSettings({
     super.key,
-    required this.settings,
+    required this.vad,
+    required this.output,
     required this.offline,
     required this.device,
     required this.saving,
@@ -27,7 +29,11 @@ class BargeInSettings extends StatefulWidget {
     this.playbackAvailable = bargeInPlaybackAvailable,
   });
 
-  final VoicePreferences settings;
+  /// True while the Local input uses the Parakeet engine.
+  final bool vad;
+
+  /// The Android voice and speed of the echo probe; null when output is Hermes.
+  final LocalVoiceOutputSettings? output;
   final VoiceOfflinePrefs offline;
   final VoiceDevice device;
   final bool saving;
@@ -81,7 +87,9 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   Future<void> _probe() async {
     final listener = _listener ??= TurnListener(device: widget.device);
     final output = _output ??= VoiceOutputController(widget.device);
-    final settings = widget.settings;
+    final voice =
+        widget.output ??
+        const LocalVoiceOutputSettings(voice: '', rate: AppVoiceRate.normal);
     final offline = widget.offline;
     setState(() => _probing = true);
     final route = await _route.current();
@@ -91,7 +99,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
         await output.speak(
           'echo-probe',
           echoProbeText,
-          VoicePreferences(voice: settings.voice, rate: settings.rate),
+          voice,
           () => throw StateError('The echo probe uses the Android voice.'),
         );
       });
@@ -116,7 +124,7 @@ class _BargeInSettingsState extends State<BargeInSettings> {
   @override
   Widget build(BuildContext context) {
     final s = widget.offline;
-    if (widget.settings.input != VoiceInputRoute.vad || !s.conversation) {
+    if (!widget.vad || !s.conversation) {
       return const SizedBox.shrink();
     }
     return Column(

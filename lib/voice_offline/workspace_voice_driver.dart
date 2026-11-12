@@ -106,6 +106,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
         bargeIn: bargeIn,
       ),
       preferences: _controller.preferences,
+      appPreferences: _controller.appPreferences,
       talk: () async {
         final chat = _controller.notificationChat ?? _controller.current?.chat;
         if (chat != null) await host.run(() => host.dictate(chat));

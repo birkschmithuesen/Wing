@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/controllers/voice_input_controller.dart';
 import '../core/controllers/voice_output_controller.dart';
 import '../core/models/gateway_activity.dart';
+import '../core/services/app_preferences.dart';
 import '../core/services/profile_workspace_controller.dart';
 import '../core/services/server_connection_status.dart';
 import '../core/services/vad_endpoint.dart';
@@ -18,6 +19,7 @@ class CarModeBridge {
     required this.changes,
     required this.read,
     required this.preferences,
+    required this.appPreferences,
     required this.talk,
     required this.sendNow,
     required this.stopSpeech,
@@ -30,6 +32,9 @@ class CarModeBridge {
   final Listenable changes;
   final CarSnapshot Function() read;
   final SharedPreferences preferences;
+
+  /// Upstream's typed preferences, e.g. for the voice input route.
+  final AppPreferences appPreferences;
 
   /// Stop read-aloud and open the microphone for the chat.
   final Future<void> Function() talk;

@@ -11,7 +11,6 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/server_connection_status.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
@@ -197,10 +196,13 @@ class VoiceWorkspaceHarness {
   }
 
   int vadStarts() => device.vadStarts;
-  Future<void> vadRoute() => controller.preferences.setString(
-    VoicePreferences.inputKey,
-    'vad',
-  );
+  Future<void> vadRoute() async {
+    await controller.preferences.setString('voice.input', 'local');
+    await controller.preferences.setString(
+      VoiceOfflinePrefs.localEngineKey,
+      'parakeet',
+    );
+  }
   Future<void> listenTurn(bool on) => controller.preferences.setString(
     VoiceOfflinePrefs.listenTurnKey,
     on ? 'on' : 'off',

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/voice_offline/barge_in_policy.dart';
@@ -19,7 +18,8 @@ void main() {
 
   Future<SharedPreferences> vadConversation() async {
     SharedPreferences.setMockInitialValues({
-      VoicePreferences.inputKey: 'vad',
+      'voice.input': 'local',
+      VoiceOfflinePrefs.localEngineKey: 'parakeet',
       VoiceOfflinePrefs.conversationKey: 'on',
     });
     return SharedPreferences.getInstance();
@@ -156,7 +156,8 @@ void main() {
               body: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
                 child: BargeInSettings(
-                  settings: const VoicePreferences(input: VoiceInputRoute.vad),
+                  vad: true,
+                  output: null,
                   offline: offline,
                   device: device,
                   saving: false,

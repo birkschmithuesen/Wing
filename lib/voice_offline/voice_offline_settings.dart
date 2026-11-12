@@ -1,35 +1,30 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/models/voice_processing_settings.dart';
 import '../core/services/android_voice.dart';
 import '../core/services/device_preference.dart';
-import '../core/services/voice_preferences.dart';
+import '../core/services/voice_preferences_session.dart';
 import '../core/widgets/studio_error.dart';
 import '../core/widgets/studio_select.dart';
 import '../core/widgets/vad_settings_section.dart';
 import 'barge_in_settings.dart';
 import 'vad_voice_device.dart';
+import 'voice_input_settings_for.dart';
 import 'voice_offline_prefs.dart';
 
-/// Which block of fork rows a [VoiceOfflineSettings] renders. The rows sit at
-/// two positions of the voice card, so there are two parts.
-enum VoiceOfflineSettingsPart { vadRoute, replies }
+/// Which block of fork rows a [VoiceOfflineSettings] renders.
+enum VoiceOfflineSettingsPart { replies }
 
-/// The "Recognize on this phone" choice of the input select.
-({String value, String label}) vadInputChoice(BuildContext context) =>
-    (value: 'vad', label: 'On this phone · Parakeet');
-
-/// Prepares or releases the on-device model when the input route changes.
+/// Prepares or releases the on-device model when the Local engine changes.
 Future<void> onVoiceInputRouteChanged(
   VoiceDevice device,
-  VoiceInputRoute from,
-  VoiceInputRoute to,
+  bool wasParakeet,
+  bool isParakeet,
 ) async {
-  final wasVad = from == VoiceInputRoute.vad;
-  final isVad = to == VoiceInputRoute.vad;
-  if (isVad == wasVad) return;
+  if (isParakeet == wasParakeet) return;
   try {
-    await (isVad
+    await (isParakeet
         ? VadVoiceDevice.of(device).prepareVad()
         : VadVoiceDevice.of(device).releaseVad());
   } catch (_) {
@@ -37,59 +32,30 @@ Future<void> onVoiceInputRouteChanged(
   }
 }
 
-/// Fork rows of the voice settings card: mic route, VAD settings, spoken
-/// replies, conversation mode, barge-in. Rendered at the positions they had
-/// in the card.
-class VoiceOfflineSettings extends StatefulWidget {
-  const VoiceOfflineSettings({
-    super.key,
-    required this.preferences,
-    required this.device,
-    required this.route,
-    required this.part,
-    this.saving = false,
-    this.onSaving,
-    this.stopPreview,
-  });
-
-  final SharedPreferences preferences;
-  final VoiceDevice device;
-  final VoiceInputRoute route;
-  final VoiceOfflineSettingsPart part;
-
-  /// True while the card saves one of its own rows.
-  final bool saving;
-
-  /// Reports that a fork row starts or finishes saving, so the card disables
-  /// its rows meanwhile.
-  final ValueChanged<bool>? onSaving;
-
-  /// Stops a running voice preview before a setting is written.
-  final Future<void> Function()? stopPreview;
-
-  @override
-  State<VoiceOfflineSettings> createState() => _VoiceOfflineSettingsState();
-}
-
-class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings> {
-  late VoiceOfflinePrefs _offline;
+/// Loads the device preferences once and saves one row at a time. Each row
+/// block owns its own `_saving`.
+mixin _ForkRows<T extends StatefulWidget> on State<T> {
+  SharedPreferences? _preferences;
+  VoiceOfflinePrefs _offline = const VoiceOfflinePrefs();
   bool _saving = false;
 
-  @override
-  void initState() {
-    super.initState();
-    _offline = VoiceOfflinePrefs.read(widget.preferences);
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _preferences = preferences;
+      _offline = VoiceOfflinePrefs.read(preferences);
+    });
   }
 
   Future<void> _save(String key, String value) async {
-    if (_saving || widget.saving) return;
+    final preferences = _preferences;
+    if (_saving || preferences == null) return;
     setState(() => _saving = true);
-    widget.onSaving?.call(true);
     try {
-      await widget.stopPreview?.call();
-      await saveDevicePreference(widget.preferences, key, value);
+      await saveDevicePreference(preferences, key, value);
       if (mounted) {
-        setState(() => _offline = VoiceOfflinePrefs.read(widget.preferences));
+        setState(() => _offline = VoiceOfflinePrefs.read(preferences));
       }
     } catch (_) {
       if (mounted) {
@@ -100,17 +66,59 @@ class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings> {
       }
     } finally {
       if (mounted) setState(() => _saving = false);
-      widget.onSaving?.call(false);
     }
+  }
+}
+
+/// Fork rows under the Local voice input: the recognition engine and, for
+/// Parakeet, the microphone and end-of-speech settings.
+class VoiceOfflineInputRows extends StatefulWidget {
+  const VoiceOfflineInputRows({super.key, required this.session});
+
+  final VoicePreferencesSession session;
+
+  @override
+  State<VoiceOfflineInputRows> createState() => _VoiceOfflineInputRowsState();
+}
+
+class _VoiceOfflineInputRowsState extends State<VoiceOfflineInputRows>
+    with _ForkRows<VoiceOfflineInputRows> {
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _chooseEngine(VoiceLocalEngine engine) async {
+    final was = _offline.localEngine == VoiceLocalEngine.parakeet;
+    await _save(VoiceOfflinePrefs.localEngineKey, engine.name);
+    if (!mounted) return;
+    final now = _offline.localEngine == VoiceLocalEngine.parakeet;
+    await onVoiceInputRouteChanged(widget.session.device, was, now);
   }
 
   @override
   Widget build(BuildContext context) {
-    final saving = _saving || widget.saving;
+    if (_preferences == null) return const SizedBox.shrink();
+    final parakeet = _offline.localEngine == VoiceLocalEngine.parakeet;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: switch (widget.part) {
-        VoiceOfflineSettingsPart.vadRoute => [
+      children: [
+        StudioSelect<VoiceLocalEngine>(
+          key: ValueKey('voice-local-engine-${_offline.localEngine.name}'),
+          label: 'Recognition engine',
+          value: _offline.localEngine,
+          options: const [
+            (value: VoiceLocalEngine.system, label: 'Android system recognizer'),
+            (value: VoiceLocalEngine.parakeet, label: 'Parakeet on this phone'),
+          ],
+          onChanged: _saving
+              ? null
+              : (value) {
+                  if (value != null) _chooseEngine(value);
+                },
+        ),
+        if (parakeet) ...[
           const SizedBox(height: 12),
           StudioSelect<String>(
             key: ValueKey('voice-mic-route-${_offline.micRoute.name}'),
@@ -122,7 +130,7 @@ class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings> {
               (value: 'bluetooth', label: 'Bluetooth device'),
               (value: 'wired', label: 'Wired headset'),
             ],
-            onChanged: saving
+            onChanged: _saving
                 ? null
                 : (value) {
                     if (value != null) {
@@ -139,49 +147,96 @@ class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings> {
           const SizedBox(height: 12),
           VadSettingsSection(
             settings: _offline,
-            device: widget.device,
-            saving: saving,
+            device: widget.session.device,
+            saving: _saving,
             onSave: _save,
           ),
         ],
-        VoiceOfflineSettingsPart.replies => [
-          SwitchListTile(
-            key: const ValueKey('voice-auto-speak'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Spoken replies'),
-            subtitle: const Text(
-              'Read each finished reply aloud automatically while the chat is open.',
-            ),
-            value: _offline.autoSpeak,
-            onChanged: saving
-                ? null
-                : (value) =>
-                      _save(VoiceOfflinePrefs.autoSpeakKey, value ? 'on' : 'off'),
-          ),
-          SwitchListTile(
-            key: const ValueKey('voice-conversation'),
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Conversation mode'),
-            subtitle: const Text(
-              'Send dictation when you stop speaking, read the reply aloud and '
-              'listen again. Stop, Cancel or silence ends the conversation.',
-            ),
-            value: _offline.conversation,
-            onChanged: saving
-                ? null
-                : (value) => _save(
-                    VoiceOfflinePrefs.conversationKey,
-                    value ? 'on' : 'off',
-                  ),
-          ),
-          BargeInSettings(
-            settings: VoicePreferences.read(widget.preferences),
-            offline: _offline,
-            device: widget.device,
-            saving: saving,
-            onSave: _save,
-          ),
-        ],
+      ],
+    );
+  }
+}
+
+/// Fork rows of the voice settings card that follow the output choice:
+/// spoken replies, conversation mode, barge-in.
+class VoiceOfflineSettings extends StatefulWidget {
+  const VoiceOfflineSettings({
+    super.key,
+    required this.part,
+    required this.session,
+  });
+
+  final VoiceOfflineSettingsPart part;
+  final VoicePreferencesSession session;
+
+  @override
+  State<VoiceOfflineSettings> createState() => _VoiceOfflineSettingsState();
+}
+
+class _VoiceOfflineSettingsState extends State<VoiceOfflineSettings>
+    with _ForkRows<VoiceOfflineSettings> {
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preferences = _preferences;
+    if (preferences == null) return const SizedBox.shrink();
+    return ListenableBuilder(
+      listenable: widget.session.state,
+      builder: (context, _) {
+        final app = widget.session.preferences;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: switch (widget.part) {
+            VoiceOfflineSettingsPart.replies => [
+              SwitchListTile(
+                key: const ValueKey('voice-auto-speak'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Spoken replies'),
+                subtitle: const Text(
+                  'Read each finished reply aloud automatically while the chat is open.',
+                ),
+                value: _offline.autoSpeak,
+                onChanged: _saving
+                    ? null
+                    : (value) => _save(
+                        VoiceOfflinePrefs.autoSpeakKey,
+                        value ? 'on' : 'off',
+                      ),
+              ),
+              SwitchListTile(
+                key: const ValueKey('voice-conversation'),
+                contentPadding: EdgeInsets.zero,
+                title: const Text('Conversation mode'),
+                subtitle: const Text(
+                  'Send dictation when you stop speaking, read the reply aloud and '
+                  'listen again. Stop, Cancel or silence ends the conversation.',
+                ),
+                value: _offline.conversation,
+                onChanged: _saving
+                    ? null
+                    : (value) => _save(
+                        VoiceOfflinePrefs.conversationKey,
+                        value ? 'on' : 'off',
+                      ),
+              ),
+              BargeInSettings(
+                vad:
+                    voiceInputSettingsFor(app, preferences)
+                        is VadVoiceInputSettings,
+                output: app.current.localVoiceOutputSettings,
+                offline: _offline,
+                device: widget.session.device,
+                saving: _saving,
+                onSave: _save,
+              ),
+            ],
+          },
+        );
       },
     );
   }

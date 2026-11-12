@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/device_preference.dart';
-import 'package:wing/core/services/voice_preferences.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 
 void main() {
@@ -10,10 +9,10 @@ void main() {
   test('spoken replies toggle persists and rejects unknown values', () async {
     final prefs = await SharedPreferences.getInstance();
     expect(VoiceOfflinePrefs.read(prefs).autoSpeak, isFalse);
-    expect(VoicePreferences.keys, contains(VoiceOfflinePrefs.autoSpeakKey));
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.autoSpeakKey, 'on'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.autoSpeakKey, 'off'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.autoSpeakKey, 'yes'), isFalse);
+    expect(VoiceOfflinePrefs.keys, contains(VoiceOfflinePrefs.autoSpeakKey));
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.autoSpeakKey, 'on'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.autoSpeakKey, 'off'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.autoSpeakKey, 'yes'), isFalse);
     await saveDevicePreference(prefs, VoiceOfflinePrefs.autoSpeakKey, 'on');
     await prefs.reload();
     expect(VoiceOfflinePrefs.read(prefs).autoSpeak, isTrue);
@@ -25,13 +24,13 @@ void main() {
   test('conversation mode toggle persists and rejects unknown values', () async {
     final prefs = await SharedPreferences.getInstance();
     expect(VoiceOfflinePrefs.read(prefs).conversation, isFalse);
-    expect(VoicePreferences.keys, contains(VoiceOfflinePrefs.conversationKey));
+    expect(VoiceOfflinePrefs.keys, contains(VoiceOfflinePrefs.conversationKey));
     expect(
-      VoicePreferences.accepts(VoiceOfflinePrefs.conversationKey, 'on'),
+      VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.conversationKey, 'on'),
       isTrue,
     );
     expect(
-      VoicePreferences.accepts(VoiceOfflinePrefs.conversationKey, 'yes'),
+      VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.conversationKey, 'yes'),
       isFalse,
     );
     await saveDevicePreference(prefs, VoiceOfflinePrefs.conversationKey, 'on');
@@ -43,11 +42,10 @@ void main() {
     expect(VoiceOfflinePrefs.read(prefs).conversation, isFalse);
   });
 
-  test('vad route and its settings persist with card defaults', () async {
+  test('Parakeet engine and its settings persist with card defaults', () async {
     final prefs = await SharedPreferences.getInstance();
-    final initial = VoicePreferences.read(prefs);
     final offline = VoiceOfflinePrefs.read(prefs);
-    expect(initial.input, VoiceInputRoute.local);
+    expect(offline.localEngine, VoiceLocalEngine.system);
     expect(offline.vad.pause, const Duration(milliseconds: 1800));
     expect(offline.vad.minSpeech, const Duration(milliseconds: 250));
     expect(offline.vad.preRoll, const Duration(milliseconds: 300));
@@ -56,7 +54,11 @@ void main() {
     expect(offline.cues, isTrue);
     expect(offline.debugRecordings, isFalse);
     expect(offline.audioSource, VadAudioSource.communication);
-    await saveDevicePreference(prefs, VoicePreferences.inputKey, 'vad');
+    await saveDevicePreference(
+      prefs,
+      VoiceOfflinePrefs.localEngineKey,
+      'parakeet',
+    );
     await saveDevicePreference(prefs, VoiceOfflinePrefs.vadPauseKey, '2400');
     await saveDevicePreference(prefs, VoiceOfflinePrefs.vadMinSpeechKey, '400');
     await saveDevicePreference(prefs, VoiceOfflinePrefs.vadPreRollKey, '500');
@@ -70,10 +72,8 @@ void main() {
       'recognition',
     );
     await prefs.reload();
-    final saved = VoicePreferences.read(prefs);
     final savedOffline = VoiceOfflinePrefs.read(prefs);
-    expect(saved.input, VoiceInputRoute.vad);
-    expect(saved.output, VoiceProcessing.local);
+    expect(savedOffline.localEngine, VoiceLocalEngine.parakeet);
     expect(savedOffline.vad.pause, const Duration(milliseconds: 2400));
     expect(savedOffline.vad.minSpeech, const Duration(milliseconds: 400));
     expect(savedOffline.vad.preRoll, const Duration(milliseconds: 500));
@@ -84,9 +84,12 @@ void main() {
     expect(savedOffline.audioSource, VadAudioSource.recognition);
   });
 
-  test('vad choices are validated for backups; output never accepts vad', () {
-    expect(VoicePreferences.accepts(VoicePreferences.inputKey, 'vad'), isTrue);
-    expect(VoicePreferences.accepts(VoicePreferences.outputKey, 'vad'), isFalse);
+  test('vad choices are validated for backups; the legacy vad route is not a choice', () {
+    expect(
+      VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.localEngineKey, 'parakeet'),
+      isTrue,
+    );
+    expect(VoiceOfflinePrefs.accepts('voice.input', 'vad'), isFalse);
     for (final key in [
       VoiceOfflinePrefs.vadPauseKey,
       VoiceOfflinePrefs.vadMinSpeechKey,
@@ -97,27 +100,27 @@ void main() {
       VoiceOfflinePrefs.vadDebugKey,
       VoiceOfflinePrefs.vadSourceKey,
     ]) {
-      expect(VoicePreferences.keys, contains(key));
-      expect(VoicePreferences.accepts(key, '0'), isFalse, reason: key);
+      expect(VoiceOfflinePrefs.keys, contains(key));
+      expect(VoiceOfflinePrefs.accepts(key, '0'), isFalse, reason: key);
     }
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '1800'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '0'), isFalse);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadMaxKey, '1800'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadNoSpeechKey, '8'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadNoSpeechKey, '7'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '1800'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '0'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadMaxKey, '1800'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadNoSpeechKey, '8'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadNoSpeechKey, '7'), isFalse);
     expect(
-      VoicePreferences.accepts(VoiceOfflinePrefs.vadSourceKey, 'recognition'),
+      VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadSourceKey, 'recognition'),
       isTrue,
     );
-    expect(VoicePreferences.keys, isNot(contains('voice.vad_microphone')));
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadDebugKey, 'on'), isTrue);
+    expect(VoiceOfflinePrefs.keys, isNot(contains('voice.vad_microphone')));
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadDebugKey, 'on'), isTrue);
   });
 
   test('vad pause accepts 4 s and 5 s for longer thinking pauses', () async {
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '4000'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '5000'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '4500'), isFalse);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadPauseKey, '6000'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '4000'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '5000'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '4500'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '6000'), isFalse);
     SharedPreferences.setMockInitialValues({
       VoiceOfflinePrefs.vadPauseKey: '5000',
     });
@@ -153,7 +156,7 @@ void main() {
     });
     final prefs = await SharedPreferences.getInstance();
     expect(VoiceOfflinePrefs.read(prefs).vad.maxDuration, const Duration(minutes: 10));
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.vadMaxKey, '120'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadMaxKey, '120'), isFalse);
     for (final value in VoiceOfflinePrefs.vadMaxChoices) {
       expect(int.parse(value), greaterThanOrEqualTo(600));
     }
@@ -176,10 +179,10 @@ void main() {
     expect(read.listenTurn, isFalse);
     expect(read.listenMinSpeech, const Duration(milliseconds: 600));
     expect(read.bargeInPlayback, isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.listenMinSpeechKey, '150'), isFalse);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.listenTurnKey, 'on'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.bargeInPlaybackKey, 'maybe'), isFalse);
-    expect(VoicePreferences.keys, containsAll([
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.listenMinSpeechKey, '150'), isFalse);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.listenTurnKey, 'on'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.bargeInPlaybackKey, 'maybe'), isFalse);
+    expect(VoiceOfflinePrefs.keys, containsAll([
       VoiceOfflinePrefs.listenTurnKey,
       VoiceOfflinePrefs.listenMinSpeechKey,
       VoiceOfflinePrefs.bargeInPlaybackKey,
@@ -189,12 +192,12 @@ void main() {
   test('mic route: defaults to automatic, persists and rejects unknown values', () async {
     final prefs = await SharedPreferences.getInstance();
     expect(VoiceOfflinePrefs.read(prefs).micRoute, VoiceMicRoute.auto);
-    expect(VoicePreferences.keys, contains(VoiceOfflinePrefs.micRouteKey));
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.micRouteKey, 'auto'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.micRouteKey, 'phone'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.micRouteKey, 'bluetooth'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.micRouteKey, 'wired'), isTrue);
-    expect(VoicePreferences.accepts(VoiceOfflinePrefs.micRouteKey, 'usb'), isFalse);
+    expect(VoiceOfflinePrefs.keys, contains(VoiceOfflinePrefs.micRouteKey));
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.micRouteKey, 'auto'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.micRouteKey, 'phone'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.micRouteKey, 'bluetooth'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.micRouteKey, 'wired'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.micRouteKey, 'usb'), isFalse);
     await saveDevicePreference(prefs, VoiceOfflinePrefs.micRouteKey, 'bluetooth');
     await prefs.reload();
     expect(VoiceOfflinePrefs.read(prefs).micRoute, VoiceMicRoute.bluetooth);
