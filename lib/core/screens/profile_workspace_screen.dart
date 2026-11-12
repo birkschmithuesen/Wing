@@ -430,7 +430,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// never alongside another reply in _autoSpeakQueue).
   void _flushQueuedReplies() {
     if (_queuedUnsolicitedReplies.isEmpty ||
-        _voiceInput.active ||
+        !_voiceInput.active ||
         _bargeIn.listening ||
         !_autoSpeakQueue.isEmpty) {
       return;
