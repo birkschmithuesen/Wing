@@ -72,10 +72,7 @@ import 'administration/voice_settings_navigation.dart';
 import 'administration/provider_access_navigation.dart';
 import '../../car_mode/car_mode_bridge.dart';
 import '../../car_mode/car_mode_session.dart';
-import '../../car_mode/car_mode_state.dart';
 import '../../voice_offline/background_voice.dart';
-import '../../voice_offline/barge_in_coordinator.dart';
-import '../../voice_offline/barge_in_policy.dart';
 import '../../voice_offline/car_mic_session.dart';
 import '../../voice_offline/chat_voice_view.dart';
 import '../../voice_offline/headphone_route.dart';
@@ -134,6 +131,7 @@ class ProfileWorkspaceScreen extends StatefulWidget {
 class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     with WidgetsBindingObserver
     implements WorkspaceVoiceHost {
+  @override
   ProfileWorkspaceController get controller => widget.controller;
   late final _voice = WorkspaceVoiceDriver(
     host: this,
@@ -141,18 +139,29 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     backgroundHost: widget.backgroundVoice,
     headphoneHost: widget.headphoneRoute,
   );
+  @override
   ProfileChat? get currentChat =>
       controller.notificationChat ?? controller.current?.chat;
+  @override
   VoiceInputController get voiceInput => _voiceInput;
+  @override
   VoiceOutputController get voiceOutput => _voiceOutput;
+  @override
   CarModeSession get car => _car;
-  BargeInCoordinator get bargeIn => _bargeIn;
+  @override
   CarMicSession get carMic => _carMic;
+  @override
   BackgroundVoice get background => _background;
-  HeadphoneRoute get headphones => _headphones;
+  @override
+  TextEditingController get composer => _composer;
+  @override
   bool get onChatsDestination => _destination == AppDestination.chats;
+  @override
   set voiceOwner(ProfileSessionKey? key) => _voiceOwner = key;
+  @override
   Future<void> run(Future<void> Function() action) => _run(action);
+  @override
+  Future<T?> runValue<T>(Future<T> Function() action) => _runValue(action);
   final _composer = TextEditingController();
   final _profileNavigation = WorkspaceProfileNavigation();
   final _composerFocus = FocusNode();
@@ -207,8 +216,6 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   /// instead of per round (spec Birk decision 2026-10-19).
   late final _carMic = CarMicSession(widget.voiceDevice ?? AndroidVoice.instance);
 
-  bool _carKitConnected() => isCarKitClass(_headphones.bluetoothClass);
-
   late final VoiceInputController _voiceInput = VoiceInputController(
     device: widget.voiceDevice ?? AndroidVoice.instance,
     createRemote: () => HermesVoice.forConnection(
@@ -218,7 +225,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     vadRound: VadInputRound(
       device: VadVoiceDevice.of(widget.voiceDevice ?? AndroidVoice.instance),
       carMicSession: _carMic,
-      carKitConnected: _carKitConnected,
+      carKitConnected: _voice.carKitConnected,
       carModeActive: () => _car.active,
     ),
   );
@@ -230,25 +237,6 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     onStopped: _cancelVoice,
   );
 
-  /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
-  late final _bargeIn = BargeInCoordinator(
-    TurnListener(
-      device: widget.voiceDevice ?? AndroidVoice.instance,
-      carMicSession: _carMic,
-      carKitConnected: _carKitConnected,
-    ),
-  );
-
-  /// Voice barge-in into read-aloud only with headphones, wired or Bluetooth
-  /// (spec §3.4.1, D2; owner lifted the Bluetooth lock 2026-10-20 without an
-  /// echo measurement, t_fabcb273). The car mode screen's "Interrupt by
-  /// speaking" switch lifts the Wing car mode lock for the running session
-  /// only (see [playbackBargeIn]).
-  late final _headphones = HeadphoneRoute(
-    widget.headphoneRoute ?? AndroidHeadphoneRouteHost.instance,
-    wingCarMode: () => _car.active,
-    bargeInOverride: () => _car.bargeInOn,
-  );
   VoiceDevice get _voiceDevice => widget.voiceDevice ?? AndroidVoice.instance;
   StreamSubscription<Map<String, dynamic>>? _voiceDeviceEvents;
 
@@ -260,9 +248,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         controller.connectionStatus,
         _voiceInput,
         _voiceOutput,
-        _bargeIn,
+        _voice.bargeIn,
       ]),
-      read: () => carSnapshotOf(controller, _voiceInput, _voiceOutput, bargeIn: _bargeIn),
+      read: () => carSnapshotOf(
+        controller,
+        _voiceInput,
+        _voiceOutput,
+        bargeIn: _voice.bargeIn,
+      ),
       preferences: controller.preferences,
       talk: () async {
         final chat = controller.notificationChat ?? controller.current?.chat;
@@ -314,94 +307,6 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
   }
 
-  ListenTarget _listenTarget(ProfileChat chat) => CallbackListenTarget(
-    readState: () => chat.listenState,
-    onSteer: (text) async =>
-        await _runValue(
-          () => controller.steer(chat, text, preserveComposer: true),
-        ) ==
-        true,
-    onQueue: (text) => _run(() => controller.queuePrompt(chat, text)),
-    onSend: (text) async {
-      if (!mounted || _voice.conversation != chat.key) return;
-      final value = insertVoiceTranscript(_composer.value, text);
-      _composer.value = value;
-      await _run(() async {
-        await controller.updateDraft(chat, value.text);
-        await _voice.sendConversationTurn(chat);
-      });
-    },
-  );
-
-  /// Opens a listen round for the conversation's chat (vad route only).
-  void openListen(ProfileChat chat, {bool playback = false}) {
-    final settings = tryReadVoicePreferences(controller.preferences);
-    if (settings == null) return;
-    final offline = VoiceOfflinePrefs.read(controller.preferences);
-    if (!mounted ||
-        _voice.conversation != chat.key ||
-        settings.input != VoiceInputRoute.vad ||
-        !offline.conversation ||
-        !(offline.listenTurn || playback)) {
-      return;
-    }
-    unawaited(
-      _bargeIn
-          .open(
-            chat.key,
-            _listenTarget(chat),
-            offline,
-            playback: playback,
-            onBarge: () {
-              _voice.autoSpeakQueue.clear();
-              bargeLog(_headphones.logLine);
-              return _voiceOutput.stop();
-            },
-          )
-          .catchError((Object _) {}),
-    );
-  }
-
-  /// Voice barge-in into read-aloud (spec §3.4, D2): setting on, echo gate
-  /// passed, the conversation's chat, output on headphones — wired or
-  /// Bluetooth (owner lifted the Bluetooth lock 2026-10-20 without an echo
-  /// measurement, t_fabcb273) — or the car mode screen's "Interrupt by
-  /// speaking" switch lifted the carMode lock for this session.
-  bool playbackBargeIn(ProfileChat chat, VoiceOfflinePrefs offline) =>
-      bargeInPlaybackAvailable &&
-      offline.bargeInPlayback &&
-      _voice.conversation == chat.key &&
-      (_headphones.headphones || _headphones.carModeOverridden);
-
-  /// The output route changed while Wing reads aloud (spec §3.4.2): headphones
-  /// gone closes a playback round, headphones back opens one.
-  void _headphoneRouteChanged() {
-    // Spec Birk decision 2026-10-19: the car kit itself is gone, so the held
-    // SCO link means nothing any more - close it (reason=disconnect) instead
-    // of waiting out the idle timeout.
-    if (_carMic.isOpen && !_carKitConnected()) {
-      unawaited(_carMic.end('disconnect').catchError((Object _) {}));
-    }
-    final chat = controller.notificationChat ?? controller.current?.chat;
-    if (!mounted ||
-        chat == null ||
-        _voice.conversation != chat.key ||
-        _voiceOutput.owner == null) {
-      return;
-    }
-    if (!_headphones.headphones && !_headphones.carModeOverridden) {
-      if (_bargeIn.listener.playback) {
-        unawaited(_bargeIn.close('route').catchError((Object _) {}));
-      }
-      return;
-    }
-    if (tryReadVoicePreferences(controller.preferences) == null) return;
-    final offline = VoiceOfflinePrefs.read(controller.preferences);
-    if (!_bargeIn.listening && playbackBargeIn(chat, offline)) {
-      openListen(chat, playback: true);
-    }
-  }
-
   /// Route vad: preload the phone model. Media keys are captured only while
   /// this workspace is the focused chat on the vad route (spec: foreground).
   void _syncVadRoute() {
@@ -411,6 +316,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (vad) unawaited(VadVoiceDevice.of(_voiceDevice).prepareVad().catchError((Object _) {}));
   }
 
+  @override
   bool? vadRoute() {
     final settings = tryReadVoicePreferences(controller.preferences);
     return settings == null ? null : settings.input == VoiceInputRoute.vad;
@@ -435,8 +341,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     if (vadRoute() != true) {
       return;
     }
-    if (_bargeIn.listening && _voiceOutput.owner == null) {
-      unawaited(_bargeIn.listener.endUtterance());
+    if (_voice.bargeIn.listening && _voiceOutput.owner == null) {
+      unawaited(_voice.bargeIn.listener.endUtterance());
       return;
     }
     if (_voiceInput.phase == VoiceInputPhase.recording) {
@@ -470,10 +376,11 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
 
   /// [resume] reopens the microphone for a running conversation and gives up
   /// if anything ended the loop in the meantime.
+  @override
   Future<void> dictate(ProfileChat chat, {bool resume = false}) async {
     await _voiceOutput.stop();
     _voice.autoSpeakQueue.clear();
-    await _bargeIn.close('dictate');
+    await _voice.bargeIn.close('dictate');
     _voice.carSend = false;
     if (!mounted ||
         (controller.notificationChat ?? controller.current?.chat) != chat ||
@@ -558,7 +465,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   Widget _voiceActivity() => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (_bargeIn.listening && !_voiceInput.active)
+      if (_voice.bargeIn.listening && !_voiceInput.active)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Wrap(
@@ -568,14 +475,14 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
               Semantics(
                 liveRegion: true,
                 child: Text(
-                  _bargeIn.listener.phase == ListenPhase.transcribing
+                  _voice.bargeIn.listener.phase == ListenPhase.transcribing
                       ? 'Transcribing…'
                       : 'Listening',
                 ),
               ),
               TextButton(
                 key: const ValueKey('voice-stop-listening'),
-                onPressed: () => unawaited(_bargeIn.close('stopButton')),
+                onPressed: () => unawaited(_voice.bargeIn.close('stopButton')),
                 child: const Text('Stop listening'),
               ),
             ],
@@ -675,6 +582,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
       _hasWorkspaceFocus && _destination == AppDestination.chats;
 
   /// Chat focus for the conversation loop; a held hold also counts when the app is paused (spec 2026-10-14).
+  @override
   bool get loopFocus =>
       (_routeIsCurrent || _car.active) && _destination == AppDestination.chats &&
       (_appIsActive || _background.held);
@@ -691,7 +599,9 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void initState() {
     super.initState();
-    _bargeIn.addListener(() => _background.listening(_bargeIn.listening));
+    _voice.bargeIn.addListener(
+      () => _background.listening(_voice.bargeIn.listening),
+    );
     _liveWorkspaces++;
     _destination = widget.initialDestination;
     _appIsActive =
@@ -701,8 +611,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voice.attach();
     _voiceDeviceEvents = _voiceDevice.events.listen(_voiceDeviceEvent);
     _car.addListener(_carActiveChanged);
-    _car.addListener(_headphones.carModeChanged);
-    _headphones.addListener(_headphoneRouteChanged);
+    _voice.attachRoute();
     _syncVadRoute();
     WidgetsBinding.instance.addObserver(this);
     controller.setRouteVisibility(this, _hasChatFocus);
@@ -779,7 +688,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   void dispose() {
     _car.removeListener(_carActiveChanged);
-    _car.removeListener(_headphones.carModeChanged);
+    _car.removeListener(_voice.headphones.carModeChanged);
     _car.dispose();
     _carMic.dispose();
     controller.removeListener(_voiceWorkspaceChanged);
@@ -788,8 +697,8 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voiceInput.dispose();
     _voiceOutput.dispose();
     _background.dispose();
-    _bargeIn.dispose();
-    _headphones.dispose();
+    _voice.bargeIn.dispose();
+    _voice.headphones.dispose();
     controller.setRouteVisibility(this, false);
     if (_mediaKeysOn) {
       _mediaKeysOn = false;
@@ -923,7 +832,12 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   ProfileWorkspaceBrowser? _browser;
 
   Widget _buildWorkspace(BuildContext context) => ListenableBuilder(
-    listenable: Listenable.merge([controller, _voiceInput, _voiceOutput, _bargeIn]),
+    listenable: Listenable.merge([
+      controller,
+      _voiceInput,
+      _voiceOutput,
+      _voice.bargeIn,
+    ]),
     builder: (context, _) {
       final current = controller.current;
       final chat = controller.notificationChat ?? current?.chat;
@@ -2356,6 +2270,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
             isBranchMessage(message),
       );
 
+  @override
   Map<ComposerAction, String?> composerActions(ProfileChat chat) {
     if (_voiceInput.active) {
       return {
@@ -2425,6 +2340,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     onSelected: (action) => performComposerAction(chat, action),
   );
 
+  @override
   Future<void> performComposerAction(
     ProfileChat chat,
     ComposerAction action, {

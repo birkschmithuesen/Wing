@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import '../car_mode/car_mode_session.dart';
 import '../car_mode/car_mode_state.dart';
@@ -13,9 +14,11 @@ import '../core/services/profile_workspace_controller.dart';
 import '../core/services/voice_preferences.dart';
 import 'background_voice.dart';
 import 'barge_in_coordinator.dart';
+import 'barge_in_policy.dart';
 import 'car_mic_session.dart';
 import 'chat_voice_view.dart';
 import 'headphone_route.dart';
+import 'turn_listener.dart';
 import 'speech_queue.dart';
 import 'vad_voice_device.dart';
 import 'voice_offline_prefs.dart';
@@ -46,16 +49,14 @@ abstract interface class WorkspaceVoiceHost {
 
   // Screen-owned voice state, until the tasks that move it.
   CarModeSession get car;
-  BargeInCoordinator get bargeIn;
   CarMicSession get carMic;
   BackgroundVoice get background;
-  HeadphoneRoute get headphones;
   bool get loopFocus;
   bool get onChatsDestination;
   bool? vadRoute();
   Map<ComposerAction, String?> composerActions(ProfileChat chat);
-  void openListen(ProfileChat chat, {bool playback = false});
-  bool playbackBargeIn(ProfileChat chat, VoiceOfflinePrefs offline);
+  TextEditingController get composer;
+  Future<T?> runValue<T>(Future<T> Function() action);
   set voiceOwner(ProfileSessionKey? key);
 }
 
@@ -78,14 +79,41 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   VoiceInputController get _voiceInput => host.voiceInput;
   VoiceOutputController get _voiceOutput => host.voiceOutput;
   CarModeSession get _car => host.car;
-  BargeInCoordinator get _bargeIn => host.bargeIn;
   CarMicSession get _carMic => host.carMic;
   BackgroundVoice get _background => host.background;
+
+  /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
+  late final bargeIn = BargeInCoordinator(
+    TurnListener(
+      device: device,
+      carMicSession: _carMic,
+      carKitConnected: carKitConnected,
+    ),
+  );
+
+  bool carKitConnected() => isCarKitClass(headphones.bluetoothClass);
+
+  /// Voice barge-in into read-aloud only with headphones, wired or Bluetooth
+  /// (spec §3.4.1, D2; owner lifted the Bluetooth lock 2026-10-20 without an
+  /// echo measurement, t_fabcb273). The car mode screen's "Interrupt by
+  /// speaking" switch lifts the Wing car mode lock for the running session
+  /// only (see [playbackBargeIn]).
+  late final headphones = HeadphoneRoute(
+    headphoneHost ?? AndroidHeadphoneRouteHost.instance,
+    wingCarMode: () => _car.active,
+    bargeInOverride: () => _car.bargeInOn,
+  );
 
   /// initState part.
   void attach() {
     _autoSpeak = _controller.completedReplies.listen(_speakCompletedReply);
     _voiceInput.addListener(_voiceInputChanged);
+  }
+
+  /// initState part, after the car mode listeners: follows the output route.
+  void attachRoute() {
+    _car.addListener(headphones.carModeChanged);
+    headphones.addListener(_headphoneRouteChanged);
   }
 
   /// dispose part.
@@ -117,7 +145,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       VoiceSwitchHolders.screenOn(device).set(host, value != null);
     }
     if (value != _conversationKey) {
-      unawaited(_bargeIn.close('conversationEnd').catchError((Object _) {}));
+      unawaited(bargeIn.close('conversationEnd').catchError((Object _) {}));
       if (value == null) unawaited(_carMic.end('end').catchError((Object _) {}));
     }
     _conversationKey = value;
@@ -167,15 +195,15 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     if (!awaitingReply) conversation = null;
     awaitingReply = false;
-    if (_bargeIn.chat == chat.key && _bargeIn.listener.speechInProgress) {
+    if (bargeIn.chat == chat.key && bargeIn.listener.speechInProgress) {
       // D3: the user is already talking; the reply stays in the chat and
       // the utterance becomes the next prompt.
       return;
     }
-    if (host.playbackBargeIn(chat, offline)) {
-      host.openListen(chat, playback: true);
+    if (playbackBargeIn(chat, offline)) {
+      openListen(chat, playback: true);
     } else {
-      unawaited(_bargeIn.close('turnEnd').catchError((Object _) {}));
+      unawaited(bargeIn.close('turnEnd').catchError((Object _) {}));
     }
     host.voiceOwner = chat.key;
     final connection = _controller.connection;
@@ -192,21 +220,21 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
           // Stop speech, a newer playback or a failure ends the conversation,
           // unless the user already tapped the microphone again or a barge-in
           // stopped the reply (its listen round keeps the conversation).
-          if (!_voiceInput.active && !_bargeIn.listening) conversation = null;
+          if (!_voiceInput.active && !bargeIn.listening) conversation = null;
           return;
         }
-        if (_bargeIn.listening && _bargeIn.chat == chat.key) {
+        if (bargeIn.listening && bargeIn.chat == chat.key) {
           // Read-aloud ended: the open round replaces the reopened dictation
           // and uses the normal rules once no other reply waits to be read.
-          if (autoSpeakQueue.isEmpty) _bargeIn.setPlayback(false);
+          if (autoSpeakQueue.isEmpty) bargeIn.setPlayback(false);
           if (chat.voiceBusy) awaitingReply = true;
           return;
         }
-        if (conversation == chat.key && chat.voiceBusy && _bargeIn.steered) {
+        if (conversation == chat.key && chat.voiceBusy && bargeIn.steered) {
           // The gateway runs a steer that arrived during the final answer as
           // a follow-up turn; its reply belongs to this conversation.
           awaitingReply = true;
-          host.openListen(chat);
+          openListen(chat);
           return;
         }
         if (canContinueConversation(chat)) {
@@ -310,7 +338,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       }
       // Listen while Hermes works (spec 2026-10-14 barge-in): keep
       // listening for a follow-up turn the gateway may start after a steer.
-      if (accepted) host.openListen(chat);
+      if (accepted) openListen(chat);
       return;
     }
     if (actions[ComposerAction.send] != null) {
@@ -319,17 +347,105 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     _car.logDelivery(CarDelivery.send);
     awaitingReply = true;
-    _bargeIn.beginTurn();
+    bargeIn.beginTurn();
     // Fresh route verdict for when this turn's reply is read aloud.
-    unawaited(host.headphones.refresh());
+    unawaited(headphones.refresh());
     await host.performComposerAction(
       chat,
       ComposerAction.send,
       conversation: true,
     );
-    if (chat.voiceBusy) host.openListen(chat);
+    if (chat.voiceBusy) openListen(chat);
     if (!chat.voiceBusy && !_voiceInput.active && _voiceOutput.owner == null) {
       conversation = null;
+    }
+  }
+
+  ListenTarget _listenTarget(ProfileChat chat) => CallbackListenTarget(
+    readState: () => chat.listenState,
+    onSteer: (text) async =>
+        await host.runValue(
+          () => _controller.steer(chat, text, preserveComposer: true),
+        ) ==
+        true,
+    onQueue: (text) => host.run(() => _controller.queuePrompt(chat, text)),
+    onSend: (text) async {
+      if (!host.mounted || conversation != chat.key) return;
+      final value = insertVoiceTranscript(host.composer.value, text);
+      host.composer.value = value;
+      await host.run(() async {
+        await _controller.updateDraft(chat, value.text);
+        await sendConversationTurn(chat);
+      });
+    },
+  );
+
+  /// Opens a listen round for the conversation's chat (vad route only).
+  void openListen(ProfileChat chat, {bool playback = false}) {
+    final settings = tryReadVoicePreferences(_controller.preferences);
+    if (settings == null) return;
+    final offline = VoiceOfflinePrefs.read(_controller.preferences);
+    if (!host.mounted ||
+        conversation != chat.key ||
+        settings.input != VoiceInputRoute.vad ||
+        !offline.conversation ||
+        !(offline.listenTurn || playback)) {
+      return;
+    }
+    unawaited(
+      bargeIn
+          .open(
+            chat.key,
+            _listenTarget(chat),
+            offline,
+            playback: playback,
+            onBarge: () {
+              autoSpeakQueue.clear();
+              bargeLog(headphones.logLine);
+              return _voiceOutput.stop();
+            },
+          )
+          .catchError((Object _) {}),
+    );
+  }
+
+  /// Voice barge-in into read-aloud (spec §3.4, D2): setting on, echo gate
+  /// passed, the conversation's chat, output on headphones — wired or
+  /// Bluetooth (owner lifted the Bluetooth lock 2026-10-20 without an echo
+  /// measurement, t_fabcb273) — or the car mode screen's "Interrupt by
+  /// speaking" switch lifted the carMode lock for this session.
+  bool playbackBargeIn(ProfileChat chat, VoiceOfflinePrefs offline) =>
+      bargeInPlaybackAvailable &&
+      offline.bargeInPlayback &&
+      conversation == chat.key &&
+      (headphones.headphones || headphones.carModeOverridden);
+
+  /// The output route changed while Wing reads aloud (spec §3.4.2): headphones
+  /// gone closes a playback round, headphones back opens one.
+  void _headphoneRouteChanged() {
+    // Spec Birk decision 2026-10-19: the car kit itself is gone, so the held
+    // SCO link means nothing any more - close it (reason=disconnect) instead
+    // of waiting out the idle timeout.
+    if (_carMic.isOpen && !carKitConnected()) {
+      unawaited(_carMic.end('disconnect').catchError((Object _) {}));
+    }
+    final chat = _controller.notificationChat ?? _controller.current?.chat;
+    if (!host.mounted ||
+        chat == null ||
+        conversation != chat.key ||
+        _voiceOutput.owner == null) {
+      return;
+    }
+    if (!headphones.headphones && !headphones.carModeOverridden) {
+      if (bargeIn.listener.playback) {
+        unawaited(bargeIn.close('route').catchError((Object _) {}));
+      }
+      return;
+    }
+    if (tryReadVoicePreferences(_controller.preferences) == null) return;
+    final offline = VoiceOfflinePrefs.read(_controller.preferences);
+    if (!bargeIn.listening && playbackBargeIn(chat, offline)) {
+      openListen(chat, playback: true);
     }
   }
 }
