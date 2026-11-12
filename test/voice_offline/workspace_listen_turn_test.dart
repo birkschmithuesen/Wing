@@ -32,7 +32,7 @@ void main() {
     expect(h.vadStarts(), 3);
     await h.completeReply(tester, 'Fertig.');
     expect(find.text('Listening'), findsNothing);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -65,7 +65,7 @@ void main() {
     await h.completeReply(tester, 'Antwort.');
     expect(h.device.spoken, 'Antwort.');
     expect(find.textContaining('Recording ·'), findsOneWidget);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -85,7 +85,7 @@ void main() {
     expect(h.vadStarts(), 1);
     expect(find.text('Listening'), findsNothing);
     await h.completeReply(tester);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 

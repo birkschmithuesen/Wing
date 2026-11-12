@@ -122,7 +122,7 @@ void main() {
       expect(h.prompts(), 1);
       await finishReading(tester);
       expect(find.textContaining('Recording ·'), findsOneWidget);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -141,7 +141,7 @@ void main() {
     expect(h.prompts(), 1);
     await finishReading(tester);
     expect(find.textContaining('Recording ·'), findsOneWidget);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -158,7 +158,7 @@ void main() {
     expect(playbackStops(), stopsBefore);
     await finishReading(tester);
     expect(find.textContaining('Recording ·'), findsOneWidget);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -204,7 +204,7 @@ void main() {
       expect(playbackStops(), stopsBefore);
       await finishReading(tester);
       expect(find.textContaining('Recording ·'), findsOneWidget);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -220,7 +220,7 @@ void main() {
       expect(find.text('Listening'), findsNothing);
       await finishReading(tester);
       expect(find.textContaining('Recording ·'), findsOneWidget);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );

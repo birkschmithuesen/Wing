@@ -28,7 +28,7 @@ void main() {
     expect(h.controller.current!.chat!.composer.observation.text, isEmpty);
     h.gatewayEvent('message.complete', {'text': 'Done.'});
     await h.settle(tester);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -58,7 +58,7 @@ void main() {
       // continues the hands-free loop.
       await h.completeReply(tester, 'Tomorrow looks sunny.');
       expect(h.device.spoken, 'Tomorrow looks sunny.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -84,7 +84,7 @@ void main() {
       await h.completeReply(tester, 'Queued answer.');
       expect(h.device.spoken, 'Queued answer.');
       expect(h.starts(), 2, reason: 'the mic reopened after the queued reply');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -123,7 +123,7 @@ void main() {
       await h.completeReply(tester, 'Queued answer.');
       expect(h.device.spoken, 'Queued answer.');
       expect(h.starts(), 2, reason: 'the mic reopened after the queued reply');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -148,7 +148,7 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     final id = h.device.recording;
-    await tester.tap(find.text('Stop recording'));
+    await tester.tap(find.byTooltip('Stop recording'));
     await tester.pump();
     h.device.stream.add({'id': id, 'text': 'Stopped words', 'final': true});
     await h.settle(tester);
@@ -182,7 +182,7 @@ void main() {
     expect(h.prompts(), 2);
     await h.completeReply(tester, 'Answer two.');
     expect(h.starts(), 3);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -240,7 +240,7 @@ void main() {
       // both have been spoken - exercised directly by the dedicated
       // unsolicited-reply tests below.
       expect(h.device.spoken, 'Answer two.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -276,7 +276,7 @@ void main() {
       // The queued second reply must never speak: the tap cleared it.
       expect(h.device.calls.where((c) => c == 'speak').length, 1);
       expect(h.device.spoken, 'Answer one.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -324,7 +324,7 @@ void main() {
         3,
         reason: 'the loop stays on after the queued reply speaks',
       );
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -371,7 +371,7 @@ void main() {
         2,
         reason: 'the loop stays on: the mic reopens like after a normal reply',
       );
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -386,7 +386,7 @@ void main() {
     await h.sayFinal(tester, 'Question');
     await h.completeReply(tester);
     expect(h.starts(), 2);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
     // A later reply in this chat must not reopen the microphone.
     h.gatewayEvent('message.start');

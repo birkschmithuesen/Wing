@@ -57,7 +57,7 @@ void main() {
       expect(find.text('Recording · 0s / 600s'), findsOneWidget);
       expect(find.textContaining('/ 120s'), findsNothing);
       await h.screenshot(tester, 'vad-recording-light-100');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 

@@ -59,7 +59,7 @@ void main() {
     );
     h.gatewayEvent('message.complete', {'text': 'Done.'});
     await h.settle(tester);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -74,7 +74,7 @@ void main() {
     expect(h.device.finishes, isEmpty);
     expect(find.textContaining('Recording ·'), findsOneWidget);
     expect(h.prompts(), 0);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -94,7 +94,7 @@ void main() {
     expect(h.prompts(), 1);
     h.gatewayEvent('message.complete', {'text': 'Done.'});
     await h.settle(tester);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -104,7 +104,7 @@ void main() {
     h.device.emitMediaKey();
     await h.settle(tester);
     expect(h.vadStarts(), 1);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -212,7 +212,7 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     expect(h.device.keepScreenOnCalls, [true]);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
     expect(h.device.keepScreenOnCalls, [true, false]);
   });
@@ -226,7 +226,7 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     expect(find.text('Recording · 0s / 900s'), findsOneWidget);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -239,7 +239,7 @@ void main() {
     await tester.pump();
     expect(find.text('Recording · 0s / 600s'), findsOneWidget);
     await h.screenshot(tester, 'vad-recording-light-100');
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 

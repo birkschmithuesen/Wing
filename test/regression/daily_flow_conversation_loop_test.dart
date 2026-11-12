@@ -29,7 +29,7 @@ void main() {
       expect(h.controller.current!.chat!.composer.observation.text, isEmpty);
       h.gatewayEvent('message.complete', {'text': 'Done.'});
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -59,7 +59,7 @@ void main() {
       expect(h.prompts(), 2);
       await h.completeReply(tester, 'Answer two.');
       expect(h.starts(), 3);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -81,7 +81,7 @@ void main() {
       );
       h.gatewayEvent('message.complete', {'text': 'Done.'});
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
   });

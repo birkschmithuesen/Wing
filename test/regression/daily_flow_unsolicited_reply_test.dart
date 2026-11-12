@@ -56,7 +56,7 @@ void main() {
           3,
           reason: 'the loop stays on after the queued reply speaks',
         );
-        await tester.tap(find.text('Cancel recording'));
+        await tester.tap(find.byTooltip('Cancel recording'));
         await h.settle(tester);
       },
     );
@@ -103,7 +103,7 @@ void main() {
           2,
           reason: 'the loop stays on: the mic reopens like after a normal reply',
         );
-        await tester.tap(find.text('Cancel recording'));
+        await tester.tap(find.byTooltip('Cancel recording'));
         await h.settle(tester);
       },
     );
@@ -162,7 +162,7 @@ void main() {
         // both have been spoken - exercised directly by the dedicated
         // unsolicited-reply tests below.
         expect(h.device.spoken, 'Answer two.');
-        await tester.tap(find.text('Cancel recording'));
+        await tester.tap(find.byTooltip('Cancel recording'));
         await h.settle(tester);
       },
     );

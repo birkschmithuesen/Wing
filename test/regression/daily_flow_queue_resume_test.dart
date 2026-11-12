@@ -151,7 +151,7 @@ void main() {
         await h.completeReply(tester, 'Queued answer.');
         expect(h.device.spoken, 'Queued answer.');
         expect(h.starts(), 2, reason: 'the mic reopened after the queued reply');
-        await tester.tap(find.text('Cancel recording'));
+        await tester.tap(find.byTooltip('Cancel recording'));
         await h.settle(tester);
       },
     );

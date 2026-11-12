@@ -40,7 +40,7 @@ void main() {
     testWidgets('a vad conversation holds while it runs', (tester) async {
       await startVadConversation(tester);
       expect(h.background.holds, [true]);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
       expect(h.background.holds, [true, false]);
     });
@@ -85,7 +85,7 @@ void main() {
       expect(h.vadStarts(), 3);
       screenOn(tester);
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -101,7 +101,7 @@ void main() {
       expect(h.vadStarts(), 2);
       screenOn(tester);
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -182,7 +182,7 @@ void main() {
       expect(h.background.listens.last, isFalse);
       expect(h.background.holds, [true]);
       screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -199,7 +199,7 @@ void main() {
       expect(h.vadStarts(), 2);
       expect(h.background.listens, isEmpty);
       screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
   });
