@@ -222,7 +222,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   @override
   bool get onChatsDestination => _destination == AppDestination.chats;
   @override
-  set voiceOwner(ProfileSessionKey? key) => _voiceOwner = key;
+  set voiceOwner(ProfileSessionKey? key) => _voiceSessionOwner = key;
   @override
   Future<void> run(Future<void> Function() action) => _run(action);
   @override
@@ -514,7 +514,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
   }
 
   bool _launchingCamera = false;
-  ProfileSessionKey? _voiceOwner;
+  ProfileSessionKey? _voiceSessionOwner;
 
   late final _voiceInput = VoiceInputController(
     device: widget.voiceDevice ?? AndroidVoice.instance,
@@ -531,10 +531,10 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     widget.voiceDevice ?? AndroidVoice.instance,
   );
 
-  void _voiceWorkspaceChanged() {
+  void _onVoiceWorkspaceChange() {
     final current = controller.notificationChat ?? controller.current?.chat;
-    if (_voiceOwner != null &&
-        (_voiceOwner != current?.key ||
+    if (_voiceSessionOwner != null &&
+        (_voiceSessionOwner != current?.key ||
             controller.switching ||
             current?.voiceEditingQueue == true)) {
       _voice.cancel();
@@ -600,7 +600,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
         ? chat.key
         : null;
     _voice.awaitingReply = false;
-    _voiceOwner = chat.key;
+    _voiceSessionOwner = chat.key;
     final capture = controller.captureVoiceDraft(chat);
     final selection = _composer.selection;
     _composerFocus.unfocus();
@@ -653,7 +653,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _voice.endLoop();
     _voice.autoSpeakQueue.clear();
     _voice.queuedUnsolicitedReplies.clear();
-    _voiceOwner = chat.key;
+    _voiceSessionOwner = chat.key;
     await _voiceOutput.readAloud(
       reply: controller.voiceReply(chat, message),
       settings: () => controller.appPreferences.current.voiceOutputSettings,
@@ -1063,7 +1063,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     _appIsActive =
         WidgetsBinding.instance.lifecycleState == null ||
         WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
-    controller.addListener(_voiceWorkspaceChanged);
+    controller.addListener(_onVoiceWorkspaceChange);
     _voice.attach();
     _voice.attachRoute();
     _voice.syncVadRoute();
@@ -1215,7 +1215,7 @@ class ProfileWorkspaceScreenState extends State<ProfileWorkspaceScreen>
     }
     _traceResources.clear();
     controller.removeListener(_syncVoiceTarget);
-    controller.removeListener(_voiceWorkspaceChanged);
+    controller.removeListener(_onVoiceWorkspaceChange);
     controller.removeListener(_supervisionWorkspaceChanged);
     _supervision?.dispose();
     _voice.detach();

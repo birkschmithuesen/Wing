@@ -118,7 +118,7 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
             TextButton(
               key: const ValueKey('vad-model-cancel'),
               onPressed: () => unawaited(VadVoiceDevice.of(widget.device).cancelVadModelInstall()),
-              child: const Text('Cancel'),
+              child: const Text('Stop'),
             ),
           ),
           LinearProgressIndicator(
