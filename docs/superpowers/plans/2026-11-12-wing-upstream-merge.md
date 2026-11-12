@@ -22,8 +22,8 @@ step below says "per spec <ID>", the spec row contains the exact code to write.
 
 ## Global Constraints
 
-- **Branch:** work branch `wt/t_d1d49ff1`, created from LOCAL `voice-offline` (= `origin/voice-offline`,
-  b3178398 at Stand 2026-11-12). Commit only there. **Never commit to, merge into or push `voice-offline`**
+- **Branch:** work branch `wt/t_d1d49ff1`, created from `origin/plan/t_dcfc9770` (= `origin/voice-offline`
+  b3178398 at Stand 2026-11-12 + the spec/plan commits; Task 1). Commit only there. **Never commit to, merge into or push `voice-offline`**
   (a push there triggers `voice-apk.yml` publishing). The merge into `voice-offline` is a separate [Merge]
   card. No push except what the two factory scripts do themselves (`ci/<sha>`, `ci-voice-apk*/<sha>` refs).
 - **MERGE, no rebase.** Exactly one `git merge --no-ff upstream/main`. No cherry-picks of upstream commits.
@@ -73,12 +73,17 @@ step below says "per spec <ID>", the spec row contains the exact code to write.
 
 **Files:** none changed.
 
-- [ ] **Step 1: Create the work branch from local `voice-offline`**
+- [ ] **Step 1: Create the work branch from the plan branch**
+
+The spec and this plan exist only on `origin/plan/t_dcfc9770` (= `voice-offline` b3178398 + docs-only
+commits). Branch from there so the docs travel with the merge; the [Merge] card brings them into
+`voice-offline`.
 
 Run: `git fetch origin`
 Run: `git fetch upstream`
-Run: `git switch -c wt/t_d1d49ff1 voice-offline`
-Expected: `Switched to a new branch 'wt/t_d1d49ff1'`.
+Run: `git switch -c wt/t_d1d49ff1 origin/plan/t_dcfc9770`
+Expected: `Switched to a new branch 'wt/t_d1d49ff1'`; `git merge-base --is-ancestor b3178398 HEAD` exits 0.
+If the worktree already exists on `wt/t_d1d49ff1` at `voice-offline`: `git merge --ff-only origin/plan/t_dcfc9770`.
 
 - [ ] **Step 2: Record the refs**
 
