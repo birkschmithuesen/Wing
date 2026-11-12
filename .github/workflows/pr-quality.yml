@@ -106,7 +106,15 @@ jobs:
           fi
 
       - name: Check all Dart source contracts
-        run: python3 scripts/check_commit_linters.py --dart-only --baseline-reference "build/architecture-baseline-reference.json"
+        run: |
+          set -o pipefail
+          python3 scripts/check_commit_linters.py --dart-only --baseline-reference "build/architecture-baseline-reference.json" 2>&1 | tee contracts_output.txt
+
+      # Fork (Wing Voice): the vServer cannot download logs, annotations are readable.
+      - name: Surface contract failure as annotations
+        if: failure() && hashFiles('contracts_output.txt') != ''
+        run: |
+          grep -v '^\s*$' contracts_output.txt | head -40 | cut -c1-300 | paste -d"~" - - - - | while IFS= read -r line; do printf '::error::CONTRACT: %s\n' "$line"; done
 
       - name: Check workspace search owner fixtures
         run: dart run tools/architecture/tests/workspace_search_owner_test.dart
