@@ -162,6 +162,10 @@ jobs:
           if [ -f "$f" ]; then
             jq -rs '(map(select(.type=="testStart")|{key:(.test.id|tostring),value:.test.name})|from_entries) as $n | .[]|select(.type=="error")|"\($n[(.testID|tostring)] // "?"): \(.error|gsub("\n";" ")|.[0:260])"' "$f" | head -90 | paste -d"~" - - - - - - - - - | while IFS= read -r line; do printf '::error::TF: %s\n' "$line"; done
           fi
+          d="$(ls -dt /tmp/wing-host-tests-* 2>/dev/null | head -1)"
+          for n in planning.stderr tests.stderr proof-compilation.stderr; do
+            if [ -s "$d/$n" ]; then tail -n 40 "$d/$n" | cut -c1-300 | paste -d"~" - - - - - - - - - | while IFS= read -r line; do printf '::error::TF-%s: %s\n' "$n" "$line"; done; fi
+          done
           exit 0
 
       - name: Test opt-in performance measurements
