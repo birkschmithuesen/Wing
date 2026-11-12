@@ -10418,13 +10418,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_closed || resource._retry != null || resource._reconnecting) {
       return;
     }
+    // Fork (NetworkGate): no timer retries while Android reports no network;
+    // networkRestored() + resumeConnection(networkChanged: true) retries.
+    if (!connectionStatus.networkAvailable) return;
     resource._recovering = true;
     connectionStatus.waitForRecovery(resource.scope.profileName);
-    // Fork (NetworkGate): no timer retries while Android reports no network;
-    // networkRestored() + resumeConnection(networkChanged: true) retries. The
-    // recovery stays pending (upstream tests read `recovering`), only the
-    // timer is withheld.
-    if (!connectionStatus.networkAvailable) return;
     final delay = _recoveryDelay(resource._reconnectAttempt);
     logConnectionDiagnostic(
       'workspace.recovery_scheduled',

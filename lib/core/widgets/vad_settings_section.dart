@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/android_voice.dart';
+import '../theme/wing_theme.dart';
 import 'anchored_expansion_tile.dart';
 import 'compact_switch.dart';
 import 'studio_error.dart';
@@ -104,22 +105,22 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
     return switch (status.state) {
       VadModelState.absent => row(
         'Speech model · $_archiveMb MB download',
-        TextButton(
+        StudioButtonPress(child: TextButton(
           key: const ValueKey('vad-model-download'),
           onPressed: () => unawaited(VadVoiceDevice.of(widget.device).installVadModel()),
           child: const Text('Download'),
-        ),
+        )),
       ),
       VadModelState.downloading => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           row(
             '${mb(status.bytes)} / ${mb(status.total == 0 ? 487170055 : status.total)} MB',
-            TextButton(
+            StudioButtonPress(child: TextButton(
               key: const ValueKey('vad-model-cancel'),
               onPressed: () => unawaited(VadVoiceDevice.of(widget.device).cancelVadModelInstall()),
               child: const Text('Stop'),
-            ),
+            )),
           ),
           LinearProgressIndicator(
             value: status.total == 0 ? null : status.bytes / status.total,
@@ -135,11 +136,11 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
       ),
       VadModelState.installed => row(
         'Speech model ready',
-        TextButton(
+        StudioButtonPress(child: TextButton(
           key: const ValueKey('vad-model-remove'),
           onPressed: _confirmRemove,
           child: const Text('Remove'),
-        ),
+        )),
       ),
       VadModelState.failed => Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -147,11 +148,11 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
           StudioError(status.error ?? 'Speech model is unavailable.'),
           Align(
             alignment: Alignment.centerLeft,
-            child: TextButton(
+            child: StudioButtonPress(child: TextButton(
               key: const ValueKey('vad-model-retry'),
               onPressed: () => unawaited(VadVoiceDevice.of(widget.device).installVadModel()),
               child: const Text('Retry'),
-            ),
+            )),
           ),
         ],
       ),
@@ -270,11 +271,11 @@ class _VadSettingsSectionState extends State<VadSettingsSection> {
               ]),
               Align(
                 alignment: Alignment.centerLeft,
-                child: TextButton(
+                child: StudioButtonPress(child: TextButton(
                   key: const ValueKey('vad-debug-delete'),
                   onPressed: () => unawaited(VadVoiceDevice.of(widget.device).deleteVadDebugRecordings()),
                   child: const Text('Delete debug recordings'),
-                ),
+                )),
               ),
             ],
           ],
