@@ -24,6 +24,6 @@ class HoldIdleTimer(private val timeoutMs: Long) {
 
     fun expired(now: Long): Boolean {
         val at = deadline ?: return false
-        return now >= at
+        return now > at
     }
 }

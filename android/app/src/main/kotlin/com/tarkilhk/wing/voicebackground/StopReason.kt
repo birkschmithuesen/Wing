@@ -9,7 +9,6 @@ class StopReason {
 
     /** Returns [reason] if this call is the first to resolve, else null. */
     fun resolve(reason: String): String? {
-        if (this.reason != null) return null
         this.reason = reason
         return reason
     }
