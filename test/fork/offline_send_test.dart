@@ -86,6 +86,8 @@ void main() {
       expect(
         controller.connectionStatus.phase,
         ServerConnectionPhase.connected,
+        reason:
+            'access=${controller.connectionStatus.access} live=${controller.connectionStatus.live}',
       );
     },
   );
