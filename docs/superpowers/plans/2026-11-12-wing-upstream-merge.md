@@ -17,18 +17,27 @@ for small helper scripts.
 
 **Spec:** `docs/superpowers/specs/2026-11-12-wing-upstream-merge-design.md`. It is the authority for every
 block decision (Table B, IDs like `SCR-B6`), every silent loss (`S1`..`S10`), every API break (Table C) and the
-OPEN questions `Q1`..`Q11` with their defaults. Read §0, §5, §6, §7, §9, §11 and §13 before starting. Where a
+questions `Q1`..`Q11` with Birk's decisions (§13), the regression suite R1-R8 (§14) and the differences ledger (§15). Read §0, §5, §6, §7, §9, §11, §13, §14 and §15 before starting. Where a
 step below says "per spec <ID>", the spec row contains the exact code to write.
 
 ## Global Constraints
 
+- **Governing rule (Birk, 2026-11-12): "As a Wing user he must notice NOTHING from the merge except
+  improvements."** Every task respects it: the daily-flow regression suite R1-R8 (spec §14) is written and
+  green **before** the merge (Tasks 1a, 1b) and must be green after it with unchanged expectations (Task 15);
+  every other user-visible difference goes to Birk as one question before the [Merge] card (Task 18).
+- **Hard requirement:** the dictation limit stays 10 minutes (600 s) on every route; never upstream's 120 s
+  (spec §6 S1/S9, R4).
+- **Regression files `test/regression/daily_flow_*_test.dart`:** after Task 1a, any task whose API change breaks
+  them (Tasks 4, 7, 9, 10, 11) adapts only the lines between `// SETUP` markers, imports and Table C renames, in
+  the same commit. `expect(...)`, matchers and `reason:` texts never change (checked in Task 15 Step 4).
 - **Branch:** work branch `wt/t_d1d49ff1`, created from `origin/plan/t_dcfc9770` (= `origin/voice-offline`
   b3178398 at Stand 2026-11-12 + the spec/plan commits; Task 1). Commit only there. **Never commit to, merge into or push `voice-offline`**
   (a push there triggers `voice-apk.yml` publishing). The merge into `voice-offline` is a separate [Merge]
   card. No push except what the two factory scripts do themselves (`ci/<sha>`, `ci-voice-apk*/<sha>` refs).
 - **MERGE, no rebase.** Exactly one `git merge --no-ff upstream/main`. No cherry-picks of upstream commits.
 - **Stock Hermes only.** No backend patch, plugin or custom endpoint. Upstream's live-call code ships as
-  upstream wrote it (Q2 default); the fork adds nothing that needs the Wing plugin.
+  upstream wrote it (Q2=A decided); the fork adds nothing that needs the Wing plugin.
 - **One command per Bash call.** No `cd`, no `&&`/`;`/`|`, no `$VAR`, no `$( )`, no loops. Multi-step checks
   go into a small Python script under `.cc-context/` (git-excluded) run with `python3 -I`.
 - **No Flutter SDK on the host.** Never plan on local `flutter`/`dart`. Suite: `bash tools/factory/ci-suite.sh`
@@ -39,9 +48,11 @@ step below says "per spec <ID>", the spec row contains the exact code to write.
 - **Native compile/APK:** `bash tools/factory/dispatch-check.sh voice-apk.yml publish=false` (compile) and
   `publish=true` (APK to branch `voice-apk-bin`), expected last line
   `dispatch-check: voice-apk.yml run <id> conclusion=success …`. Only at **[NATIVE]** checkpoints.
-- **OPEN questions:** every task that depends on one names it and implements its **default** (spec §13). If
-  Birk's answer differs when the task starts, follow the answer and note it in the commit body. Q8 gates the
-  phone install. Q11 is a stop-and-ask, never a default.
+- **Birk's decisions (2026-11-12, spec §13):** Q1=A (engine row; stored values migrate, behaviour identical),
+  Q2=A, Q3=A, Q4=A (upstream `ChatInlineImage`; our `InlineMediaThumbnail` removed), Q5=A, Q6=B (keep our
+  automatic queue resume), Q7=A, Q8=A (one-time step before install, handled by the installer/device card,
+  not by this coder card), Q9=A, Q10=A, Q11=A (if CI rejects the S6 recipe, maintain a fork edit of
+  upstream's `VoicePermissionLifecycleGuard`). No task asks these again.
 - **Comments/identifiers/commits in English** (docs/refactoring-guidelines.md §7). Commit bodies list the
   spec IDs handled. End every commit message with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 - **Changelog rule (AGENTS.md):** the card's final commit set must add a `CHANGELOG.fork.md` entry (What, Why,
@@ -111,6 +122,191 @@ fresh row; if more than 10 blocks or any new conflict file outside the spec's ta
 `FRAGE: upstream moved (<n> new blocks in <files>); re-plan or continue with per-block judgement?`. Otherwise
 note the deltas and continue. Line ranges in Table B will shift by the deltas; block numbering inside a file
 stays the reference.
+
+---
+
+### Task 1a: Daily-flow regression suite R1-R8 on the pre-merge base
+
+Birk's current daily flow as automated tests, written on `wt/t_d1d49ff1` **before** `git merge upstream/main`
+(spec §14). Each file copies the named existing tests verbatim (bodies, helpers they need, imports) so the
+suite survives the rewrites of the original files during the merge.
+
+**Files:**
+- Create: `test/regression/daily_flow_conversation_loop_test.dart` (R1)
+- Create: `test/regression/daily_flow_unsolicited_reply_test.dart` (R2)
+- Create: `test/regression/daily_flow_media_test.dart` (R3)
+- Create: `test/regression/daily_flow_dictation_limit_test.dart` (R4)
+- Create: `test/regression/daily_flow_queue_resume_test.dart` (R5)
+- Create: `test/regression/daily_flow_offline_indicator_test.dart` (R6)
+- Create: `test/regression/daily_flow_screen_off_test.dart` (R7)
+- Create: `test/regression/daily_flow_barge_in_hint_test.dart` (R8)
+
+Every test name starts with `R<n>: ` so the CI annotations name the item. Group per file:
+`group('R<n> <item>', () { … });`.
+
+- [ ] **Step 1: R1** — copy from `test/voice_offline/workspace_conversation_test.dart` the tests "conversation
+mode sends a dictation that ended on its own" (l.15) and "conversation reopens the microphone after the reply
+was spoken" (l.159), and from `test/voice_offline/workspace_vad_media_keys_test.dart` "vad conversation sends
+after the pause" (l.44), with the fixture imports they use (`test/support/voice_workspace_fixture.dart` etc.).
+
+- [ ] **Step 2: R2** — copy from `workspace_conversation_test.dart` "an unsolicited reply while recording
+queues instead of cutting the recording off or ending the loop" (l.284), "an unsolicited reply while idle is
+spoken and the loop stays on" (l.332), "a reply that arrives while one plays queues instead of cutting it off"
+(l.189).
+
+- [ ] **Step 3: R3** — copy `test/voice_processing_test.dart` "MEDIA reference lines are not read aloud"
+(l.318) and add this widget test (the image half of `test/fork/inline_media_thumbnail_test.dart` l.66, written
+so it holds for our thumbnail now and for upstream's `ChatInlineImage` after the merge):
+
+```dart
+import 'dart:convert';
+
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:wing/core/models/chat_output.dart';
+import 'package:wing/core/widgets/chat_image_preview.dart';
+import 'package:wing/core/widgets/deliverable_attachment.dart';
+import 'package:wing/core/widgets/profile_message.dart';
+
+final _png = Uint8List.fromList(
+  base64Decode(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP4z8AARAwQCgAf7'
+    'gP9i18U1AAAAABJRU5ErkJggg==',
+  ),
+);
+
+// SETUP (the only lines that may change at the merge): how the message gets
+// its image loader. Pre-merge: onLoadRemoteImage (ChatOutput). Post-merge:
+// loadAttachmentImage (String path) feeding upstream's ChatInlineImage.
+Widget _message(String text, Future<Uint8List> Function(String path) load) =>
+    MaterialApp(
+      home: Scaffold(
+        body: SingleChildScrollView(
+          child: ProfileMessage(
+            message: {'role': 'assistant', 'content': text},
+            onLoadRemoteImage: (ChatOutput output) => load(output.path!),
+          ),
+        ),
+      ),
+    );
+
+void main() {
+  testWidgets('R3: an image deliverable shows inline and opens the preview on tap', (
+    tester,
+  ) async {
+    final requested = <String>[];
+    await tester.pumpWidget(
+      _message('MEDIA:/srv/screenshot.png', (path) async {
+        requested.add(path);
+        return _png;
+      }),
+    );
+    await tester.pumpAndSettle();
+    final inline = find.descendant(
+      of: find.byType(DeliverableAttachment),
+      matching: find.byType(Image),
+    );
+    expect(inline, findsOneWidget);
+    expect(requested, ['/srv/screenshot.png']);
+    await tester.tap(inline);
+    await tester.pumpAndSettle();
+    expect(find.byType(ChatImagePreview), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+}
+```
+(`ChatOutput` import only needed pre-merge; remove it with the setup change.)
+
+- [ ] **Step 4: R4** — copy the duration part of `test/voice_processing_test.dart` "recording is bounded at the
+new maximum duration and native errors leave the draft untouched" (l.269: no stop after 121 s, stop at
+`VoiceInputController.maxRecordingSeconds`) and `workspace_vad_media_keys_test.dart` "recording status shows
+the default vad limit of 10 minutes" (l.233, `Recording · 0s / 600s`). Add:
+
+```dart
+  test('R4: the maximum dictation is 10 minutes', () {
+    expect(VoiceInputController.maxRecordingSeconds, 600);
+  });
+
+  test('R4: the native recorder uses the 10-minute constant, never 120 s', () {
+    final source = File(
+      'android/app/src/main/kotlin/com/tarkilhk/wing/VoiceCapture.kt',
+    ).readAsStringSync();
+    expect(source, contains('MAX_RECORDING_MS = 600_000'));
+    expect(source, contains('setMaxDuration(MAX_RECORDING_MS)'));
+    expect(source, contains('MAX_RECORDING_MS + RECORDING_DEADLINE_BUFFER_MS'));
+    expect(
+      RegExp(r'\b12[05]_?000\b').hasMatch(source),
+      isFalse,
+      reason: 'no 120 s / 125 s literal may come back with an upstream merge',
+    );
+  });
+```
+In the copied widget test add after the existing expectation:
+`expect(find.textContaining('/ 120s'), findsNothing);`. (`flutter test` runs from the repo root, so the
+relative `File` path resolves; imports `dart:io` and `package:wing/core/controllers/voice_input_controller.dart`.)
+This static guard is R4-native (spec §6 S1): `VoiceCapture` needs an `Activity` and a `SpeechRecognizer`, so a
+Kotlin unit test cannot exercise it; the guard proves both call sites use the 600 000 ms constant.
+
+- [ ] **Step 5: R5** — copy `test/fork/offline_queue_test.dart` test 2 "a flaky send right after reconnect
+resolves on the next reconnect instead of sticking forever" (l.79) and `workspace_conversation_test.dart` "a
+flaky send right after reconnect does not end the conversation; the mic reopens once it drains" (l.92).
+
+- [ ] **Step 6: R6** — copy `test/fork/network_gate_test.dart` (l.5) and `offline_queue_test.dart` test 1 "a
+message queued during a real network outage shows offline at once and sends exactly once on reconnect" (l.36).
+Add `expect(controller.connectionStatus.description, 'Disconnected');` right after `networkUnavailable()`
+(`ServerConnectionStatus.description` exists on both sides; upstream's `server_connection_status.dart:96`
+still returns `'Disconnected'`).
+
+- [ ] **Step 7: R7** — copy `test/voice_offline/workspace_screen_off_test.dart` "a vad conversation holds while
+it runs" (l.41), "reading continues and the microphone reopens" (l.65), "a reply that arrives with the screen
+off is spoken" (l.93) with their `group` setup.
+
+- [ ] **Step 8: R8** — copy `test/voice_offline/workspace_barge_in_test.dart` "the message after a barge-in
+carries the interrupted-reply hint" (l.228), `test/voice_offline/barge_in_policy_test.dart` "the
+interrupted-reply hint follows the words after a blank line" (l.147),
+`test/voice_offline/barge_in_coordinator_test.dart` "words that cut off read-aloud carry the hint when sent or
+queued" (l.114), and pin the text:
+
+```dart
+  test('R8: the interrupted-reply hint text', () {
+    expect(
+      withInterruptedReplyHint('Testsatz zwei, stopp '),
+      'Testsatz zwei, stopp\n\n[Hinweis von Wing: Die vorige Antwort wurde '
+      'beim Vorlesen abgebrochen und nicht zu Ende gehört.]',
+    );
+  });
+```
+
+- [ ] **Step 9: Mark the setup lines** — in every regression file put the fixture/constructor/loader lines that
+the merge may have to adapt between `// SETUP` comments (as in Step 3). Expectations stay outside them.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add test/regression
+git commit -m "test(regression): daily-flow suite R1-R8 before the upstream merge (t_d1d49ff1)
+
+Spec §14. Copies of the existing tests that prove Birk's daily flow,
+plus the 10-minute static guard and the hint text pin.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+```
+Run: `git rev-parse HEAD` — note it as `<pre-merge-regression-commit>` (Tasks 15, 17).
+
+---
+
+### Task 1b: [SUITE] Baseline — the regression suite describes today's behaviour
+
+- [ ] **Step 1:** Run: `bash tools/factory/ci-suite.sh` (pre-merge workflow: push + dispatch is still correct
+here because `pr-quality.yml` at this commit triggers on `push: [main]` only)
+Expected: last line `ci-suite: run <id> conclusion=success …`, exit 0.
+
+- [ ] **Step 2: On red** — a red R-test means the copy is wrong, not the app: fix the copy (missing fixture,
+import) and re-run. Never loosen an expectation to get green. If an item cannot be expressed with the existing
+fixtures, stop and report which item and why (`FRAGE: R<n> lässt sich vor dem Merge nicht automatisiert prüfen, weil …; reicht der Gerätetest?`).
+
+- [ ] **Step 3:** Record the run id and URL in the card notes as the baseline proof.
 
 ---
 
@@ -267,7 +463,7 @@ Run: `git add android/app/src/main/kotlin/com/tarkilhk/wing/VoiceCapture.kt andr
 
 ### Task 4: Resolve voice Dart (VIC, VOC, VPF, VPC, TVF, TVP, TVX)
 
-Depends on: Q1 (default A: engine row), Q5 (default A: notice).
+Decided: Q1=A (engine row, values migrate), Q5=A (notice).
 
 **Files:**
 - Modify: `lib/core/controllers/voice_input_controller.dart` (VIC-B1..B8)
@@ -315,7 +511,7 @@ final class VadVoiceInputSettings extends VoiceInputSettings {
         await device.start(id, local: false, language: '');
     }
 ```
-Outside the markers: `stopHandsFree`/`_vadTranscribing` assign `_phase`, not `phase`. Q5 default A: route VAD
+Outside the markers: `stopHandsFree`/`_vadTranscribing` assign `_phase`, not `phase`. Q5=A (decided): route VAD
 no-speech to upstream's notice — pass `noSpeech: () => _emptyResult(VoiceInputEmptyResult.noSpeech)` to
 `vadRound!.forceEnd(...)`/`onEvent(...)` (the callback parameter is added to `VadInputRound` in Task 9).
 
@@ -370,7 +566,7 @@ Run: `git add lib/core/controllers/voice_input_controller.dart lib/core/controll
 
 ### Task 5: Resolve the workspace screen (SCR-B1..B22)
 
-Depends on: Q3 (default A), Q4 (default B — screen side needs nothing either way).
+Decided: Q3=A, Q4=A (screen side needs no image argument).
 
 **Files:**
 - Modify: `lib/core/screens/profile_workspace_screen.dart` (SCR-B1..B22 + the live-call `prepare:` hook outside the markers)
@@ -405,7 +601,7 @@ before `final active`, VAD/media-key sync after `_appIsActive` update), SCR-B12 
 (upstream).
 
 - [ ] **Step 6: Composer** — SCR-B19 (upstream; then in the live-call button's `prepare:` closure make
-`_voice.cancel();` the first statement — Q3 default A), SCR-B20 (upstream + `composerActions` delegate +
+`_voice.cancel();` the first statement — Q3=A decided), SCR-B20 (upstream + `composerActions` delegate +
 public `performComposerAction`), SCR-B21, SCR-B22 (upstream).
 
 - [ ] **Step 7: voice_input_activity.dart (S9)** — replace the hard-coded `'/ 120s'` with
@@ -429,7 +625,7 @@ Run: `git add lib/core/screens/profile_workspace_screen.dart lib/core/widgets/vo
 
 ### Task 6: Resolve controller, gateway, registry and their test fixtures (CTL, GWY, REG, TCA, TBF)
 
-Depends on: Q6 (default B), Q7 (default A).
+Decided: Q6=B (keep our automatic queue resume), Q7=A (keep NetworkGate).
 
 **Files:**
 - Modify: `lib/core/services/profile_workspace_controller.dart` (CTL-B1..B9; NetworkGate hooks in `_composerRuntime`; S10 in `resumeConnection`)
@@ -461,7 +657,7 @@ CTL-B9: `unawaited(_completedReplies.close());` first.
 expression. In `resumeConnection(...)` add as first statement after its own guards:
 `if (networkChanged) connectionStatus.networkRestored();` (S10).
 
-- [ ] **Step 3: Q6 hooks (default B)** — in `_sendPrompt`'s catch (upstream body), where the failure is settled
+- [ ] **Step 3: Q6=B hooks** — in `_sendPrompt`'s catch (upstream body), where the failure is settled
 as definitely unsent (`!submitted`), add `if (isTemporaryWorkspaceFailure(error)) TransientSend.mark(chat);`.
 In `_performReconnect`, in the loop that drains `resumedChats`, before `await _drainQueuedPrompts(chat);` add
 `if (TransientSend.take(chat)) await resumeQueue(chat);`. Import `'../../fork/transient_send.dart'`. Remove the
@@ -498,52 +694,35 @@ Run: `git add lib/core/services/profile_workspace_controller.dart lib/core/servi
 
 ---
 
-### Task 7: Resolve the message widgets (DLA, MMC, PMS)
+### Task 7: Resolve the message widgets (DLA, MMC, PMS) — Q4=A
 
-Depends on: Q4 (default **B**: keep our full-width thumbnail). If Birk chose A before this task starts, take
-the upstream files as they are and skip Step 2.
+Decided Q4=A (Birk 2026-11-12): upstream's `ChatInlineImage` replaces our `InlineMediaThumbnail`. R3 keeps
+proving "images show inline and open the preview on tap".
 
 **Files:**
 - Modify: `lib/core/widgets/deliverable_attachment.dart` (DLA-B1..B4)
 - Modify: `lib/core/widgets/markdown_message_content.dart` (MMC-B1..B6)
 - Modify: `lib/core/widgets/profile_message.dart` (PMS-B1, PMS-B2)
-- Modify: `lib/fork/inline_media_thumbnail.dart` (loader signature `(String path)`)
+- Delete: `lib/fork/inline_media_thumbnail.dart`, `test/fork/inline_media_thumbnail_test.dart`
 
-- [ ] **Step 1: Take upstream in every block** of the three widget files; remove `onLoadRemoteImage` /
-`onLoadImage` remnants and the old `InlineMediaThumbnail` tail in `deliverable_attachment.dart`.
+- [ ] **Step 1: Take upstream in every block** of the three widget files; remove every `onLoadRemoteImage` /
+`onLoadImage` remnant, our `InlineMediaThumbnail` tail and its import in `deliverable_attachment.dart`. The three
+files must equal upstream afterwards.
 
-- [ ] **Step 2: Q4=B hook** — in `deliverable_attachment.dart`, in upstream's image branch
-(`if (output.kind == ChatOutputKind.image)`), when `widget.loadImage != null` and
-`InlineMediaThumbnail.handles(output)` return our widget instead of `ChatInlineImage`:
+Run: `git diff upstream/main -- lib/core/widgets/deliverable_attachment.dart lib/core/widgets/markdown_message_content.dart lib/core/widgets/profile_message.dart`
+Expected: no output.
 
-```dart
-    final load = widget.loadImage;
-    if (output.kind == ChatOutputKind.image &&
-        load != null &&
-        InlineMediaThumbnail.handles(output)) {
-      // Fork (Wing Voice): full-width thumbnail with Download/Open preview row.
-      return InlineMediaThumbnail(
-        output: output,
-        load: (_) => load(output.path!),
-        onOpen: widget.onOpen,
-        onDownload: widget.onDownload,
-      );
-    }
-```
-Adapt `InlineMediaThumbnail`'s constructor names to the ones in `lib/fork/inline_media_thumbnail.dart`
-(`git grep -n "InlineMediaThumbnail(" -- lib/fork/inline_media_thumbnail.dart`); keep its `load` callback
-type `Future<Uint8List> Function(ChatOutput)` so its test stays valid. Re-add
-`import '../../fork/inline_media_thumbnail.dart';`.
+- [ ] **Step 2: Remove our widget and its test**
+
+Run: `git rm lib/fork/inline_media_thumbnail.dart test/fork/inline_media_thumbnail_test.dart`
 
 - [ ] **Step 3: Verify and stage**
 
 Run: `git grep -n -E "^(<<<<<<<|=======|>>>>>>>)" -- lib/core/widgets`
 Expected: no output.
-Run: `git grep -n -E "onLoadRemoteImage|onLoadImage" -- lib test`
-Expected: no output.
-Run: `git grep -n "InlineMediaThumbnail" -- lib/core/widgets`
-Expected (Q4=B): the import and the one use in `deliverable_attachment.dart`. (Q4=A: no output.)
-Run: `git add lib/core/widgets/deliverable_attachment.dart lib/core/widgets/markdown_message_content.dart lib/core/widgets/profile_message.dart lib/fork/inline_media_thumbnail.dart`
+Run: `git grep -n -E "onLoadRemoteImage|onLoadImage|InlineMediaThumbnail|inline_media_thumbnail" -- lib test`
+Expected: only `test/regression/daily_flow_media_test.dart` (its SETUP line, adapted in Task 15). No hit in `lib`.
+Run: `git add lib/core/widgets/deliverable_attachment.dart lib/core/widgets/markdown_message_content.dart lib/core/widgets/profile_message.dart`
 
 ---
 
@@ -585,17 +764,19 @@ Taken from upstream (dropping our variant, upstream already solves it):
   (lib/fork/offline_queue.dart) -> idempotent replay by submission_id.
 - SCR-B19: composer toolbar mic entry -> upstream VoiceInputButton.
 - SCR-B7 parts: read-aloud toggle/cancel/admission -> _voiceOutput.readAloud.
-- MMC-B2/B3/B5/B6, PMS-B1: image plumbing names -> upstream loadImage.
+- DLA-B1..B4, MMC-B2/B3/B5/B6, PMS-B1 (Q4=A): InlineMediaThumbnail and its
+  plumbing -> upstream ChatInlineImage / loadImage.
 Upstream behaviour kept over base code: 'no_speech' notice (VCA-B4),
 unlimited capped reconnect backoff (CTL-B7), session.create source 'gui'
 (GWY-B3), VoiceInputActivity recording chrome (SCR-B8), minSdk 29.
 Re-hung fork functions: see spec Table B rows marked "re-hang".
-OPEN defaults used: Q1=A Q2=A Q3=A Q4=<A|B> Q5=A Q6=B Q7=A Q9=A.
+Birk's decisions (2026-11-12): Q1=A Q2=A Q3=A Q4=A Q5=A Q6=B Q7=A Q8=A Q9=A
+Q10=A Q11=A.
 Known red until follow-up commits: Table C API breaks, census/roles.
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ```
-(Fill `<sha>`, `<n>` from Task 1, `<A|B>` from Q4.)
+(Fill `<sha>`, `<n>` from Task 1.)
 
 Run: `git log -1 --format="%H %P"`
 Expected: two parent hashes (HEAD of `voice-offline` line, upstream head). Note the merge commit hash for
@@ -637,6 +818,43 @@ void main() {
     expect(prefs.getString(VoiceOfflinePrefs.localEngineKey), 'parakeet');
     await VoiceOfflinePrefs.migrateLegacyVadRoute(prefs);
     expect(prefs.getString('voice.input'), 'local');
+  });
+
+  test('migration keeps every other fork voice setting byte-identical (Q1)', () async {
+    final before = <String, Object>{
+      'voice.input': 'vad',
+      'voice.output': 'local',
+      'voice.android_language': 'de-DE',
+      VoiceOfflinePrefs.autoSpeakKey: 'on',
+      VoiceOfflinePrefs.conversationKey: 'on',
+      VoiceOfflinePrefs.vadPauseKey: '2400',
+      VoiceOfflinePrefs.vadMinSpeechKey: '400',
+      VoiceOfflinePrefs.vadPreRollKey: '500',
+      VoiceOfflinePrefs.vadMaxKey: '1200',
+      VoiceOfflinePrefs.vadNoSpeechKey: '12',
+      VoiceOfflinePrefs.vadCuesKey: 'off',
+      VoiceOfflinePrefs.vadDebugKey: 'on',
+      VoiceOfflinePrefs.vadSourceKey: 'recognition',
+      VoiceOfflinePrefs.listenTurnKey: 'off',
+      VoiceOfflinePrefs.listenMinSpeechKey: '600',
+      VoiceOfflinePrefs.bargeInPlaybackKey: 'on',
+      VoiceOfflinePrefs.micRouteKey: 'bluetooth',
+    };
+    SharedPreferences.setMockInitialValues(before);
+    final prefs = await SharedPreferences.getInstance();
+    final read = VoiceOfflinePrefs.read(prefs);
+    await VoiceOfflinePrefs.migrateLegacyVadRoute(prefs);
+    for (final entry in before.entries) {
+      if (entry.key == 'voice.input') continue;
+      expect(prefs.get(entry.key), entry.value, reason: entry.key);
+    }
+    expect(prefs.getKeys(), {...before.keys, VoiceOfflinePrefs.localEngineKey});
+    final after = VoiceOfflinePrefs.read(prefs);
+    expect(after.vad.pause, read.vad.pause);
+    expect(after.vad.maxDuration, read.vad.maxDuration);
+    expect(after.micRoute, read.micRoute);
+    expect(after.conversation, read.conversation);
+    expect(after.localEngine, VoiceLocalEngine.parakeet);
   });
 
   test('migration leaves other input values alone', () async {
@@ -746,7 +964,7 @@ plus `import '../../voice_offline/voice_offline_prefs.dart';`.
 
 - [ ] **Step 5: `VadInputRound`** — constructor parameter `VoiceOfflinePrefs Function()? roundSettings`
 stored as `_roundSettings = roundSettings ?? _defaults` with `static VoiceOfflinePrefs _defaults() => const VoiceOfflinePrefs();`
-and `VoiceOfflinePrefs roundSettings() => _roundSettings();`. Q5 default A: give `onEvent`, `forceEnd` and
+and `VoiceOfflinePrefs roundSettings() => _roundSettings();`. Q5=A (decided): give `onEvent`, `forceEnd` and
 `stopHandsFree` a `required void Function() noSpeech` parameter and replace
 `fail(StateError('No speech detected. Try again.'))` in `_finish` by `noSpeech()`. Update the controller call
 sites from Task 4 Step 2 to pass it.
@@ -1101,7 +1319,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ### Task 13: Docs and changelog
 
 **Files:**
-- Modify: `CHANGELOG.fork.md`, `docs/VOICE.md`, `README.md` (only if Q4=A)
+- Modify: `CHANGELOG.fork.md`, `docs/VOICE.md`, `README.md`
 
 - [ ] **Step 1: CHANGELOG.fork.md** — new top entry:
 
@@ -1115,7 +1333,8 @@ new seams (spec docs/superpowers/specs/2026-11-12-wing-upstream-merge-design.md)
 **User-visible:** Parakeet is chosen as "Recognition engine" under Local voice input (stored value migrated
 automatically); empty Parakeet recognition shows upstream's "No speech detected" notice; upstream's live call
 button appears (needs the Wing Hermes plugin); unsent drafts/queues from before the update are not carried over
-(upstream format change). <Add one line per OPEN answer that differs from the default.>
+(upstream format change, one-time step before install). Inline chat images now use upstream's image box
+(tap opens the preview). Every Birk answer from the ledger question (Task 18) that changes the app gets a line.
 **Dropped for upstream:** own queue drain loop and history-text queue-head check (upstream outbox), composer
 toolbar mic (upstream mic in the text field).
 ```
@@ -1124,7 +1343,7 @@ toolbar mic (upstream mic in the text field).
 conversation mode sends dictations automatically (opt-in), the system-recognizer fallback stays inside Local
 (never switches to Hermes), maximum dictation duration is 10 minutes.
 
-- [ ] **Step 3: README.md** — only if Q4=A: change the "Inline, tap-to-zoom chat images" bullet to say upstream's inline images are used.
+- [ ] **Step 3: README.md** — Q4=A: in the "Wing Voice (fork)" block remove the "Inline, tap-to-zoom chat images" bullet (the feature is now upstream's `ChatInlineImage`) and add to `CHANGELOG.fork.md`'s inline-image entry a line "Superseded by upstream ChatInlineImage in the upstream merge (t_d1d49ff1)."
 
 - [ ] **Step 4: Commit**
 
@@ -1148,9 +1367,10 @@ Expected: last line `ci-suite: run <id> conclusion=success …`, exit 0.
 - [ ] **Step 2: On red** — read the failed steps and `::error::` annotations the script prints (PRQ-B2
 snippet). Fix in the smallest commit that names the spec ID it completes; never weaken an upstream gate, test or
 rule. If `VoicePermissionLifecycleGuard` (step "permission lifecycle") rejects VCH-B4/S6 after one fix attempt:
-stop and end with `FRAGE: Q11 — keep a fork edit of upstream's VoicePermissionLifecycleGuard, or let conversation mode pause TTS when the screen turns off?`.
-If the emulator/KVM jobs fail for infrastructure reasons only (no `/dev/kvm`), report it with the run URL and ask
-(Q10). Repeat Step 1 until green.
+apply Q11=A (decided): edit `tools/architecture/native_voice/VoicePermissionLifecycleGuard.kt` so it additionally accepts the `keepsVoice = { … }` constructor argument of `VoicePlayback` and the statement `voiceChannel?.pauseOffline()` in `onPause`, extend its proof fixtures (`tools/architecture/native_voice/prove_boundary.py` inputs) with one accepted case for exactly this shape, add a `# Fork (Wing Voice)` comment at each edit, add the files to the CHANGELOG.fork.md entry, commit, re-run.
+If the emulator/KVM jobs fail for infrastructure reasons only (no `/dev/kvm`), report it with the run URL and
+end with `FRAGE: CI-Emulatorjobs laufen im Fork nicht (kein KVM, Run <URL>) — wie weiter?` (Q10=A accepted the
+cost, not a missing runner). Repeat Step 1 until green; R1-R8 (`test/regression`) must be among the passed tests.
 
 - [ ] **Step 3: Native**
 
@@ -1161,7 +1381,7 @@ installed" or "platform android-36 missing": copy upstream's "Install pinned And
 
 ---
 
-### Task 15: Refresh from `voice-offline` and final measurement
+### Task 15: Refresh from `voice-offline`, regression invariance, final measurement
 
 - [ ] **Step 1:** Run: `git fetch origin`; Run: `git log --oneline wt/t_d1d49ff1..origin/voice-offline`.
 If empty, skip to Step 3.
@@ -1170,71 +1390,181 @@ If empty, skip to Step 3.
 - [ ] **Step 3:** Run: `git merge-tree --write-tree --name-only HEAD upstream/main`
 Expected: exit 0 if upstream has not moved (nothing left to merge), else the list of new conflicts — report it, do not merge again in this card.
 
+- [ ] **Step 4: Regression invariance (spec §14)** — the R1-R8 expectations are unchanged since
+`<pre-merge-regression-commit>` (Task 1a). Write `.cc-context/regression_invariance.py`:
+
+```python
+"""Fail if any expectation line in test/regression changed since the pre-merge commit."""
+import subprocess
+import sys
+
+base = sys.argv[1]
+diff = subprocess.run(
+    ["git", "diff", "-U0", base, "HEAD", "--", "test/regression"],
+    capture_output=True, text=True, check=True,
+).stdout
+bad = [
+    line for line in diff.splitlines()
+    if line[:1] in "+-" and not line.startswith(("+++", "---"))
+    and any(token in line for token in ("expect(", "reason:", "findsOneWidget", "findsNothing", "isTrue", "isFalse"))
+]
+files = subprocess.run(
+    ["git", "ls-files", "test/regression"], capture_output=True, text=True, check=True,
+).stdout.split()
+print(len(files), "regression files")
+print("\n".join(bad) if bad else "expectations unchanged")
+sys.exit(1 if bad or len(files) != 8 else 0)
+```
+Run: `python3 -I .cc-context/regression_invariance.py <pre-merge-regression-commit>`
+Expected: `8 regression files`, `expectations unchanged`, exit 0.
+Run: `git diff <pre-merge-regression-commit> HEAD -- test/regression`
+Expected: only lines between `// SETUP` markers, imports and constructor/getter renames from spec Table C. The
+reviewer card (t_6a4e1890) re-checks this diff. A changed expectation is a regression, not an adaptation: revert
+it and fix the app instead.
+
+- [ ] **Step 5:** Confirm the last [SUITE] run of Task 14 (or Step 2 above) was on the current HEAD and green
+(includes R1-R8 and the R4 static guard). Note its run URL for Task 17.
+
 ---
 
-### Task 16: Signed APK — gated on Q8
+### Task 16: Signed APK (build and sign only; no install)
 
-- [ ] **Step 1: Gate** — Q8 default A: before any phone install Birk must confirm that all unsent drafts and
-queued messages in the installed Wing Voice are sent or copied out. If that confirmation is not on the card,
-end with `FRAGE: Q8 — sind alle ungesendeten Entwürfe und Warteschlangen in der installierten Wing Voice versendet oder kopiert? Erst dann baue ich die signierte APK zur Installation.`
-(The build in Step 2 may run before the answer; only the hand-over waits.)
+Q8=A is handled by the installer/device card (last section), not here. This card never contacts the phone and
+never asks Birk about drafts.
 
-- [ ] **Step 2: Build the unsigned release APK on CI**
+- [ ] **Step 1: Build the unsigned release APK on CI**
 
 Run: `bash tools/factory/dispatch-check.sh voice-apk.yml publish=true`
-Expected: `conclusion=success`; branch `voice-apk-bin` gets `wing-voice-unsigned.apk`, `SHA256SUMS`, `SOURCE_COMMIT` = this HEAD.
+Expected: `conclusion=success`; branch `voice-apk-bin` gets `wing-voice-unsigned.apk`, `SHA256SUMS`,
+`SOURCE_COMMIT` = this HEAD.
 
-- [ ] **Step 3: Sign** (script lives in the entity repo, not in Wing; verified 2026-11-12)
+- [ ] **Step 2: Sign** (script lives in the entity repo, not in Wing; verified 2026-11-12)
 
 Run: `/home/birk/hermes-shared/hermes-entities/tools/technik/wing-voice-build.sh`
 Expected: a zipaligned APK signed with `~/.android/wing-voice.keystore` (alias `voice`), its path printed;
-`SOURCE_COMMIT` equals `git rev-parse HEAD`. Do not pass `--install` (the phone is Birk's).
+`SOURCE_COMMIT` equals `git rev-parse HEAD`. Do not pass `--install`.
 
-- [ ] **Step 4: Identity check** — with the build-tools on the host (`~/.local/share/android-tools/`), if `aapt2`
-is available: `aapt2 dump badging <apk>`; expected `package: name='com.tarkilhk.wing.voice'`, `versionCode` >
-2356, `application-label:'Wing Voice'`, `sdkVersion:'29'`; and the APK contains `assets/silero_vad.onnx`
-(`unzip -l <apk> assets/silero_vad.onnx`). If no `aapt2`, record "identity check on the phone" in the card.
+- [ ] **Step 3: Checksum** — Run: `sha256sum <signed-apk-path>`; note the hash.
+
+- [ ] **Step 4: Identity check** — if `aapt2` is available under `~/.local/share/android-tools/`:
+`aapt2 dump badging <apk>`; expected `package: name='com.tarkilhk.wing.voice'`, `versionCode` > 2356,
+`application-label:'Wing Voice'`, `sdkVersion:'29'`. Run: `unzip -l <apk> assets/silero_vad.onnx` → one entry.
+If no `aapt2`, the installer card checks identity on the phone (`dumpsys package com.tarkilhk.wing.voice`).
 
 ---
 
-### Task 17: Birk phone self-test and card comment
+### Task 17: Card comments — handoff and "taken from upstream / dropped"
 
-- [ ] **Step 1: Post the self-test checklist on card t_d1d49ff1** (German, for Birk):
+- [ ] **Step 1: Handoff block** on card t_d1d49ff1 (read by the installer/device card):
 
 ```
-Handytest Wing Voice nach Upstream-Merge (APK <hash>):
-[ ] Vor dem Update: alle ungesendeten Entwürfe/Warteschlangen versendet oder kopiert (Q8).
-[ ] App startet als "Wing Voice", Einstellungen/Verbindung noch da.
-[ ] Diktat (Parakeet) endet von selbst nach einer Sprechpause.
-[ ] Diktat > 60 s kommt vollständig an (auch Android-Erkenner > 2 min, bis 10 min).
-[ ] Konversationsmodus: Antwort wird vorgelesen, Mikrofon öffnet sich danach wieder.
-[ ] Einstellungen → Spracheingabe: Lokal + "Erkennung: Parakeet auf diesem Telefon" ist ausgewählt (Q1, Migration).
-[ ] Stille im Parakeet-Diktat zeigt den Hinweis "No speech detected" und beendet die Konversation (Q5).
-[ ] Diktat bei laufender Antwort wird als Steuernachricht angehängt; offline diktiert → nach Wiederverbindung
-    automatisch gesendet, Konversation läuft weiter (t_f0c1d125, Q6).
-[ ] Flugmodus an: Status zeigt sofort offline (Q7).
-[ ] Bildschirm aus im Konversationsmodus: Vorlesen läuft weiter (S6/Q11).
-[ ] Live-Anruf-Knopf (Wellenform) neben dem Mikrofon: Tippen ohne Plugin zeigt Hinweis; mit laufendem
-    Konversationsmodus beendet der Start die Konversation (Q2, Q3).
-[ ] Bilder im Chat: volle Breite mit Download/Vorschau-Knöpfen (Q4=B) bzw. Upstream-Kasten (Q4=A).
-[ ] Automodus, Medientasten, Barge-in wie vorher.
+HANDOFF t_d1d49ff1
+APK: <signed-apk-path>
+SHA256: <sha256>
+SOURCE_COMMIT: <HEAD hash>
+CI suite (HEAD): <run URL>  conclusion=success
+Native build: <dispatch-check run URL>
+Regression baseline (pre-merge): <Task 1b run URL> at <pre-merge-regression-commit>
 ```
-Add one line per OPEN question Birk answered differently from the default.
 
-- [ ] **Step 2: Post the "taken from upstream / dropped on our side" list** on the card: one line per spec ID
-with decision `drop our variant, upstream already solves it` or `keep upstream behaviour` where our side had
-code (CTL-B3, CTL-B4, CTL-B5, CTL-B7 cap, CTL-B8, SCR-B7 parts, SCR-B13, SCR-B19, SCR-B21, SCR-B22, VCA-B4
-message, VIC-B4, VPC-B2, VPC-B3, MMC-B2..B6, PMS-B1, PMS-B2, DLA-B1..B4 per Q4, PRQ-B1, GWY-B3
+- [ ] **Step 2: "Taken from upstream / dropped on our side" list**, one line per spec ID with decision
+`drop our variant, upstream already solves it` or `keep upstream behaviour` where our side had code (CTL-B3,
+CTL-B4, CTL-B5, CTL-B7 cap, CTL-B8, SCR-B7 parts, SCR-B13, SCR-B19, SCR-B21, SCR-B22, VCA-B4 message, VIC-B4,
+VPC-B2, VPC-B3, MMC-B2..B6, PMS-B1, PMS-B2, DLA-B1..B4 (Q4=A, `InlineMediaThumbnail` removed), PRQ-B1, GWY-B3
 `close_on_disconnect`), and per file the re-hung fork functions.
 
-- [ ] **Step 3: Stop.** The merge into `voice-offline` is the [Merge] card's job.
+---
+
+### Task 18: Differences ledger — ONE question to Birk before the [Merge] card
+
+Governing rule: every user-visible difference not covered by R1-R8 and not already decided goes to Birk as one
+question before the merge into `voice-offline`.
+
+- [ ] **Step 1: Re-check the ledger (spec §15) against the built branch.** For each row L1-L18 confirm it is
+still true at HEAD (e.g. L7: `git grep -n "VoiceInputButton" -- lib/core/screens/profile_workspace_screen.dart`;
+L10: `git grep -n "StudioDialog" -- lib/core/widgets/vad_settings_section.dart`; L16:
+`git grep -n "minSdk" -- android/app/build.gradle.kts`). Append any further user-visible difference found
+while implementing Tasks 2-14 (anything a user could see or hear that the R-tests do not pin), with old vs new.
+
+- [ ] **Step 2: Post ONE comment on card t_d1d49ff1** (German, one block) listing every still-undecided row
+(Stand spec 2026-11-12: L7, L8, L10, L11, L12, L13, L14, L15, L16, L17, plus any new row) — per row: what
+changes (vorher → nachher) and the recommendation; already decided rows are listed in one line
+("bereits entschieden: Q1-Q11"). Template:
+
+```
+Wing-Upstream-Merge: sichtbare Unterschiede, die noch nicht entschieden sind (alles andere bleibt gleich;
+R1-R8 sind vor und nach dem Merge grün):
+L7 Mikrofon-Knopf: bisher eigenes Symbol in der Leiste unter dem Text → jetzt im Textfeld. Empfehlung: übernehmen.
+L8 Aufnahmezeile: Text-Knöpfe Stop/Abbrechen → Symbol-Knöpfe (Zähler bleibt "/ 600s"). Empfehlung: übernehmen.
+…
+L17 Server: Upstream 1.4.0 braucht das aktuelle Hermes-Gateway-Webapp. Empfehlung: Gerätekarte prüft die
+    Verbindung direkt nach der Installation; bei Problem Stopp, kein Server-Update ohne dich.
+Bereits entschieden: Q1-Q11 (12.11.).
+Antwort: "alle ok" oder je Zeile L<n> ok/nein.
+```
+
+- [ ] **Step 3: End the run** with the line
+`FRAGE: Wing-Upstream-Merge — sind die sichtbaren Unterschiede L<…> (Kommentar oben) so ok? ("alle ok" oder je Zeile)`
+so the [Merge] card cannot start before Birk answered. If Step 1 finds no undecided row, write "Ledger: keine
+offenen Unterschiede" on the card instead and end without `FRAGE:`.
 
 ---
 
-## Self-review notes (architect, 2026-11-12)
+## Installer/device card (specified here; the architect creates the card)
 
-- Spec coverage: Table B rows → Tasks 2-7 (every ID named); VPF → Task 4/9; §6 S1-S3, S6 → Task 3, S4/S5 →
-  Task 11, S7/S8 → Task 12, S9 → Task 5, S10 → Task 6; Table C → Tasks 9-11; §8 → Tasks 3, 5, 10; §9 →
-  Tasks 6, 9, 10, 11; §10 items 1-8 → Tasks 9, 7, 3, 10, 3, 12, 6, 11; §11 → Task 12; §12/Q8 → Task 16;
-  Q1-Q11 → named in the depending tasks; phone checklist → Task 17.
-- The merge commit (Task 8) does not compile by design; the first [SUITE] is Task 14 after all repair commits.
+Chain: coder t_d1d49ff1 → review t_6a4e1890 → **device card (new)** → merge t_f8523002. Parents
+[t_6a4e1890], child t_f8523002. Skill: `android-phone-remote-ops` (`~/.hermes/profiles/birk/skills/devops/android-phone-remote-ops/`,
+references `apk-transfer-and-install.md`, `voice-self-test.md`, `hadb-pegelmessung-und-dateien.md`), method as in
+the earlier device acceptances (e.g. card t_dc830669): logcat lines, uiautomator dumps, synthetic WAVs with
+leading silence (padding per `voice-self-test.md`, trimmed so speech starts within 1.5 s). A failed item blocks
+the card; the [Merge] card must not start. Items marked **live with Birk** go one step per message.
+
+**Step 1 — APK.** Read the HANDOFF block of t_d1d49ff1. Clone/locate the signed APK, `sha256sum` it, compare with
+`SHA256:`; check `SOURCE_COMMIT` equals the reviewed HEAD of `wt/t_d1d49ff1`. Mismatch → block.
+
+**Step 2 — Birk's one-time step (Q8=A).** Send exactly:
+`python3 ~/.hermes/profiles/birk/scripts/robo-push.py --kind decision "Wing-Update bereit" "Bitte vorher offene Entwürfe abschicken, dann 'ok'."`
+then `kanban_block needs_input` until Birk answers "ok". No install before that.
+
+**Step 3 — Record device settings** (restore them in Step 7): `settings get system screen_off_timeout`,
+`settings get global stay_on_while_plugged_in`, `settings get global airplane_mode_on`,
+`cmd media_session volume --stream 3 --get`, Wing Voice's installed `versionCode`
+(`dumpsys package com.tarkilhk.wing.voice | grep versionCode`).
+
+**Step 4 — Install** per `apk-transfer-and-install.md` (Tailnet `http.server` + phone-side `curl`, sha256 on the
+phone, `pm install -r`). Then: launch Wing Voice; uiautomator dump of Settings → Voice input shows **Local** and
+"Recognition engine: **Parakeet on this phone**" (Q1 migration; Birk's VAD pause/max/mic settings unchanged —
+compare the dump's values with a dump taken in Step 3 before the install, same screen). Open a chat: the
+connection status in the dump is "Connected" (ledger L17; if not, block and report — no server change).
+
+**Step 5 — Regression items R1-R8 on the phone.**
+
+| item | device procedure | evidence (pass criterion) |
+|---|---|---|
+| R1 conversation loop | Conversation mode on (Birk's setting), new chat, tap mic, play a synthetic question WAV ("Wie spät ist es in Tokio? Antworte in einem Satz.") | `dumpsys audio` `rec start`→`rec stop` ends by itself (VAD) a few s after the speech; `WingTtsLang` `segment …/… status=0` lines for the reply; a new `rec start` within 5 s after the last segment; dump shows the recording row again |
+| R2 unsolicited reply | In the same chat ask (synthetic WAV) "Schick mir in 60 Sekunden unaufgefordert eine zweite kurze Nachricht"; when the reply was spoken and the next round records, wait for the unsolicited message. ANNAHME: Hermes can schedule a delayed message in the same session (method of the t_0179b15f acceptance); if not → **live with Birk**: Birk triggers a message from another client into this chat while Wing records | the recording is not cut at the message's arrival (`rec stop` only after the VAD end, not at the arrival time); the unsolicited reply is spoken afterwards (`WingTtsLang` lines after `rec stop`); the loop continues (next `rec start`) |
+| R3 MEDIA + images | Ask (typed via `input text` or WAV) for a reply that contains one image as a `MEDIA:` line (e.g. "Zeig mir das Wing-Icon als MEDIA-Bild") | `WingTtsLang` `chars=` sum ≈ length of the prose only (no path read); dump shows an image node inside the message; `input tap` on it → dump shows the image preview (full-screen preview node); Back closes it |
+| R4 10-min dictation | Parakeet route: play a 150 s synthetic speech WAV (continuous sentences, gaps < Birk's pause setting, last sentence "Ende des Langtests einhundertfünfzig") into a dictation without conversation send (or with, either is fine); repeat once with "Recognition engine: Android system recognizer" (restore Parakeet afterwards) | dump during recording shows `/ 600s`; `rec start`→`rec stop` ≥ 150 s on both routes (proves the 120 s cap is gone); the transcript in the text field ends with "einhundertfünfzig" |
+| R5 queue resume | Conversation mode: start a dictation, `cmd connectivity airplane-mode enable` while recording, let the VAD end (prompt is queued offline), wait 10 s, `cmd connectivity airplane-mode disable` | after reconnect the queued prompt is sent without any tap (dump: queue empty, no "Resume" button), the reply is spoken (`WingTtsLang`), the mic reopens (`rec start`) |
+| R6 offline indicator | `cmd connectivity airplane-mode enable`, dump after 2 s; disable | dump shows "Disconnected" within 2 s (not "Reconnecting"); after disable "Connected" returns |
+| R7 screen-off read-aloud | Conversation mode: ask a question needing a ~4-sentence reply via WAV; right after `rec stop` send `input keyevent KEYCODE_SLEEP` | `dumpsys power` `mWakefulness=Asleep`/`Dozing`; `WingBgVoice` `hold on` and `pause kept`; `WingTtsLang` `segment` lines with `status=0` timestamped after the sleep; next `rec start` while the screen is off. Audibility: **live with Birk** ("Hast du die Antwort bei ausgeschaltetem Bildschirm gehört?") |
+| R8 barge-in hint | **live with Birk**, headset connected (barge-in is headphones-only): Birk asks a question that needs a long answer, then speaks during read-aloud ("Stopp, kürzer bitte") | read-aloud stops (`WingTtsLang` segment `status` ≠ 0 or no further segments); the next user message in the chat (dump or Hermes session history) ends with `[Hinweis von Wing: Die vorige Antwort wurde beim Vorlesen abgebrochen und nicht zu Ende gehört.]` |
+
+**Step 6 — Result.** Post on the device card and on t_d1d49ff1 a table `item | pass/fail | evidence line`
+(one quoted logcat/dump/dumpsys line per item, plus the measured R4 durations). Any fail → `kanban_block` with
+the item and evidence; the [Merge] card does not start.
+
+**Step 7 — Restore** the settings recorded in Step 3 (airplane off, screen-off timeout, stay-on, volume,
+Parakeet engine), delete test files from `/data/local/tmp`, uninstall any temporary player app.
+
+---
+
+## Self-review notes (architect, 2026-11-12, updated after Birk's decisions)
+
+- Spec coverage: §14 R1-R8 → Tasks 1a, 1b (pre-merge), 15 Step 4 (invariance), device card Step 5; §15 ledger
+  → Task 18; Table B rows → Tasks 2-7 (every ID named); VPF → Task 4/9; §6 S1-S3, S6 → Task 3, S4/S5 → Task 11,
+  S7/S8 → Task 12, S9 → Task 5, S10 → Task 6; Table C → Tasks 9-11; §8 → Tasks 3, 5, 10; §9 → Tasks 6, 9, 10,
+  11; §10 items 1-8 → Tasks 9, 7, 3, 10, 3, 12, 6, 11; §11 → Task 12; §12/Q8 → device card Step 2; Q1-Q11 →
+  Global Constraints + named tasks; signed APK → Task 16; card comments → Task 17.
+- The merge commit (Task 8) does not compile by design; the first post-merge [SUITE] is Task 14 after all
+  repair commits. The pre-merge [SUITE] (Task 1b) proves R1-R8 describe today's behaviour.
