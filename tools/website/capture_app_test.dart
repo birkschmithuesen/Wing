@@ -950,7 +950,8 @@ void main() {
                 selected: AppDestination.chats,
                 access: controller.access,
                 connectionStatus: controller.connectionStatus,
-                versionsControllerFactory: (_) => VersionsController(),
+                versionsControllerFactory: (_) =>
+                    VersionsController(updateStore: null),
                 onSelected: (_) {},
               ),
             ),

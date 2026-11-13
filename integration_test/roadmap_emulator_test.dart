@@ -1,3 +1,4 @@
+import 'package:wing/core/services/backend_update_store.dart';
 import 'dart:async';
 import '../test/helpers/journey_controls.dart';
 import '../test/helpers/pump_markdown_widget.dart';
@@ -2591,8 +2592,13 @@ class _RoadmapHarness {
                 },
                 access: controller.access,
                 connectionStatus: controller.connectionStatus,
-                versionsControllerFactory: (_) =>
-                    VersionsController(gateway: server.gateway('default')),
+                versionsControllerFactory: (_) => VersionsController(
+                  gateway: server.gateway('default'),
+                  updateStore: BackendUpdateStore(
+                    SharedPreferences.getInstance(),
+                    'roadmap-updates',
+                  ),
+                ),
               ),
               body: switch (destination) {
                 AppDestination.health => HermesHealthContent(

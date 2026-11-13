@@ -1,15 +1,18 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:uuid/uuid.dart';
 
 import '../models/backend_update.dart';
 import 'profile_gateway.dart';
 import 'backend_update_channels.dart';
+import 'backend_update_store.dart';
 import 'workspace_connection_failure.dart';
 
 class BackendUpdateController extends ChangeNotifier {
   final ProfileGateway gateway;
   final bool cloudManaged;
+  final BackendUpdateStore store;
 
   BackendUpdateCheck? check;
   BackendUpdateChannel? channel;
@@ -42,21 +45,117 @@ class BackendUpdateController extends ChangeNotifier {
   bool statusLoading = false;
 
   bool _disposed = false;
-  bool _requestOutstanding = false;
+  bool get _requestOutstanding => store.current != null;
   int _versionObservation = 0;
   int _checkGeneration = 0;
   int _statusGeneration = 0;
   Timer? _statusPoll;
   Future<void>? _statusRead;
   int updateAttempt = 0;
-  String? _actionId;
-  int? _actionPid;
+  Future<bool>? _trackingRead;
+  int _statusFailures = 0;
+  String? _observedRequestId;
 
-  BackendUpdateController(this.gateway, {this.cloudManaged = false});
+  BackendUpdateController(
+    this.gateway, {
+    required this.store,
+    this.cloudManaged = false,
+  }) {
+    if (!cloudManaged) {
+      store.addListener(_trackingChanged);
+      if (store.loaded) {
+        _trackingChanged();
+      } else {
+        unawaited(_loadTracking());
+      }
+    }
+  }
+
+  bool get trackingLoading => !cloudManaged && _trackingRead != null;
+
+  Future<bool> _loadTracking() =>
+      store.loaded ? Future.value(true) : _trackingRead ??= _restoreTracking();
+
+  Future<bool> _restoreTracking() async {
+    try {
+      await store.load();
+      if (_disposed) return false;
+      _trackingChanged();
+      return true;
+    } catch (_) {
+      if (!_disposed) {
+        phase = BackendUpdatePhase.unknown;
+        message =
+            'Saved update tracking could not be read. Check progress to retry.';
+      }
+      return false;
+    } finally {
+      _trackingRead = null;
+      _notify();
+    }
+  }
+
+  void _trackingChanged() {
+    if (_disposed) return;
+    final attempt = store.current;
+    if (attempt != null) {
+      if (_observedRequestId != attempt.requestId) {
+        _observedRequestId = attempt.requestId;
+        if (!starting) {
+          updateAttempt++;
+          _retireStatusRead();
+        }
+        status = null;
+        if (installedVersion == null) unawaited(_readInstalledVersion());
+      }
+      phase = starting && attempt.actionId == null
+          ? BackendUpdatePhase.starting
+          : attempt.actionId == null
+          ? BackendUpdatePhase.unknown
+          : BackendUpdatePhase.running;
+      message = starting && attempt.actionId == null
+          ? null
+          : attempt.actionId == null
+          ? 'Update outcome not yet confirmed.'
+          : 'Update ongoing';
+      if (!starting) _scheduleStatus(Duration.zero);
+    } else if (store.completed case final receipt?) {
+      _retireStatusRead();
+      check = null;
+      channel = null;
+      _applyOutcome(receipt.outcome);
+      unawaited(_readInstalledVersion());
+    } else if (_observedRequestId != null) {
+      _retireStatusRead();
+      _observedRequestId = null;
+      phase = check == null
+          ? BackendUpdatePhase.idle
+          : BackendUpdatePhase.ready;
+      message = null;
+    }
+    _notify();
+  }
+
+  void _scheduleStatus(Duration delay) {
+    _statusPoll?.cancel();
+    if (_disposed) return;
+    _statusPoll = Timer(
+      delay,
+      () => unawaited(refreshStatus(background: true)),
+    );
+  }
+
+  void _retireStatusRead() {
+    _statusPoll?.cancel();
+    _statusGeneration++;
+    _statusRead = null;
+    statusLoading = false;
+  }
 
   bool get requestOutstanding => _requestOutstanding;
   bool get canStart =>
       !cloudManaged &&
+      store.loaded &&
       !checking &&
       !statusLoading &&
       !channelSaving &&
@@ -69,6 +168,7 @@ class BackendUpdateController extends ChangeNotifier {
 
   bool get canOpenChannelEditor =>
       !cloudManaged &&
+      store.loaded &&
       !statusLoading &&
       !starting &&
       !channelSaving &&
@@ -88,6 +188,7 @@ class BackendUpdateController extends ChangeNotifier {
   }
 
   void _publishCheck(BackendUpdateCheck next, BackendUpdateChannel? track) {
+    if (_requestOutstanding) return;
     check = next;
     channel = track;
     if (next.currentVersion case final version?) {
@@ -151,16 +252,18 @@ class BackendUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> checkForUpdate() {
+  Future<void> checkForUpdate() async {
     if (cloudManaged) {
       return _readInstalledVersion();
     }
+    if (!await _loadTracking() || _disposed) return;
+    if (_requestOutstanding) return refreshStatus();
     if (channelSaving ||
         starting ||
         _requestOutstanding ||
         phase == BackendUpdatePhase.running ||
         _disposed) {
-      return Future.value();
+      return;
     }
     return _availabilityRead ??= _refreshAvailability();
   }
@@ -182,14 +285,22 @@ class BackendUpdateController extends ChangeNotifier {
       return;
     }
     final generation = ++_checkGeneration;
+    final observedRequestId = _observedRequestId;
     checking = true;
     _notify();
     try {
       final (next, track) = await _readUpdateCheck();
-      if (!_currentCheck(generation)) return;
+      if (!_currentCheck(generation) ||
+          _observedRequestId != observedRequestId) {
+        return;
+      }
       _publishCheck(next, track);
     } catch (_) {
-      if (!_currentCheck(generation)) return;
+      if (!_currentCheck(generation) ||
+          _observedRequestId != observedRequestId) {
+        return;
+      }
+      if (_requestOutstanding) return;
       check = null;
       channel = null;
       phase = BackendUpdatePhase.unknown;
@@ -206,6 +317,7 @@ class BackendUpdateController extends ChangeNotifier {
     required BackendUpdateChannel approvedChannel,
     required bool Function() canDispatch,
   }) async {
+    if (!cloudManaged && (!await _loadTracking() || _disposed)) return false;
     if (cloudManaged ||
         _disposed ||
         !canDispatch() ||
@@ -217,19 +329,15 @@ class BackendUpdateController extends ChangeNotifier {
     }
     final generation = ++_checkGeneration;
     updateAttempt++;
-    _statusPoll?.cancel();
-    _statusGeneration++;
-    _statusRead = null;
-    statusLoading = false;
+    _retireStatusRead();
     status = null;
-    _actionId = null;
-    _actionPid = null;
     starting = true;
     checking = false;
     phase = BackendUpdatePhase.starting;
     message = null;
     _notify();
     var posted = false;
+    BackendUpdateAttempt? attempt;
     try {
       final (fresh, track) = await _readUpdateCheck();
       if (!_currentCheck(generation)) return false;
@@ -263,18 +371,30 @@ class BackendUpdateController extends ChangeNotifier {
 
       phase = BackendUpdatePhase.starting;
 
+      attempt = BackendUpdateAttempt(
+        requestId: const Uuid().v4(),
+        installId: track.installId,
+        installPath: track.installPath,
+        home: track.home,
+        targetSha: track.targetSha!,
+        startedAt: DateTime.now().toUtc(),
+      );
+      if (!await store.reserve(attempt)) return false;
+
       final response = await gateway.postOwned(
         'hermes/update',
         const {},
-        canDispatch: () => _currentCheck(generation) && canDispatch(),
+        canDispatch: () =>
+            _currentCheck(generation) &&
+            canDispatch() &&
+            store.current?.requestId == attempt?.requestId,
         onDispatched: () {
-          _requestOutstanding = true;
           posted = true;
         },
       );
-      if (!_currentCheck(generation)) return false;
       if (response['ok'] == false) {
-        _requestOutstanding = false;
+        await store.clear(attempt.requestId);
+        if (!_currentCheck(generation)) return false;
         phase = BackendUpdatePhase.refused;
         message = 'The server refused to start the backend update.';
         return false;
@@ -298,31 +418,45 @@ class BackendUpdateController extends ChangeNotifier {
             'The server started an update but did not return its identity.';
         return false;
       }
-      _actionId = rawActionId;
-      _actionPid = pid;
+      // Acceptance must survive departure while the physical request is held.
+      await store.accept(attempt.requestId, rawActionId, pid);
+      if (!_currentCheck(generation)) return false;
       status = null;
       phase = BackendUpdatePhase.running;
       message = alreadyRunning
-          ? 'A backend update is already running on this host. Its status is now tracked.'
-          : 'Backend update started. Following update progress.';
+          ? 'Update ongoing. Following the existing update.'
+          : 'Update ongoing';
       return true;
     } catch (_) {
       if (!_currentCheck(generation)) return false;
+      if (posted &&
+          store.current?.requestId == attempt?.requestId &&
+          store.current?.actionId != null) {
+        phase = BackendUpdatePhase.running;
+        message = 'Update ongoing. Saved tracking will be retried.';
+        return true;
+      }
       phase = BackendUpdatePhase.unknown;
       message = posted
-          ? 'The update request could not be confirmed. Check status before trying again.'
+          ? 'Update outcome not yet confirmed.'
           : 'Update eligibility could not be confirmed. Nothing was started.';
       return false;
     } finally {
+      if (!posted && attempt != null) {
+        try {
+          await store.clear(attempt.requestId);
+        } catch (_) {
+          if (!_disposed) {
+            phase = BackendUpdatePhase.unknown;
+            message =
+                'Saved update tracking could not be cleared. Check progress to retry.';
+          }
+        }
+      }
       if (_currentCheck(generation)) {
         starting = false;
         _notify();
-        if (phase == BackendUpdatePhase.running) {
-          _statusPoll = Timer(
-            Duration.zero,
-            () => unawaited(refreshStatus(background: true)),
-          );
-        }
+        if (_requestOutstanding) _scheduleStatus(Duration.zero);
       }
     }
   }
@@ -346,7 +480,9 @@ class BackendUpdateController extends ChangeNotifier {
     var saved = false;
     try {
       final (fresh, track) = await _readUpdateCheck();
-      if (!_currentCheck(generation) || !canDispatch()) return false;
+      if (!_currentCheck(generation) || !canDispatch() || _requestOutstanding) {
+        return false;
+      }
       _publishCheck(fresh, track);
       if (fresh.canApply != true ||
           track == null ||
@@ -360,7 +496,8 @@ class BackendUpdateController extends ChangeNotifier {
       await _channels.save(
         track,
         name,
-        canDispatch: () => _currentCheck(generation) && canDispatch(),
+        canDispatch: () =>
+            _currentCheck(generation) && canDispatch() && !_requestOutstanding,
       );
       if (!_currentCheck(generation)) return false;
       saved = true;
@@ -392,10 +529,9 @@ class BackendUpdateController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshStatus({bool background = false}) {
-    if (cloudManaged || _disposed || starting || channelSaving) {
-      return Future.value();
-    }
+  Future<void> refreshStatus({bool background = false}) async {
+    if (cloudManaged || _disposed || starting || channelSaving) return;
+    if (!await _loadTracking() || _disposed) return;
     if (!background && !statusLoading) {
       statusLoading = true;
       _notify();
@@ -408,104 +544,121 @@ class BackendUpdateController extends ChangeNotifier {
     final generation = ++_statusGeneration;
     statusLoading = !background;
     _notify();
+    BackendUpdateStatus? next;
+    BackendUpdateReceipt? receipt;
+    var unavailable = false;
     try {
-      final next = BackendUpdateStatus.fromJson(
-        await gateway.read('actions/hermes-update/status'),
-      );
+      await store.persistAcceptance();
       if (!_currentStatus(generation)) return;
-      if (next == null) throw const FormatException('Invalid update status');
-      status = next;
-      await _applyStatus(next, generation);
+      try {
+        next = BackendUpdateStatus.fromJson(
+          await gateway.read('actions/hermes-update/status'),
+        );
+        unavailable = next == null;
+      } catch (_) {
+        unavailable = true;
+      }
+      if (!_currentStatus(generation)) return;
+      try {
+        final envelope = await gateway.read('hermes/update/receipt');
+        receipt = BackendUpdateReceipt.fromJson(envelope['receipt']);
+      } catch (_) {
+        // An unavailable receipt never certifies completion or clears tracking.
+      }
+      if (!_currentStatus(generation)) return;
+      if (next != null) status = next;
+      await _applyStatus(next, receipt, unavailable: unavailable);
+      _statusFailures = unavailable ? _statusFailures + 1 : 0;
     } catch (_) {
       if (!_currentStatus(generation)) return;
       phase = BackendUpdatePhase.unknown;
-      message = 'Backend update status is unavailable. Check again.';
+      message =
+          'Saved update tracking could not be updated. Check progress to retry.';
+      _statusFailures++;
     } finally {
       if (_currentStatus(generation)) {
         _statusRead = null;
         statusLoading = false;
         _notify();
-        if (phase == BackendUpdatePhase.running) {
-          _statusPoll = Timer(
-            const Duration(seconds: 2),
-            () => unawaited(refreshStatus(background: true)),
+        if (_requestOutstanding || phase == BackendUpdatePhase.running) {
+          final seconds = (2 * (1 << (_statusFailures - 1).clamp(0, 4))).clamp(
+            2,
+            30,
           );
+          _scheduleStatus(Duration(seconds: seconds));
         }
       }
     }
   }
 
-  Future<void> _applyStatus(BackendUpdateStatus next, int generation) async {
-    final actionId = _actionId;
-    final pid = _actionPid;
-    if (actionId == null && pid == null) {
-      if (next.running) {
+  Future<void> _applyStatus(
+    BackendUpdateStatus? next,
+    BackendUpdateReceipt? receipt, {
+    required bool unavailable,
+  }) async {
+    final attempt = store.current;
+    if (attempt != null) {
+      final actionId = attempt.actionId;
+      // The stock action status can retain this exact action's receipt even
+      // after a newer CLI update replaces the root-wide latest receipt.
+      if (actionId != null &&
+          receipt?.actionId != actionId &&
+          next?.receipt?.actionId == actionId) {
+        receipt = next!.receipt;
+      }
+      final matching = actionId != null && receipt?.actionId == actionId;
+      if (matching && receipt!.terminal) {
+        await store.clear(attempt.requestId, receipt: receipt);
+      } else if (unavailable) {
+        phase = actionId == null
+            ? BackendUpdatePhase.unknown
+            : BackendUpdatePhase.running;
+        message = actionId == null
+            ? 'Update outcome not yet confirmed. Waiting for the server to reconnect.'
+            : 'Update ongoing. Waiting for the server to reconnect.';
+      } else if (matching && receipt!.outcome == 'running' ||
+          actionId != null &&
+              next?.running == true &&
+              next?.actionId == actionId) {
         phase = BackendUpdatePhase.running;
-        message = 'A backend update is running on this host.';
-      } else if (_requestOutstanding) {
-        phase = BackendUpdatePhase.unknown;
-        message =
-            'This update request is still unconfirmed. Check the server before trying again.';
+        message = 'Update ongoing';
       } else {
-        final receipt = await _readReceipt(generation);
-        if (!_currentStatus(generation)) return;
-        if (receipt == null) {
-          phase = BackendUpdatePhase.unknown;
-          message = 'No completed backend update could be confirmed.';
-        } else {
-          _applyOutcome(receipt.outcome, prefix: 'Last recorded update');
-        }
+        phase = BackendUpdatePhase.unknown;
+        message = 'Update outcome not yet confirmed.';
       }
       return;
     }
-    final exactAction = actionId != null && next.actionId == actionId;
-    final samePid = pid != null && next.pid == pid;
-    if (next.running) {
-      if (samePid && (next.actionId == null || exactAction)) {
-        phase = BackendUpdatePhase.running;
-        message = 'Backend update is running on this host.';
-      } else {
-        phase = BackendUpdatePhase.unknown;
-        message = 'The returned live status has a different update identity.';
-      }
+    if (receipt?.terminal == true &&
+        (next?.running != true || next?.actionId == receipt?.actionId)) {
+      _applyOutcome(receipt!.outcome, prefix: 'Last recorded update');
       return;
     }
-    final sameProcessExit =
-        next.actionId == null && samePid && next.exitCode != null;
-    if (!exactAction && !sameProcessExit) {
-      phase = BackendUpdatePhase.unknown;
-      message = 'The returned status belongs to a different update.';
-      return;
-    }
-    String? outcome;
-    if (pid != null) {
-      final receipt = await _readReceipt(generation);
-      if (!_currentStatus(generation)) return;
-      if (receipt?.pid == pid) outcome = receipt?.outcome;
-    }
-    _requestOutstanding = false;
-    if (outcome != null) {
-      _applyOutcome(outcome);
-    } else if (next.exitCode != null && next.exitCode != 0) {
-      phase = BackendUpdatePhase.failed;
-      message = 'The backend update failed.';
-    } else if (next.exitCode == 0) {
-      phase = BackendUpdatePhase.unknown;
-      message =
-          'The update command exited successfully, but the full update outcome is unavailable.';
+    // A running server receipt survives the dashboard losing its process table.
+    if (receipt?.outcome == 'running' && receipt?.actionId != null ||
+        next?.running == true &&
+            next?.actionId != null &&
+            (next?.pid ?? 0) > 0) {
+      final accepted = BackendUpdateAttempt(
+        requestId: const Uuid().v4(),
+        installId: null,
+        installPath: null,
+        home: null,
+        targetSha: null,
+        startedAt: DateTime.now().toUtc(),
+        actionId: receipt?.outcome == 'running'
+            ? receipt!.actionId
+            : next!.actionId,
+        pid: receipt?.outcome == 'running' ? receipt!.pid : next!.pid,
+      );
+      await store.reserve(accepted);
+    } else if (next?.running == true) {
+      phase = BackendUpdatePhase.running;
+      message = 'Update ongoing';
     } else {
       phase = BackendUpdatePhase.unknown;
-      message = 'The update stopped without a confirmed outcome.';
-    }
-  }
-
-  Future<BackendUpdateReceipt?> _readReceipt(int generation) async {
-    try {
-      final envelope = await gateway.read('hermes/update/receipt');
-      if (!_currentStatus(generation)) return null;
-      return BackendUpdateReceipt.fromJson(envelope['receipt']);
-    } catch (_) {
-      return null;
+      message = unavailable
+          ? 'Backend update status is unavailable. Check again.'
+          : 'Update outcome not yet confirmed.';
     }
   }
 
@@ -541,7 +694,9 @@ class BackendUpdateController extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
+    store.removeListener(_trackingChanged);
     _statusPoll?.cancel();
     _checkGeneration++;
     _statusGeneration++;

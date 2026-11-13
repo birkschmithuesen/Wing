@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'support/backend_update_channel_fixture.dart';
 import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/studio_error.dart';
@@ -11,6 +12,9 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/backend_update_controller.dart';
+import 'package:wing/core/services/backend_update_store.dart';
+import 'package:wing/core/services/connection_manager.dart';
+import 'package:wing/core/models/backend_update.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/widgets/backend_version_card.dart';
@@ -31,6 +35,7 @@ class _UpdateHost {
   Map<String, dynamic> checkResponse = _available;
   Map<String, dynamic> statusResponse = {
     'running': true,
+    'action_id': 'action-1',
     'pid': 41,
     'exit_code': null,
     'lines': <String>[],
@@ -46,6 +51,7 @@ class _UpdateHost {
       'pid': 41,
       'finished_at': '2026-09-12T12:00:00Z',
       'outcome': 'success',
+      'action_id': 'previous-action',
     },
     'summary': 'success',
   };
@@ -53,6 +59,7 @@ class _UpdateHost {
   Completer<Map<String, dynamic>>? pendingCheck;
   Completer<Map<String, dynamic>>? pendingStatus;
   bool statusFails = false;
+  bool receiptFails = false;
   final reads = <(String, Map<String, String>)>[];
   final posts = <(String, Map<String, dynamic>)>[];
 
@@ -75,6 +82,9 @@ class _UpdateHost {
         return pendingCheck?.future ?? checkResponse;
       }
       if (endpoint == 'hermes/update/receipt') {
+        if (receiptFails) {
+          throw const DashboardHttpException(503, 'hermes/update/receipt');
+        }
         return receiptResponse;
       }
       if (endpoint != 'actions/hermes-update/status') {
@@ -122,6 +132,7 @@ class _UpdateCardOwnerState extends State<_UpdateCardOwner> {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   const capture = bool.fromEnvironment('CAPTURE_BACKEND_CHANNELS');
   setUpAll(() async {
     if (!capture) return;
@@ -149,6 +160,29 @@ void main() {
       await file.writeAsBytes(bytes!.buffer.asUint8List());
       image.dispose();
     });
+  }
+
+  Future<void> settleTrackedUpdate(WidgetTester tester) async {
+    for (var frame = 0; frame < 50; frame++) {
+      await tester.pump(const Duration(milliseconds: 20));
+      final cards = tester.widgetList<BackendVersionCard>(
+        find.byType(BackendVersionCard),
+      );
+      if (frame >= 15 &&
+          cards.every((card) {
+            final state = card.updateController;
+            return !state.starting &&
+                !state.checking &&
+                !state.statusLoading &&
+                !state.versionLoading &&
+                !state.trackingLoading;
+          })) {
+        return;
+      }
+    }
+    throw TestFailure(
+      'Update presentation did not settle its explicit request',
+    );
   }
 
   void expectUsableDialog(WidgetTester tester, String title, String action) {
@@ -187,6 +221,121 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
+        'restored update retries and settles ${brightness.name} $scale',
+        (tester) async {
+          final host = _UpdateHost()
+            ..statusFails = true
+            ..receiptFails = true;
+          final store = host.source.updates;
+          await store.reserve(
+            BackendUpdateAttempt(
+              requestId: 'saved-request',
+              installId: host.source.approved.installId,
+              installPath: host.source.approved.installPath,
+              home: host.source.approved.home,
+              targetSha: host.source.targetSha!,
+              startedAt: DateTime.utc(2026, 11, 12),
+            ),
+          );
+          await store.accept('saved-request', 'action-1', 41);
+          final reopened = BackendUpdateStore(
+            SharedPreferences.getInstance(),
+            store.key,
+          );
+          tester.view.physicalSize = Size(scale == 2 ? 320 : 390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              theme: wingTheme(brightness),
+              debugShowCheckedModeBanner: false,
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(scale)),
+                child: RepaintBoundary(
+                  key: const ValueKey('channels-capture'),
+                  child: child!,
+                ),
+              ),
+              home: VersionsUpdatesScreen(
+                controllerFactory: (_) => VersionsController(
+                  gateway: host.gateway,
+                  updateStore: reopened,
+                ),
+              ),
+            ),
+          );
+          await settleTrackedUpdate(tester);
+          expect(
+            find.text('Update ongoing. Waiting for the server to reconnect.'),
+            findsOneWidget,
+          );
+          expect(find.text('Update availability unknown.'), findsNothing);
+          expect(find.byType(StudioLoading), findsOneWidget);
+          expect(
+            host.reads.where((r) => r.$1 == 'hermes/update/check'),
+            isEmpty,
+          );
+          final card = tester.widget<BackendVersionCard>(
+            find.byType(BackendVersionCard),
+          );
+          expect(card.updateController.canStart, isFalse);
+          expect(card.updateController.canOpenChannelEditor, isFalse);
+          expect(host.posts, isEmpty);
+          await snapshot(
+            tester,
+            '${brightness.name}-$scale-update-restored-outage',
+          );
+          final held = host.pendingStatus = Completer<Map<String, dynamic>>();
+          host.statusFails = false;
+          host.receiptFails = false;
+          host.receiptResponse = {
+            'receipt': {
+              'action_id': 'action-1',
+              'pid': 41,
+              'outcome': 'success',
+              'finished_at': '2026-11-12T09:00:00Z',
+            },
+          };
+          host.checkResponse = {..._available, 'current_version': '1.2.4'};
+          final progress = find.byTooltip('Check update progress');
+          await tester.ensureVisible(progress);
+          await tester.tap(progress);
+          await tester.pump();
+          expect(card.updateController.statusLoading, isTrue);
+          expect(reopened.current, isNotNull);
+          await snapshot(
+            tester,
+            '${brightness.name}-$scale-update-held-progress',
+          );
+          held.complete({
+            'running': false,
+            'pid': null,
+            'exit_code': null,
+            'lines': <String>[],
+          });
+          await settleTrackedUpdate(tester);
+          expect(reopened.current, isNull);
+          expect(
+            find.text('The backend update completed successfully.'),
+            findsOneWidget,
+          );
+          expect(find.text('1.2.4'), findsOneWidget);
+          expect(find.byTooltip('Check for updates'), findsOneWidget);
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(host.posts, isEmpty);
+          expect(tester.takeException(), isNull);
+          await snapshot(
+            tester,
+            '${brightness.name}-$scale-update-restored-success',
+          );
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
         'changed-target warning expires after four seconds ${brightness.name} $scale',
         (tester) async {
           final host = _UpdateHost();
@@ -211,8 +360,10 @@ void main() {
                 ),
               ),
               home: VersionsUpdatesScreen(
-                controllerFactory: (_) =>
-                    VersionsController(gateway: host.gateway),
+                controllerFactory: (_) => VersionsController(
+                  updateStore: backendUpdateStoreFixture(),
+                  gateway: host.gateway,
+                ),
               ),
             ),
           );
@@ -270,6 +421,7 @@ void main() {
               ),
               home: VersionsUpdatesScreen(
                 controllerFactory: (_) => VersionsController(
+                  updateStore: backendUpdateStoreFixture(),
                   gateway: host.gateway,
                   cloudManaged: true,
                 ),
@@ -335,8 +487,10 @@ void main() {
                 ),
               ),
               home: VersionsUpdatesScreen(
-                controllerFactory: (_) =>
-                    VersionsController(gateway: host.gateway),
+                controllerFactory: (_) => VersionsController(
+                  updateStore: backendUpdateStoreFixture(),
+                  gateway: host.gateway,
+                ),
               ),
             ),
           );
@@ -425,8 +579,10 @@ void main() {
                   ),
                 ),
                 home: VersionsUpdatesScreen(
-                  controllerFactory: (_) =>
-                      VersionsController(gateway: host.gateway),
+                  controllerFactory: (_) => VersionsController(
+                    updateStore: backendUpdateStoreFixture(),
+                    gateway: host.gateway,
+                  ),
                 ),
               ),
             );
@@ -565,7 +721,7 @@ void main() {
             await tester.pump();
             await tester.pump(const Duration(milliseconds: 200));
             expect(find.byType(StudioLoading), findsOneWidget);
-            expect(find.text('Starting backend update…'), findsOneWidget);
+            expect(find.text('Starting update…'), findsOneWidget);
             expect(find.text('Update logs'), findsOneWidget);
             expect(find.byType(SelectableText), findsNothing);
             final pendingRotation = tester
@@ -583,8 +739,8 @@ void main() {
             await snapshot(tester, '${brightness.name}-$scale-update-starting');
             expect(find.text('Checking for updates…'), findsNothing);
             startCheck.complete(_available);
-            await tester.pumpAndSettle();
-            expect(find.byType(StudioLoading), findsNothing);
+            await settleTrackedUpdate(tester);
+            expect(find.byType(StudioLoading), findsOneWidget);
             expect(host.posts, hasLength(1));
             expect(tester.getCenter(find.byIcon(Icons.sync)).dx, refreshX);
             expect(find.byIcon(Icons.refresh), findsNothing);
@@ -605,14 +761,14 @@ void main() {
               '${brightness.name}-$scale-update-running-collapsed',
             );
             await tester.tap(find.text('Update logs'));
-            await tester.pumpAndSettle();
+            await settleTrackedUpdate(tester);
             await tester.ensureVisible(find.byType(SelectableText));
             if (scale == 2) {
               await tester.drag(
                 find.byType(SingleChildScrollView).first,
                 const Offset(0, -520),
               );
-              await tester.pumpAndSettle();
+              await settleTrackedUpdate(tester);
             }
             await snapshot(
               tester,
@@ -646,7 +802,7 @@ void main() {
             await tester.pump(const Duration(seconds: 2));
             await tester.pump();
             await tester.ensureVisible(find.byTooltip('Check update progress'));
-            await tester.pumpAndSettle();
+            await settleTrackedUpdate(tester);
             expect(logPosition.maxScrollExtent, greaterThan(0));
             final logText = tester.widget<SelectableText>(
               find.byType(SelectableText),
@@ -708,10 +864,10 @@ void main() {
               '${brightness.name}-$scale-progress-pending',
             );
             heldStatus.completeError(StateError('disconnected'));
-            await tester.pumpAndSettle();
-            expect(find.byType(StudioLoading), findsNothing);
+            await settleTrackedUpdate(tester);
+            expect(find.byType(StudioLoading), findsOneWidget);
             expect(
-              find.text('Backend update status is unavailable. Check again.'),
+              find.text('Update ongoing. Waiting for the server to reconnect.'),
               findsOneWidget,
             );
             expect(find.byTooltip('Check update progress'), findsOneWidget);
@@ -722,9 +878,9 @@ void main() {
             host.pendingStatus = null;
             await tester.ensureVisible(refresh);
             await tester.tap(refresh);
-            await tester.pumpAndSettle();
+            await settleTrackedUpdate(tester);
             expect(find.byType(StudioError), findsNothing);
-            expect(find.byType(StudioLoading), findsNothing);
+            expect(find.byType(StudioLoading), findsOneWidget);
             expect(host.posts, hasLength(1));
             final footer = tester.getRect(
               find.byTooltip('Check update progress'),
@@ -745,7 +901,7 @@ void main() {
               const Offset(0, -20000),
               const Duration(seconds: 1),
             );
-            await tester.pumpAndSettle();
+            await settleTrackedUpdate(tester);
             expect(
               logPosition.pixels,
               closeTo(logPosition.maxScrollExtent, 0.1),
@@ -759,6 +915,7 @@ void main() {
               tester,
               '${brightness.name}-$scale-update-bounded-oldest',
             );
+            host.receiptResponse['receipt']['action_id'] = 'action-1';
             host.statusResponse = {
               ...host.statusResponse,
               'running': false,
@@ -766,7 +923,7 @@ void main() {
               'action_id': 'action-1',
             };
             await tester.pump(const Duration(seconds: 2));
-            await tester.pumpAndSettle();
+            await settleTrackedUpdate(tester);
             expect(find.byTooltip('Check update progress'), findsNothing);
             expect(find.byTooltip('Check for updates'), findsOneWidget);
             expect(tester.getCenter(find.byIcon(Icons.sync)).dx, refreshX);
@@ -807,8 +964,10 @@ void main() {
                 ),
               ),
               home: VersionsUpdatesScreen(
-                controllerFactory: (_) =>
-                    VersionsController(gateway: host.gateway),
+                controllerFactory: (_) => VersionsController(
+                  updateStore: backendUpdateStoreFixture(),
+                  gateway: host.gateway,
+                ),
               ),
             ),
           );
@@ -981,7 +1140,10 @@ void main() {
     'known update status refresh stays quiet and publishes new output',
     (tester) async {
       final host = _UpdateHost();
-      final controller = BackendUpdateController(host.gateway);
+      final controller = BackendUpdateController(
+        host.gateway,
+        store: host.source.updates,
+      );
       await controller.checkForUpdate();
       await controller.refreshStatus();
       final pending = Completer<Map<String, dynamic>>();
@@ -1035,7 +1197,10 @@ void main() {
     double textScale = 1,
     Brightness? brightness,
   }) async {
-    final controller = BackendUpdateController(host.gateway);
+    final controller = BackendUpdateController(
+      host.gateway,
+      store: host.source.updates,
+    );
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -1414,10 +1579,7 @@ void main() {
     );
     expect(host.posts, hasLength(1));
     expect(host.posts.single.$1, 'hermes/update?profile=work');
-    expect(
-      find.text('Backend update is running on this host.'),
-      findsOneWidget,
-    );
+    expect(find.text('Update ongoing'), findsOneWidget);
   });
 
   testWidgets(
@@ -1431,10 +1593,7 @@ void main() {
       host.pendingCheck = preflight;
       await tester.tap(find.byTooltip('Update backend').last);
       await tester.pump();
-      expect(
-        find.text('Starting backend update…').hitTestable(),
-        findsOneWidget,
-      );
+      expect(find.text('Starting update…').hitTestable(), findsOneWidget);
       expect(find.text('Update logs').hitTestable(), findsOneWidget);
       expect(find.byType(SelectableText), findsNothing);
       final rotation = tester
@@ -1497,14 +1656,15 @@ void main() {
       await tester.pump(const Duration(seconds: 2));
       await tester.pump();
       expect(
-        find.text('Backend update status is unavailable. Check again.'),
+        find.text('Update ongoing. Waiting for the server to reconnect.'),
         findsOneWidget,
       );
       final reads = host.reads.length;
       await tester.pump(const Duration(seconds: 6));
-      expect(host.reads, hasLength(reads));
+      expect(host.reads.length, greaterThan(reads));
       expect(find.text('Third\nSecond\nFirst'), findsOneWidget);
       host.statusFails = false;
+      host.receiptResponse['receipt']['action_id'] = 'action-1';
       host.statusResponse = {
         ...host.statusResponse,
         'running': false,
@@ -1521,6 +1681,8 @@ void main() {
       final settledReads = host.reads.length;
       await tester.pump(const Duration(seconds: 6));
       expect(host.reads, hasLength(settledReads));
+      await tester.tap(find.byTooltip('Check for updates'));
+      await tester.pumpAndSettle();
       await openConfirmation(tester);
       host.pendingCheck = Completer<Map<String, dynamic>>();
       await tester.tap(find.byTooltip('Update backend').last);
@@ -1584,26 +1746,27 @@ void main() {
     );
   });
 
-  testWidgets('manual status refresh reports disconnection without retrying', (
-    tester,
-  ) async {
-    final host = _UpdateHost();
-    await showCard(tester, host);
-    await check(tester);
-    await openConfirmation(tester);
-    await tester.tap(find.byTooltip('Update backend').last);
-    await tester.pumpAndSettle();
-    host.statusFails = true;
+  testWidgets(
+    'manual progress check retains ongoing state through disconnection',
+    (tester) async {
+      final host = _UpdateHost();
+      await showCard(tester, host);
+      await check(tester);
+      await openConfirmation(tester);
+      await tester.tap(find.byTooltip('Update backend').last);
+      await tester.pumpAndSettle();
+      host.statusFails = true;
 
-    await tester.tap(find.byTooltip('Check update progress'));
-    await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Check update progress'));
+      await tester.pumpAndSettle();
 
-    expect(
-      find.text('Backend update status is unavailable. Check again.'),
-      findsOneWidget,
-    );
-    expect(host.posts, hasLength(1));
-  });
+      expect(
+        find.text('Update ongoing. Waiting for the server to reconnect.'),
+        findsOneWidget,
+      );
+      expect(host.posts, hasLength(1));
+    },
+  );
 
   testWidgets('shows terminal outcome and expandable bounded output', (
     tester,
@@ -1626,6 +1789,7 @@ void main() {
         'pid': 41,
         'finished_at': '2026-09-12T12:00:00Z',
         'outcome': 'partial',
+        'action_id': 'action-1',
       },
       'summary': 'partial',
     };
@@ -1657,8 +1821,14 @@ void main() {
   ) async {
     final first = _UpdateHost();
     final second = _UpdateHost();
-    final firstController = BackendUpdateController(first.gateway);
-    final secondController = BackendUpdateController(second.gateway);
+    final firstController = BackendUpdateController(
+      first.gateway,
+      store: first.source.updates,
+    );
+    final secondController = BackendUpdateController(
+      second.gateway,
+      store: second.source.updates,
+    );
     addTearDown(firstController.dispose);
     addTearDown(secondController.dispose);
     late StateSetter replace;
@@ -1695,7 +1865,10 @@ void main() {
     tester,
   ) async {
     final host = _UpdateHost();
-    final external = BackendUpdateController(host.gateway);
+    final external = BackendUpdateController(
+      host.gateway,
+      store: host.source.updates,
+    );
     addTearDown(external.dispose);
     await external.checkForUpdate();
     await tester.pumpWidget(
@@ -1717,8 +1890,14 @@ void main() {
   ) async {
     final first = _UpdateHost();
     final second = _UpdateHost();
-    final firstController = BackendUpdateController(first.gateway);
-    final secondController = BackendUpdateController(second.gateway);
+    final firstController = BackendUpdateController(
+      first.gateway,
+      store: first.source.updates,
+    );
+    final secondController = BackendUpdateController(
+      second.gateway,
+      store: second.source.updates,
+    );
     addTearDown(firstController.dispose);
     addTearDown(secondController.dispose);
     late StateSetter replace;
@@ -1755,8 +1934,14 @@ void main() {
       final first = _UpdateHost()..pendingCheck = pending;
       final second = _UpdateHost()
         ..checkResponse = {..._available, 'current_version': '4.5.6'};
-      final firstController = BackendUpdateController(first.gateway);
-      final secondController = BackendUpdateController(second.gateway);
+      final firstController = BackendUpdateController(
+        first.gateway,
+        store: first.source.updates,
+      );
+      final secondController = BackendUpdateController(
+        second.gateway,
+        store: second.source.updates,
+      );
       addTearDown(firstController.dispose);
       addTearDown(secondController.dispose);
       await tester.pumpWidget(
@@ -1785,7 +1970,10 @@ void main() {
   testWidgets('disposed card ignores a late check response', (tester) async {
     final pending = Completer<Map<String, dynamic>>();
     final host = _UpdateHost()..pendingCheck = pending;
-    final controller = BackendUpdateController(host.gateway);
+    final controller = BackendUpdateController(
+      host.gateway,
+      store: host.source.updates,
+    );
     addTearDown(controller.dispose);
     await tester.pumpWidget(
       MaterialApp(

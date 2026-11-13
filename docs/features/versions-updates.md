@@ -11,7 +11,7 @@ Feature ID: `versions-updates`.
   channel controls are omitted and cannot dispatch.
 - `versions-updates.channel` — Use the tune icon beside the channel to choose Stable releases or Main branch. The editor opens immediately during an availability refresh, shows progress until that shared read settles, and stays reachable after failed checks with retry before saving.
 - `versions-updates.confirm` — Main can advance on the same approved branch. Changed installation, channel, branch, rollback intent or release target requires review. A refused attempt shows a timed warning beside the update actions.
-- `versions-updates.follow` — Follow progress automatically and scroll newest-first logs in a viewer capped at 16 text rows. The single rightmost sync control checks progress while an update is outstanding and availability otherwise.
+- `versions-updates.follow` — Save the outstanding update on the device before dispatch, follow its progress through interruptions and reopen, and scroll newest-first logs in a viewer capped at 16 text rows. The single rightmost sync control checks progress while an update is outstanding and availability otherwise. Another update and channel changes stay unavailable until the matching server action reports a final result.
 
 The separate [Wing plugin section in App settings](app-preferences-backup.md)
 checks the companion plugin’s GitHub release and installed versions across profiles;
@@ -28,7 +28,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/backend_update_controller_test.dart test/backend_version_card_test.dart test/backend_update_model_test.dart test/backend_version_identity_test.dart test/studio_selection_test.dart
+  flutter test --no-pub test/backend_update_controller_test.dart test/backend_update_store_test.dart test/backend_version_card_test.dart test/backend_update_model_test.dart test/backend_version_identity_test.dart test/drawer_versions_test.dart test/studio_selection_test.dart
   ```
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
@@ -58,6 +58,20 @@ themes/text sizes, shared-read completion, failure/retry and departure, plus
 confirmation followed by a Main target advancing before dispatch.
 Refreshing also reconciles a preview channel changed on the server while
 preserving an unsaved Stable/Main choice.
+
+Update tracking belongs to the saved connection and server origin. Starting an
+update saves a non-secret marker before the request leaves the device. Once
+accepted, the screen says **Update ongoing**. Temporary progress failures retain
+the marker and logs, show **Update ongoing. Waiting for the server to reconnect.**,
+and retry with delays capped at 30 seconds. Reopening Wing or Versions resumes
+progress checks before checking for another available update.
+
+Only a terminal receipt carrying the accepted action ID clears a tracked update:
+success, failure, partial completion or refusal. A missing/mismatched receipt,
+reused process ID, timeout or app restart never clears it. An unconfirmed request
+stays **Update outcome not yet confirmed** and is never submitted again
+automatically. A direct refusal or a request known not to have been sent can
+retire its marker. Failed local storage must not dispatch an untracked update.
 
 Channel verification targets the current stock Hermes source-check protocol (3).
 The controller suite verifies that fresh stock metadata enables the exact target

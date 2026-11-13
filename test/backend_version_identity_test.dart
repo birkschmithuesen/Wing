@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'support/backend_update_channel_fixture.dart';
 import 'dart:async';
 
@@ -7,6 +8,7 @@ import 'package:wing/core/services/backend_update_controller.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   BackendUpdateController controller(ScopedGet read) {
     final result = BackendUpdateController(
       ProfileGateway(
@@ -15,6 +17,7 @@ void main() {
         rpc: (_, _) async => {},
         discover: () => throw UnimplementedError(),
       ),
+      store: backendUpdateStoreFixture(),
     );
     addTearDown(result.dispose);
     return result;

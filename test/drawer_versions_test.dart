@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'support/backend_update_channel_fixture.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
@@ -15,6 +17,7 @@ import 'package:wing/core/widgets/drawer_versions.dart';
 import 'package:wing/core/screens/versions_updates_screen.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   SavedConnection connection(String name) => SavedConnection(
     id: name,
     label: name,
@@ -49,6 +52,7 @@ void main() {
       addTearDown(status.dispose);
       var reads = 0;
       VersionsController factory(ConnectionAccess? value) => VersionsController(
+        updateStore: backendUpdateStoreFixture(),
         gateway: gateway(value!.connection, () async {
           reads++;
           return {
@@ -146,7 +150,10 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: DrawerVersions(controllerFactory: (_) => VersionsController()),
+          body: DrawerVersions(
+            controllerFactory: (_) =>
+                VersionsController(updateStore: backendUpdateStoreFixture()),
+          ),
         ),
       ),
     );
@@ -194,6 +201,7 @@ void main() {
                 ),
                 connectionStatus: status,
                 versionsControllerFactory: (_) => VersionsController(
+                  updateStore: backendUpdateStoreFixture(),
                   gateway: gateway(
                     server,
                     () async => {
@@ -252,6 +260,7 @@ void main() {
           body: DrawerVersions(
             access: ConnectionAccess(connection: server, dashboardOAuth: null),
             controllerFactory: (_) => versions = VersionsController(
+              updateStore: backendUpdateStoreFixture(),
               gateway: gateway(server, () async {
                 if (fail) throw StateError('offline');
                 return {
@@ -284,6 +293,7 @@ void main() {
   ) async {
     final old = Completer<Map<String, dynamic>>();
     VersionsController factory(ConnectionAccess? value) => VersionsController(
+      updateStore: backendUpdateStoreFixture(),
       gateway: gateway(
         value!.connection,
         () async => value.connection.id == 'A'
