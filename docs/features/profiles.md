@@ -22,7 +22,12 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/profiles_management_session_test.dart test/profile_management_owned_transport_test.dart test/profile_identity_edit_session_test.dart
+  flutter test --no-pub test/profile_selection_controller_test.dart
   ```
+
+  The selection suite holds a saved-choice write while navigating to a newer
+  profile, then checks that the latest choice settles and initialization
+  completes once. Invalid saved choices require an explicit available selection.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

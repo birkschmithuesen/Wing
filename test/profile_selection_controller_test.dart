@@ -169,6 +169,19 @@ void main() {
       await platform.setValue('String', key, 'removed-profile');
       await owner.reload();
       await controller.initialize();
+      final initialized = Completer<void>();
+      var initializedTransitions = 0;
+      var wasInitialized = controller.initialized;
+      void observeInitialization() {
+        if (controller.initialized && !wasInitialized) {
+          initializedTransitions++;
+          if (!initialized.isCompleted) initialized.complete();
+        }
+        wasInitialized = controller.initialized;
+      }
+
+      controller.addListener(observeInitialization);
+      addTearDown(() => controller.removeListener(observeInitialization));
       platform.writes.clear();
       platform.holdWork = true;
       final older = controller.switchProfile('work');
@@ -186,15 +199,17 @@ void main() {
       platform.release.complete();
       expect(await older, isFalse);
       await owner.settleProfileSelection(identity);
-      await platform.pendingJournalWritten.future;
+      await initialized.future;
       expect(platform.writes, ['work', 'personal']);
       expect((await platform.getAll())[key], 'personal');
       expect(controller.current!.scope.profileName, 'personal');
       expect(controller.initialized, isTrue);
       expect(controller.requiresProfileSelectionRepair, isFalse);
-      expect(platform.pendingJournalWrites, 1);
+      expect(initializedTransitions, 1);
+      expect(platform.pendingJournalWrites, 0);
       await controller.initialize();
-      expect(platform.pendingJournalWrites, 1);
+      expect(initializedTransitions, 1);
+      expect(platform.pendingJournalWrites, 0);
       expect(host.updates, isEmpty);
     },
   );
@@ -233,16 +248,13 @@ class _ControllerSelectionPlatform extends InMemorySharedPreferencesStore {
   bool _awaitingRollback = false;
   bool holdWork = false;
   int pendingJournalWrites = 0;
-  final pendingJournalWritten = Completer<void>();
   final entered = Completer<void>();
   final release = Completer<void>();
   @override
   Future<bool> setValue(String valueType, String key, Object value) async {
     if (key.startsWith('flutter.profile_pending_v2_')) {
       pendingJournalWrites++;
-      final result = await super.setValue(valueType, key, value);
-      if (!pendingJournalWritten.isCompleted) pendingJournalWritten.complete();
-      return result;
+      return super.setValue(valueType, key, value);
     }
     if (key == this.key) {
       writes.add(value);
