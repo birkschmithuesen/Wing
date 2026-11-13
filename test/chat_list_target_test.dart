@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/chat_list_view.dart';
+import 'package:wing/core/models/chat_browser_preferences.dart';
 import 'package:wing/core/models/session_visibility.dart';
 import 'package:wing/core/models/profile_live_activity.dart';
 import 'package:wing/core/screens/profile_workspace_browser.dart';
@@ -37,6 +38,7 @@ import 'support/profile_browser_fixture.dart';
 class TargetFixture extends ProfileBrowserFixture {
   final rowUpdates = <String, Map<String, dynamic>>{};
   final tokenInputs = <int, num>{};
+  final projectSessionIds = <String, List<String>>{};
 
   // Activity rows without a runtime profile require one actual stored owner.
   final exclusiveOwners = <String, String>{};
@@ -78,9 +80,9 @@ class TargetFixture extends ProfileBrowserFixture {
             (i > 3 ? ' $i' : ''),
         'path': '/p$i',
         'lastActive': now - i * 3600,
-        'sessionIds': [
-          for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j',
-        ],
+        'sessionIds':
+            projectSessionIds['$profile/p$i'] ??
+            [for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j'],
       },
   ];
 }
@@ -152,6 +154,7 @@ void main() {
   late TargetFixture fixture;
   late _CountingController controller;
   late AppPreferences appPreferences;
+  ChatBrowserData? shownData;
   const capture = bool.fromEnvironment('CHAT_LIST_REVIEW');
   setUpAll(() async {
     if (!capture) return;
@@ -243,7 +246,7 @@ void main() {
                 )
               : ProfileWorkspaceBrowser(
                   onOpenBotChat: (_) {},
-                  createData: () => ChatBrowserData(controller),
+                  createData: () => shownData = ChatBrowserData(controller),
                   connectionLabel: controller.connection.label,
                   connectionIcon: controller.connection.icon,
                   connectionStatus: controller.connectionStatus,
@@ -321,6 +324,79 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'saved metadata refreshes retained Chats $brightness $scale',
+        (tester) async {
+          await appPreferences.chooseBrowserPreferences(
+            'target',
+            BrowserPreferenceIntent.exclusiveProfile('personal'),
+          );
+          fixture.rowUpdates['personal/session-0'] = {'title': null};
+          fixture.projectSessionIds['personal/p0'] = [
+            for (var i = 1; i < 6; i++) 'session-$i',
+          ];
+          await show(tester, brightness: brightness, scale: scale);
+          final row = find.byKey(const ValueKey('chat-personal-session-0'));
+          expect(
+            find.descendant(of: row, matching: find.text('Untitled chat')),
+            findsOneWidget,
+          );
+          await screenshot(tester, 'metadata-before-${brightness.name}-$scale');
+
+          final held = Completer<void>();
+          fixture.delays['personal'] = held;
+          addTearDown(() {
+            if (!held.isCompleted) held.complete();
+          });
+          fixture.rowUpdates['personal/session-0'] = {
+            'title': 'Plan Cairns flights',
+          };
+          fixture.projectSessionIds['personal/p0']!.insert(0, 'session-0');
+          // This harness owns Chats, not the independent Groups polling clock.
+          controller.setGroupNotificationsForeground(false);
+          controller.current!.gateway.onEvent!(
+            StreamEvent(
+              type: 'sessions.changed',
+              sessionId: '',
+              data: const {},
+            ),
+          );
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(row.hitTestable(), findsOneWidget);
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(find.byType(LinearProgressIndicator), findsNothing);
+          expect(
+            find.byKey(const ValueKey('workspace-search')),
+            findsOneWidget,
+          );
+          await screenshot(tester, 'metadata-held-${brightness.name}-$scale');
+
+          held.complete();
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.text('Plan Cairns flights'),
+            ),
+            findsOneWidget,
+          );
+          // The visible row and its group both come from the confirmed catalog.
+          expect(
+            shownData!.entries
+                .singleWhere(
+                  (entry) =>
+                      entry.profile == 'personal' && entry.id == 'session-0',
+                )
+                .project
+                ?.id,
+            'p0',
+          );
+          expect(find.text('Untitled chat'), findsNothing);
+          await screenshot(tester, 'metadata-after-${brightness.name}-$scale');
+        },
+      );
+
       testWidgets('canonical Bot Chat avatar ${brightness.name} $scale', (
         tester,
       ) async {
@@ -581,6 +657,49 @@ void main() {
       expect(find.text('Status 2'), findsNothing);
     },
   );
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('startup sort is immediate in $brightness at $scale', (
+        tester,
+      ) async {
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.exclusiveProfile('personal'),
+        );
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.ordering(ChatOrdering.updated),
+        );
+        fixture.rowUpdates['personal/session-1'] = {
+          'last_active': fixture.now + 100,
+        };
+        fixture.rowUpdates['personal/session-11'] = {'pinned': false};
+        final held = Completer<void>();
+        fixture.delays['work'] = held;
+        addTearDown(() {
+          if (!held.isCompleted) held.complete();
+        });
+        await show(tester, brightness: brightness, scale: scale, settle: false);
+        await tester.pump(const Duration(milliseconds: 100));
+        final first = find.byKey(const ValueKey('chat-personal-session-0'));
+        final newest = find.byKey(const ValueKey('chat-personal-session-1'));
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+        // The other profile is still loading: no refresh or sort-menu action
+        // is needed to put the already loaded project's newest chat first.
+        expect(held.isCompleted, isFalse);
+        await screenshot(tester, 'startup-${brightness.name}-$scale');
+        held.complete();
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+      });
+    }
+  }
   for (final boundary in ['refresh', 'return', 'order by']) {
     testWidgets('live updates keep chat positions until $boundary', (
       tester,
@@ -879,7 +998,7 @@ void main() {
       reason: 'An activity snapshot must not rebuild the saved chat index',
     );
   });
-  testWidgets('global completion notification does not rebuild the index', (
+  testWidgets('global catalog signal updates metadata and completed work', (
     tester,
   ) async {
     fixture.exclusiveOwners['session-1'] = 'personal';
@@ -903,13 +1022,20 @@ void main() {
     expect(border, findsOneWidget);
     final owner = controller.browserResource('personal');
     final list = find.byKey(const ValueKey('chat-list-false'));
-    final originalList = tester.widget(list);
-    controller.activityProjectionReads = 0;
     fixture.liveSessions['personal']!.single['status'] = 'idle';
+    fixture.rowUpdates['personal/session-1'] = {
+      'title': 'Plan Cairns flights',
+    };
     await tester.runAsync(() async {
       final changed = Completer<void>();
       void complete() {
-        if (!changed.isCompleted) changed.complete();
+        if (controller.reportedActivityFor(
+              ProfileSessionKey(owner.scope, 'session-1'),
+            ) ==
+            null &&
+            !changed.isCompleted) {
+          changed.complete();
+        }
       }
 
       controller.addListener(complete);
@@ -924,8 +1050,11 @@ void main() {
     });
     await tester.pumpAndSettle();
     expect(border, findsNothing);
-    expect(tester.widget(list), same(originalList));
-    expect(controller.activityProjectionReads, 0);
+    expect(list, findsOneWidget);
+    expect(
+      find.descendant(of: affected, matching: find.text('Plan Cairns flights')),
+      findsOneWidget,
+    );
   });
   testWidgets('live token totals update without rebuilding the chat list', (
     tester,
@@ -1052,6 +1181,10 @@ void main() {
           );
         }
         await tester.pump(const Duration(milliseconds: 100));
+        // A confirmed title now starts a catalog read. Refresh can join that
+        // real async read before its later activity/ownership read begins.
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
         expect(find.byType(LinearProgressIndicator), findsNothing);
         expect(
           fixture.reads.any(

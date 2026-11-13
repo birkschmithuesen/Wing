@@ -7055,7 +7055,19 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   void _hydrateTitle(ProfileChat chat, Object? title) {
-    if (title is String && title.trim().isNotEmpty) chat._title = title.trim();
+    if (title is! String || title.trim().isEmpty) return;
+    final confirmed = title.trim();
+    if (chat._title == confirmed) return;
+    chat._title = confirmed;
+    // Resume/info/title receipts are confirmed metadata, just like a rename.
+    // Publish before follow-up reads; the caller owns workspace notification.
+    if (!_closed) {
+      _browserMutations.value = SessionBrowserMutation(
+        chat.key.workspace,
+        chat.key.sessionId,
+        changes: {'title': confirmed},
+      );
+    }
   }
 
   ModelChoice? modelObservation(ProfileChat chat) {
@@ -9284,6 +9296,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (event.type == 'sessions.changed') {
       if (onAttention != null) unawaited(_groupNotifications.refresh());
       _invalidateProjectMembership(resource);
+      _browserMutated(ProfileBrowserInvalidation(resource.scope));
       unawaited(_scheduleNotificationReconciliation(resource));
       return;
     }

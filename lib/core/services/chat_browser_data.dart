@@ -146,6 +146,7 @@ final class ChatBrowserData extends ChangeNotifier {
       : _botAppearanceOwner?.cachedAppearance(key);
   late final ValueListenable<BrowserPreferencesFact> _preferences;
   final _arrangement = ChatListArrangement();
+  bool _initialReadSettled = false;
   String _projectionQuery = '';
   BrowserPreferencesFact get viewPreferences => _preferences.value;
 
@@ -272,6 +273,9 @@ final class ChatBrowserData extends ChangeNotifier {
         }
       }
     }
+    // Startup previews and pages are still establishing the list. Do not freeze
+    // their partial order before the first connection-wide read has settled.
+    if (!_initialReadSettled) _arrangement.reset();
     final arranged = _arrangement.apply(
       sourceVisible,
       view.grouping,
@@ -766,6 +770,10 @@ final class ChatBrowserData extends ChangeNotifier {
   void _mutationChanged() {
     if (_disposed) return;
     switch (_controller.browserMutations.value) {
+      case ProfileBrowserInvalidation():
+        // The existing coalesced read below replaces titles and membership
+        // together; a change signal carries no row facts to overlay.
+        break;
       case SessionBrowserMutation mutation:
         final key = ProfileSessionKey(mutation.owner, mutation.id);
         final previous = _sessionMutations[key];
@@ -1132,6 +1140,10 @@ final class ChatBrowserData extends ChangeNotifier {
         _archived != archivedOnly) {
       return;
     }
+    // Explicit refresh/return admits a new order. Automatic catalog signals
+    // replace row facts without shuffling an already loaded list.
+    _arrangement.reset();
+    _changed();
     if (!_disposed) unawaited(_controller.refreshActivity());
   }
 
@@ -1354,7 +1366,7 @@ final class ChatBrowserData extends ChangeNotifier {
     );
     if (valid()) {
       _loading = false;
-      if (!failedOnly) _arrangement.reset();
+      _initialReadSettled = true;
       _changed();
       if (valid()) await _refreshBotAppearances(valid);
     }

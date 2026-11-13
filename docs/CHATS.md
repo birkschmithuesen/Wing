@@ -6,6 +6,15 @@ Wing helps you return to the right conversation and keep it moving from your pho
 
 Open **Chats** to search, pin and group conversations. Filter by profile, project or status; use **Recents** to find recent conversations and work that is running or needs input. The selected connection and profile determine what you see in Wing without changing another client's selection.
 
+Choose **Group by** or **Sort by** in the Chats menu. Wing remembers these
+choices per connection and applies them as soon as the initial list loads.
+After loading, live updates keep rows in place; refreshing or choosing a sort
+again updates their order.
+
+Saved titles and project assignments update automatically in Chats. A new chat
+appears under its project once Hermes confirms its membership, and its generated
+title replaces the temporary name without a manual refresh.
+
 Tapping a chat in Recents opens its screen immediately; loading and any retry
 stay there. Back returns to Recents even while the chat is loading.
 

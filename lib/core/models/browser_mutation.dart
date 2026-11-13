@@ -6,6 +6,11 @@ sealed class BrowserMutation {
   final WorkspaceScope owner;
 }
 
+/// Stock Hermes reports a catalog change without supplying replacement rows.
+class ProfileBrowserInvalidation extends BrowserMutation {
+  const ProfileBrowserInvalidation(super.owner);
+}
+
 class SessionBrowserMutation extends BrowserMutation {
   SessionBrowserMutation(
     super.owner,
