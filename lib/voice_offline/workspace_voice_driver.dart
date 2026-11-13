@@ -370,19 +370,33 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   bool awaitingReply = false;
 
   void _voiceInputChanged() {
-    // Silence, no speech, a recognizer error or notice ends the conversation,
-    // and so does a dictation that went active -> idle without a result
-    // (Cancel in the voice input activity, spec SCR-B8). A result the
-    // recognizer ended itself, or a car-mode send, keeps the loop; a Stop
-    // result already ended it in the screen's applyDraft.
+    // Silence, no speech, a recognizer error or notice ends the conversation.
+    // A dictation that went active -> idle without a result is the user's
+    // Cancel in the voice input activity: it discards only that recording and
+    // the loop stays active, the microphone reopens for the next turn
+    // (Birk 2026-11-13, ledger L26). A result the recognizer ended itself, or
+    // a car-mode send, keeps the loop; a Stop result already ended it in the
+    // screen's applyDraft.
     final wasActive = _voiceWasActive;
     _voiceWasActive = _voiceInput.active;
     if (_voiceInput.active) return;
-    if (_voiceInput.error != null ||
-        _voiceInput.notice != null ||
-        (wasActive && !_voiceInput.finishedOnItsOwn && !carSend)) {
+    if (_voiceInput.error != null || _voiceInput.notice != null) {
       conversation = null;
+      return;
     }
+    if (wasActive && !_voiceInput.finishedOnItsOwn && !carSend) {
+      _reopenAfterCancel();
+    }
+  }
+
+  /// Cancel keeps the conversation loop: a fresh listen round for the loop's
+  /// chat, one per Cancel (never a retry of its own).
+  void _reopenAfterCancel() {
+    final key = conversation;
+    if (key == null || !host.mounted) return;
+    final chat = _controller.notificationChat ?? _controller.current?.chat;
+    if (chat == null || chat.key != key) return;
+    unawaited(host.run(() => host.dictate(chat, resume: true)));
   }
 
   bool _voiceWasActive = false;
