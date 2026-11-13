@@ -54,7 +54,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   Long-answer cases verify the first line is visible after Markdown settles,
   in both themes at 390 dp/100% and 320 dp/200%. A visible latest saved
-  answer is acknowledged without an extra scroll. Hidden/background readers,
+  answer is acknowledged without an extra scroll once a prepared body line is
+  visible. Avatars and clipped leading space cannot acknowledge an unseen answer.
+  Hidden/background readers,
   failed history and model-only rows cannot acknowledge an unseen answer.
 
   For monitoring summaries and outage recovery, run:

@@ -9,6 +9,8 @@ import 'package:wing/core/models/transcript_position.dart';
 import 'package:wing/core/models/transcript_presentation.dart';
 import 'package:wing/core/models/transcript_timeline.dart';
 import 'package:wing/core/screens/profile_transcript.dart';
+import 'package:wing/core/widgets/background_markdown_content.dart';
+import 'package:wing/core/services/markdown_parse_worker.dart';
 import 'package:wing/core/services/conversation_reading_memory.dart';
 import 'package:wing/core/services/transcript_reading.dart';
 import 'package:wing/core/services/profile_gateway.dart';
@@ -249,6 +251,81 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('Older reply 36').hitTestable(), findsOneWidget);
         expect(loads, 1);
+      },
+    );
+  }
+
+  for (final viewportHeight in [180.0, 205.0]) {
+    testWidgets(
+      'message chrome or a clipped line does not acknowledge the latest answer: $viewportHeight',
+      (tester) async {
+        install(2);
+        reader.recordReading(const TranscriptBookmark(messageId: 1));
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topCenter,
+                child: SizedBox(
+                  height: viewportHeight,
+                  child: ProfileTranscript(
+                    controller: navigation,
+                    presentation: TranscriptPresentation.capture(
+                      identity: 'chat',
+                      reader: reader,
+                      timeline: TranscriptTimeline.project(
+                        reader.messages,
+                        presentationId: reader.messagePresentationId,
+                      ),
+                      needsInput: false,
+                      turnAdmissionBlocked: false,
+                    ),
+                    onRefreshHistory: () async {},
+                    onReadThrough: read.add,
+                    tail: const [],
+                    messageBuilder: (entry) => SizedBox(
+                      height: 120,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          const SizedBox(
+                            height: 80,
+                            child: Text('Message chrome'),
+                          ),
+                          BackgroundMarkdownContent(
+                            data: entry.message.text,
+                            parse: (_) async =>
+                                const MarkdownParseResult([], 0, 0, 0),
+                            deliverables: false,
+                            builder: (source, _) => Text(source),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final answer = find.text('Message 2');
+        expect(
+          tester.getRect(answer).top,
+          greaterThan(
+            tester.getRect(viewport).bottom - tester.getSize(answer).height,
+          ),
+        );
+        expect(
+          read,
+          isEmpty,
+          reason: 'The latest answer has no readable line in view',
+        );
+        final latest = navigation.showLatest();
+        await tester.pumpAndSettle();
+        await latest;
+        expect(answer.hitTestable(), findsOneWidget);
+        expect(read, [2]);
       },
     );
   }

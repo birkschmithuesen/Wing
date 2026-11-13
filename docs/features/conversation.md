@@ -68,7 +68,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   app return and local prompts becoming saved history. The row-action suite
   opens a saved answer without an extra swipe, holds its read receipt, then
   checks the cleared unread state through Chats and Recents in both themes
-  at normal and doubled text size. Reopened chats also
+  at normal and doubled text size. A prepared answer body line must be visible;
+  an avatar, message actions or a clipped leading sliver alone leaves it unread.
+  The reading-position suite covers that boundary before Latest reveals the body.
+  Reopened chats also
   load older pages when a swipe reaches the start of a short loaded page;
   later replies stay available below the remembered reading position. The
   paging cases hold the read, complete it and continue scrolling into the

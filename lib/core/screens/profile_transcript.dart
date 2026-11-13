@@ -140,8 +140,13 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       if (!_canObserveReading || !_scroll.hasClients) return;
       final viewport = _viewport.currentContext?.findRenderObject();
       if (viewport is! RenderBox || !viewport.hasSize) return;
-      final top = viewport.localToGlobal(Offset.zero).dy;
-      final bottom = top + viewport.size.height;
+      final bounds = viewport.localToGlobal(Offset.zero) & viewport.size;
+      final top = bounds.top;
+      final bottom = bounds.bottom;
+      final bodyStyle = Theme.of(context).textTheme.bodyLarge!;
+      final lineHeight =
+          MediaQuery.textScalerOf(context).scale(bodyStyle.fontSize!) *
+          (bodyStyle.height ?? 1);
       final latestAnswer = widget.presentation.timeline.entries.reversed
           .where(
             (entry) =>
@@ -172,8 +177,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
             readId == latestAnswer &&
             _visibleAnswerReported !=
                 (widget.presentation.readingIdentity, readId) &&
-            y < bottom &&
-            end > top;
+            box.contentVisible(bounds, lineHeight);
         if (readId != null &&
             (visibleAnswer || scrolledPast && passed) &&
             (read == null || readId > read)) {

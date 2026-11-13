@@ -307,6 +307,31 @@ class TranscriptAnchorBox extends RenderProxyBox {
   double _height;
   ValueChanged<TranscriptAnchorBox>? onDetached;
   bool get contentPending => _pendingContent.isNotEmpty;
+  final _contentBounds = <Object, Rect? Function()>{};
+
+  /// Prepared bodies can identify their bounds inside a row's surrounding
+  /// chrome. Rows supplied as plain content use their complete geometry.
+  void setContentBounds(Object source, Rect? Function()? bounds) {
+    if (bounds == null) {
+      _contentBounds.remove(source);
+    } else {
+      _contentBounds[source] = bounds;
+    }
+  }
+
+  bool contentVisible(Rect viewport, double lineHeight) {
+    bool readable(Rect content) =>
+        !content.isEmpty &&
+        viewport.overlaps(content) &&
+        viewport.intersect(content).height >=
+            lineHeight.clamp(0.0, content.height);
+    return _contentBounds.isEmpty
+        ? readable(localToGlobal(Offset.zero) & size)
+        : _contentBounds.values.any((bounds) {
+            final content = bounds();
+            return content != null && readable(content);
+          });
+  }
 
   @override
   void attach(PipelineOwner owner) {
