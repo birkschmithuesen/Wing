@@ -145,6 +145,25 @@ void main() {
     );
   }
 
+  testWidgets('retained visible answer acknowledges a newly recorded notice', (
+    tester,
+  ) async {
+    await mount(tester);
+    final viewport = tester.state(find.byType(ProfileTranscript));
+    expect(reads, ['answer:latest']);
+    expect(chat.reading.readingPosition.readThrough, 40);
+    reads.clear();
+    chat.reading.recordNotificationResult(
+      const NotificationFocus('answer', 'again', messageId: 40),
+    );
+    await mount(tester);
+    expect(tester.state(find.byType(ProfileTranscript)), same(viewport));
+    expect(reads, ['answer:again']);
+    expect(chat.reading.readingPosition.readThrough, 40);
+    await mount(tester);
+    expect(reads, ['answer:again'], reason: 'A notice is settled once');
+  });
+
   testWidgets('Latest acknowledges the answer once it becomes visible', (
     tester,
   ) async {

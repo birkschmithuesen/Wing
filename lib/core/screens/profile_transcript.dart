@@ -161,6 +161,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       TranscriptBookmark? bookmark;
       double? firstTop;
       int? read;
+      int? visibleLatestAnswer;
       for (final entry in _mountedRows.entries) {
         final box = entry.key;
         if (!box.attached || !box.hasSize || box.contentPending) continue;
@@ -175,11 +176,14 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
         final visibleAnswer =
             readId != null &&
             readId == latestAnswer &&
-            _visibleAnswerReported !=
-                (widget.presentation.readingIdentity, readId) &&
             box.contentVisible(bounds, lineHeight);
+        if (visibleAnswer) visibleLatestAnswer = readId;
+        final freshVisibleAnswer =
+            visibleAnswer &&
+            _visibleAnswerReported !=
+                (widget.presentation.readingIdentity, readId);
         if (readId != null &&
-            (visibleAnswer || scrolledPast && passed) &&
+            (freshVisibleAnswer || scrolledPast && passed) &&
             (read == null || readId > read)) {
           read = readId;
         }
@@ -198,6 +202,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       if (widget.presentation.history.loading ||
           widget.presentation.history.error != null) {
         read = null;
+        visibleLatestAnswer = null;
       }
       widget.presentation.recordReading(
         _latestDistance <= 24 ? null : bookmark,
@@ -211,8 +216,11 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       if (read != null) {
         widget.onReadThrough?.call(read);
       }
+      // A new notice can name an answer this retained viewport already read.
+      // Settle it from current visibility without issuing another shared read.
+      final observedRead = read ?? visibleLatestAnswer;
       final target = widget.notificationReading?.notificationReadTarget;
-      if (read != null && target?.kind == 'answer') {
+      if (observedRead != null && target?.kind == 'answer') {
         final presentation =
             timeline_facts.TranscriptTimeline.notificationAnswerPresentation(
               widget.notificationReading!.messages,
@@ -223,7 +231,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
             .where((entry) => entry.presentationId == presentation)
             .firstOrNull
             ?.id;
-        if (answerId is int && read >= answerId) {
+        if (answerId is int && observedRead >= answerId) {
           widget.onAnswerRead?.call(target);
         }
       }

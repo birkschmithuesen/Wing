@@ -8,7 +8,7 @@ Feature ID: `notifications`.
 
 - `notifications.route` — Open the exact notification owner. Reply alerts show the beginning of the answer, including answers longer than the screen, after formatted content settles.
 - `notifications.act` — Answer a supported request without duplication, retaining its exact request and turn identity. Command review uses the same exact-command and request-details content as normal, bot and group chats, while keeping the selected notification approval scope explicit.
-- `notifications.settle` — Keep read dismissed and restored notices consistent.
+- `notifications.settle` — Seeing a saved answer clears a newly recorded reply notice even when that viewport already recorded its read receipt. Keep read, dismissed and restored notices consistent.
 - `notifications.monitor` — Watch ongoing work in a compact summary of up to
   three chats or discussions, followed by the remaining count. Unnamed sessions
   include a short session ID. A single watched conversation opens directly;
