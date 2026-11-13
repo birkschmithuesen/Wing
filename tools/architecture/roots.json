@@ -3,7 +3,7 @@
   "scope": {
     "root": ".",
     "revision": "a5650fa675209b6a782a5adf3f39ff12c53efb4c",
-    "tracked_count": 976,
+    "tracked_count": 977,
     "intentional_untracked_count": 735,
     "exclude": [
       ".git/**",
@@ -10522,6 +10522,11 @@
     },
     {
       "path": "lib/core/services/gateway_endpoint.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
+      "path": "lib/core/services/gateway_refusal.dart",
       "area": "lib",
       "provenance": "tracked"
     },
