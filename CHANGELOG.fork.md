@@ -28,9 +28,12 @@ the README feature list current for every future change.
 - **Dropped for upstream:** own queue drain loop and history-text queue-head check (upstream outbox), composer
   toolbar mic (upstream mic in the text field).
 - **Fork edits of upstream files/tools:** `lib/core/widgets/voice_preferences_card.dart`
-  (VoiceOfflineEngineBuilder), `lib/core/controllers/profile_workspace_controller.dart` (NetworkGate +
+  (VoiceOfflineEngineBuilder), `lib/core/services/profile_workspace_controller.dart` (NetworkGate +
   TransientSend mark/hold hooks), `tools/architecture` roles.json/roots.json registrations, and the car_mode
   cycle break (CarModeSession screenBuilder).
+- **Final review fix:** the automatic queue resume spends its hold only for a `started`/`queued` replay receipt and
+  marks the chat running only for `started` (a `terminal` receipt no longer leaves the chat running); the resume
+  awaits an in-flight replay first.
 - **Merge:** `116d82f4` · **Card:** t_d1d49ff1
 
 ## 2026-11-12

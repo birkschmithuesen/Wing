@@ -44,7 +44,7 @@ class VoiceInputController extends ChangeNotifier {
   RemoteVoice? _remote;
 
   /// Upper bound shown while recording ("Recording · 12s / 600s" on vad).
-  int maxSeconds = 120;
+  int maxSeconds = maxRecordingSeconds;
 
   /// True while a round on the vad route is active.
   bool get vad => vadRound?.active ?? false;

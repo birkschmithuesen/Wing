@@ -150,6 +150,41 @@ void main() {
     },
   );
 
+  test(
+    'a replay that Hermes already finished (terminal receipt) leaves the chat idle and drains follow-ups',
+    () async {
+      final chat = await controller.createChat(canDispatch: () => true);
+      await controller.updateDraft(chat, 'first');
+      controller.networkUnavailable();
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      await controller.updateDraft(chat, 'second');
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+
+      host.running = false;
+      // The admission is recorded, but the acknowledgement is lost.
+      host.promptSubmitFails = true;
+      controller.networkRestored();
+      await controller.reconnect(chat.key.workspace);
+      expect(chat.composer.observation.paused, isTrue);
+      expect(chat.composer.observation.queue.first.submissionUncertain, isTrue);
+
+      // Hermes finished the turn while the phone was offline.
+      host.promptSubmitFails = false;
+      for (final row in host.canonicalAdmissions.values) {
+        row['status'] = 'terminal';
+      }
+      await controller.reconnect(chat.key.workspace);
+
+      expect(chat.composer.observation.paused, isFalse);
+      expect(
+        host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
+        ['first', 'first', 'second'],
+        reason: 'the replay is not a new turn; the follow-up drains at once',
+      );
+      expect(TransientSend.holding(chat), isFalse);
+    },
+  );
+
   test('a re-marked chat is resumed again; a released hold stops gating', () {
     final chat = Object();
     TransientSend.mark(chat);

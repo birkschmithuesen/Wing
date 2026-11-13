@@ -8485,11 +8485,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   final _submissionRecoveries = <ProfileChat>{};
+  // Fork (Wing Voice): in-flight replay per chat, awaited by the automatic
+  // queue resume so `resume` never meets a still-uncertain head.
+  final _submissionRecoveryDone = <ProfileChat, Completer<void>>{};
+  final _replayStarted = Expando<bool>('replayStarted');
   Future<void> _reconcileCanonicalSubmissions(ProfileChat chat) async {
     if (!chat.composer.hasRecoverableSubmissions ||
         !_submissionRecoveries.add(chat)) {
       return;
     }
+    final recoveryDone = _submissionRecoveryDone[chat] = Completer<void>();
     try {
       final gateway = _commandOwner(chat).gateway;
       await chat.composer.reconcileSubmissions((payload) async {
@@ -8497,8 +8502,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
           await gateway.call('prompt.submit', payload),
         );
         // Fork (Wing Voice): the replayed head owns the turn (Q6=B).
+        // Only a live admission owns a turn; a finished (`terminal`) or
+        // unknown one releases the hold so follow-ups drain normally.
         if (TransientSend.holding(chat) || TransientSend.marked(chat)) {
-          TransientSend.spend(chat);
+          if (receipt.status == 'started' || receipt.queued) {
+            TransientSend.spend(chat);
+            if (receipt.status == 'started') _replayStarted[chat] = true;
+          } else if (TransientSend.holding(chat)) {
+            TransientSend.release(chat);
+          }
         }
         return receipt;
       });
@@ -8509,6 +8521,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
       );
     } finally {
       _submissionRecoveries.remove(chat);
+      if (identical(_submissionRecoveryDone[chat], recoveryDone)) {
+        _submissionRecoveryDone.remove(chat);
+      }
+      recoveryDone.complete();
       _changed();
     }
   }
@@ -10581,12 +10597,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
           TransientSend.hold(chat);
           try {
             _automaticResume = chat;
+            await _submissionRecoveryDone[chat]?.future;
             await resumeQueue(chat);
             // The replayed head starts a turn the resumed snapshot may not
             // show yet; its completion event must find a running turn.
-            if (TransientSend.spent(chat) && !chat.runtime.blocksTurnAdmission) {
+            if (TransientSend.spent(chat) &&
+                _replayStarted[chat] == true &&
+                !chat.runtime.blocksTurnAdmission) {
               chat._runtime.acceptTurn();
             }
+            _replayStarted[chat] = null;
             if (chat.composer.observation.paused &&
                 chat.composer.observation.queue.isNotEmpty) {
               TransientSend.mark(chat);
