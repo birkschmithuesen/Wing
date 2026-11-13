@@ -3209,6 +3209,14 @@ void main() {
       'subagent.roster polling for that profile; the served profile keeps '
       'working',
       () async {
+        // setUp's controller.initialize() already ran one notification
+        // reconciliation (onAttention is non-null here), which rosters every
+        // discovered profile including 'b' before this body runs. Let that
+        // settle, then start this test's measurement from a clean slate.
+        for (var settle = 0; settle < 10; settle++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        host.calls.clear();
         host.refusedProfiles['b'] = JsonRpcError(
           'subagent.roster',
           'Profile is not served by this gateway',
