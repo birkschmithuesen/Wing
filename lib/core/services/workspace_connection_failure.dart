@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import 'connection_manager.dart';
+import 'gateway_refusal.dart';
 import 'ws_client.dart';
 
 const chatEndpointFailureMessage =
@@ -27,6 +28,7 @@ bool isTemporaryWorkspaceFailure(Object error) {
       error is SocketException ||
       error is http.ClientException ||
       error is WebSocketException ||
+      isRetryableGatewayRefusal(error) ||
       error is JsonRpcError &&
           ({'connection_closed', 'request_timeout'}.contains(error.reason) ||
               // Stock session.resume can race disconnect cleanup or fail while
