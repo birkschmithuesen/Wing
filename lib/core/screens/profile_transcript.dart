@@ -195,8 +195,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       }
       if (bookmark == null && _latestDistance > 24 && read == null) return;
       _departureBookmark = bookmark;
-      if (widget.openingContent != null ||
-          widget.presentation.history.loading ||
+      if (widget.presentation.history.loading ||
           widget.presentation.history.error != null) {
         read = null;
       }

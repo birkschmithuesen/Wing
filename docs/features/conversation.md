@@ -71,6 +71,16 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   at normal and doubled text size. A prepared answer body line must be visible;
   an avatar, message actions or a clipped leading sliver alone leaves it unread.
   The reading-position suite covers that boundary before Latest reveals the body.
+  `test/unread_runtime_repro_test.dart` replays
+  a refused or held live attachment, checks the visible answer and exactly one
+  fenced read receipt, then enters Chats and Recents through their real controls.
+  Its Android wrapper runs the same contract on an owned API36 emulator:
+
+  ```sh
+  flutter test --no-pub test/unread_runtime_repro_test.dart
+  flutter test --no-pub --no-uninstall -d <owned-api36-emulator> integration_test/unread_runtime_native_test.dart
+  ```
+
   Reopened chats also
   load older pages when a swipe reaches the start of a short loaded page;
   later replies stay available below the remembered reading position. The
@@ -173,7 +183,7 @@ claiming the workspace is a clean Git repository. The host suites
 `git_review_test.dart` and `git_review_screen_test.dart` cover read ownership,
 late replies, comparisons, copy references, pending feedback and recovery.
 
-Seeing the latest saved answer in the active conversation marks the chat read, including after opening, returning or tapping Latest. Older-history and passive previews do not acknowledge an unseen latest answer. Saved reading positions last until Wing restarts. Long-history host tests cover paging beyond the small Android fixture.
+Seeing the latest saved answer in the active conversation marks the chat read, including after opening, returning or tapping Latest. This also applies while live attachment is pending or refused; readable saved history does not require a live runtime to acknowledge shared read status. Older-history and passive previews do not acknowledge an unseen latest answer. Saved reading positions last until Wing restarts. Long-history host tests cover paging beyond the small Android fixture.
 Pending-input navigation stays outside the form: below it at normal height,
 or in a separate side gutter on short keyboard-open screens. The form and
 composer retain scrollable access to their full action targets.

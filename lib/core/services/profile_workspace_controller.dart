@@ -1281,8 +1281,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
   final _readAcknowledgements = Expando<int>();
   final _readingAcknowledgementsPending = <ProfileChat>{};
 
-  /// Called with the message reached by the shared viewport's user-scroll rule.
-  /// Stock Hermes accepts a timestamp acknowledgement, not a message ID. The
+  /// Saved reading acknowledges sidebar metadata independently of live runtime
+  /// attachment. Stock Hermes accepts a timestamp, not a message ID. The
   /// in-memory watermark remains authoritative for detecting newer unseen IDs.
   Future<void> acknowledgeVisibleReading(
     ProfileChat chat,
@@ -1292,8 +1292,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
         !_closed &&
         visible &&
         identical(_current?.chat, chat) &&
-        !chat.runtime.opening &&
-        !chat.runtime.offline &&
         !chat.reading.historyLoading &&
         chat.reading.historyError == null;
     if (!admitted() ||

@@ -6980,6 +6980,24 @@
       "selector": [
         "recommendedTextTimeout"
       ]
+    },
+    {
+      "id": "host-test-test/unread_runtime_repro_test.dart",
+      "kind": "host-test",
+      "path": "test/unread_runtime_repro_test.dart",
+      "purpose": "Visible saved answers acknowledge shared read status while runtime attachment is held or refused; actual Chats and Recents controls",
+      "source": "docs/features/conversation.md; test/unread_runtime_repro_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/unread_runtime_native_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/unread_runtime_native_test.dart",
+      "purpose": "Visible saved answers acknowledge shared read status while runtime attachment is held or refused; actual Chats and Recents controls",
+      "source": "docs/features/conversation.md; integration_test/unread_runtime_native_test.dart",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -16371,6 +16389,16 @@
     {
       "path": "lib/core/screens/administration/admin_health_alerts.dart",
       "area": "lib",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "test/unread_runtime_repro_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "integration_test/unread_runtime_native_test.dart",
+      "area": "integration_test",
       "provenance": "intentional-untracked"
     }
   ],
