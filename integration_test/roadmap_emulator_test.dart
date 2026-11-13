@@ -810,10 +810,12 @@ void main() {
     await restoredController.initialize();
     await restoredController.openSession(key);
     await tester.pumpWidget(
-      MaterialApp(
-        home: ProfileWorkspaceScreen(
-          controller: restoredController,
-          createBotsSession: () => BotsSession((_) async => const []),
+      journeyCaptureBoundary(
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            controller: restoredController,
+            createBotsSession: () => BotsSession((_) async => const []),
+          ),
         ),
       ),
     );
@@ -893,6 +895,7 @@ void main() {
     final runningChat = harness.controller.current!.chat!;
     await tester.binding.handlePopRoute();
     await _settle(tester);
+    await _revealChat(tester, 'personal', 'chat-1');
     await tapJourneyControl(
       tester,
       find.byKey(const ValueKey('chat-personal-chat-1')),
@@ -1045,11 +1048,12 @@ void main() {
   ) async {
     await harness.launch(tester);
 
-    await tapJourneyControl(tester, find.byTooltip('Chat list options'));
-    await _settle(tester);
+    final newChat = find.byKey(const ValueKey('workspace-new-chat'));
+    await revealJourneyControl(tester, newChat);
+    await tester.longPress(newChat);
     await tapJourneyControl(
       tester,
-      find.byKey(const ValueKey('chat-menu-new-project')),
+      find.byKey(const ValueKey('workspace-new-project')),
     );
     await _settle(tester);
     await tester.enterText(

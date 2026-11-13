@@ -921,6 +921,7 @@ Future<void> _native(
   List<Map<String, Object?>> actions = const [],
   Map<String, Object?> observation = const {},
   bool capture = true,
+  bool settleAnimations = true,
 }) async {
   final cache = Directory.systemTemp.path;
   final token = '$name-${DateTime.now().microsecondsSinceEpoch}';
@@ -939,7 +940,9 @@ Future<void> _native(
   while (DateTime.now().isBefore(deadline)) {
     await tester.pump(const Duration(milliseconds: 40));
     if (await ack.exists() && await ack.readAsString() == token) {
-      await tester.pumpAndSettle(const Duration(milliseconds: 50));
+      if (settleAnimations) {
+        await tester.pumpAndSettle(const Duration(milliseconds: 50));
+      }
       return;
     }
   }
@@ -1662,6 +1665,9 @@ void main() {
               _tap(tester, find.byKey(const Key('profile-message-composer'))),
             ],
             capture: false,
+            // The focused composer keeps its caret animated. The bounded
+            // keyboard/focus checks below establish this checkpoint's result.
+            settleAnimations: false,
           );
           for (
             var tick = 0;
