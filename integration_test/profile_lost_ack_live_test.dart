@@ -1,3 +1,5 @@
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -9,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_connection_identity.dart';
-import 'package:wing/core/services/profile_selection_store.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 
 /// A transparent, one-shot WebSocket fault injector.
@@ -150,13 +151,26 @@ void main() {
         apiKey: '',
       );
       final manager = await ConnectionManager.create(preferences);
-      await manager.importConnections([connection], replaceExisting: false);
-      await ProfileSelectionStore(preferences).write(
-        await ProfileConnectionIdentity().resolve(connection),
-        'android-qa-a',
+      await manager.importConnections(
+        [connection],
+        replaceExisting: false,
+        canCommit: () => true,
       );
+      final appPreferences = AppPreferences(preferences);
+      expect(
+        (await appPreferences
+                .admitProfileSelection(
+                  await ProfileConnectionIdentity().resolve(connection),
+                  'android-qa-a',
+                )
+                .settled)
+            .confirmed,
+        isTrue,
+      );
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
-        connection: connection,
+        appPreferences: appPreferences,
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
         connectionIdentity: await ProfileConnectionIdentity().resolve(
           connection,
         ),
@@ -179,20 +193,22 @@ void main() {
       await controller.initialize();
       expect(controller.error, isNull);
       expect(controller.current!.scope.profileName, 'android-qa-a');
-      final chat = await controller.createChat();
-      chat.draft =
-          'Bounded lost-ack setup. Use only the clarify tool to ask exactly '
-          '"May the queued attachment test continue?" Wait for my answer, then '
-          'reply exactly READY. Do not use any other tool, browse, delegate, or '
-          'read or change files.';
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.composer.editText(
+        'Bounded lost-ack setup. Use only the clarify tool to ask exactly '
+        '"May the queued attachment test continue?" Wait for my answer, then '
+        'reply exactly READY. Do not use any other tool, browse, delegate, or '
+        'read or change files.',
+      );
       await controller.send(chat);
       await until(
-        () => chat.clarification != null || !chat.busy,
+        () =>
+            chat.runtime.questions != null || !chat.runtime.blocksTurnAdmission,
         seconds: 120,
-        reason: chat.error,
+        reason: chat.runtime.error,
       );
       expect(
-        chat.clarification,
+        chat.runtime.questions,
         isNotNull,
         reason: 'Setup did not invoke clarify; this is not a product failure.',
       );
@@ -203,12 +219,15 @@ void main() {
       addTearDown(() async {
         if (await source.exists()) await source.delete();
       });
-      await controller.addAttachment(chat, source.path, '$nonce.txt');
-      chat.draft =
-          'Attachment transport check $nonce. Reply exactly ACK_$nonce. Do not '
-          'use tools or perform any other work.';
-      await controller.queuePrompt(chat, chat.draft);
-      expect(chat.queuedPrompts, hasLength(1));
+      await controller.addAttachments(chat, [
+        (path: source.path, name: '$nonce.txt'),
+      ]);
+      chat.composer.editText(
+        'Attachment transport check $nonce. Reply exactly ACK_$nonce. Do not '
+        'use tools or perform any other work.',
+      );
+      await controller.queuePrompt(chat, chat.composer.observation.text);
+      expect(chat.composer.observation.queue, hasLength(1));
 
       await controller.clarify(chat, 'Yes');
       await until(
@@ -218,21 +237,27 @@ void main() {
       );
       expect(proxy.matchingSubmitCount, 1);
       await until(
-        () => chat.queuePaused && !chat.queueDraining,
-        reason: chat.error,
+        () =>
+            chat.composer.observation.paused &&
+            !chat.composer.observation.draining,
+        reason: chat.runtime.error,
       );
-      expect(chat.queuedPrompts, hasLength(1));
+      expect(chat.composer.observation.queue, hasLength(1));
 
       await controller.reconnect(chat.key.workspace);
       await until(
         () => proxy.downstreamConnections >= 2,
         reason: 'Android did not reconnect through the transparent proxy.',
       );
-      await until(() => !chat.busy, seconds: 180, reason: chat.error);
+      await until(
+        () => !chat.runtime.blocksTurnAdmission,
+        seconds: 180,
+        reason: chat.runtime.error,
+      );
       await controller.refreshHistory(chat);
-      expect(chat.historyError, isNull);
+      expect(chat.reading.historyError, isNull);
       expect(
-        chat.messages.where(
+        chat.reading.messages.where(
           (message) =>
               message['role'] == 'user' &&
               message['content'].toString().contains(nonce),
@@ -240,12 +265,12 @@ void main() {
         hasLength(1),
       );
       expect(proxy.matchingSubmitCount, 1);
-      expect(chat.queuePaused, isTrue);
-      expect(chat.queuedPrompts, hasLength(1));
+      expect(chat.composer.observation.paused, isTrue);
+      expect(chat.composer.observation.queue, hasLength(1));
 
-      final retained = chat.queuedPrompts.single;
-      await controller.removeQueuedPrompt(chat, 0, expectedPrompt: retained);
-      expect(chat.queuedPrompts, isEmpty);
+      final retained = chat.composer.observation.queue.single;
+      await controller.removeQueuedPrompt(chat, retained.id);
+      expect(chat.composer.observation.queue, isEmpty);
       expect(proxy.matchingSubmitCount, 1);
     },
     skip: upstreamPort == 0 || !runModel,

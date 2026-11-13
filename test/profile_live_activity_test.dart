@@ -1,3 +1,8 @@
+import 'support/canonical_gateway_fixture.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -20,6 +25,9 @@ class ActivityHost {
   final failedProfiles = <String>{};
   final profiles = ['a', 'b'];
   bool resumedRunning = false;
+  final searchTips = <String, String>{};
+  final metadataFailures = <String, Object>{};
+  final metadataOverrides = <String, Map<String, dynamic>>{};
 
   Future<ProfileDiscovery> discover() async => ProfileDiscovery(
     profiles: profiles.map((name) => HermesProfile(name: name)).toList(),
@@ -41,13 +49,27 @@ class ActivityHost {
               .where((row) => row['id'] == query['q'])
               .map(
                 (row) => {
-                  'session_id': row['id'],
+                  'session_id': searchTips[row['id']] ?? row['id'],
                   'title': row['title'],
                   'profile': row['profile'],
                 },
               )
               .toList(),
         };
+      }
+      if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+        if (failedProfiles.contains(scope.profileName)) {
+          throw StateError('Profile offline');
+        }
+        final failure = metadataFailures[scope.profileName];
+        if (failure != null) throw failure;
+        final id = Uri.decodeComponent(path.split('/')[1]);
+        final matches =
+            (saved[scope.profileName] ?? const <Map<String, dynamic>>[])
+                .where((row) => row['id'] == id)
+                .toList();
+        if (matches.isEmpty) throw DashboardSessionNotFound(path);
+        return metadataOverrides[scope.profileName] ?? matches.single;
       }
       if (path == 'sessions') {
         final rows = saved[scope.profileName] ?? <Map<String, dynamic>>[];
@@ -71,6 +93,7 @@ class ActivityHost {
     },
     rpc: (method, params) async {
       calls.add((scope.profileName, method, params));
+      if (method == 'subagent.roster') return {'sessions': <Object>[]};
       if (method == 'projects.tree') return {'projects': []};
       if (method == 'session.active_list') {
         if (failedProfiles.contains(scope.profileName)) {
@@ -80,9 +103,9 @@ class ActivityHost {
       }
       if (method == 'session.create' || method == 'session.resume') {
         return {
+          ...canonicalSnapshotFields,
           'session_id': '${scope.profileName}-runtime',
           'stored_session_id': 'same',
-          'session_key': 'same',
           'running': resumedRunning,
           'info': {'profile_name': scope.profileName},
         };
@@ -95,18 +118,25 @@ class ActivityHost {
 void main() {
   late ActivityHost host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
 
   Future<void> initialize() async {
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'activity-test',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     await controller.initialize();
@@ -118,7 +148,10 @@ void main() {
     await initialize();
   });
 
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   Future<void> restorePending(String profile) async {
     final key = ProfileSessionKey(
@@ -134,6 +167,7 @@ void main() {
       [jsonEncode(key.toJson())],
     );
     controller.dispose();
+    appPreferences.dispose();
     host.resumedRunning = true;
     await initialize();
   }
@@ -184,7 +218,7 @@ void main() {
   );
 
   test('discovers unopened live sessions without changing selection', () async {
-    final selected = await controller.createChat();
+    final selected = await controller.createChat(canDispatch: () => true);
     final selectedScope = controller.current!.scope;
     host.reads.clear();
     host.live.addAll([
@@ -219,7 +253,7 @@ void main() {
     );
     expect(
       host.reads
-          .where((read) => read.$2 == 'sessions/search')
+          .where((read) => read.$2 == 'sessions/same')
           .map((read) => read.$1)
           .toSet(),
       {'a', 'b', 'c'},
@@ -229,9 +263,85 @@ void main() {
     expect(host.calls.where((call) => call.$2 == 'session.resume'), isEmpty);
   });
 
+  test(
+    'verifies live ownership by exact ID when search resolves a compression tip',
+    () async {
+      host.searchTips['same'] = 'compressed-tip';
+      host.live.add({
+        'id': 'remote-runtime',
+        'session_key': 'same',
+        'status': 'working',
+      });
+
+      await controller.refreshActivity();
+
+      expect(controller.liveActivity, hasLength(1));
+      expect(controller.liveActivity.single.workspace.profileName, 'a');
+      expect(controller.liveActivity.single.sessionId, 'same');
+      expect(controller.activityProfileErrors, isEmpty);
+      expect(host.reads.where((read) => read.$2 == 'sessions/search'), isEmpty);
+      expect(host.calls.where((call) => call.$2 == 'session.resume'), isEmpty);
+    },
+  );
+
+  for (final failure in <Object>[
+    const DashboardHttpException(404, 'sessions/same'),
+    const DashboardSessionNotFound('sessions/another'),
+    const FormatException('Malformed response'),
+  ]) {
+    test('unavailable profile metadata remains uncertain: $failure', () async {
+      host.metadataFailures['b'] = failure;
+      host.live.add({
+        'id': 'remote-runtime',
+        'session_key': 'same',
+        'status': 'working',
+      });
+
+      await controller.refreshActivity();
+
+      expect(controller.liveActivity, isEmpty);
+      expect(
+        controller.activityProfileErrors.keys,
+        containsAll(['b', 'ownership']),
+      );
+
+      host.metadataFailures.clear();
+      await controller.refreshActivity();
+      expect(controller.liveActivity.single.workspace.profileName, 'a');
+      expect(controller.activityProfileErrors, isEmpty);
+    });
+  }
+
+  for (final invalid in <Map<String, dynamic>>[
+    {'id': 'same', 'profile': 'b'},
+    {'id': 'compression-tip', 'profile': 'a'},
+    {'id': 'same'},
+  ]) {
+    test('rejects contradictory exact detail metadata: $invalid', () async {
+      host.metadataOverrides['a'] = invalid;
+      host.live.add({
+        'id': 'remote-runtime',
+        'session_key': 'same',
+        'status': 'working',
+      });
+
+      await controller.refreshActivity();
+
+      expect(controller.liveActivity, isEmpty);
+      expect(
+        controller.activityProfileErrors.keys,
+        containsAll(['a', 'ownership']),
+      );
+    });
+  }
+
   test('removes ended entries from the global snapshot', () async {
-    final completed = await controller.createChat();
-    completed.status = ProfileTurnStatus.completed;
+    final completed = await controller.createChat(canDispatch: () => true);
+    emitChatEvent(controller, completed, 'message.start');
+    emitChatEvent(controller, completed, 'session.info', {
+      'open_requests': [],
+      'running': false,
+    });
     host.live.addAll([
       {'id': 'old-a', 'session_key': 'same', 'status': 'working'},
     ]);
@@ -287,12 +397,12 @@ void main() {
   test(
     'uses an exact local runtime and durable identity to resolve ownership',
     () async {
-      final local = await controller.createChat();
+      final local = await controller.createChat(canDispatch: () => true);
       host.saved['b'] = [
         {'id': local.key.sessionId, 'title': 'Colliding chat', 'profile': 'b'},
       ];
       host.live.add({
-        'id': local.runtimeId,
+        'id': local.runtime.runtimeId,
         'session_key': local.key.sessionId,
         'status': 'working',
       });

@@ -5,18 +5,95 @@ import 'package:wing/core/screens/administration/usage_charts.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 
 void main() {
-  testWidgets(
-    'day tooltips replace each other and distinguish zero from unknown',
-    (tester) async {
-      final daily = UsageDaily.fromJson(
-        {
-          'daily': [
-            {'day': '2026-09-18', 'input_tokens': 10, 'output_tokens': 20},
-          ],
-        },
-        period: 365,
-        loadedAt: DateTime.utc(2026, 9, 18),
+  testWidgets('range outline includes reported and missing zero-usage days', (
+    tester,
+  ) async {
+    final daily = UsageDaily.fromJson({
+      'daily': [
+        for (final (date, count) in [
+          ('2026-09-14', 10),
+          ('2026-09-15', 20),
+          ('2026-09-16', 0),
+          ('2026-09-18', 30),
+          ('2026-09-19', 40),
+        ])
+          {
+            'day': date,
+            'input_tokens': count,
+            'cache_read_tokens': 0,
+            'output_tokens': 0,
+          },
+      ],
+    }, period: 365);
+    Future<void> show(Set<String> dates) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: wingTheme(Brightness.dark),
+          home: Scaffold(
+            body: UsageCalendar(
+              daily: daily,
+              periodDates: dates,
+              selected: null,
+              onSelected: (_) {},
+            ),
+          ),
+        ),
       );
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
+    }
+
+    CustomPainter rangePainter() => tester
+        .widget<CustomPaint>(
+          find.descendant(
+            of: find.byKey(const ValueKey('usage-year-band')),
+            matching: find.byType(CustomPaint),
+          ),
+        )
+        .painter!;
+    await show({'2026-09-15', '2026-09-18'});
+    final sparse = rangePainter();
+    for (final id in ['2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18']) {
+      final label = tester
+          .widget<Semantics>(find.byKey(ValueKey(id)))
+          .properties
+          .label!;
+      expect(label, contains('selected period'), reason: id);
+      if (id == '2026-09-16' || id == '2026-09-17') {
+        expect(label, contains('0 tokens'));
+      }
+    }
+    for (final id in ['2026-09-14', '2026-09-19']) {
+      expect(
+        tester.widget<Semantics>(find.byKey(ValueKey(id))).properties.label,
+        isNot(contains('selected period')),
+      );
+    }
+    await show({'2026-09-15', '2026-09-16', '2026-09-17', '2026-09-18'});
+    expect(rangePainter().shouldRepaint(sparse), isFalse);
+    await show({});
+    expect(
+      tester
+          .widget<Semantics>(find.byKey(const ValueKey('2026-09-16')))
+          .properties
+          .label,
+      isNot(contains('selected period')),
+    );
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+    'server date placeholders differ from verified zero and retained period dates remain reachable',
+    (tester) async {
+      final daily = UsageDaily.fromJson({
+        'daily': [
+          {
+            'day': '2027-01-01',
+            'input_tokens': 0,
+            'cache_read_tokens': 0,
+            'output_tokens': 0,
+          },
+        ],
+      }, period: 365);
       final selected = <String>[];
       await tester.pumpWidget(
         MaterialApp(
@@ -24,8 +101,59 @@ void main() {
           home: Scaffold(
             body: UsageCalendar(
               daily: daily,
-              rangeStart: daily.days.first.date,
-              rangeEnd: daily.days.last.date,
+              periodDates: const {'2027-01-02'},
+              selected: null,
+              onSelected: (day) => selected.add(day.id),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey('usage-day-2027-01-02')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
+      expect(
+        find.textContaining('No returned year data', findRichText: true),
+        findsOneWidget,
+      );
+      expect(find.textContaining('UTC'), findsNothing);
+      expect(selected, isEmpty);
+      await tester.tap(find.byKey(const ValueKey('usage-day-2027-01-01')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
+      expect(
+        find.textContaining('0 tokens', findRichText: true),
+        findsOneWidget,
+      );
+      expect(selected, ['2027-01-01']);
+      expect(tester.takeException(), isNull);
+    },
+  );
+  testWidgets(
+    'day tooltips replace each other and distinguish zero from unknown',
+    (tester) async {
+      final daily = UsageDaily.fromJson({
+        'daily': [
+          {
+            'day': '2026-09-16',
+            'input_tokens': 0,
+            'cache_read_tokens': 0,
+            'output_tokens': 0,
+          },
+          {'day': '2026-09-18', 'input_tokens': 10, 'output_tokens': 20},
+          {
+            'day': '2026-09-19',
+            'input_tokens': 297927473,
+            'cache_read_tokens': 0,
+            'output_tokens': 0,
+          },
+        ],
+      }, period: 365);
+      final selected = <String>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: wingTheme(Brightness.dark),
+          home: Scaffold(
+            body: UsageCalendar(
+              daily: daily,
+              periodDates: daily.reportedDates,
               selected: null,
               onSelected: (day) => selected.add(day.id),
             ),
@@ -33,30 +161,46 @@ void main() {
         ),
       );
       await tester.tap(find.byKey(const ValueKey('usage-day-2026-09-17')));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       expect(
         find.textContaining('0 tokens', findRichText: true),
         findsOneWidget,
       );
       await tester.tap(find.byKey(const ValueKey('usage-day-2026-09-18')));
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       expect(
         find.textContaining('Tokens unavailable', findRichText: true),
         findsOneWidget,
       );
       expect(find.textContaining('0 tokens', findRichText: true), findsNothing);
       expect(selected, ['2026-09-17', '2026-09-18']);
-      await tester.tapAt(const Offset(300, 300));
-      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('usage-day-2026-09-19')));
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       expect(
-        find.textContaining('Tokens unavailable', findRichText: true),
+        find.textContaining('298M tokens', findRichText: true),
+        findsOneWidget,
+      );
+      expect(
+        tester
+            .widget<Semantics>(find.byKey(const ValueKey('2026-09-19')))
+            .properties
+            .label,
+        contains('297,927,473 tokens'),
+      );
+
+      await tester.tapAt(
+        tester.getBottomRight(find.byType(Scaffold)) - const Offset(16, 16),
+      );
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
+      expect(
+        find.textContaining('298M tokens', findRichText: true),
         findsNothing,
       );
       expect(tester.takeException(), isNull);
     },
   );
 
-  // Every UTC boundary remains reachable through the single band.
+  // Every server date remains reachable through the single browsing band.
   for (var weekday = 0; weekday < 7; weekday++) {
     testWidgets(
       'single band scrolls through year and keeps range geometry, weekday $weekday',
@@ -64,11 +208,18 @@ void main() {
         tester.view.physicalSize = const Size(1000, 844);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
-        final daily = UsageDaily.fromJson(
-          {'daily': <dynamic>[]},
-          period: 365,
-          loadedAt: DateTime.utc(2026, 9, 13 + weekday),
-        );
+        final last = DateTime.utc(2026, 9, 13 + weekday);
+        final daily = UsageDaily.fromJson({
+          'daily': [
+            for (final date in [last.subtract(const Duration(days: 365)), last])
+              {
+                'day': date.toIso8601String().substring(0, 10),
+                'input_tokens': 0,
+                'cache_read_tokens': 0,
+                'output_tokens': 0,
+              },
+          ],
+        }, period: 365);
         var width = 358.0, period = 7;
         UsageDay? selected;
         Future<void> show() async {
@@ -82,10 +233,12 @@ void main() {
                     width: width,
                     child: UsageCalendar(
                       daily: daily,
-                      rangeStart: daily.days.last.date.subtract(
-                        Duration(days: period),
-                      ),
-                      rangeEnd: daily.days.last.date,
+                      periodDates: {
+                        for (final day in daily.days.skip(
+                          daily.days.length - period - 1,
+                        ))
+                          day.id,
+                      },
                       selected: selected?.id,
                       onSelected: (day) => selected = day,
                     ),
@@ -94,7 +247,7 @@ void main() {
               ),
             ),
           );
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
         }
 
         Finder day(String id) => find.byKey(ValueKey('usage-day-$id'));
@@ -127,7 +280,7 @@ void main() {
 
         Future<void> drag(double dx) async {
           await tester.drag(band, Offset(dx, 0));
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
         }
 
         expect(band, findsOneWidget);
@@ -162,12 +315,12 @@ void main() {
         await tester.pump();
         expect(label(), isNot(latestLabel));
         await gesture.up();
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(const Duration(milliseconds: 250));
         await drag(-400);
         expect(label(), latestLabel);
         if (weekday == 0) {
           await tester.tap(day(daily.days.last.id));
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
           expect(
             find.textContaining('0 tokens', findRichText: true),
             findsOneWidget,
@@ -179,7 +332,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 100));
           expect(position().pixels, greaterThan(releasedAt));
           expect(label(), isNot(releasedLabel));
-          await tester.pumpAndSettle();
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
           expect(
             find.textContaining('0 tokens', findRichText: true),
             findsNothing,
@@ -187,8 +340,17 @@ void main() {
           await drag(-1000);
         }
         final visited = latest.toSet();
+        // Exhaustively verify date reachability without replaying the gesture
+        // animation at every position. Drag/fling behavior is checked above.
+        final step = position().viewportDimension / 2;
+        expect(step, greaterThan(0));
         while (position().pixels < position().maxScrollExtent) {
-          await drag(200);
+          position().jumpTo(
+            (position().pixels + step)
+                .clamp(0, position().maxScrollExtent)
+                .toDouble(),
+          );
+          await tester.pumpAndSettle(const Duration(milliseconds: 250));
           visited.addAll(visible());
         }
         expect(visited, daily.days.map((d) => d.id).toSet());
@@ -207,13 +369,17 @@ void main() {
               .width,
           closeTo(width, .01),
         );
-        while (position().pixels > 0) {
-          await drag(-200);
-        }
+        position().jumpTo(0);
+        await tester.pumpAndSettle(const Duration(milliseconds: 250));
         expect(visible().last, daily.days.last.id);
         width = 900;
         await show();
-        expect(visible(), daily.days.map((d) => d.id).toList());
+        // Wide layouts keep the same 52-column frame across loading and data.
+        // The handful of older dates beyond it remain reachable by scrolling.
+        expect(visible().last, daily.days.last.id);
+        position().jumpTo(position().maxScrollExtent);
+        await tester.pumpAndSettle(const Duration(milliseconds: 250));
+        expect(visible().first, daily.days.first.id);
         expect(find.byTooltip('Earlier dates'), findsNothing);
         expect(find.byKey(const ValueKey('usage-year-band')), findsOneWidget);
         expect(tester.takeException(), isNull);

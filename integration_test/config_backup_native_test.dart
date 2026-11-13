@@ -1,3 +1,14 @@
+import 'package:wing/core/services/shared_draft_session.dart';
+import 'package:wing/core/services/workspace_entry_session.dart';
+import 'package:wing/core/services/profile_workspace_registry.dart';
+import 'package:wing/core/services/profile_connection_identity.dart';
+import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/backup_session.dart';
+import 'package:wing/core/services/config_backup_service.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/models/composer_action.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/theme/app_preferences_rendering.dart';
 import 'dart:io';
 import 'dart:convert';
 
@@ -14,6 +25,23 @@ import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/main.dart';
+
+class _CheckedBackupIo extends ConfigBackupIo {
+  _CheckedBackupIo(this.expectedFormat);
+  final String expectedFormat;
+
+  @override
+  Future<String?> pickBackupFile() async {
+    final contents = await super.pickBackupFile();
+    expect(contents, isNotNull);
+    expect(
+      jsonDecode(contents!)['format'],
+      expectedFormat,
+      reason: 'Select the backup exported in this test iteration.',
+    );
+    return contents;
+  }
+}
 
 // Run only on a disposable emulator. This uses real Android preferences,
 // Keystore, sharing and document picking. When backup-qa-stage in the app's
@@ -42,6 +70,12 @@ void main() {
     aOptions: AndroidOptions(storageNamespace: 'wing_backup_qa'),
   );
 
+  File? stageFile;
+  tearDownAll(() async {
+    final stage = stageFile;
+    if (stage != null && await stage.exists()) await stage.delete();
+  });
+
   Future<void> waitFor(WidgetTester tester, bool Function() done) async {
     final deadline = DateTime.now().add(const Duration(seconds: 90));
     while (!done() && DateTime.now().isBefore(deadline)) {
@@ -63,6 +97,56 @@ void main() {
       'native ${encrypted ? 'encrypted replace' : 'plain merge'} backup round trip',
       (tester) async {
         final prefs = await SharedPreferences.getInstance();
+        File? ownedExport;
+        Directory? exportDirectory;
+        Set<String>? exportBaseline;
+        Set<String>? exportStageBaseline;
+        addTearDown(() async {
+          await prefs.clear();
+          await storage.deleteAll();
+          expect(prefs.getKeys(), isEmpty);
+          expect(await storage.readAll(), isEmpty);
+          final exported = ownedExport;
+          if (exported != null && await exported.exists()) {
+            await exported.delete();
+          }
+          final directory = exportDirectory;
+          final baseline = exportBaseline;
+          if (directory != null && baseline != null) {
+            for (final file
+                in directory
+                    .listSync(recursive: true, followLinks: false)
+                    .whereType<File>()) {
+              if (file.uri.pathSegments.last.startsWith('wing-config-') &&
+                  !baseline.contains(file.path)) {
+                await file.delete();
+              }
+            }
+          }
+          final stageBaseline = exportStageBaseline;
+          if (directory != null && stageBaseline != null) {
+            final ownedStages = directory
+                .listSync(followLinks: false)
+                .whereType<Directory>()
+                .where(
+                  (stage) =>
+                      stage.uri.pathSegments
+                          .where((part) => part.isNotEmpty)
+                          .last
+                          .startsWith('wing-backup-') &&
+                      !stageBaseline.contains(stage.path),
+                )
+                .toList();
+            for (final stage in ownedStages) {
+              await stage.delete(recursive: true);
+              expect(
+                await stage.exists(),
+                isFalse,
+                reason: 'Owned export stage must be removed.',
+              );
+            }
+          }
+        });
         await prefs.clear();
         await storage.deleteAll();
         final manager = await ConnectionManager.create(
@@ -79,6 +163,11 @@ void main() {
               await prefs.setDouble(entry.key, value);
           }
         }
+        final appPreferences = AppPreferences(prefs);
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox());
+          appPreferences.dispose();
+        });
         await prefs.setBool('notification_permission_requested', true);
         final saved = await manager.saveConnection(
           'Backup QA instance',
@@ -93,44 +182,62 @@ void main() {
         final stage = File(
           '${(await getExternalStorageDirectory())!.path}/backup-qa-stage',
         );
+        stageFile = stage;
         final label = encrypted ? 'encrypted' : 'plain';
         final passphrase = encrypted ? 'emulator-backup-passphrase' : '';
+        final registry = ProfileWorkspaceRegistry(
+          identities: ProfileConnectionIdentity(),
+          create: (connection, identity) => ProfileWorkspaceController(
+            access: manager.accessFor(connection),
+            connectionIdentity: identity,
+            preferences: prefs,
+            appPreferences: appPreferences,
+          ),
+        );
+        addTearDown(() async {
+          await tester.pumpWidget(const SizedBox.shrink());
+          registry.dispose();
+        });
         final home = GlobalKey<HomeScreenState>();
         Future<void> show() async {
           await tester.pumpWidget(
-            StatefulBuilder(
-              builder: (context, rebuild) => MaterialApp(
-                themeMode: WingApp.getThemeMode(prefs),
+            ValueListenableBuilder<AppPreferencesState>(
+              valueListenable: appPreferences.state,
+              builder: (context, state, child) => MaterialApp(
+                themeMode: state.values.theme!.themeMode,
                 theme: profileWorkspaceTheme(
                   wingTheme(Brightness.light),
-                  accent: WorkspaceAccent.fromName(
-                    prefs.getString(WorkspaceAccent.preferenceKey),
-                  ),
+                  accent: state.values.accent!.appearance,
                 ),
                 darkTheme: profileWorkspaceTheme(
                   wingTheme(Brightness.dark),
-                  accent: WorkspaceAccent.fromName(
-                    prefs.getString(WorkspaceAccent.preferenceKey),
-                  ),
+                  accent: state.values.accent!.appearance,
                 ),
                 home: HomeScreen(
+                  createSharedDraftSession: (entry) => SharedDraftSession(
+                    connectionManager: manager,
+                    entrySession: entry,
+                    shareIntents: null,
+                  ),
+                  createEntrySession: () => WorkspaceEntrySession(
+                    connectionManager: manager,
+                    appPreferences: appPreferences,
+                    registry: registry,
+                    launchIntents: null,
+                  ),
                   key: home,
                   connManager: manager,
-                  pickBackupFile: () async {
-                    final contents = await ConfigBackupIo(
+                  appPreferences: appPreferences,
+                  createBackupSession: () => BackupSession(
+                    configuration: ConfigBackupService(
                       connectionManager: manager,
-                    ).pickBackupFile();
-                    expect(contents, isNotNull);
-                    expect(
-                      jsonDecode(contents!)['format'],
+                      appPreferences: appPreferences,
+                    ),
+                    io: _CheckedBackupIo(
                       encrypted ? 'wing-config-encrypted' : 'wing-config',
-                      reason:
-                          'Select the backup exported in this test iteration.',
-                    );
-                    return contents;
-                  },
+                    ),
+                  ),
                   enableProfileNotifications: () async {},
-                  onPreferencesChanged: () => rebuild(() {}),
                 ),
               ),
             ),
@@ -154,24 +261,61 @@ void main() {
         }
         FocusManager.instance.primaryFocus?.unfocus();
         await tester.pumpAndSettle();
+        final cache = await getTemporaryDirectory();
+        final previousExports = cache
+            .listSync(recursive: true, followLinks: false)
+            .whereType<File>()
+            .where(
+              (file) => file.uri.pathSegments.last.startsWith('wing-config-'),
+            )
+            .map((file) => file.path)
+            .toSet();
+        exportDirectory = cache;
+        exportBaseline = previousExports;
+        exportStageBaseline = cache
+            .listSync(followLinks: false)
+            .whereType<Directory>()
+            .map((directory) => directory.path)
+            .toSet();
         await stage.writeAsString('share-$label', flush: true);
         await tester.tap(find.byKey(const Key('export_confirm_button')));
         await waitFor(
           tester,
           () => find.textContaining('Backup exported').evaluate().isNotEmpty,
         );
-        final cache = await getTemporaryDirectory();
-        final exported =
-            cache
-                .listSync()
-                .whereType<File>()
-                .where(
-                  (file) =>
-                      file.uri.pathSegments.last.startsWith('wing-config-'),
-                )
-                .toList()
-              ..sort((a, b) => a.path.compareTo(b.path));
-        final contents = await exported.last.readAsString();
+        final remainingStages = cache
+            .listSync(followLinks: false)
+            .whereType<Directory>()
+            .where(
+              (directory) =>
+                  directory.uri.pathSegments
+                      .where((part) => part.isNotEmpty)
+                      .last
+                      .startsWith('wing-backup-') &&
+                  !exportStageBaseline!.contains(directory.path),
+            );
+        expect(
+          remainingStages,
+          isEmpty,
+          reason: 'Wing must release its export stage after Android handoff.',
+        );
+        final exported = cache
+            .listSync(recursive: true, followLinks: false)
+            .whereType<File>()
+            .where(
+              (file) =>
+                  file.uri.pathSegments.last.startsWith('wing-config-') &&
+                  !previousExports.contains(file.path),
+            )
+            .toList();
+        expect(
+          exported,
+          hasLength(1),
+          reason: 'One recipient-provider backup remains after Wing cleanup.',
+        );
+        ownedExport = exported.single;
+        expect(ownedExport.parent.path, endsWith('/share_plus'));
+        final contents = await ownedExport.readAsString();
         final decoded = await ConfigBackupCodec.decode(
           contents,
           passphrase: passphrase,
@@ -189,13 +333,13 @@ void main() {
           8642,
           'local',
         );
-        await prefs.setString('theme_mode', 'light');
-        await prefs.setString('workspace_accent_v1', 'coral');
-        await prefs.setString('composer_running_action', 'stop');
-        await prefs.setBool('completion_notifications', true);
-        await prefs.setBool('attention_notifications', false);
-        await prefs.setBool('notification_message_previews', true);
-        await prefs.setString('app_text_size_preference', 'default');
+        await appPreferences.setTheme(AppThemePreference.light);
+        await appPreferences.setAccent(AppAccentPreference.coral);
+        await appPreferences.setRunningAction(ComposerAction.stop);
+        await appPreferences.setCompletedNotifications(true);
+        await appPreferences.setAttentionNotifications(false);
+        await appPreferences.setNotificationPreviews(true);
+        await appPreferences.setTextSize(AppTextSizePreference.standard);
         // Re-enter settings with the changed values cached in its controls.
         await navigate(tester, 'connections');
         home.currentState!.refreshConnections();
@@ -210,7 +354,7 @@ void main() {
 
         Future<void> restore(String attempt, String password) async {
           await stage.writeAsString('pick-$label$attempt', flush: true);
-          await tester.tap(find.byTooltip('Restore configuration'));
+          await tester.tap(find.byTooltip('Restore configuration').hitTestable());
           await waitFor(
             tester,
             () => find
@@ -239,6 +383,9 @@ void main() {
           );
           expect(manager.getConnections().single.label, 'Local only');
           expect(prefs.getString('workspace_accent_v1'), 'coral');
+          await tester.tap(find.byTooltip('Close').hitTestable());
+          await tester.pumpAndSettle();
+          expect(find.textContaining('Wrong passphrase'), findsNothing);
         }
         await restore('', passphrase);
         await waitFor(

@@ -1,3 +1,4 @@
+import 'package:wing/core/services/app_preferences.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,8 +11,11 @@ import 'package:wing/main.dart';
 import 'package:wing/core/services/native_notification_sink.dart';
 import 'package:wing/core/services/android_voice.dart';
 import 'package:wing/core/services/microphone_permission.dart';
+import 'package:wing/core/services/background_monitoring_service.dart';
 
 import 'profile_connection_identity_test.dart' show MemoryIdentityStore;
+
+const _nativeNotifications = MethodChannel(NativeNotificationSink.channelName);
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +27,7 @@ void main() {
   late bool enabled;
   late bool granted;
   late bool failRequest;
+  late bool batteryUnrestricted;
 
   setUp(() async {
     AndroidFlutterLocalNotificationsPlugin.registerWith();
@@ -35,9 +40,17 @@ void main() {
     enabled = false;
     granted = true;
     failRequest = false;
-    messenger.setMockMethodCallHandler(NativeNotificationSink.channel, (
+    batteryUnrestricted = true;
+    messenger.setMockMethodCallHandler(BackgroundMonitoringService.channel, (
       call,
     ) async {
+      if (call.method == 'batteryUnrestricted' ||
+          call.method == 'openBatterySettings') {
+        calls.add(call.method);
+      }
+      return call.method == 'batteryUnrestricted' ? batteryUnrestricted : null;
+    });
+    messenger.setMockMethodCallHandler(_nativeNotifications, (call) async {
       if (call.method == 'show') calls.add('show');
       return call.method == 'initialize' ? [] : null;
     });
@@ -67,13 +80,21 @@ void main() {
   });
 
   tearDown(() {
-    messenger.setMockMethodCallHandler(NativeNotificationSink.channel, null);
+    messenger.setMockMethodCallHandler(_nativeNotifications, null);
     messenger.setMockMethodCallHandler(AndroidVoice.channel, null);
     messenger.setMockMethodCallHandler(channel, null);
+    messenger.setMockMethodCallHandler(
+      BackgroundMonitoringService.channel,
+      null,
+    );
   });
 
   Future<void> launch(WidgetTester tester) async {
-    await tester.pumpWidget(WingApp(connManager: manager));
+    final appPreferences = AppPreferences(manager.prefs);
+    addTearDown(appPreferences.dispose);
+    await tester.pumpWidget(
+      WingApp(connManager: manager, appPreferences: appPreferences),
+    );
     await tester.pumpAndSettle();
   }
 
@@ -81,6 +102,54 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   }
+
+  testWidgets(
+    'startup requests missing battery exemption without active chats',
+    (tester) async {
+      batteryUnrestricted = false;
+      granted = false;
+      await launch(tester);
+      expect(find.byType(HomeScreen), findsOneWidget);
+      expect(
+        calls.where((call) => call == 'openBatterySettings'),
+        hasLength(1),
+      );
+      expect(
+        calls.indexOf('batteryUnrestricted'),
+        greaterThan(calls.indexOf('microphone')),
+      );
+      expect(
+        calls.indexOf('openBatterySettings'),
+        greaterThan(calls.indexOf('batteryUnrestricted')),
+      );
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pumpAndSettle();
+      expect(
+        calls.where((call) => call == 'openBatterySettings'),
+        hasLength(1),
+      );
+      await close(tester);
+      await launch(tester);
+      expect(
+        calls.where((call) => call == 'openBatterySettings'),
+        hasLength(2),
+      );
+      await close(tester);
+      batteryUnrestricted = true;
+      await launch(tester);
+      expect(
+        calls.where((call) => call == 'batteryUnrestricted'),
+        hasLength(3),
+      );
+      expect(
+        calls.where((call) => call == 'openBatterySettings'),
+        hasLength(2),
+      );
+      expect(tester.takeException(), isNull);
+      await close(tester);
+    },
+  );
 
   testWidgets(
     'microphone follows notifications and is not requested again on restart',
@@ -175,9 +244,12 @@ void main() {
     tester,
   ) async {
     final ready = Completer<void>();
+    final appPreferences = AppPreferences(manager.prefs);
+    addTearDown(appPreferences.dispose);
     await tester.pumpWidget(
       WingApp(
         connManager: manager,
+        appPreferences: appPreferences,
         startupExternalNavigationReady: ready.future,
       ),
     );

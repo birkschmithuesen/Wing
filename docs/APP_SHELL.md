@@ -1,73 +1,39 @@
 # Navigation, profiles and projects
 
-## Drawer and chat list
+## Find your work
 
-The drawer opens Chats, Activity, Connections, App settings and Hermes administration. Projects are a scope within Chats. There is no permanent bottom navigation or intermediate More page.
+The drawer opens Chats, Recents, Bots, Hermes instances, App settings, Hermes administration, Hermes health and Hermes analytics. Projects are organized within Chats.
 
-Chats browses all profiles on the selected connection. Search stays above one
-compact Status / Profile / Project filter row. Each filter opens its own anchored
-multi-select menu, with scrolling after five visible rows. The cross clears only
-these filters. The default profile appears first, followed by canonical profile
-names; projects sort by recent activity.
+Recents and Bots show the shared Instance component below their title. Tap the
+instance name to choose an instance, or its icon and connection indicator for
+connection details.
 
-**Group by** (Project by default), **Sort by** (Updated by default) and **Show details**
-are in the chat list's ellipsis menu. Pinned chats appear once, followed by
-compact groups with three-chat previews. **Show more** reveals ten more chats at
-a time. Headings, indentation and proximity establish grouping without cards
-or separators. Show details → Tokens adds totals across every matching row,
-including rows outside the preview and in collapsed groups.
+Chats browses profiles on the selected connection. Search sits above Status, Profile and Project filters. Each filter allows multiple selections; the cross clears the filters.
 
-The header menu also contains Show automated chats, Collapse/Expand all, Mark
-all as read, Archived/Active chats and New project, each with an icon. The floating
-pen creates a chat. Creation asks for an owning profile unless exactly one profile
-is filtered or available. Project row menus retain New chat, Rename, Appearance
-and Delete. Selection uses Studio tint and row actions retain 48 dp targets.
+The chat list's menu contains **Group by**, **Sort by**, **Show details**, **Show automated chats**, Collapse/Expand all, Mark all as read, Archived/Active chats and New project. Grouping starts with Project and sorting with Updated. Pinned chats appear once, followed by group previews. **Show more** reveals ten more chats. Token totals include matching chats outside the visible preview when the list is complete.
 
-Back unwinds the current preview or editor, then returns from a conversation to Chats. At the workspace root it opens the drawer before exiting. Navigation preserves the open work and draft.
+The floating pen creates a chat. Wing asks which profile to use unless exactly one is filtered or available. Changing the profile in Wing does not change another client's selection or move accepted work to another profile.
 
-## Profile ownership
+Back returns through the current viewer, editor or Recents stack, then from a conversation to its originating Chats, Recents or Bots screen. At the workspace root it opens the drawer before exiting. Navigation preserves drafts and open work.
 
-Profile selection belongs to this client. It must not call `POST /api/profiles/active` to change the server's sticky selection. Discover canonical profiles before opening their workspace. Capture the connection/profile/chat when beginning an operation; late responses cannot retarget writes or replace a newer selection.
+Page loading and manual refresh show a pulsating Wing in the header. During
+that wait, an existing conversation work Wing stays static and resumes pulsing
+when loading finishes. Reduced motion keeps the Wing static.
 
-Modern profile-aware dashboard and Desktop Gateway contracts are required. Missing discovery/authentication is an error to explain and repair. Selecting another profile must leave accepted work running under its original owner.
+## Search and visibility
 
-## Filters and search
+Search finds chat titles and server message matches across profiles, including archived matches when they fit the selected scope. Message search has a server limit of 100 results per profile. Incomplete loads retain readable rows and offer Retry; a partial list is not a complete archive search.
 
-Unread status comes from the server watermark. Mark a chat read only after an explicit open and successful history load. Reconnect or foreground refresh alone must not mark it read. Retain failure state and allow retry.
+**Show automated chats** starts off. It hides scheduled, tool, subagent, kanban and one-shot chats from Chats until enabled, including hidden Bot Chats. Recents always excludes these automated sources while keeping user conversations that have background work.
 
-The browser reads profile-owned sessions in pages of 100 with four concurrent
-profile readers. Unread filters apply to the resulting index, including older
-pages. Incomplete loads retain readable rows and offer Retry; incomplete token
-totals are not displayed as final. Message search runs across profiles and retains
-archived matches, with the stock limit of 100 results per profile; title matching
-also covers the loaded index. Search, filter and archive scope intersect.
+Unread status comes from Hermes. Hidden Bot Chats compare the latest saved message with the server read timestamp; a missing timestamp keeps the chat unread. Opening a chat and loading its history marks it read; reconnecting alone does not. Filters and display choices are saved per connection on this device.
 
-Show automated chats starts off and hides exactly `cron`, `tool`, `subagent`,
-`kanban` and `oneshot` before grouping, counts and project recency. Unknown/custom
-sources stay visible; parentage alone does not imply automation. This connection preference
-does not affect Recents: Recents always excludes these sources from saved,
-loaded and ongoing entries, while retaining user chats with background work.
-The stock source metadata and exclusion API were verified against upstream
-Hermes `6f7a7991bb069db07ae74a479823ce8310f8c7e0` (2026-09-28).
+## Projects
 
-Project membership comes from stock `projects.tree` `sessionIds`; the scan covers the loaded active set. Archived and excluded source
-rows absent from that tree remain under Home. New filters and display choices
-persist per connection on this device.
+Create a project with an absolute folder path on the Hermes host. Repository discovery can scan for repositories, or you can enter the folder manually. Project menus offer New chat, Rename, Appearance and Delete. Deleting a project removes its organization, leaving chats and host files intact.
 
-## Projects and destructive actions
+Inside a conversation, tap **Unassigned** or the project icon/name to choose a destination. Search by project name or working folder. Moving changes the chat's working folder and project association; it does not move files or transfer the chat to another profile. The chat must be idle and its destination verified. A failed move remains available for review or retry.
 
-Create a project using an absolute folder on the host. Repository discovery is an explicit `projects.discover_repos` scan with manual entry available. Rename, appearance and membership are server-owned metadata. Deleting a project removes its organization, not its chats or host files.
+The server name and connection indicator open connection details separately. See [Connections and updates](CONNECTION_DIAGNOSTICS_AND_VERSIONS.md).
 
-Move chat uses `workspace.move` with the durable session key, destination working folder and profile. It is not a file move or cross-profile transfer. The app freshly resumes and verifies a uniquely owned idle runtime before the mutation, then refreshes the lists and preserves the open draft. The chosen working folder is the primary project path, falling back to its first repository.
-
-In a conversation, tap **Unassigned** or the project name beside the server to
-open the project selector. The Studio sheet shows the current project and lets
-you search destinations by name or working folder. Choosing a destination moves
-the chat; Cancel makes no change. A failed move stays open for retry, and controls
-are disabled while a move is pending. The server icon, connection indicator and
-server name remain a separate target for connection details, including server
-access, live-chat availability and connection retry.
-
-Deleting a chat first verifies and closes its known idle runtime, then deletes the saved server chat. Unknown, busy or ambiguous ownership blocks the action. Only after server deletion and durable draft removal may its owned staged files be cleaned up.
-
-These preflight checks cannot make separate server operations atomic. A runtime can change between the check and mutation. The app must surface a failed or uncertain result instead of claiming a guaranteed transaction.
+Deleting a chat requires confirmation and a verified idle conversation. Busy or uncertain state can block deletion. If an operation's outcome is uncertain, review the server state before repeating it.

@@ -1,11 +1,16 @@
+import 'package:wing/core/services/chat_outputs_session.dart';
+import 'package:wing/core/services/usage_analytics.dart';
+import 'package:wing/core/services/usage_analytics_session.dart';
+import 'package:wing/core/models/provider_inventory.dart';
+import 'package:wing/core/screens/administration/admin_provider_credentials.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/screens/administration/admin_providers_page.dart';
 import 'package:wing/core/screens/administration/admin_connectors_page.dart';
 import 'package:wing/core/screens/administration/admin_usage_dashboard.dart';
 import 'package:wing/core/screens/chat_outputs_screen.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/mcp_oauth.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'support/administration_fixture.dart';
 import 'administration_mcp_test.dart' show fixtureWith, started, fakeLoopback;
@@ -39,6 +44,8 @@ void main() {
             return {
               'session_id': 'session',
               'flow': 'device_code',
+              'verification_url': 'https://example.invalid/sign-in',
+              'expires_in': 900,
               'user_code': 'code',
               'poll_interval': 60,
             };
@@ -48,7 +55,7 @@ void main() {
               if (temporary) throw TimeoutException('offline');
               throw const FormatException('invalid status');
             }
-            return {'status': 'approved'};
+            return {'session_id': 'session', 'status': 'approved'};
           }
           throw StateError('Unexpected request');
         };
@@ -56,7 +63,10 @@ void main() {
           MaterialApp(
             home: AdminProviderSignIn(
               profile: fixture.server.profile('personal'),
-              provider: const {'id': 'provider', 'name': 'Provider'},
+              target: const ProviderSignInTarget(
+                id: 'provider',
+                name: 'Provider',
+              ),
             ),
           ),
         );
@@ -102,15 +112,18 @@ void main() {
           ? {
               'session_id': 'session',
               'flow': 'device_code',
+              'verification_url': 'https://example.invalid/sign-in',
+              'user_code': 'fixture-code',
+              'expires_in': 900,
               'poll_interval': 60,
             }
-          : {'status': 'approved'};
+          : {'session_id': 'session', 'status': 'approved'};
     };
     await tester.pumpWidget(
       MaterialApp(
         home: AdminProviderSignIn(
           profile: fixture.server.profile('personal'),
-          provider: const {'id': 'provider', 'name': 'Provider'},
+          target: const ProviderSignInTarget(id: 'provider', name: 'Provider'),
         ),
       ),
     );
@@ -150,9 +163,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: AdminMcpSignIn(
-            profile: fixture.server.profile('personal'),
-            name: 'aspire',
-            bindLoopback: fakeLoopback,
+            createFlow: () => McpOAuth(
+              profile: fixture.server.profile('personal'),
+              name: 'aspire',
+              bindLoopback: fakeLoopback,
+            ),
           ),
         ),
       );
@@ -189,25 +204,27 @@ void main() {
         MaterialApp(
           home: ChatOutputsScreen(
             chatTitle: 'Chat',
-            loadHistory: (offset) async {
-              offsets.add(offset);
-              if (offset == 1 && fail) throw TimeoutException('offline');
-              return ProfileHistoryPage(
-                'chat',
-                [
-                  {
-                    'role': 'assistant',
-                    'content': '[file$offset](/tmp/file$offset.txt)',
-                  },
-                ],
-                offset,
-                1,
-                isComplete: offset == 1,
-              );
-            },
-            download: (_) => throw StateError('Unexpected download'),
-            readText: (_) => throw StateError('Unexpected preview'),
-            deliver: (_) => throw StateError('Unexpected share'),
+            createSession: () => ChatOutputsSession(
+              loadHistory: (offset) async {
+                offsets.add(offset);
+                if (offset == 1 && fail) throw TimeoutException('offline');
+                return ProfileHistoryPage(
+                  'chat',
+                  [
+                    {
+                      'role': 'assistant',
+                      'content': '[file$offset](/tmp/file$offset.txt)',
+                    },
+                  ],
+                  offset,
+                  1,
+                  isComplete: offset == 1,
+                );
+              },
+              download: (_) => throw StateError('Unexpected download'),
+              readText: (_) => throw StateError('Unexpected preview'),
+              deliver: (_) => throw StateError('Unexpected share'),
+            ),
           ),
         ),
       );
@@ -241,7 +258,11 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: UsageDashboard(profile: fixture.server.profile('personal')),
+          body: UsageDashboard(
+            createSession: () => UsageAnalyticsSession(
+              UsageAnalyticsReader(fixture.server.usageAnalytics, ['personal']),
+            ),
+          ),
         ),
       ),
     );
@@ -277,12 +298,14 @@ void main() {
       MaterialApp(
         home: ChatOutputsScreen(
           chatTitle: 'Chat',
-          loadHistory: (_) async {
-            calls++;
-            throw DashboardHttpException(401, 'Unauthorized');
-          },
-          download: (_) => throw StateError('Unexpected download'),
-          readText: (_) => throw StateError('Unexpected preview'),
+          createSession: () => ChatOutputsSession(
+            loadHistory: (_) async {
+              calls++;
+              throw DashboardHttpException(401, 'Unauthorized');
+            },
+            download: (_) => throw StateError('Unexpected download'),
+            readText: (_) => throw StateError('Unexpected preview'),
+          ),
         ),
       ),
     );

@@ -1,3 +1,4 @@
+import 'package:wing/core/services/dashboard_oauth_session.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -169,11 +170,57 @@ void main() {
         }),
       );
       final session = (await cloud.signIn(_instance))!;
-      expect(session.baseUrl, _instance.dashboardUrl);
-      expect(session.accessToken, 'access');
+      expect(session.currentGrant.baseUrl, _instance.dashboardUrl);
+      expect(session.currentGrant.accessToken, 'access');
       cloud.close();
     },
   );
+
+  for (final close in [false, true]) {
+    test(
+      'retired ${close ? 'closed' : 'cancelled'} token exchange returns no owner',
+      () async {
+        final browser = _Browser()
+          ..callback = (url, redirect) => Uri.parse(redirect)
+              .replace(
+                queryParameters: {
+                  'code': 'one-use',
+                  'state': url.queryParameters['state']!,
+                },
+              )
+              .toString();
+        final started = Completer<void>();
+        final release = Completer<void>();
+        final cloud = HermesCloud(
+          browser: browser,
+          client: MockClient((_) async {
+            started.complete();
+            await release.future;
+            return http.Response(
+              jsonEncode({
+                'provider': 'nous',
+                'access_token': 'test-access',
+                'refresh_token': 'test-refresh',
+                'expires_at':
+                    DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
+              }),
+              200,
+            );
+          }),
+        );
+        final pending = cloud.signIn(_instance);
+        await started.future;
+        if (close) {
+          cloud.close();
+        } else {
+          await cloud.cancel();
+        }
+        release.complete();
+        expect(await pending, isNull);
+        if (!close) cloud.close();
+      },
+    );
+  }
 
   for (final defect in ['state', 'host', 'fragment', 'duplicate']) {
     test('rejects $defect callback before exchanging any code', () async {

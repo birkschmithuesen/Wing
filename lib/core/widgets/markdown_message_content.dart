@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show mapEquals;
 import 'dart:typed_data';
 
 import 'studio_task_marker.dart';
@@ -8,35 +9,62 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:markdown/markdown.dart' as md;
 
 import '../models/chat_output.dart';
+import '../models/app_preferences.dart';
 import '../models/deliverable_reference.dart';
 import '../services/file_open_error_message.dart';
+import '../services/email_composer.dart';
+import '../services/markdown_inline_parser.dart';
+import '../services/markdown_segments.dart';
+import '../services/markdown_qa_variant.dart';
+import '../services/completion_diagnostics.dart';
 import '../services/web_preview.dart';
 import '../theme/profile_markdown_style.dart';
-import 'chat_image_preview.dart';
+import '../theme/wing_theme.dart';
+import 'chat_inline_image.dart';
+import 'studio_loading.dart';
+import 'bot_mention_scope.dart';
 import 'markdown_code_block.dart';
+import 'block_reusing_markdown_body.dart';
+import 'background_markdown_content.dart';
 import 'deliverable_attachment.dart';
+import 'web_link_scope.dart';
+
+typedef MarkdownHeadingAnchor = ({String label, int level, GlobalKey key});
+
+enum _WebLinkAction {
+  selectText('Select text'),
+  openExternally('Open in external browser'),
+  openHere('Open here');
+
+  const _WebLinkAction(this.label);
+  final String label;
+}
 
 /// Renders Markdown message content without conversation chrome.
 class MarkdownMessageContent extends StatefulWidget {
   final String data;
   final bool streaming;
+  final bool loadImages;
   final Future<void> Function(ChatOutput output)? onOpenRemoteFile;
   final Future<bool> Function(ChatOutput output)? onDownloadRemoteFile;
-  final Future<Uint8List> Function(ChatOutput output)? onLoadRemoteImage;
+  final Future<Uint8List> Function(String path)? loadImage;
   final bool deliverables;
   final String? documentPath;
   final String? initialFragment;
+  final ValueChanged<List<MarkdownHeadingAnchor>>? onHeadings;
 
   const MarkdownMessageContent({
     super.key,
     required this.data,
     this.streaming = false,
+    this.loadImages = true,
     this.onOpenRemoteFile,
     this.onDownloadRemoteFile,
-    this.onLoadRemoteImage,
+    this.loadImage,
     this.deliverables = false,
     this.documentPath,
     this.initialFragment,
+    this.onHeadings,
   });
 
   @override
@@ -44,14 +72,37 @@ class MarkdownMessageContent extends StatefulWidget {
 }
 
 class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
+  String? _openingLink;
+  String? _linkError;
   // Retain only this mounted message's rendering. Unrelated stream/activity
   // updates must not split code fences, recreate styles and reparse its prose.
   Widget? _content;
+  List<({Object source, Widget child})> _segments = const [];
+  bool _refreshSegments = true;
+  Object? _renderingInputs;
+  Map<String, String>? _mentionNames;
+  bool _segmentsStreaming = false;
+  MarkdownStyleSheet? _styleSheet;
+  ThemeData? _markdownTheme;
+  Map<String, MarkdownElementBuilder>? _markdownBuilders;
+  final _parsers = <int, MarkdownInlineParser>{};
+  final _deliverableSyntaxes = <md.InlineSyntax>[
+    MediaReferenceSyntax(),
+    DeliverableLinkSyntax(),
+    LiteralCodeSyntax(guard: markdownQaVariant != MarkdownQaVariant.baseline),
+    HtmlFilePathSyntax(),
+  ];
   final _headingKeys = <String, GlobalKey>{};
 
   @override
   void initState() {
     super.initState();
+    if (CompletionDiagnostics.enabled) {
+      CompletionDiagnostics.event(
+        'markdown.message.init',
+        values: {'streaming': widget.streaming ? 1 : 0},
+      );
+    }
     _scheduleFragment();
   }
 
@@ -74,11 +125,7 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
         alignment: 0,
       );
     } else if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: StudioError('This heading is not in the available preview.'),
-        ),
-      );
+      _showLinkFailure('This heading is not in the available preview.');
     }
   }
 
@@ -86,17 +133,43 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   void didUpdateWidget(covariant MarkdownMessageContent oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.data != oldWidget.data ||
+        widget.documentPath != oldWidget.documentPath) {
+      _linkError = null;
+    }
+    if (widget.data != oldWidget.data ||
+        widget.loadImages != oldWidget.loadImages ||
         widget.streaming != oldWidget.streaming ||
         widget.deliverables != oldWidget.deliverables ||
         widget.documentPath != oldWidget.documentPath ||
         widget.initialFragment != oldWidget.initialFragment ||
+        (widget.onHeadings == null) != (oldWidget.onHeadings == null) ||
+        (widget.loadImage == null) != (oldWidget.loadImage == null) ||
         (widget.onOpenRemoteFile == null) !=
             (oldWidget.onOpenRemoteFile == null) ||
         (widget.onDownloadRemoteFile == null) !=
-            (oldWidget.onDownloadRemoteFile == null) ||
-        (widget.onLoadRemoteImage == null) !=
-            (oldWidget.onLoadRemoteImage == null)) {
+            (oldWidget.onDownloadRemoteFile == null)) {
       _content = null;
+      if (CompletionDiagnostics.enabled) {
+        CompletionDiagnostics.event(
+          'markdown.message.invalidate',
+          values: {
+            'dataChanged': widget.data != oldWidget.data ? 1 : 0,
+            'streamingChanged': widget.streaming != oldWidget.streaming ? 1 : 0,
+          },
+        );
+      }
+    }
+    if (widget.deliverables != oldWidget.deliverables ||
+        widget.loadImages != oldWidget.loadImages ||
+        (widget.loadImage == null) != (oldWidget.loadImage == null) ||
+        widget.documentPath != oldWidget.documentPath ||
+        (widget.onOpenRemoteFile == null) !=
+            (oldWidget.onOpenRemoteFile == null) ||
+        (widget.onDownloadRemoteFile == null) !=
+            (oldWidget.onDownloadRemoteFile == null)) {
+      _markdownBuilders = null;
+      _refreshSegments = true;
+      _parsers.clear();
     }
     if (widget.initialFragment != oldWidget.initialFragment) {
       _scheduleFragment();
@@ -106,166 +179,433 @@ class _MarkdownMessageContentState extends State<MarkdownMessageContent> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final inputs = (
+      Theme.of(context),
+      MediaQuery.sizeOf(context),
+      MediaQuery.textScalerOf(context),
+      Directionality.of(context),
+    );
+    final names = BotMentionScope.of(context)?.names;
+    // Reparenting a completed answer rechecks dependencies. Keep its rendered
+    // blocks when the actual environment is unchanged.
+    if (_renderingInputs == inputs && mapEquals(_mentionNames, names)) return;
+    _renderingInputs = inputs;
+    _mentionNames = names;
+    if (CompletionDiagnostics.enabled) {
+      CompletionDiagnostics.event('markdown.message.dependencies');
+    }
     // Theme, text scale and viewport changes still refresh the rendered content.
     _content = null;
+    _styleSheet = null;
+    _markdownTheme = null;
+    _markdownBuilders = null;
+    _refreshSegments = true;
   }
 
-  Future<void> _open(BuildContext context, String href) async {
-    final uri = externalWebLink(href);
-    var opened = false;
-    if (uri != null) {
-      opened = await openWebPreview(uri);
-    } else {
-      final output = widget.documentPath == null
-          ? explicitRemoteFileOutput(href)
-          : resolveDocumentFileLink(href, widget.documentPath!);
-      if (output != null &&
-          output.path == widget.documentPath &&
-          output.fragment != null) {
-        await _scrollToFragment(output.fragment!);
-        return;
-      }
-      if (output != null && widget.onOpenRemoteFile != null) {
-        try {
-          await widget.onOpenRemoteFile!(output);
-          return;
-        } catch (error) {
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: StudioError(fileOpenErrorMessage(error))),
-            );
-          }
-          return;
-        }
-      }
+  void _showLinkFailure(String message) {
+    if (mounted && ModalRoute.of(context)?.isCurrent != false) {
+      setState(() => _linkError = message);
     }
-    if (!opened && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: StudioError(
-            uri == null
-                ? 'Only web links and linked Hermes files can be opened here.'
-                : 'Could not open this link.',
+  }
+
+  Future<void> _open(String href) async {
+    if (_openingLink != null) return;
+    if (_linkError != null) setState(() => _linkError = null);
+    if (EmailComposer.accepts(href)) {
+      setState(() => _openingLink = 'Opening email apps');
+      final opened = await EmailComposer.open(href);
+      if (!mounted) return;
+      setState(() => _openingLink = null);
+      if (!opened) {
+        _showLinkFailure(
+          'Could not open an email app. Install or enable one and try again.',
+        );
+      }
+      return;
+    }
+    final uri = externalWebLink(href);
+    if (uri != null) {
+      final destination = WebLinkScope.destinationOf(context);
+      if (destination == null) {
+        _showLinkFailure('Choose where to open links in App settings.');
+      } else {
+        await _openWebLink(uri, destination);
+      }
+      return;
+    }
+    final output = widget.documentPath == null
+        ? explicitRemoteFileOutput(href)
+        : resolveDocumentFileLink(href, widget.documentPath!);
+    if (output != null &&
+        output.path == widget.documentPath &&
+        output.fragment != null) {
+      await _scrollToFragment(output.fragment!);
+      return;
+    }
+    if (output != null && widget.onOpenRemoteFile != null) {
+      try {
+        await widget.onOpenRemoteFile!(output);
+      } catch (error) {
+        _showLinkFailure(fileOpenErrorMessage(error));
+      }
+      return;
+    }
+    _showLinkFailure(
+      'Only web links, email links and linked Hermes files can be opened here.',
+    );
+  }
+
+  void _tapLink(String text, String? href, String title) {
+    if (href != null) _open(href);
+  }
+
+  Future<void> _showWebLinkMenu(
+    Uri uri,
+    Offset position,
+    VoidCallback selectText,
+  ) async {
+    final overlay =
+        Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+    final anchor = overlay.globalToLocal(position);
+    final action = await showMenu<_WebLinkAction>(
+      context: context,
+      position: RelativeRect.fromSize(anchor & Size.zero, overlay.size),
+      constraints: const BoxConstraints(maxWidth: 280),
+      popUpAnimationStyle: MediaQuery.disableAnimationsOf(context)
+          ? AnimationStyle.noAnimation
+          : null,
+      items: [
+        for (final action in _WebLinkAction.values)
+          StudioPopupMenuItem(
+            value: action,
+            enabled:
+                action == _WebLinkAction.selectText || _openingLink == null,
+            child: Text(action.label),
           ),
-        ),
+      ],
+    );
+    if (!mounted ||
+        action == null ||
+        ModalRoute.of(context)?.isCurrent == false) {
+      return;
+    }
+    if (action == _WebLinkAction.selectText) {
+      selectText();
+      return;
+    }
+    await _openWebLink(
+      uri,
+      action == _WebLinkAction.openExternally
+          ? WebLinkDestination.externalBrowser
+          : WebLinkDestination.wing,
+    );
+  }
+
+  Future<void> _openWebLink(Uri uri, WebLinkDestination destination) async {
+    if (_openingLink != null) return;
+    final external = destination == WebLinkDestination.externalBrowser;
+    setState(() {
+      _linkError = null;
+      _openingLink = external
+          ? 'Opening external browser'
+          : 'Opening web preview';
+    });
+    final opened = await openWebLink(uri, destination);
+    if (!mounted) return;
+    setState(() => _openingLink = null);
+    if (!opened) {
+      _showLinkFailure(
+        external
+            ? 'Could not open the external browser.'
+            : 'Could not open here. Try opening the link in an external browser.',
       );
     }
   }
 
-  void _previewImage(BuildContext context, String href, String title) {
-    final uri = externalWebLink(href);
-    if (uri == null) {
-      _open(context, href);
-      return;
+  Widget _buildImage(MarkdownImageConfig config) {
+    if (!widget.loadImages) {
+      return Text(config.alt?.isNotEmpty == true ? config.alt! : 'Image');
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (previewContext) => ChatImagePreview(
-          uri: uri,
-          title: title,
-          onOpenExternal: () => _open(previewContext, href),
+    final href = config.uri.toString();
+    final remote = widget.documentPath == null
+        ? explicitRemoteFileOutput(href)
+        : resolveDocumentFileLink(href, widget.documentPath!);
+    final title = config.alt?.isNotEmpty == true ? config.alt! : 'Image';
+    if (remote != null) {
+      return DeliverableAttachment(
+        output: ChatOutput(
+          kind: ChatOutputKind.image,
+          path: remote.path,
+          url: null,
+          label: title,
         ),
-      ),
+        onOpen: widget.onOpenRemoteFile == null
+            ? null
+            : (output) => widget.onOpenRemoteFile!(output),
+        onDownload: widget.onDownloadRemoteFile == null
+            ? null
+            : (output) => widget.onDownloadRemoteFile!(output),
+        loadImage: widget.loadImage == null
+            ? null
+            : (path) => widget.loadImage!(path),
+      );
+    }
+    return ChatInlineImage(
+      target: href,
+      title: title,
+      loadImage: widget.loadImage == null
+          ? null
+          : (path) => widget.loadImage!(path),
     );
   }
 
   @override
-  Widget build(BuildContext context) => _content ??= _buildContent(context);
+  Widget build(BuildContext context) {
+    return StudioPageLoading(
+      active: _openingLink != null,
+      label: _openingLink ?? '',
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildCachedContent(context),
+          if (_linkError case final error?)
+            Padding(
+              padding: const EdgeInsets.only(top: WingSpacing.sm),
+              child: StudioError(error, icon: Icons.link),
+            ),
+        ],
+      ),
+    );
+  }
 
-  Widget _buildContent(BuildContext context) {
+  Widget _buildCachedContent(BuildContext context) {
+    if (_content != null) {
+      if (CompletionDiagnostics.enabled) {
+        CompletionDiagnostics.event('markdown.message.cached');
+      }
+      return _content!;
+    }
+    final start = CompletionDiagnostics.enabled
+        ? CompletionDiagnostics.start()
+        : 0;
+    final result = _content =
+        widget.documentPath == null &&
+            widget.onHeadings == null &&
+            markdownQaVariant == MarkdownQaVariant.background
+        ? BackgroundMarkdownContent(
+            data: widget.data,
+            deliverables: widget.deliverables,
+            streaming: widget.streaming,
+            builder: (_, segments) {
+              final renderStart = CompletionDiagnostics.enabled
+                  ? CompletionDiagnostics.start()
+                  : 0;
+              final child = _buildContent(context, prepared: segments);
+              if (CompletionDiagnostics.enabled) {
+                CompletionDiagnostics.finish(
+                  'markdown.message.prepared.build',
+                  renderStart,
+                  values: {'segments': segments.length},
+                );
+              }
+              return child;
+            },
+          )
+        : _buildContent(context);
+    if (CompletionDiagnostics.enabled) {
+      CompletionDiagnostics.finish(
+        'markdown.message.build',
+        start,
+        values: {'segments': _segments.length},
+      );
+    }
+    return result;
+  }
+
+  Widget _buildContent(
+    BuildContext context, {
+    List<MarkdownSegment>? prepared,
+  }) {
+    MediaQuery.sizeOf(context);
+    MediaQuery.textScalerOf(context);
     final theme = Theme.of(context);
+    final styleSheet = _styleSheet ??= profileMarkdownStyle(theme);
+    final markdownTheme = _markdownTheme ??= profileMarkdownTheme(theme);
+    final mentions = BotMentionScope.of(context);
+    final builders = _markdownBuilders ??= {
+      if (mentions != null) BotMentionScope.tag: BotMentionBuilder(),
+      if (widget.documentPath != null || widget.onHeadings != null)
+        _headingAnchorTag: _HeadingAnchorBuilder(_headingKeys),
+      if (widget.deliverables)
+        deliverableElementTag: _DeliverableBuilder(
+          widget.onOpenRemoteFile == null
+              ? null
+              : (output) => widget.onOpenRemoteFile!(output),
+          widget.onDownloadRemoteFile == null
+              ? null
+              : (output) => widget.onDownloadRemoteFile!(output),
+          maxWidth: MediaQuery.sizeOf(context).width,
+          loadImages: widget.loadImages,
+          loadImage: widget.loadImage == null
+              ? null
+              : (path) => widget.loadImage!(path),
+        ),
+    };
     _headingKeys.clear();
-    final headings = _HeadingBuilder(_headingKeys);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        for (final segment in splitMarkdownCodeBlocks(
-          widget.data,
-          streaming: widget.streaming,
-        ))
-          if (segment is MarkdownCodeBlock)
-            segment
-          else
-            // This is an inline viewport, not the screen edge. Otherwise the
-            // system bottom inset lifts table scrollbars into the last row.
-            MediaQuery.removePadding(
+    final anchors = <MarkdownHeadingAnchor>[];
+    final headings = _HeadingBuilder(_headingKeys, anchors);
+    if (widget.onHeadings != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && anchors.isNotEmpty) {
+          widget.onHeadings?.call(List.unmodifiable(anchors));
+        }
+      });
+    }
+    // The production message path receives a complete snapshot from the
+    // worker. Only the explicit synchronous QA variants and document previews
+    // run the splitter here.
+    final List<Object> sources;
+    if (prepared != null) {
+      sources = [
+        for (final segment in prepared)
+          switch (segment) {
+            MarkdownProseSegment() => segment.source,
+            MarkdownFenceSegment() => MarkdownCodeBlock(
+              code: segment.code,
+              language: segment.language,
+              previewEnabled: segment.closed && !widget.streaming,
+              highlightingEnabled: segment.closed && !widget.streaming,
+            ),
+          },
+      ];
+    } else {
+      final splitStart = CompletionDiagnostics.enabled
+          ? CompletionDiagnostics.start()
+          : 0;
+      sources = splitMarkdownCodeBlocks(
+        widget.data,
+        streaming: widget.streaming,
+      );
+      if (CompletionDiagnostics.enabled) {
+        CompletionDiagnostics.finish(
+          'markdown.fence.split',
+          splitStart,
+          values: {'segments': sources.length},
+        );
+      }
+    }
+    final next = <({Object source, Widget child})>[];
+    final usedParsers = <int>{};
+    for (var index = 0; index < sources.length; index++) {
+      final source = sources[index];
+      final previous = index < _segments.length ? _segments[index] : null;
+      // Retain the complete subtree, including code controls and the inherited
+      // wrappers around prose. Heading previews still traverse every segment
+      // to rebuild their document-wide anchor registry.
+      if (!_refreshSegments &&
+          widget.documentPath == null &&
+          widget.onHeadings == null &&
+          previous != null &&
+          (prepared != null ||
+              _segmentsStreaming == widget.streaming ||
+              source is MarkdownCodeBlock) &&
+          _sameMarkdownSegment(previous.source, source)) {
+        next.add(previous);
+        if (_parsers.containsKey(index)) usedParsers.add(index);
+        continue;
+      }
+      Widget prose(String text, List<md.Node>? nodes) {
+        final options = BlockReusingMarkdownBody(
+          data: text,
+          parsedNodes: nodes,
+          paddingBuilders:
+              widget.documentPath != null || widget.onHeadings != null
+              ? {for (var level = 1; level <= 6; level++) 'h$level': headings}
+              : const {},
+          checkboxBuilder: _buildTaskMarker,
+          inlineSyntaxes: widget.deliverables ? _deliverableSyntaxes : null,
+          builders: builders,
+          selectable: true,
+          onTapLink: _tapLink,
+          onWebLinkMenu: _showWebLinkMenu,
+          sizedImageBuilder: _buildImage,
+          styleSheet: styleSheet,
+        );
+        return options;
+      }
+
+      List<md.Node>? nodes =
+          prepared != null && prepared[index] is MarkdownProseSegment
+          ? (prepared[index] as MarkdownProseSegment).nodes
+          : null;
+      if (source is String &&
+          widget.documentPath == null &&
+          markdownQaVariant == MarkdownQaVariant.cache) {
+        usedParsers.add(index);
+        nodes = (_parsers[index] ??= MarkdownInlineParser(
+          deliverables: widget.deliverables,
+        )).parse(source);
+      }
+      final child = source is MarkdownCodeBlock
+          ? source
+          // This is an inline viewport, not the screen edge. Otherwise the
+          // system bottom inset lifts table scrollbars into the last row.
+          : MediaQuery.removePadding(
               context: context,
               removeBottom: true,
               child: Theme(
-                data: profileMarkdownTheme(theme),
-                child: MarkdownBody(
-                  checkboxBuilder: (checked) =>
-                      StudioTaskMarker(completed: checked),
-                  data: segment as String,
-                  inlineSyntaxes: widget.deliverables
-                      ? [
-                          MediaReferenceSyntax(),
-                          DeliverableLinkSyntax(),
-                          DeliverableCodeSyntax(),
-                          HtmlFilePathSyntax(),
-                        ]
-                      : null,
-                  paddingBuilders: {
-                    if (widget.documentPath != null)
-                      for (var level = 1; level <= 6; level++)
-                        'h$level': headings,
-                  },
-                  builders: {
-                    if (widget.documentPath != null) ...{
-                      _headingAnchorTag: _HeadingAnchorBuilder(_headingKeys),
-                    },
-                    if (widget.deliverables)
-                      deliverableElementTag: _DeliverableBuilder(
-                        widget.onOpenRemoteFile == null
-                            ? null
-                            : (output) => widget.onOpenRemoteFile!(output),
-                        widget.onDownloadRemoteFile == null
-                            ? null
-                            : (output) => widget.onDownloadRemoteFile!(output),
-                        widget.onLoadRemoteImage == null
-                            ? null
-                            : (output) => widget.onLoadRemoteImage!(output),
-                        maxWidth: MediaQuery.sizeOf(context).width,
-                      ),
-                  },
-                  selectable: true,
-                  onTapLink: (_, href, _) {
-                    if (href != null) _open(context, href);
-                  },
-                  sizedImageBuilder: (config) => OutlinedButton.icon(
-                    onPressed: () => _previewImage(
-                      context,
-                      config.uri.toString(),
-                      config.alt ?? 'Image',
-                    ),
-                    icon: const Icon(Icons.image_outlined),
-                    label: Text(
-                      config.alt ?? 'Open image link',
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  styleSheet: profileMarkdownStyle(theme),
-                ),
+                data: markdownTheme,
+                child: prose(source as String, nodes),
               ),
-            ),
+            );
+      next.add((source: source, child: child));
+    }
+    _segments = next;
+    _segmentsStreaming = widget.streaming;
+    _parsers.removeWhere((index, _) => !usedParsers.contains(index));
+    _refreshSegments = false;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        for (final segment in next) RepaintBoundary(child: segment.child),
       ],
     );
   }
+
+  @override
+  void dispose() {
+    if (CompletionDiagnostics.enabled) {
+      CompletionDiagnostics.event('markdown.message.dispose');
+    }
+    super.dispose();
+  }
 }
+
+bool _sameMarkdownSegment(Object previous, Object current) =>
+    previous is String && current is String
+    ? previous == current
+    : previous is MarkdownCodeBlock &&
+          current is MarkdownCodeBlock &&
+          previous.code == current.code &&
+          previous.language == current.language &&
+          previous.previewEnabled == current.previewEnabled &&
+          previous.highlightingEnabled == current.highlightingEnabled;
 
 class _DeliverableBuilder extends MarkdownElementBuilder {
   _DeliverableBuilder(
     this.onOpen,
-    this.onDownload,
-    this.onLoadImage, {
+    this.onDownload, {
     required this.maxWidth,
+    required this.loadImages,
+    this.loadImage,
   });
 
   final Future<void> Function(ChatOutput)? onOpen;
   final Future<bool> Function(ChatOutput)? onDownload;
-  final Future<Uint8List> Function(ChatOutput)? onLoadImage;
   final double maxWidth;
+  final bool loadImages;
+  final Future<Uint8List> Function(String path)? loadImage;
 
   @override
   Widget visitElementAfterWithContext(
@@ -275,6 +615,9 @@ class _DeliverableBuilder extends MarkdownElementBuilder {
     TextStyle? parentStyle,
   ) {
     final path = element.attributes['path']!;
+    if (!loadImages && element.attributes['kind'] == 'image') {
+      return Text(element.attributes['name']!);
+    }
     // Keep this an inline node: Markdown tables and emphasized links cannot
     // contain block nodes. Bound table cells, which scroll horizontally, too.
     return ConstrainedBox(
@@ -291,7 +634,7 @@ class _DeliverableBuilder extends MarkdownElementBuilder {
         ),
         onOpen: onOpen,
         onDownload: onDownload,
-        onLoadImage: onLoadImage,
+        loadImage: loadImage,
       ),
     );
   }
@@ -302,8 +645,9 @@ const _headingAnchorTag = 'wing-heading-anchor';
 /// Insert an invisible scroll target while retaining the renderer's heading
 /// typography, emphasis, links and selection behavior.
 class _HeadingBuilder extends MarkdownPaddingBuilder {
-  _HeadingBuilder(this.keys);
+  _HeadingBuilder(this.keys, this.anchors);
   final Map<String, GlobalKey> keys;
+  final List<MarkdownHeadingAnchor> anchors;
 
   @override
   void visitElementBefore(md.Element element) {
@@ -318,6 +662,11 @@ class _HeadingBuilder extends MarkdownPaddingBuilder {
       id = '$slug-${++suffix}';
     }
     keys[id] = GlobalKey();
+    anchors.add((
+      label: element.textContent,
+      level: int.parse(element.tag.substring(1)),
+      key: keys[id]!,
+    ));
     element.children!.insert(
       0,
       md.Element.empty(_headingAnchorTag)..attributes['id'] = id,
@@ -337,3 +686,5 @@ class _HeadingAnchorBuilder extends MarkdownElementBuilder {
     TextStyle? parentStyle,
   ) => SizedBox(key: keys[element.attributes['id']], width: 0, height: 1);
 }
+
+Widget _buildTaskMarker(bool checked) => StudioTaskMarker(completed: checked);

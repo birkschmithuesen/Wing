@@ -1,0 +1,166 @@
+{
+  "cases": [
+    {
+      "name": "reader imports byte codec privately while UI renders facts",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "import '../services/owner.dart'; class HtmlPreviewScreen {}"
+        },
+        "lib/core/screens/pdf_preview_screen.dart": {
+          "role": "view",
+          "source": "class PdfPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "class UserMessageAttachmentTile {}"
+        },
+        "lib/core/services/owner.dart": {
+          "role": "application",
+          "source": "import 'dart:convert'; class Reader { String decode(List<int> bytes) => utf8.decode(bytes); }"
+        }
+      },
+      "expect": false
+    },
+    {
+      "name": "direct HTML byte decoding namespace rejected",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "import 'dart:convert'; class HtmlPreviewScreen {}"
+        },
+        "lib/core/screens/pdf_preview_screen.dart": {
+          "role": "view",
+          "source": "class PdfPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "class UserMessageAttachmentTile {}"
+        }
+      },
+      "expect": true,
+      "file": "lib/core/screens/html_preview_screen.dart",
+      "line": 1
+    },
+    {
+      "name": "conditional barrel exposes embedded image byte codec",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "class HtmlPreviewScreen {}"
+        },
+        "lib/core/screens/pdf_preview_screen.dart": {
+          "role": "view",
+          "source": "class PdfPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "import '../services/barrel.dart' as bytes; class UserMessageAttachmentTile {}"
+        },
+        "lib/core/services/barrel.dart": {
+          "role": "application",
+          "source": "export 'reader.dart' if (dart.library.io) 'codec.dart';"
+        },
+        "lib/core/services/reader.dart": {
+          "role": "application",
+          "source": "class Reader {}"
+        },
+        "lib/core/services/codec.dart": {
+          "role": "utility",
+          "source": "export 'dart:convert';"
+        }
+      },
+      "expect": true,
+      "file": "lib/core/widgets/user_message_attachment.dart",
+      "line": 1
+    },
+    {
+      "name": "PDF transport error policy cannot hide in a barrel",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "class HtmlPreviewScreen {}"
+        },
+        "lib/core/screens/pdf_preview_screen.dart": {
+          "role": "view",
+          "source": "import '../services/barrel.dart'; class PdfPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "class UserMessageAttachmentTile {}"
+        },
+        "lib/core/services/barrel.dart": {
+          "role": "application",
+          "source": "export 'connection_manager.dart';"
+        },
+        "lib/core/services/connection_manager.dart": {
+          "role": "data",
+          "source": "class DashboardResponseTooLargeException {}"
+        }
+      },
+      "expect": true,
+      "file": "lib/core/screens/pdf_preview_screen.dart",
+      "line": 1
+    },
+    {
+      "name": "unrelated error names and owned close commands stay valid",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "class HtmlPreviewScreen {}"
+        },
+        "lib/core/screens/pdf_preview_screen.dart": {
+          "role": "view",
+          "source": "class PdfPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "import '../services/reader.dart'; class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "class UserMessageAttachmentTile {}"
+        },
+        "lib/core/services/reader.dart": {
+          "role": "application",
+          "source": "class FileOpenErrorMessage {} class Reader { void close() {} }"
+        }
+      },
+      "expect": false
+    },
+    {
+      "name": "omitted completed PDF view fails input",
+      "files": {
+        "lib/core/screens/html_preview_screen.dart": {
+          "role": "view",
+          "source": "class HtmlPreviewScreen {}"
+        },
+        "lib/core/widgets/chat_inline_image.dart": {
+          "role": "view",
+          "source": "class ChatInlineImage {}"
+        },
+        "lib/core/widgets/user_message_attachment.dart": {
+          "role": "view",
+          "source": "class UserMessageAttachmentTile {}"
+        }
+      },
+      "inputError": true
+    }
+  ]
+}

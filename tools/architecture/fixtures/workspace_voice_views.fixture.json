@@ -1,0 +1,84 @@
+{
+  "cases": [
+    {
+      "name": "workspace borrows recorder and speech stays private",
+      "files": {
+        "lib/core/screens/profile_workspace_screen.dart": {
+          "role": "view",
+          "source": "import '../controllers/voice_input_controller.dart'; class ProfileWorkspaceScreen {}"
+        },
+        "lib/core/controllers/voice_input_controller.dart": {
+          "role": "application",
+          "source": "import '../services/hermes_voice.dart'; class VoiceInputController {}"
+        },
+        "lib/core/services/hermes_voice.dart": {
+          "role": "data",
+          "source": "class HermesVoice {}"
+        }
+      },
+      "expect": false
+    },
+    {
+      "name": "raw workspace speech adapter rejected under prefix",
+      "files": {
+        "lib/core/screens/profile_workspace_screen.dart": {
+          "role": "view",
+          "source": "import '../services/hermes_voice.dart' as remote; class ProfileWorkspaceScreen {}"
+        },
+        "lib/core/services/hermes_voice.dart": {
+          "role": "data",
+          "source": "class HermesVoice {}"
+        }
+      },
+      "expect": true,
+      "line": 1
+    },
+    {
+      "name": "conditional export cannot expose remote voice into workspace",
+      "files": {
+        "lib/core/screens/profile_workspace_screen.dart": {
+          "role": "view",
+          "source": "import '../services/barrel.dart'; class ProfileWorkspaceScreen {}"
+        },
+        "lib/core/services/barrel.dart": {
+          "role": "application",
+          "source": "export 'allowed.dart' if (dart.library.io) 'hermes_voice.dart';"
+        },
+        "lib/core/services/allowed.dart": {
+          "role": "domain",
+          "source": "class Reply {}"
+        },
+        "lib/core/services/hermes_voice.dart": {
+          "role": "data",
+          "source": "class HermesVoice {}"
+        }
+      },
+      "expect": true,
+      "line": 1
+    },
+    {
+      "name": "unrelated same-named type remains valid",
+      "files": {
+        "lib/core/screens/profile_workspace_screen.dart": {
+          "role": "view",
+          "source": "import '../services/other.dart'; class ProfileWorkspaceScreen {}"
+        },
+        "lib/core/services/other.dart": {
+          "role": "application",
+          "source": "class HermesVoice {}"
+        }
+      },
+      "expect": false
+    },
+    {
+      "name": "omitted workspace view fails input",
+      "files": {
+        "lib/core/other.dart": {
+          "role": "domain",
+          "source": "class Other {}"
+        }
+      },
+      "inputError": true
+    }
+  ]
+}

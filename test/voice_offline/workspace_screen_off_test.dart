@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
 import '../support/voice_workspace_fixture.dart';
 
 void main() {
@@ -41,7 +40,14 @@ void main() {
     testWidgets('a vad conversation holds while it runs', (tester) async {
       await startVadConversation(tester);
       expect(h.background.holds, [true]);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
+      await h.settle(tester);
+      // Cancel keeps the loop: still held, a new round started.
+      expect(h.background.holds, [true]);
+      expect(h.vadStarts(), 2);
+      // The loop ends when the mode is off and the next Cancel cannot continue.
+      await h.conversationMode(false);
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
       expect(h.background.holds, [true, false]);
     });
@@ -86,7 +92,7 @@ void main() {
       expect(h.vadStarts(), 3);
       screenOn(tester);
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -102,7 +108,7 @@ void main() {
       expect(h.vadStarts(), 2);
       screenOn(tester);
       await h.settle(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -132,7 +138,7 @@ void main() {
       expect(h.device.cancelled, contains(id));
       expect(h.background.holds, [true]);
       expect(h.device.keepScreenOnCalls.last, isFalse);
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       await h.completeReply(tester, 'Late reply.');
       expect(h.vadStarts(), 1);
       screenOn(tester);
@@ -183,7 +189,7 @@ void main() {
       expect(h.background.listens.last, isFalse);
       expect(h.background.holds, [true]);
       screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
 
@@ -200,7 +206,7 @@ void main() {
       expect(h.vadStarts(), 2);
       expect(h.background.listens, isEmpty);
       screenOn(tester);
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     });
   });

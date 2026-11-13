@@ -1,3 +1,7 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -13,24 +17,36 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final host = Host();
+    final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    addTearDown(appPreferences.dispose);
     final controller = ProfileWorkspaceController(
-      connection: identityTestConnection(),
+      access: ConnectionAccess(
+        connection: identityTestConnection(),
+        dashboardOAuth: null,
+      ),
       connectionIdentity: 'test-identity',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     addTearDown(controller.dispose);
     await controller.initialize();
-    final chat = await controller.createChat();
-    chat.status = ProfileTurnStatus.attention;
-    chat.clarification = {
+    final chat = await controller.createChat(canDispatch: () => true);
+    emitChatEvent(controller, chat, 'message.start');
+    emitChatEvent(controller, chat, 'clarify', {
       'request_id': 'recovered-request',
       'questions': [
         {'qid': 'q0', 'question': 'What is the recovery marker?'},
       ],
-    };
+    });
     await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+      MaterialApp(
+        home: ProfileWorkspaceScreen(
+          createBotsSession: () => BotsSession((_) async => const []),
+          controller: controller,
+        ),
+      ),
     );
     expect(find.text('What is the recovery marker?'), findsOneWidget);
     await tester.enterText(

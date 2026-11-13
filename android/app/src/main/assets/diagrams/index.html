@@ -18,6 +18,8 @@
         --muted: #586970;
         --border: #D6E0E1;
         --error: #B91C1C;
+        --error-surface: #FFF1EF;
+        --error-border-opacity: .30;
         --accent: #126D70;
         background: var(--canvas);
       }
@@ -29,6 +31,8 @@
         --muted: #ADBDC4;
         --border: #344C58;
         --error: #F87171;
+        --error-surface: #352422;
+        --error-border-opacity: .42;
         --accent: #65C7BC;
       }
 
@@ -82,44 +86,86 @@
       }
 
       #status {
+        position: relative;
         display: grid;
-        grid-template-columns: 24px minmax(0, 1fr);
-        column-gap: 12px;
+        grid-template-columns: 38px minmax(0, 1fr);
+        gap: 12px;
         align-items: start;
         box-sizing: border-box;
-        width: min(100%, 42rem);
-        margin: 24px auto;
-        padding: 16px;
-        border: 1px solid var(--border);
+        inline-size: min(100%, 42rem);
+        margin-block: 24px;
+        margin-inline: auto;
+        padding: 12px;
         border-radius: 8px;
-        color: var(--error);
-        background: var(--panel);
-        font-size: 16px;
+        color: var(--text);
+        background: var(--error-surface);
+        font-size: .875rem;
+        font-weight: 600;
         line-height: 1.45;
+        overflow-wrap: anywhere;
         white-space: pre-wrap;
       }
 
       #status::before {
-        content: "!";
-        display: inline-grid;
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border: 1px solid var(--error);
+        border-radius: inherit;
+        opacity: var(--error-border-opacity);
+      }
+
+      .status-icon {
+        position: relative;
+        display: grid;
         place-items: center;
-        width: 20px;
-        height: 20px;
-        border: 2px solid currentColor;
+        inline-size: 38px;
+        block-size: 38px;
+        color: var(--error);
+      }
+
+      .status-icon::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: currentColor;
         border-radius: 50%;
-        font-weight: 600;
-        line-height: 1;
+        opacity: .14;
+      }
+
+      #status-message {
+        margin: 0;
       }
 
       [hidden] {
         display: none !important;
       }
     </style>
+    <script>
+      // The WebView applies its palette even if the preview script is missing.
+      window.setStudioTheme = (dark, palette) => {
+        const root = document.documentElement;
+        root.dataset.theme = dark ? 'dark' : 'light';
+        for (const role of ['canvas', 'panel', 'text', 'muted', 'border', 'error', 'error-surface', 'accent']) {
+          if (!/^#[0-9a-f]{6}$/i.test(palette[role])) throw new Error('Invalid Studio palette');
+          root.style.setProperty(`--${role}`, palette[role]);
+        }
+      };
+    </script>
     <script defer src="mermaid.min.js"></script>
     <script defer src="app.js"></script>
   </head>
   <body>
     <main id="diagram" aria-label="Diagram preview"></main>
-    <p id="status" role="alert" hidden></p>
+    <div id="status" role="alert" hidden>
+      <span class="status-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="9"></circle>
+          <path d="M12 7v6m0 2v2"></path>
+        </svg>
+      </span>
+      <p id="status-message">The diagram viewer could not load.</p>
+    </div>
   </body>
 </html>

@@ -1,0 +1,4343 @@
+{
+  "source_commit": "25a71a744cb9ef06950a91638e6229b4f808d461",
+  "provenance": "Sanitized source-shaped observations, not live execution records or private conversations. Data identifiers are examples only.",
+  "cases": [
+    {
+      "id": "read-source-short",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "offset": 1,
+        "limit": 5
+      },
+      "output": {
+        "content": "1|print(\"ready\")",
+        "total_lines": 1,
+        "file_size": 15,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false
+      }
+    },
+    {
+      "id": "read-markdown",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/README.md"
+      },
+      "output": {
+        "content": "1|# Demo\n2|\n3|Use **safe examples**.\n4|\n5|- Start\n6|- Inspect",
+        "total_lines": 6,
+        "file_size": 54,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false
+      }
+    },
+    {
+      "id": "read-source-overflow",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/events.log",
+        "offset": 1,
+        "limit": 80
+      },
+      "output": {
+        "content": "1|event 1: received sanitized demonstration payload\n2|event 2: received sanitized demonstration payload\n3|event 3: received sanitized demonstration payload\n4|event 4: received sanitized demonstration payload\n5|event 5: received sanitized demonstration payload\n6|event 6: received sanitized demonstration payload\n7|event 7: received sanitized demonstration payload\n8|event 8: received sanitized demonstration payload\n9|event 9: received sanitized demonstration payload\n10|event 10: received sanitized demonstration payload\n11|event 11: received sanitized demonstration payload\n12|event 12: received sanitized demonstration payload\n13|event 13: received sanitized demonstration payload\n14|event 14: received sanitized demonstration payload\n15|event 15: received sanitized demonstration payload\n16|event 16: received sanitized demonstration payload\n17|event 17: received sanitized demonstration payload\n18|event 18: received sanitized demonstration payload\n19|event 19: received sanitized demonstration payload\n20|event 20: received sanitized demonstration payload\n21|event 21: received sanitized demonstration payload\n22|event 22: received sanitized demonstration payload\n23|event 23: received sanitized demonstration payload\n24|event 24: received sanitized demonstration payload\n25|event 25: received sanitized demonstration payload\n26|event 26: received sanitized demonstration payload\n27|event 27: received sanitized demonstration payload\n28|event 28: received sanitized demonstration payload\n29|event 29: received sanitized demonstration payload\n30|event 30: received sanitized demonstration payload\n31|event 31: received sanitized demonstration payload\n32|event 32: received sanitized demonstration payload\n33|event 33: received sanitized demonstration payload\n34|event 34: received sanitized demonstration payload\n35|event 35: received sanitized demonstration payload\n36|event 36: received sanitized demonstration payload\n37|event 37: received sanitized demonstration payload\n38|event 38: received sanitized demonstration payload\n39|event 39: received sanitized demonstration payload\n40|event 40: received sanitized demonstration payload\n41|event 41: received sanitized demonstration payload\n42|event 42: received sanitized demonstration payload\n43|event 43: received sanitized demonstration payload\n44|event 44: received sanitized demonstration payload\n45|event 45: received sanitized demonstration payload\n46|event 46: received sanitized demonstration payload\n47|event 47: received sanitized demonstration payload\n48|event 48: received sanitized demonstration payload\n49|event 49: received sanitized demonstration payload\n50|event 50: received sanitized demonstration payload\n51|event 51: received sanitized demonstration payload\n52|event 52: received sanitized demonstration payload\n53|event 53: received sanitized demonstration payload\n54|event 54: received sanitized demonstration payload\n55|event 55: received sanitized demonstration payload\n56|event 56: received sanitized demonstration payload\n57|event 57: received sanitized demonstration payload\n58|event 58: received sanitized demonstration payload\n59|event 59: received sanitized demonstration payload\n60|event 60: received sanitized demonstration payload\n61|event 61: received sanitized demonstration payload\n62|event 62: received sanitized demonstration payload\n63|event 63: received sanitized demonstration payload\n64|event 64: received sanitized demonstration payload\n65|event 65: received sanitized demonstration payload\n66|event 66: received sanitized demonstration payload\n67|event 67: received sanitized demonstration payload\n68|event 68: received sanitized demonstration payload\n69|event 69: received sanitized demonstration payload\n70|event 70: received sanitized demonstration payload\n71|event 71: received sanitized demonstration payload\n72|event 72: received sanitized demonstration payload\n73|event 73: received sanitized demonstration payload\n74|event 74: received sanitized demonstration payload\n75|event 75: received sanitized demonstration payload\n76|event 76: received sanitized demonstration payload\n77|event 77: received sanitized demonstration payload\n78|event 78: received sanitized demonstration payload\n79|event 79: received sanitized demonstration payload\n80|event 80: received sanitized demonstration payload",
+        "total_lines": 80,
+        "file_size": 4080,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false
+      }
+    },
+    {
+      "id": "read-page",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "offset": 201,
+        "limit": 2
+      },
+      "output": {
+        "content": "201|phase = \"render\"\n202|emit(phase)",
+        "total_lines": 500,
+        "file_size": 7800,
+        "truncated": true,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "hint": "Use offset=203 to continue reading (showing 201-202 of 500 lines)"
+      }
+    },
+    {
+      "id": "read-char-budget",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/data.txt"
+      },
+      "output": {
+        "content": "1|alpha\n2|beta",
+        "total_lines": 900,
+        "file_size": 50000,
+        "truncated": true,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "truncated_by": "bytes",
+        "next_offset": 3,
+        "hint": "Output truncated at the 100,000-char read budget after 2 line(s) (showing lines 1-2 of 900). Use offset=3 to continue."
+      }
+    },
+    {
+      "id": "read-line-clipped",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/wide.txt"
+      },
+      "output": {
+        "content": "1|wide source... [truncated]",
+        "total_lines": 1,
+        "file_size": 12000,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "truncated_lines": true
+      }
+    },
+    {
+      "id": "read-empty",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/empty.txt"
+      },
+      "output": {
+        "content": "",
+        "total_lines": 0,
+        "file_size": 0,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "hint": "File is empty (0 bytes)."
+      }
+    },
+    {
+      "id": "read-beyond-eof",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "offset": 20,
+        "limit": 5
+      },
+      "output": {
+        "content": "",
+        "total_lines": 3,
+        "file_size": 30,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "hint": "Note: offset 20 is beyond the end of the file (3 lines total). Retry with offset <= 3."
+      }
+    },
+    {
+      "id": "read-missing",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/READE.md"
+      },
+      "output": {
+        "content": "",
+        "total_lines": 0,
+        "file_size": 0,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": true,
+        "error": "File not found: /workspace/demo/READE.md",
+        "similar_files": [
+          "/workspace/demo/README.md"
+        ]
+      }
+    },
+    {
+      "id": "read-dedup",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py"
+      },
+      "output": {
+        "status": "unchanged",
+        "message": "Already read this exact file region; the file has not changed. Reuse the previous read_file result.",
+        "path": "/workspace/demo/app.py",
+        "dedup": true,
+        "content_returned": false
+      }
+    },
+    {
+      "id": "read-blocked-repeat",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py"
+      },
+      "output": {
+        "error": "BLOCKED: You have called read_file on this exact region 3 times and the file has NOT changed.",
+        "path": "/workspace/demo/app.py",
+        "already_read": 3,
+        "guardrail_refusal": true
+      }
+    },
+    {
+      "id": "read-special-file",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/input.pipe"
+      },
+      "output": {
+        "success": false,
+        "note": "'/workspace/demo/input.pipe' is a FIFO (named pipe), not a regular file \u2014 reading it would block indefinitely, so no read was attempted."
+      }
+    },
+    {
+      "id": "read-extracted-document",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/guide.pdf"
+      },
+      "output": {
+        "content": "1|[NEEDS OCR: pages 2 of this PDF are scanned images with no text layer \u2014 their content is MISSING below.]\n2|# Guide\n3|Extracted sample text",
+        "total_lines": 3,
+        "file_size": 120000,
+        "truncated": false,
+        "extracted_document": true
+      }
+    },
+    {
+      "id": "read-transcoded",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/windows.txt"
+      },
+      "output": {
+        "content": "1|Hello",
+        "total_lines": 1,
+        "file_size": 12,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "hint": "Transcoded from UTF-16-LE to UTF-8 for display. Text edits via patch/write_file would re-encode as UTF-8."
+      }
+    },
+    {
+      "id": "read-conflicts",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/app.py"
+      },
+      "output": {
+        "content": "1|<<<<<<< ours\n2|name = \"a\"\n3|=======\n4|name = \"b\"\n5|>>>>>>> theirs",
+        "total_lines": 5,
+        "file_size": 68,
+        "truncated": false,
+        "is_binary": false,
+        "is_image": false,
+        "not_found": false,
+        "conflict_blocks": 1,
+        "_hint": "1 unresolved git merge-conflict block(s) (<<<<<<< / ======= / >>>>>>>) in this range. Resolve them before editing around them."
+      }
+    },
+    {
+      "id": "read-binary-refusal",
+      "name": "read_file",
+      "input": {
+        "path": "/workspace/demo/photo.png"
+      },
+      "output": {
+        "error": "Cannot read binary file '/workspace/demo/photo.png' (.png). Use vision_analyze for images, or terminal to inspect binary files."
+      }
+    },
+    {
+      "id": "write-hash-verified",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "content": "print(\"ready\")\n"
+      },
+      "output": {
+        "bytes_written": 15,
+        "dirs_created": true,
+        "verified": true,
+        "lint": {
+          "status": "ok",
+          "output": ""
+        },
+        "resolved_path": "/workspace/demo/app.py",
+        "files_modified": [
+          "/workspace/demo/app.py"
+        ]
+      }
+    },
+    {
+      "id": "write-verification-absent",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/notes.txt",
+        "content": "Demo\n"
+      },
+      "output": {
+        "bytes_written": 5,
+        "dirs_created": true,
+        "lint": {
+          "status": "skipped",
+          "message": "No linter for .txt files"
+        },
+        "resolved_path": "/workspace/demo/notes.txt",
+        "files_modified": [
+          "/workspace/demo/notes.txt"
+        ]
+      }
+    },
+    {
+      "id": "write-empty",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/empty.txt",
+        "content": ""
+      },
+      "output": {
+        "bytes_written": 0,
+        "dirs_created": true,
+        "verified": true,
+        "lint": {
+          "status": "skipped",
+          "message": "No linter for .txt files"
+        },
+        "resolved_path": "/workspace/demo/empty.txt",
+        "files_modified": [
+          "/workspace/demo/empty.txt"
+        ]
+      }
+    },
+    {
+      "id": "write-stale-refusal",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "content": "print(\"replacement\")\n"
+      },
+      "output": {
+        "error": "Refusing to overwrite /workspace/demo/app.py: this task has no current full read/write of the file. The file was NOT modified. Reload the current contents with read_file, merge the requested change, then call write_file again.",
+        "stale_write_blocked": true,
+        "path": "/workspace/demo/app.py",
+        "resolved_path": "/workspace/demo/app.py"
+      }
+    },
+    {
+      "id": "write-input-missing",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.py"
+      },
+      "output": {
+        "error": "write_file: missing required field 'content'. Re-emit the tool call with the full content payload."
+      }
+    },
+    {
+      "id": "write-syntax-refusal",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/config.json",
+        "content": "{\"enabled\":"
+      },
+      "output": {
+        "bytes_written": 0,
+        "dirs_created": false,
+        "error": "Refusing to write '/workspace/demo/config.json': candidate content fails .json syntax validation (Expecting value). The file was NOT created or modified.",
+        "resolved_path": "/workspace/demo/config.json"
+      }
+    },
+    {
+      "id": "write-hash-error",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "content": "print(\"ready\")\n"
+      },
+      "output": {
+        "bytes_written": 0,
+        "dirs_created": false,
+        "error": "Post-write verification failed for /workspace/demo/app.py: on-disk content hash differs from the intended write. The write did not persist correctly \u2014 re-read the file and retry.",
+        "resolved_path": "/workspace/demo/app.py"
+      }
+    },
+    {
+      "id": "write-syntax-findings",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "content": "if True\n  print(\"x\")\n"
+      },
+      "output": {
+        "bytes_written": 21,
+        "dirs_created": true,
+        "verified": true,
+        "lint": {
+          "status": "error",
+          "output": "  File \"/workspace/demo/app.py\", line 1\n    if True\n           ^\nSyntaxError: expected \":\""
+        },
+        "resolved_path": "/workspace/demo/app.py",
+        "files_modified": [
+          "/workspace/demo/app.py"
+        ]
+      }
+    },
+    {
+      "id": "write-semantic-findings",
+      "name": "write_file",
+      "input": {
+        "path": "/workspace/demo/app.ts",
+        "content": "const count: number = \"demo\";\n"
+      },
+      "output": {
+        "bytes_written": 30,
+        "dirs_created": true,
+        "verified": true,
+        "lint": {
+          "status": "skipped",
+          "message": "LSP server handles .ts \u2014 shell linter skipped"
+        },
+        "lsp_diagnostics": "LSP diagnostics introduced by this edit:\n<diagnostics file=\"/workspace/demo/app.ts\">\nERROR [1:7] Type string is not assignable to type number.\n</diagnostics>",
+        "resolved_path": "/workspace/demo/app.ts",
+        "files_modified": [
+          "/workspace/demo/app.ts"
+        ]
+      }
+    },
+    {
+      "id": "patch-replace",
+      "name": "patch",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "old_string": "name = \"old\"",
+        "new_string": "name = \"new\""
+      },
+      "output": {
+        "success": true,
+        "diff": "--- a//workspace/demo/app.py\n+++ b//workspace/demo/app.py\n@@ -1 +1 @@\n-name = \"old\"\n+name = \"new\"\n",
+        "files_modified": [
+          "/workspace/demo/app.py"
+        ],
+        "lint": {
+          "status": "ok",
+          "output": ""
+        },
+        "resolved_path": "/workspace/demo/app.py"
+      }
+    },
+    {
+      "id": "patch-delete-replacement",
+      "name": "patch",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "old_string": "unused = True\n",
+        "new_string": ""
+      },
+      "output": {
+        "success": true,
+        "diff": "--- a//workspace/demo/app.py\n+++ b//workspace/demo/app.py\n@@ -1 +0,0 @@\n-unused = True\n",
+        "files_modified": [
+          "/workspace/demo/app.py"
+        ],
+        "resolved_path": "/workspace/demo/app.py"
+      }
+    },
+    {
+      "id": "patch-no-change",
+      "name": "patch",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "old_string": "name = \"old\"",
+        "new_string": "name = \"new\""
+      },
+      "output": {
+        "success": true,
+        "no_change": true,
+        "note": "File already contains the target text \u2014 the edit appears to be already applied to /workspace/demo/app.py. No write performed; do not re-send this patch.",
+        "files_modified": [
+          "/workspace/demo/app.py"
+        ],
+        "resolved_path": "/workspace/demo/app.py"
+      }
+    },
+    {
+      "id": "patch-not-found",
+      "name": "patch",
+      "input": {
+        "path": "/workspace/demo/app.py",
+        "old_string": "name = \"old\"",
+        "new_string": "name = \"new\""
+      },
+      "output": {
+        "success": false,
+        "error": "Could not find match for old_string in /workspace/demo/app.py",
+        "_hint": "old_string not found. Use read_file to verify the current content, or search_files to locate the text."
+      }
+    },
+    {
+      "id": "patch-v4a",
+      "name": "patch",
+      "input": {
+        "mode": "patch",
+        "patch": "*** Begin Patch\n*** Add File: /workspace/demo/new.py\n+print(\"new\")\n*** Delete File: /workspace/demo/old.py\n*** Update File: /workspace/demo/app.py\n@@\n-name = \"old\"\n+name = \"new\"\n*** End Patch"
+      },
+      "output": {
+        "success": true,
+        "diff": "--- /dev/null\n+++ b//workspace/demo/new.py\n+print(\"new\")\n\n--- a//workspace/demo/old.py\n+++ /dev/null\n@@ -1 +0,0 @@\n-print(\"old\")\n\n--- a//workspace/demo/app.py\n+++ b//workspace/demo/app.py\n@@ -1 +1 @@\n-name = \"old\"\n+name = \"new\"\n",
+        "files_modified": [
+          "/workspace/demo/new.py",
+          "/workspace/demo/old.py",
+          "/workspace/demo/app.py"
+        ],
+        "files_created": [
+          "/workspace/demo/new.py"
+        ],
+        "files_deleted": [
+          "/workspace/demo/old.py"
+        ],
+        "lint": {
+          "/workspace/demo/new.py": {
+            "status": "ok",
+            "output": ""
+          },
+          "/workspace/demo/app.py": {
+            "status": "error",
+            "output": "SyntaxError: unexpected token",
+            "message": "Pre-existing lint errors \u2014 this edit did not introduce new ones but the file is still broken."
+          }
+        }
+      }
+    },
+    {
+      "id": "patch-v4a-partial-failure",
+      "name": "patch",
+      "input": {
+        "mode": "patch",
+        "patch": "*** Begin Patch\n*** Add File: /workspace/demo/new.py\n+print(\"new\")\n*** Delete File: /workspace/demo/old.py\n*** Update File: /workspace/demo/app.py\n@@\n-name = \"old\"\n+name = \"new\"\n*** End Patch"
+      },
+      "output": {
+        "success": false,
+        "error": "Apply phase failed (state may be inconsistent \u2014 run `git diff` to assess):\n  \u2022 Failed to update /workspace/demo/app.py: file changed during patch",
+        "diff": "--- /dev/null\n+++ b//workspace/demo/new.py\n+print(\"new\")",
+        "files_created": [
+          "/workspace/demo/new.py"
+        ],
+        "files_deleted": [
+          "/workspace/demo/old.py"
+        ],
+        "lint": {
+          "/workspace/demo/new.py": {
+            "status": "ok",
+            "output": ""
+          }
+        }
+      }
+    },
+    {
+      "id": "patch-v4a-validation-failure",
+      "name": "patch",
+      "input": {
+        "mode": "patch",
+        "patch": "*** Begin Patch\n*** Add File: /workspace/demo/new.py\n+print(\"new\")\n*** Delete File: /workspace/demo/old.py\n*** Update File: /workspace/demo/app.py\n@@\n-name = \"old\"\n+name = \"new\"\n*** End Patch"
+      },
+      "output": {
+        "success": false,
+        "error": "Patch validation failed (no files were modified):\n  \u2022 /workspace/demo/app.py: Could not find anchor"
+      }
+    },
+    {
+      "id": "search-verbose",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "path": "/workspace/demo",
+        "target": "content",
+        "output_mode": "content",
+        "context": 1
+      },
+      "output": {
+        "total_count": 3,
+        "matches": [
+          {
+            "path": "/workspace/demo/app.py",
+            "line": 1,
+            "content": "# context row"
+          },
+          {
+            "path": "/workspace/demo/app.py",
+            "line": 2,
+            "content": "name = \"demo\""
+          },
+          {
+            "path": "/workspace/demo/app.py",
+            "line": 3,
+            "content": "print(name)"
+          }
+        ]
+      }
+    },
+    {
+      "id": "search-dense",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 5,
+        "matches_format": "path-grouped: each file path on its own line, followed by indented '<line>: <content>' rows for matches in that file",
+        "matches_text": "/workspace/demo/app.py\n  2: name = \"demo\"\n  3: print(name)\n/workspace/demo/test_app.py\n  4: def test_name():\n  5:     assert name == \"demo\"\n  6:     print(name)"
+      }
+    },
+    {
+      "id": "search-files",
+      "name": "search_files",
+      "input": {
+        "pattern": "*.py",
+        "target": "files",
+        "path": "/workspace/demo",
+        "order": "discovery",
+        "limit": 2
+      },
+      "output": {
+        "total_count": 3,
+        "files": [
+          "/workspace/demo/app.py",
+          "/workspace/demo/test_app.py"
+        ],
+        "truncated": true,
+        "total_count_is_lower_bound": true,
+        "_hint": "Results truncated. Use offset=2 to see more, or narrow with a more specific pattern or file_glob."
+      }
+    },
+    {
+      "id": "search-content-files-only",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "target": "content",
+        "output_mode": "files_only",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 2,
+        "files": [
+          "/workspace/demo/app.py",
+          "/workspace/demo/test_app.py"
+        ]
+      }
+    },
+    {
+      "id": "search-counts",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "output_mode": "count",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 5,
+        "counts": {
+          "/workspace/demo/app.py": 2,
+          "/workspace/demo/test_app.py": 3
+        }
+      }
+    },
+    {
+      "id": "search-zero",
+      "name": "search_files",
+      "input": {
+        "pattern": "absent_demo_symbol",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 0
+      }
+    },
+    {
+      "id": "search-zero-warning",
+      "name": "search_files",
+      "input": {
+        "pattern": "first\\nsecond",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 0,
+        "warning": "0 results found. Note: this content search is line-oriented; use context=N to inspect neighboring lines."
+      }
+    },
+    {
+      "id": "search-error",
+      "name": "search_files",
+      "input": {
+        "pattern": "[",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 0,
+        "error": "Search failed: regex parse error: unclosed character class"
+      }
+    },
+    {
+      "id": "search-timeout",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "path": "/workspace/demo",
+        "limit": 50
+      },
+      "output": {
+        "total_count": 1,
+        "matches": [
+          {
+            "path": "/workspace/demo/app.py",
+            "line": 2,
+            "content": "name = \"demo\""
+          }
+        ],
+        "truncated": true,
+        "total_count_is_lower_bound": true,
+        "limit_reason": "search_timeout",
+        "_hint": "Results truncated. Use offset=50 to see more, or narrow with a more specific pattern or file_glob."
+      }
+    },
+    {
+      "id": "search-omitted",
+      "name": "search_files",
+      "input": {
+        "pattern": "token",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "total_count": 3,
+        "matches": [
+          {
+            "path": "/workspace/demo/docs.md",
+            "line": 4,
+            "content": "Use a demo token only."
+          }
+        ],
+        "_omitted": "2 result(s) omitted because they target credential, token, cache, or secret-bearing environment files."
+      }
+    },
+    {
+      "id": "search-multi-root-warning",
+      "name": "search_files",
+      "input": {
+        "pattern": "*.py",
+        "target": "files",
+        "path": "/workspace/demo, /workspace/missing"
+      },
+      "output": {
+        "total_count": 1,
+        "files": [
+          "/workspace/demo/app.py"
+        ],
+        "warning": "path contained 2 entries; searched 1 that exist; skipped missing: /workspace/missing"
+      }
+    },
+    {
+      "id": "search-blocked-repeat",
+      "name": "search_files",
+      "input": {
+        "pattern": "name",
+        "path": "/workspace/demo"
+      },
+      "output": {
+        "error": "BLOCKED: You have run this exact search 4 times in a row. The results have NOT changed. STOP re-searching and proceed with your task.",
+        "pattern": "name",
+        "already_searched": 4,
+        "guardrail_refusal": true
+      }
+    },
+    {
+      "id": "terminal_short",
+      "name": "terminal",
+      "input": {
+        "command": "python3 --version",
+        "workdir": "/workspace",
+        "timeout": 180
+      },
+      "output": {
+        "output": "Python 3.12.7",
+        "exit_code": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "terminal_empty",
+      "name": "terminal",
+      "input": {
+        "command": "mkdir -p artifacts"
+      },
+      "output": {
+        "output": "",
+        "exit_code": 0,
+        "error": null
+      }
+    },
+    {
+      "id": "terminal_no_matches",
+      "name": "terminal",
+      "input": {
+        "command": "rg \"unreachable_example\" src"
+      },
+      "output": {
+        "output": "",
+        "exit_code": 1,
+        "error": null,
+        "exit_code_meaning": "No matches found (not an error)"
+      }
+    },
+    {
+      "id": "terminal_degraded",
+      "name": "terminal",
+      "input": {
+        "command": "ls -la /workspace"
+      },
+      "output": {
+        "output": "",
+        "exit_code": -1,
+        "status": "degraded",
+        "reason": "SSH host unavailable",
+        "retry_hint": "Check the configured SSH host and retry.",
+        "error": "Terminal backend degraded: SSH host unavailable"
+      }
+    },
+    {
+      "id": "terminal_background_launch",
+      "name": "terminal",
+      "input": {
+        "command": "python3 -m http.server 8080",
+        "background": true,
+        "workdir": "/workspace",
+        "notify": [
+          "Serving HTTP"
+        ]
+      },
+      "output": {
+        "output": "Background process started",
+        "session_id": "proc_study_1",
+        "pid": 4217,
+        "exit_code": 0,
+        "error": null,
+        "watch_patterns": [
+          "Serving HTTP"
+        ]
+      }
+    },
+    {
+      "id": "terminal_yielded",
+      "name": "terminal",
+      "input": {
+        "command": "python3 generate_catalog.py",
+        "timeout": 180
+      },
+      "output": {
+        "output": "Prepared 120 entries\nWriting catalog\u2026",
+        "exit_code": null,
+        "error": null,
+        "status": "yielded_to_background",
+        "session_id": "proc_study_2",
+        "pid": 4240,
+        "notify_on_complete": true,
+        "note": "Command yielded to the background; retrieve its result with process(action='poll') or process(action='wait')."
+      }
+    },
+    {
+      "id": "terminal_spill",
+      "name": "terminal",
+      "input": {
+        "command": "python3 export_rows.py",
+        "workdir": "/workspace"
+      },
+      "output": {
+        "output": "row_id,title\n1,First item\n[... output truncated: middle omitted ...]\n50000,Last item",
+        "exit_code": 0,
+        "error": null,
+        "output_total_chars": 2800000,
+        "full_output_path": "/home/hermes/.hermes/cache/terminal/output-study.txt",
+        "truncation_note": "Output exceeded the capture window (head+tail shown). Full output (2,800,000 chars) saved to /home/hermes/.hermes/cache/terminal/output-study.txt \u2014 search it with search_files or page it with read_file instead of re-running the command."
+      }
+    },
+    {
+      "id": "terminal_options_ignored",
+      "name": "terminal",
+      "input": {
+        "command": "python3 build_report.py",
+        "background": true,
+        "pty": true,
+        "notify": true,
+        "heartbeat": 60,
+        "persist_on_release": true
+      },
+      "output": {
+        "output": "Background process started",
+        "session_id": "proc_study_3",
+        "pid": 4270,
+        "exit_code": 0,
+        "error": null,
+        "persist_on_release": true,
+        "notify_on_complete": false,
+        "notify_unsupported": "This session cannot receive asynchronous process notifications; retrieve its result with process poll or wait.",
+        "heartbeat_ignored": "heartbeat needs notify=true delivery, which this session cannot receive"
+      }
+    },
+    {
+      "id": "code_short",
+      "name": "execute_code",
+      "input": {
+        "code": "from statistics import mean\nprint(mean([20, 25, 30]))",
+        "reset": true
+      },
+      "output": {
+        "status": "success",
+        "output": "25\n",
+        "exit_code": 0,
+        "tool_calls_made": 0,
+        "duration_seconds": 0.03,
+        "kernel": {
+          "mode": "session",
+          "reused": false,
+          "execution_count": 1,
+          "state_reset": true
+        },
+        "stdout_truncated": false,
+        "stdout_bytes_captured": 3,
+        "stdout_bytes_total": 3,
+        "stdout_bytes_omitted": 0
+      }
+    },
+    {
+      "id": "code_helper_failure",
+      "name": "execute_code",
+      "input": {
+        "code": "from hermes_tools import read_file\nresult = read_file(\"/workspace/missing.txt\")\nprint(\"Lookup finished\")"
+      },
+      "output": {
+        "status": "success",
+        "output": "Lookup finished\n",
+        "exit_code": 0,
+        "tool_calls_made": 1,
+        "duration_seconds": 0.08,
+        "kernel": {
+          "mode": "session",
+          "reused": true,
+          "execution_count": 2,
+          "state_reset": false
+        },
+        "stdout_truncated": false,
+        "stdout_bytes_captured": 16,
+        "stdout_bytes_total": 16,
+        "stdout_bytes_omitted": 0,
+        "tool_errors": [
+          {
+            "tool": "read_file",
+            "error": "File not found: /workspace/missing.txt"
+          }
+        ]
+      }
+    },
+    {
+      "id": "code_exception",
+      "name": "execute_code",
+      "input": {
+        "code": "records = []\nprint(records[0])"
+      },
+      "output": {
+        "status": "error",
+        "output": "\n--- stderr ---\nTraceback (most recent call last):\n  File \"<cell>\", line 2, in <module>\nIndexError: list index out of range\n",
+        "exit_code": 1,
+        "error": "Traceback (most recent call last):\n  File \"<cell>\", line 2, in <module>\nIndexError: list index out of range\n",
+        "tool_calls_made": 0,
+        "duration_seconds": 0.03,
+        "kernel": {
+          "mode": "session",
+          "reused": true,
+          "execution_count": 3,
+          "state_reset": false
+        },
+        "stdout_truncated": false,
+        "stdout_bytes_captured": 0,
+        "stdout_bytes_total": 0,
+        "stdout_bytes_omitted": 0
+      }
+    },
+    {
+      "id": "code_timeout_remote",
+      "name": "execute_code",
+      "input": {
+        "code": "import time\ntime.sleep(600)"
+      },
+      "output": {
+        "status": "timeout",
+        "output": "\u23f0 Cell timed out after 120s; the remote session kernel was killed and its state was lost. The next call starts fresh.",
+        "error": "Cell timed out after 120s; the remote session kernel was killed and its state was lost. The next call starts fresh.",
+        "tool_calls_made": 0,
+        "duration_seconds": 120.0,
+        "kernel": {
+          "reused": true,
+          "remote": true,
+          "ended": true,
+          "state_lost": true,
+          "note": "Cell timed out; the remote session kernel was killed and its state was lost. The next call starts a fresh kernel."
+        },
+        "stdout_truncated": false,
+        "stdout_bytes_captured": 0,
+        "stdout_bytes_total": 0,
+        "stdout_bytes_omitted": 0
+      }
+    },
+    {
+      "id": "code_guard_refusal",
+      "name": "execute_code",
+      "input": {
+        "code": "import subprocess\nsubprocess.run([\"systemctl\", \"restart\", \"hermes\"])"
+      },
+      "output": {
+        "status": "error",
+        "error": "execute_code blocked by approval guard.",
+        "tool_calls_made": 0,
+        "duration_seconds": 0,
+        "user_summary": "The server did not approve this code."
+      }
+    },
+    {
+      "id": "code_spill",
+      "name": "execute_code",
+      "input": {
+        "code": "for row in rows:\n    print(row)"
+      },
+      "output": {
+        "status": "success",
+        "output": "First record\n[... middle omitted ...]\nLast record\n",
+        "exit_code": 0,
+        "tool_calls_made": 0,
+        "duration_seconds": 0.5,
+        "kernel": {
+          "mode": "session",
+          "reused": true,
+          "execution_count": 4,
+          "state_reset": false
+        },
+        "stdout_truncated": true,
+        "stdout_bytes_captured": 50000,
+        "stdout_bytes_total": 280000,
+        "stdout_bytes_omitted": 230000,
+        "stdout_spill_path": "/home/hermes/.hermes/cache/exec/stdout-study.txt",
+        "warning": "execute_code stdout was truncated (head/tail shown); the script did run. FULL output saved to /home/hermes/.hermes/cache/exec/stdout-study.txt \u2014 page it with read_file instead of re-running."
+      }
+    },
+    {
+      "id": "browser_native_screenshot",
+      "name": "browser_exec",
+      "input": {
+        "code": "# Inspecting the documentation navigation\nnew_tab(\"https://example.org/docs\")\nprint(page_info())\ncapture_screenshot()",
+        "session": "docs",
+        "timeout_s": 300
+      },
+      "output": {
+        "_multimodal": true,
+        "text_summary": "{\"success\": true, \"exit_code\": 0, \"output\": \"Title: Example documentation\\nURL: https://example.org/docs\\nScreenshot saved: /workspace/screenshots/docs.png\\n\", \"workspace\": \"/workspace/browser\", \"session\": \"docs\", \"screenshot_path\": \"/workspace/screenshots/docs.png\"}",
+        "meta": {
+          "screenshot_path": "/workspace/screenshots/docs.png",
+          "native_vision": true
+        },
+        "content": [
+          {
+            "type": "text",
+            "text": "{\"success\": true, \"exit_code\": 0, \"output\": \"Title: Example documentation\\nURL: https://example.org/docs\\nScreenshot saved: /workspace/screenshots/docs.png\\n\", \"workspace\": \"/workspace/browser\", \"session\": \"docs\", \"screenshot_path\": \"/workspace/screenshots/docs.png\"}\n\nThe screenshot from this call is attached \u2014 inspect it with your native vision."
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "browser_stderr_truncated",
+      "name": "browser_exec",
+      "input": {
+        "code": "# Reading the current page\nprint(page_info())",
+        "timeout_s": 300
+      },
+      "output": {
+        "success": false,
+        "exit_code": 1,
+        "output": "",
+        "workspace": "/workspace/browser",
+        "stderr": "Navigation failed: net::ERR_NAME_NOT_RESOLVED\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\nretry diagnostic\n\n\u2026 (stderr truncated)"
+      }
+    },
+    {
+      "id": "browser_timeout",
+      "name": "browser_exec",
+      "input": {
+        "code": "# Waiting for the report export\nwait_for_load()\nprint(page_info())",
+        "session": "reports",
+        "timeout_s": 300
+      },
+      "output": {
+        "error": "browser-use exec timed out after 300s. The daemon may still be working; retry with a larger timeout_s (max 1800), or split the work into several calls that append to workspace files \u2014 anything already written to the workspace is preserved."
+      }
+    },
+    {
+      "id": "image_fal",
+      "name": "image_generate",
+      "input": {
+        "prompt": "A calm ink illustration of a crane above a pale blue lake.",
+        "aspect_ratio": "landscape",
+        "upscale": false
+      },
+      "output": {
+        "success": true,
+        "image": "https://images.example.org/generated/crane.png",
+        "modality": "text",
+        "upscaled": false
+      }
+    },
+    {
+      "id": "image_edit_codex",
+      "name": "image_generate",
+      "input": {
+        "prompt": "Keep the crane silhouette and change the lake to warm twilight.",
+        "aspect_ratio": "landscape",
+        "image_url": "/workspace/references/crane.png",
+        "reference_image_urls": [
+          "https://images.example.org/references/twilight.jpg"
+        ]
+      },
+      "output": {
+        "success": true,
+        "image": "/home/hermes/.hermes/cache/generated/images/openai_codex_study.png",
+        "model": "gpt-image-2-medium",
+        "prompt": "Keep the crane silhouette and change the lake to warm twilight.",
+        "aspect_ratio": "landscape",
+        "modality": "image",
+        "provider": "openai-codex",
+        "size": "1536x1024",
+        "quality": "medium",
+        "input_image_count": 2,
+        "requested_size": "1536x1024",
+        "pixel_size": "1536x1024",
+        "reported_quality": "medium",
+        "reported_size": "1536x1024",
+        "imagegen_request_id": "study_request_1",
+        "host_image": "/home/hermes/.hermes/cache/generated/images/openai_codex_study.png",
+        "agent_visible_image": "/root/.hermes/cache/generated/images/openai_codex_study.png"
+      }
+    },
+    {
+      "id": "image_multiple_api",
+      "name": "image_generate",
+      "input": {
+        "prompt": "A compact monochrome product illustration for a notebook.",
+        "aspect_ratio": "square"
+      },
+      "output": {
+        "success": true,
+        "image": "/home/hermes/.hermes/cache/generated/images/product-1.png",
+        "model": "qwen/qwen-image-3-pro",
+        "prompt": "A compact monochrome product illustration for a notebook.",
+        "aspect_ratio": "square",
+        "modality": "text",
+        "provider": "openrouter",
+        "endpoint": "images/generations",
+        "exact_aspect_ratio": "1:1",
+        "n": 3,
+        "additional_images": [
+          "/home/hermes/.hermes/cache/generated/images/product-2.png",
+          "/home/hermes/.hermes/cache/generated/images/product-3.png"
+        ],
+        "resolution": "1K",
+        "notes": [
+          "'background' is not supported by this model; dropped"
+        ],
+        "cost_usd": 0.12,
+        "total_tokens": 2180
+      }
+    },
+    {
+      "id": "image_error",
+      "name": "image_generate",
+      "input": {
+        "prompt": "An ink crane beside a lake.",
+        "aspect_ratio": "square"
+      },
+      "output": {
+        "success": false,
+        "image": null,
+        "error": "No images were generated",
+        "error_type": "ValueError"
+      }
+    },
+    {
+      "id": "image_revised_prompt",
+      "name": "image_generate",
+      "input": {
+        "prompt": "An ink crane beside a lake.",
+        "aspect_ratio": "square"
+      },
+      "output": {
+        "success": true,
+        "image": "/home/hermes/.hermes/cache/generated/images/openai_study.png",
+        "model": "gpt-image-2-medium",
+        "prompt": "An ink crane beside a lake.",
+        "aspect_ratio": "square",
+        "modality": "text",
+        "provider": "openai",
+        "size": "1024x1024",
+        "quality": "medium",
+        "revised_prompt": "A graceful crane beside a still lake, drawn with black ink and spare brush strokes on textured paper."
+      }
+    },
+    {
+      "id": "vision_native",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": {
+        "_multimodal": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Image loaded into your context \u2014 you can see it natively now. Use your built-in vision to answer the user.\n\nQuestion: Which label is difficult to read in this chart?"
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            }
+          }
+        ],
+        "text_summary": "Image attached natively for the main model (148.0 KB). Answer using built-in vision.",
+        "meta": {
+          "image_url": "/workspace/charts/revenue.png",
+          "size_bytes": 151552,
+          "native_vision": true
+        }
+      }
+    },
+    {
+      "id": "vision_native_no_args",
+      "name": "vision_analyze",
+      "input": null,
+      "output": {
+        "_multimodal": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Image loaded into your context \u2014 you can see it natively now. Use your built-in vision to answer the user."
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            }
+          }
+        ],
+        "text_summary": "Image attached natively for the main model (148.0 KB). Answer using built-in vision.",
+        "meta": {
+          "image_url": "/workspace/charts/revenue.png",
+          "size_bytes": 151552,
+          "native_vision": true
+        }
+      }
+    },
+    {
+      "id": "vision_already_in_context",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": {
+        "success": true,
+        "already_in_context": true,
+        "message": "This image is already attached natively to the current user message \u2014 you can see it now. Answer with your built-in vision; pass a `region` to zoom into part of it."
+      }
+    },
+    {
+      "id": "vision_aux_crop_analysis",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "https://images.example.org/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?",
+        "region": [
+          480,
+          240,
+          960,
+          560
+        ]
+      },
+      "output": {
+        "success": true,
+        "analysis": "[Analysis was performed on a cropped region of the original image starting at offset (480, 240); coordinates are relative to that crop origin \u2014 add the offset to map back to the full image.] ## Readability\n\nThe **Q4 total** label overlaps the right-hand grid line.\n\n- Move the label eight pixels left.\n- Increase the contrast of the annotation.",
+        "scale_note": "Analysis was performed on a cropped region of the original image starting at offset (480, 240); coordinates are relative to that crop origin \u2014 add the offset to map back to the full image."
+      }
+    },
+    {
+      "id": "vision_aux_failure",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": {
+        "success": false,
+        "error": "Error analyzing image: image format is not supported",
+        "analysis": "The image could not be analyzed. Convert it to a supported raster format and try again."
+      }
+    },
+    {
+      "id": "vision_empty_aux_receipt",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": {
+        "success": true,
+        "analysis": "There was a problem with the request and the image could not be analyzed."
+      }
+    },
+    {
+      "id": "vision_saved_literal_receipt",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": "Image attached natively for the main model (148.0 KB). Answer using built-in vision."
+    },
+    {
+      "id": "vision_native_crop",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/revenue.png",
+        "question": "Read the Q4 total.",
+        "region": [
+          480,
+          240,
+          960,
+          560
+        ]
+      },
+      "output": {
+        "_multimodal": true,
+        "content": [
+          {
+            "type": "text",
+            "text": "Image loaded into your context \u2014 you can see it natively now. Use your built-in vision to answer the user.\n\nQuestion: Read the Q4 total.\n\nNote: Analysis was performed on a cropped region of the original image starting at offset (480, 240); coordinates are relative to that crop origin \u2014 add the offset to map back to the full image."
+          },
+          {
+            "type": "image_url",
+            "image_url": {
+              "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
+            }
+          }
+        ],
+        "text_summary": "Image attached natively for the main model (48.0 KB). Answer using built-in vision.",
+        "meta": {
+          "image_url": "/workspace/charts/revenue.png",
+          "size_bytes": 49152,
+          "native_vision": true
+        }
+      }
+    },
+    {
+      "id": "vision_native_error",
+      "name": "vision_analyze",
+      "input": {
+        "image_url": "/workspace/charts/missing.png",
+        "question": "Which label is difficult to read in this chart?"
+      },
+      "output": {
+        "error": "Image file not found: /workspace/charts/missing.png",
+        "success": false
+      }
+    },
+    {
+      "id": "terminal_pending_approval",
+      "name": "terminal",
+      "input": {
+        "command": "rm /workspace/old-output.txt"
+      },
+      "output": {
+        "output": "",
+        "exit_code": -1,
+        "error": "",
+        "status": "pending_approval",
+        "approval_pending": true,
+        "command": "rm /workspace/old-output.txt",
+        "description": "File deletion",
+        "pattern_key": "rm",
+        "smart_denied": false,
+        "allow_permanent": true
+      }
+    },
+    {
+      "id": "navigate_snapshot",
+      "name": "browser_navigate",
+      "input": {
+        "url": "https://example.org/account"
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "snapshot": "- heading \"Account settings\" [level=1]\n- textbox \"Display name\" [ref=e1]: Mira Tan\n- button \"Save changes\" [ref=e2]\n- link \"Privacy\" [ref=e3]",
+        "element_count": 3
+      }
+    },
+    {
+      "id": "navigate_redirect",
+      "name": "browser_navigate",
+      "input": {
+        "url": "https://example.org/login"
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/account",
+        "title": "Account settings"
+      }
+    },
+    {
+      "id": "navigate_bot_warning",
+      "name": "browser_navigate",
+      "input": {
+        "url": "https://example.org/data"
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/data",
+        "title": "Just a moment",
+        "snapshot": "- heading \"Checking your browser\" [level=1]",
+        "element_count": 0,
+        "bot_detection_warning": "Page title 'Just a moment' suggests bot detection. The site may have blocked this request."
+      }
+    },
+    {
+      "id": "navigate_camofox_rewrite",
+      "name": "browser_navigate",
+      "input": {
+        "url": "http://localhost:3000"
+      },
+      "output": {
+        "success": true,
+        "url": "http://host.docker.internal:3000",
+        "title": "Local dashboard",
+        "requested_url": "http://localhost:3000",
+        "url_rewrite": {
+          "from": "localhost",
+          "to": "host.docker.internal",
+          "original_url": "http://localhost:3000",
+          "rewritten_url": "http://host.docker.internal:3000"
+        },
+        "warning": "Rewrote loopback URL for Docker-hosted Camofox: localhost \u2192 host.docker.internal.",
+        "snapshot": "- button \"Start\" [e1]",
+        "element_count": 1
+      }
+    },
+    {
+      "id": "navigate_failure",
+      "name": "browser_navigate",
+      "input": {
+        "url": "https://example.org/offline"
+      },
+      "output": {
+        "success": false,
+        "error": "Navigation failed: net::ERR_NAME_NOT_RESOLVED"
+      }
+    },
+    {
+      "id": "navigate_policy",
+      "name": "browser_navigate",
+      "input": {
+        "url": "https://blocked.example.org"
+      },
+      "output": {
+        "success": false,
+        "error": "Website access denied by configured policy",
+        "blocked_by_policy": {
+          "host": "blocked.example.org",
+          "rule": "*.example.org",
+          "source": "config"
+        }
+      }
+    },
+    {
+      "id": "snapshot_compact",
+      "name": "browser_snapshot",
+      "input": {
+        "full": false
+      },
+      "output": {
+        "success": true,
+        "snapshot": "- heading \"Account settings\" [level=1]\n- textbox \"Display name\" [ref=e1]: Mira Tan\n- button \"Save changes\" [ref=e2]\n- link \"Privacy\" [ref=e3]",
+        "element_count": 3
+      }
+    },
+    {
+      "id": "snapshot_empty",
+      "name": "browser_snapshot",
+      "input": {},
+      "output": {
+        "success": true,
+        "snapshot": "",
+        "element_count": 0
+      }
+    },
+    {
+      "id": "snapshot_truncated",
+      "name": "browser_snapshot",
+      "input": {
+        "full": true
+      },
+      "output": {
+        "success": true,
+        "snapshot": "- button \"Option 1\" [ref=e1]\n- button \"Option 2\" [ref=e2]\n- button \"Option 3\" [ref=e3]\n- button \"Option 4\" [ref=e4]\n- button \"Option 5\" [ref=e5]\n- button \"Option 6\" [ref=e6]\n- button \"Option 7\" [ref=e7]\n- button \"Option 8\" [ref=e8]\n- button \"Option 9\" [ref=e9]\n- button \"Option 10\" [ref=e10]\n- button \"Option 11\" [ref=e11]\n- button \"Option 12\" [ref=e12]\n- button \"Option 13\" [ref=e13]\n- button \"Option 14\" [ref=e14]\n- button \"Option 15\" [ref=e15]\n- button \"Option 16\" [ref=e16]\n- button \"Option 17\" [ref=e17]\n- button \"Option 18\" [ref=e18]\n- button \"Option 19\" [ref=e19]\n- button \"Option 20\" [ref=e20]\n- button \"Option 21\" [ref=e21]\n- button \"Option 22\" [ref=e22]\n- button \"Option 23\" [ref=e23]\n- button \"Option 24\" [ref=e24]\n- button \"Option 25\" [ref=e25]\n- button \"Option 26\" [ref=e26]\n- button \"Option 27\" [ref=e27]\n- button \"Option 28\" [ref=e28]\n- button \"Option 29\" [ref=e29]\n\n[... 800 more lines truncated \u2014 full snapshot: read_file path=\"/workspace/cache/web/browser-snapshot-1234567890.txt\" offset=30 limit=200]",
+        "element_count": 829
+      }
+    },
+    {
+      "id": "snapshot_store_failed",
+      "name": "browser_snapshot",
+      "input": {
+        "full": true
+      },
+      "output": {
+        "success": true,
+        "snapshot": "- button \"Option 1\" [ref=e1]\n- button \"Option 2\" [ref=e2]\n- button \"Option 3\" [ref=e3]\n- button \"Option 4\" [ref=e4]\n- button \"Option 5\" [ref=e5]\n- button \"Option 6\" [ref=e6]\n- button \"Option 7\" [ref=e7]\n- button \"Option 8\" [ref=e8]\n- button \"Option 9\" [ref=e9]\n- button \"Option 10\" [ref=e10]\n- button \"Option 11\" [ref=e11]\n- button \"Option 12\" [ref=e12]\n- button \"Option 13\" [ref=e13]\n- button \"Option 14\" [ref=e14]\n- button \"Option 15\" [ref=e15]\n- button \"Option 16\" [ref=e16]\n- button \"Option 17\" [ref=e17]\n- button \"Option 18\" [ref=e18]\n- button \"Option 19\" [ref=e19]\n- button \"Option 20\" [ref=e20]\n- button \"Option 21\" [ref=e21]\n- button \"Option 22\" [ref=e22]\n- button \"Option 23\" [ref=e23]\n- button \"Option 24\" [ref=e24]\n- button \"Option 25\" [ref=e25]\n- button \"Option 26\" [ref=e26]\n- button \"Option 27\" [ref=e27]\n- button \"Option 28\" [ref=e28]\n- button \"Option 29\" [ref=e29]\n\n[... 800 more lines truncated, use browser_snapshot for full content]",
+        "element_count": 829
+      }
+    },
+    {
+      "id": "snapshot_dialogs",
+      "name": "browser_snapshot",
+      "input": {},
+      "output": {
+        "success": true,
+        "snapshot": "- button \"Delete draft\" [ref=e1]",
+        "element_count": 1,
+        "pending_dialogs": [
+          {
+            "id": "dialog-1",
+            "type": "confirm",
+            "message": "Delete this draft?",
+            "default_prompt": "",
+            "opened_at": 1791446400.0,
+            "frame_id": null
+          }
+        ],
+        "recent_dialogs": [
+          {
+            "id": "dialog-0",
+            "type": "alert",
+            "message": "Draft loaded",
+            "opened_at": 1791446390.0,
+            "closed_at": 1791446391.0,
+            "closed_by": "auto_policy",
+            "frame_id": null
+          }
+        ],
+        "frame_tree": {
+          "top": {
+            "frame_id": "frame-1",
+            "url": "https://example.org/drafts",
+            "origin": "https://example.org",
+            "is_oopif": false
+          },
+          "children": [],
+          "truncated": false
+        }
+      }
+    },
+    {
+      "id": "snapshot_frame_partial",
+      "name": "browser_snapshot",
+      "input": {},
+      "output": {
+        "success": true,
+        "snapshot": "- button \"Continue\" [ref=e1]",
+        "element_count": 1,
+        "pending_dialogs": [],
+        "frame_tree": {
+          "top": null,
+          "children": [],
+          "truncated": true
+        }
+      }
+    },
+    {
+      "id": "snapshot_failure",
+      "name": "browser_snapshot",
+      "input": {},
+      "output": {
+        "success": false,
+        "error": "Failed to get snapshot: browser session is not initialized"
+      }
+    },
+    {
+      "id": "stale_screenshot_id",
+      "name": "browser_take_screenshot",
+      "input": {},
+      "output": {
+        "error": "Unknown tool: browser_take_screenshot"
+      }
+    },
+    {
+      "id": "click_ack",
+      "name": "browser_click",
+      "input": {
+        "ref": "e2"
+      },
+      "output": {
+        "success": true,
+        "clicked": "@e2"
+      }
+    },
+    {
+      "id": "click_camofox",
+      "name": "browser_click",
+      "input": {
+        "ref": "@e2"
+      },
+      "output": {
+        "success": true,
+        "clicked": "e2",
+        "url": "https://example.org/account"
+      }
+    },
+    {
+      "id": "click_human_control",
+      "name": "browser_click",
+      "input": {
+        "ref": "@e2"
+      },
+      "output": {
+        "success": false,
+        "error": "The human currently controls the browser. Try again after control is returned.",
+        "code": "human_has_control"
+      }
+    },
+    {
+      "id": "click_fallback",
+      "name": "browser_click",
+      "input": {
+        "ref": "@e2"
+      },
+      "output": {
+        "success": true,
+        "clicked": "@e2",
+        "fallback_warning": "\u26a0 Lightpanda fallback: Chrome was used for this browser action. The initial click failed.",
+        "browser_engine": "chrome",
+        "browser_engine_fallback": {
+          "from": "lightpanda",
+          "to": "chrome",
+          "reason": "The initial click failed."
+        }
+      }
+    },
+    {
+      "id": "stale_fill_id",
+      "name": "browser_fill",
+      "input": {
+        "ref": "@e1",
+        "text": "Mira"
+      },
+      "output": {
+        "error": "Unknown tool: browser_fill"
+      }
+    },
+    {
+      "id": "type_value",
+      "name": "browser_type",
+      "input": {
+        "ref": "e1",
+        "text": "Mira Tan"
+      },
+      "output": {
+        "success": true,
+        "typed": "Mira Tan",
+        "element": "@e1"
+      }
+    },
+    {
+      "id": "type_clear",
+      "name": "browser_type",
+      "input": {
+        "ref": "@e1",
+        "text": ""
+      },
+      "output": {
+        "success": true,
+        "typed": "",
+        "element": "@e1"
+      }
+    },
+    {
+      "id": "type_redacted",
+      "name": "browser_type",
+      "input": {
+        "ref": "@e1",
+        "text": "[REDACTED]"
+      },
+      "output": {
+        "success": true,
+        "typed": "[REDACTED]",
+        "element": "@e1"
+      }
+    },
+    {
+      "id": "type_failure",
+      "name": "browser_type",
+      "input": {
+        "ref": "@e1",
+        "text": "Mira Tan"
+      },
+      "output": {
+        "success": false,
+        "error": "Element @e1 not found"
+      }
+    },
+    {
+      "id": "search_sources",
+      "name": "web_search",
+      "input": {
+        "query": "account privacy preferences",
+        "limit": 2
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": [
+            {
+              "title": "Account privacy guide",
+              "url": "https://example.org/privacy",
+              "description": "Control which account details are visible and update your privacy preferences.",
+              "position": 1
+            },
+            {
+              "title": "Profile settings",
+              "url": "https://docs.example.org/profile",
+              "description": "Change the name displayed to other members.",
+              "position": 2
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_missing_excerpt",
+      "name": "web_search",
+      "input": {
+        "query": "account guide"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": [
+            {
+              "title": "Account guide",
+              "url": "https://example.org/guide",
+              "description": "",
+              "position": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_unsupported_link",
+      "name": "web_search",
+      "input": {
+        "query": "help page"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": [
+            {
+              "title": "Help",
+              "url": "javascript:alert(1)",
+              "description": "A returned excerpt.",
+              "position": 1
+            }
+          ]
+        }
+      }
+    },
+    {
+      "id": "search_empty",
+      "name": "web_search",
+      "input": {
+        "query": "rare phrase"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": []
+        }
+      }
+    },
+    {
+      "id": "search_rescued",
+      "name": "web_search",
+      "input": {
+        "query": "account privacy"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": [
+            {
+              "title": "Account privacy guide",
+              "url": "https://example.org/privacy",
+              "description": "Control which account details are visible and update your privacy preferences.",
+              "position": 1
+            }
+          ],
+          "rescued_from": "tavily",
+          "backend_error": "Configured backend 'tavily' failed this call (timeout); results served by the keyless tier. The next call will try the configured backend again."
+        }
+      }
+    },
+    {
+      "id": "search_failure",
+      "name": "web_search",
+      "input": {
+        "query": "account privacy"
+      },
+      "output": {
+        "success": false,
+        "error": "No web search provider configured. Run `hermes tools` to set one up."
+      }
+    },
+    {
+      "id": "extract_markdown",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/privacy"
+        ],
+        "char_limit": 2000
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/privacy",
+            "title": "Account privacy",
+            "content": "# Account privacy\n\nChoose who can see your profile.\n\n- Members\n- Only you\n",
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_mixed_failure",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/privacy",
+          "http://127.0.0.1/private"
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/privacy",
+            "title": "Account privacy",
+            "content": "# Account privacy\n\nChoose who can see your profile.",
+            "error": null
+          },
+          {
+            "url": "http://127.0.0.1/private",
+            "title": "",
+            "content": "",
+            "error": "Blocked: URL targets a private or internal network address"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_truncated",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/privacy"
+        ],
+        "char_limit": 2000
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/privacy",
+            "title": "Account privacy",
+            "content": "# Account privacy\n\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\nProfiles support visibility settings.\n\n\n[... middle omitted \u2014 see footer ...]\n\n## Contacts\n\nChoose who can message you.\n\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500 [TRUNCATED] \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\nShowing 1,500 chars (head) + 500 chars (tail) of 22,000 total clean characters.\nFull text saved to: /workspace/cache/web/example-org-0123456789.md\nTo read the omitted middle: read_file path=\"/workspace/cache/web/example-org-0123456789.md\" offset=44 limit=200  (the file is the complete page; raise/lower offset to page through it).\n\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500",
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_placeholders",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/article"
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/article",
+            "title": "Illustrated article",
+            "content": "# Illustrated article\n\n[IMAGE: Profile settings panel]\n\n[Original image](https://example.org/images/profile.png)",
+            "error": null
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_policy",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://blocked.example.org"
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://blocked.example.org",
+            "title": "",
+            "content": "",
+            "error": "Website access denied by configured policy",
+            "blocked_by_policy": {
+              "host": "blocked.example.org",
+              "rule": "*.example.org",
+              "source": "config"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_binary",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/archive.zip"
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/archive.zip",
+            "title": "",
+            "content": "",
+            "error": "URL returned binary content (ZIP), not a page. Download it with the terminal (curl -L -o) and use read_file (SQLite/Office/PDF auto-extract) or terminal utilities on the file."
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_timeout",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/slow"
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "url": "https://example.org/slow",
+            "title": "",
+            "content": "",
+            "error": "Extract timed out after 120s via firecrawl"
+          }
+        ]
+      }
+    },
+    {
+      "id": "extract_whole_call_failure",
+      "name": "web_extract",
+      "input": {
+        "urls": [
+          "https://example.org/private-token"
+        ]
+      },
+      "output": {
+        "success": false,
+        "error": "Blocked: URL contains what appears to be an API key or token. Secrets must not be sent in URLs."
+      }
+    },
+    {
+      "id": "preview_open",
+      "name": "desktop_preview",
+      "input": {
+        "action": "open",
+        "url": "example.org",
+        "label": "Account guide"
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org",
+        "label": "Account guide"
+      }
+    },
+    {
+      "id": "preview_close_all",
+      "name": "desktop_preview",
+      "input": {
+        "action": "close"
+      },
+      "output": {
+        "success": true,
+        "closed": "all"
+      }
+    },
+    {
+      "id": "preview_read_page",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read",
+        "start": 0,
+        "count": 120
+      },
+      "output": {
+        "kind": "url",
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "text": "Account settings\nDisplay name\nMira Tan\nSave changes",
+        "start": 0,
+        "end": 51,
+        "total_chars": 51
+      }
+    },
+    {
+      "id": "preview_read_partial",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read",
+        "start": 120,
+        "count": 40
+      },
+      "output": {
+        "kind": "url",
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "text": "Your account privacy preferences are here",
+        "start": 120,
+        "end": 160,
+        "total_chars": 800
+      }
+    },
+    {
+      "id": "preview_read_file_identity",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read"
+      },
+      "output": {
+        "kind": "file",
+        "url": "file:///workspace/report.md",
+        "path": "/workspace/report.md",
+        "title": "report.md",
+        "text": "",
+        "start": 0,
+        "end": 0,
+        "total_chars": 0,
+        "note": "File preview \u2014 read the file itself with read_file."
+      }
+    },
+    {
+      "id": "preview_read_unready",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read"
+      },
+      "output": {
+        "kind": "url",
+        "url": "https://example.org/account",
+        "title": "Account",
+        "text": "",
+        "start": 0,
+        "end": 0,
+        "total_chars": 0,
+        "note": "The page has not finished loading \u2014 retry in a moment."
+      }
+    },
+    {
+      "id": "preview_read_multi",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read"
+      },
+      "output": {
+        "active_tab_id": "tab-1",
+        "tabs": [
+          {
+            "id": "tab-1",
+            "kind": "url",
+            "label": "Account",
+            "url": "https://example.org/account"
+          },
+          {
+            "id": "tab-2",
+            "kind": "url",
+            "label": "Docs",
+            "url": "https://docs.example.org"
+          }
+        ],
+        "kind": "url",
+        "url": "https://example.org/account",
+        "title": "Account",
+        "text": "Account settings",
+        "start": 0,
+        "end": 16,
+        "total_chars": 16,
+        "note": "Multiple preview tabs are open; this read used the hovered or focused preview (see tabs)."
+      }
+    },
+    {
+      "id": "preview_desktop_only",
+      "name": "desktop_preview",
+      "input": {
+        "action": "open",
+        "url": "https://example.org"
+      },
+      "output": {
+        "error": "The preview pane is only available in the Hermes desktop app."
+      }
+    },
+    {
+      "id": "drive_elements",
+      "name": "drive_preview",
+      "input": {
+        "action": "elements",
+        "max": 20
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "elements": [
+          {
+            "ref": "input-display-name",
+            "role": "textbox",
+            "label": "Display name",
+            "selector": "#display-name",
+            "value": "Mira"
+          },
+          {
+            "ref": "btn-save",
+            "role": "button",
+            "label": "Save",
+            "disabled": true
+          }
+        ]
+      }
+    },
+    {
+      "id": "drive_type_delta",
+      "name": "drive_preview",
+      "input": {
+        "action": "type",
+        "ref": "input-display-name",
+        "text": "Mira Tan",
+        "submit": false
+      },
+      "output": {
+        "success": true,
+        "acted": "typed into Display name",
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "delta": {
+          "changed": [
+            {
+              "ref": "input-display-name",
+              "value": "Mira Tan"
+            },
+            {
+              "ref": "btn-save",
+              "disabled": false
+            }
+          ],
+          "same": 3
+        }
+      }
+    },
+    {
+      "id": "drive_clear_delta",
+      "name": "drive_preview",
+      "input": {
+        "action": "type",
+        "ref": "input-display-name",
+        "text": ""
+      },
+      "output": {
+        "success": true,
+        "acted": "typed into Display name",
+        "delta": {
+          "changed": [
+            {
+              "ref": "input-display-name",
+              "value": ""
+            }
+          ],
+          "same": 4
+        }
+      }
+    },
+    {
+      "id": "drive_click_delta",
+      "name": "drive_preview",
+      "input": {
+        "action": "click",
+        "ref": "btn-save"
+      },
+      "output": {
+        "success": true,
+        "acted": "clicked Save",
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "delta": {
+          "added": [
+            {
+              "ref": "alert-saved",
+              "role": "alert",
+              "label": "Changes saved"
+            }
+          ],
+          "changed": [
+            {
+              "ref": "btn-save",
+              "disabled": true
+            }
+          ],
+          "removed": [
+            "label-unsaved"
+          ],
+          "rebound": [
+            "input-display-name"
+          ],
+          "same": 6
+        }
+      }
+    },
+    {
+      "id": "drive_nochange",
+      "name": "drive_preview",
+      "input": {
+        "action": "elements"
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "delta": {
+          "same": 5
+        }
+      }
+    },
+    {
+      "id": "drive_navigation",
+      "name": "drive_preview",
+      "input": {
+        "action": "click",
+        "ref": "link-settings"
+      },
+      "output": {
+        "success": true,
+        "acted": "clicked Settings",
+        "note": "The page stopped answering right after \u2014 it is probably navigating. Call elements to see where you landed."
+      }
+    },
+    {
+      "id": "drive_noscroll",
+      "name": "drive_preview",
+      "input": {
+        "action": "scroll",
+        "to": "bottom"
+      },
+      "output": {
+        "success": true,
+        "acted": "scrolled the page",
+        "note": "The page has nothing to scroll \u2014 it all fits already.",
+        "delta": {
+          "same": 5
+        }
+      }
+    },
+    {
+      "id": "drive_press_failure",
+      "name": "drive_preview",
+      "input": {
+        "action": "press",
+        "selector": "body",
+        "key": "x"
+      },
+      "output": {
+        "success": false,
+        "error": "Refused to press a printable key on BODY. That would be a page shortcut; pass allowShortcut to opt in."
+      }
+    },
+    {
+      "id": "drive_partial_type",
+      "name": "drive_preview",
+      "input": {
+        "action": "type",
+        "ref": "input-notes",
+        "text": "An account note"
+      },
+      "output": {
+        "success": false,
+        "error": "Typing stopped after 5 of 15 characters because the action was interrupted."
+      }
+    },
+    {
+      "id": "drive_stale_ref",
+      "name": "drive_preview",
+      "input": {
+        "action": "click",
+        "ref": "btn-save"
+      },
+      "output": {
+        "success": false,
+        "error": "That ref is stale after navigation. Call elements again for the current page."
+      }
+    },
+    {
+      "id": "drive_reload",
+      "name": "drive_preview",
+      "input": {
+        "action": "reload"
+      },
+      "output": {
+        "success": true,
+        "acted": "reload",
+        "note": "Page is loading \u2014 call elements to see what is on it."
+      }
+    },
+    {
+      "id": "drive_strobe",
+      "name": "drive_preview",
+      "input": {
+        "action": "strobe"
+      },
+      "output": {
+        "success": true,
+        "acted": "strobed the field",
+        "url": "https://example.org/account",
+        "title": "Account settings",
+        "delta": {
+          "same": 5
+        }
+      }
+    },
+    {
+      "id": "drive_desktop_only",
+      "name": "drive_preview",
+      "input": {
+        "action": "elements"
+      },
+      "output": {
+        "error": "drive_preview is only available in the Hermes desktop app."
+      }
+    },
+    {
+      "id": "search_keyless_served_by",
+      "name": "web_search",
+      "input": {
+        "query": "privacy guidance"
+      },
+      "output": {
+        "success": true,
+        "data": {
+          "web": [
+            {
+              "title": "Privacy guide",
+              "url": "https://example.org/privacy",
+              "description": "Choose privacy settings for your account.",
+              "position": 1
+            }
+          ],
+          "served_by": "exa"
+        }
+      }
+    },
+    {
+      "id": "preview_open_file",
+      "name": "desktop_preview",
+      "input": {
+        "action": "open",
+        "url": "/workspace/report.md"
+      },
+      "output": {
+        "success": true,
+        "url": "/workspace/report.md",
+        "label": ""
+      }
+    },
+    {
+      "id": "preview_close_target",
+      "name": "desktop_preview",
+      "input": {
+        "action": "close",
+        "url": "https://example.org/account"
+      },
+      "output": {
+        "success": true,
+        "closed": "https://example.org/account"
+      }
+    },
+    {
+      "id": "preview_read_artifact",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read"
+      },
+      "output": {
+        "kind": "artifact",
+        "url": "artifact://design-v1",
+        "title": "Account design",
+        "text": "",
+        "start": 0,
+        "end": 0,
+        "total_chars": 0,
+        "note": "Generated artifact \u2014 its content is in the conversation that produced it."
+      }
+    },
+    {
+      "id": "preview_directory_failure",
+      "name": "desktop_preview",
+      "input": {
+        "action": "open",
+        "url": "/workspace/reports"
+      },
+      "output": {
+        "error": "directories are not previewable \u2014 pass a file path or a URL. /workspace/reports is a directory."
+      }
+    },
+    {
+      "id": "preview_read_bad_window",
+      "name": "desktop_preview",
+      "input": {
+        "action": "read",
+        "count": "many"
+      },
+      "output": {
+        "error": "start and count must be integers."
+      }
+    },
+    {
+      "id": "drive_hover",
+      "name": "drive_preview",
+      "input": {
+        "action": "hover",
+        "ref": "btn-account"
+      },
+      "output": {
+        "success": true,
+        "acted": "hovered over Account",
+        "url": "https://example.org",
+        "title": "Example",
+        "delta": {
+          "added": [
+            {
+              "ref": "link-settings",
+              "role": "link",
+              "label": "Settings"
+            }
+          ],
+          "same": 5
+        }
+      }
+    },
+    {
+      "id": "drive_press",
+      "name": "drive_preview",
+      "input": {
+        "action": "press",
+        "ref": "input-search",
+        "key": "Enter"
+      },
+      "output": {
+        "success": true,
+        "acted": "pressed Enter on Search",
+        "url": "https://example.org/search",
+        "title": "Search",
+        "elements": [
+          {
+            "ref": "link-result",
+            "role": "link",
+            "label": "Account guide"
+          }
+        ]
+      }
+    },
+    {
+      "id": "drive_submit",
+      "name": "drive_preview",
+      "input": {
+        "action": "type",
+        "ref": "input-search",
+        "text": "privacy",
+        "submit": true
+      },
+      "output": {
+        "success": true,
+        "acted": "typed into Search and submitted",
+        "url": "https://example.org/search?q=privacy",
+        "title": "Search",
+        "elements": [
+          {
+            "ref": "link-result",
+            "role": "link",
+            "label": "Privacy guide"
+          }
+        ]
+      }
+    },
+    {
+      "id": "drive_scroll_amount",
+      "name": "drive_preview",
+      "input": {
+        "action": "scroll",
+        "amount": -600
+      },
+      "output": {
+        "success": true,
+        "acted": "scrolled the page",
+        "url": "https://example.org/article",
+        "title": "Article",
+        "delta": {
+          "same": 8
+        }
+      }
+    },
+    {
+      "id": "drive_back",
+      "name": "drive_preview",
+      "input": {
+        "action": "back"
+      },
+      "output": {
+        "success": true,
+        "acted": "back",
+        "note": "Page is loading \u2014 call elements to see what is on it."
+      }
+    },
+    {
+      "id": "drive_forward",
+      "name": "drive_preview",
+      "input": {
+        "action": "forward"
+      },
+      "output": {
+        "success": true,
+        "acted": "forward",
+        "note": "Page is loading \u2014 call elements to see what is on it."
+      }
+    },
+    {
+      "id": "drive_empty_inventory",
+      "name": "drive_preview",
+      "input": {
+        "action": "elements",
+        "full": true
+      },
+      "output": {
+        "success": true,
+        "url": "https://example.org/loading",
+        "title": "Loading",
+        "elements": [],
+        "note": "No interactive elements found \u2014 the page may still be loading."
+      }
+    },
+    {
+      "id": "drive_validation_failure",
+      "name": "drive_preview",
+      "input": {
+        "action": "click"
+      },
+      "output": {
+        "error": "click needs a ref from action='elements' (e.g. 'btn-sign-in') or a CSS selector."
+      }
+    },
+    {
+      "id": "drive_callback_empty",
+      "name": "drive_preview",
+      "input": {
+        "action": "elements"
+      },
+      "output": {
+        "error": "No GUI window answered with a page: no preview tab is open. Open a page with open_preview first. If the pane IS open, the desktop app may be older than this backend \u2014 its bridge-unavailable error names that case."
+      }
+    },
+    {
+      "id": "todo_empty_read",
+      "name": "todo_list",
+      "input": {},
+      "output": {
+        "todos": [],
+        "revision": 0,
+        "summary": {
+          "total": 0,
+          "pending": 0,
+          "in_progress": 0,
+          "completed": 0,
+          "cancelled": 0
+        }
+      }
+    },
+    {
+      "id": "todo_parent_list",
+      "name": "todo_list",
+      "input": {
+        "todos": [
+          {
+            "id": "p",
+            "content": "Inspect build",
+            "status": "in_progress"
+          },
+          {
+            "id": "c",
+            "content": "Read actual errors",
+            "status": "pending",
+            "parent": "p"
+          }
+        ]
+      },
+      "output": {
+        "todos": [
+          {
+            "id": "p",
+            "content": "Inspect build",
+            "status": "in_progress"
+          },
+          {
+            "id": "c",
+            "content": "Read actual errors",
+            "status": "pending",
+            "parent": "p"
+          }
+        ],
+        "revision": 1,
+        "summary": {
+          "total": 2,
+          "pending": 1,
+          "in_progress": 1,
+          "completed": 0,
+          "cancelled": 0
+        }
+      }
+    },
+    {
+      "id": "todo_unchanged_write",
+      "name": "todo_list",
+      "input": {
+        "todos": [
+          {
+            "id": "p",
+            "content": "Inspect build",
+            "status": "in_progress"
+          },
+          {
+            "id": "c",
+            "content": "Read actual errors",
+            "status": "pending",
+            "parent": "p"
+          }
+        ]
+      },
+      "output": {
+        "todos": [
+          {
+            "id": "p",
+            "content": "Inspect build",
+            "status": "in_progress"
+          },
+          {
+            "id": "c",
+            "content": "Read actual errors",
+            "status": "pending",
+            "parent": "p"
+          }
+        ],
+        "revision": 1,
+        "summary": {
+          "total": 2,
+          "pending": 1,
+          "in_progress": 1,
+          "completed": 0,
+          "cancelled": 0
+        }
+      }
+    },
+    {
+      "id": "todo_invalid_atomic",
+      "name": "todo_list",
+      "input": {
+        "todos": [
+          {
+            "id": "x",
+            "content": "",
+            "status": "pending"
+          }
+        ]
+      },
+      "output": {
+        "error": "Todo item 'x' has empty or missing content. Each item must have a non-empty description."
+      }
+    },
+    {
+      "id": "todo_clear",
+      "name": "todo_list",
+      "input": {
+        "todos": []
+      },
+      "output": {
+        "todos": [],
+        "revision": 2,
+        "summary": {
+          "total": 0,
+          "pending": 0,
+          "in_progress": 0,
+          "completed": 0,
+          "cancelled": 0
+        }
+      }
+    },
+    {
+      "id": "memory_add",
+      "name": "memory",
+      "input": {
+        "target": "memory",
+        "action": "add",
+        "content": "Prefer exact copy."
+      },
+      "output": {
+        "success": true,
+        "done": true,
+        "target": "memory",
+        "usage": "1% \u2014 31/2,200 chars",
+        "entry_count": 2,
+        "message": "Entry added.",
+        "note": "Write saved. This update is complete \u2014 do not repeat it."
+      }
+    },
+    {
+      "id": "memory_duplicate",
+      "name": "memory",
+      "input": {
+        "target": "memory",
+        "action": "add",
+        "content": "Prefer exact copy."
+      },
+      "output": {
+        "success": true,
+        "done": true,
+        "target": "memory",
+        "usage": "1% \u2014 31/2,200 chars",
+        "entry_count": 2,
+        "message": "Entry already exists (no duplicate added).",
+        "note": "Write saved. This update is complete \u2014 do not repeat it."
+      }
+    },
+    {
+      "id": "memory_replace_full_prior",
+      "name": "memory",
+      "input": {
+        "target": "memory",
+        "action": "replace",
+        "old_text": "verbose",
+        "content": "Use concise notes."
+      },
+      "output": {
+        "success": true,
+        "done": true,
+        "target": "memory",
+        "usage": "1% \u2014 31/2,200 chars",
+        "entry_count": 2,
+        "message": "Entry replaced.",
+        "replaced_entry": "Use verbose notes.",
+        "note": "Write saved. This update is complete \u2014 do not repeat it."
+      }
+    },
+    {
+      "id": "memory_batch_previous",
+      "name": "memory",
+      "input": {
+        "target": "memory",
+        "operations": [
+          {
+            "action": "replace",
+            "old_text": "verbose",
+            "content": "Use concise notes."
+          },
+          {
+            "action": "add",
+            "content": "Prefer exact copy."
+          },
+          {
+            "action": "remove",
+            "old_text": "Outdated"
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "done": true,
+        "target": "memory",
+        "usage": "1% \u2014 31/2,200 chars",
+        "entry_count": 2,
+        "message": "Applied 3 operation(s).",
+        "replaced_entries": {
+          "1": "Use verbose notes."
+        },
+        "removed_entries": {
+          "3": "Outdated context."
+        },
+        "note": "Write saved. This update is complete \u2014 do not repeat it."
+      }
+    },
+    {
+      "id": "memory_batch_failure",
+      "name": "memory",
+      "input": {
+        "target": "memory",
+        "operations": [
+          {
+            "action": "replace",
+            "old_text": "unknown",
+            "content": "New whole entry."
+          }
+        ]
+      },
+      "output": {
+        "success": false,
+        "error": "Operation 1 (replace): No entry matched 'unknown'. No operations were applied (batch is all-or-nothing).",
+        "usage": "31/2,200"
+      }
+    },
+    {
+      "id": "memory_staged",
+      "name": "memory",
+      "input": {
+        "target": "user",
+        "action": "replace",
+        "old_text": "old",
+        "content": "Updated whole profile fact."
+      },
+      "output": {
+        "success": true,
+        "staged": true,
+        "proposal_staged": true,
+        "pending_id": "proposal-sample",
+        "message": "Background review may not delete memory entries unattended. The proposed replace was staged for your approval."
+      }
+    },
+    {
+      "id": "skill_main",
+      "name": "skill_view",
+      "input": {
+        "name": "dev/inspect-build"
+      },
+      "output": {
+        "success": true,
+        "name": "inspect-build",
+        "description": "Inspect build output.",
+        "tags": [],
+        "related_skills": [],
+        "content": "---\nname: inspect-build\ndescription: Inspect build output.\n---\n# Inspect build\n\nRead the actual error before changing code.\n",
+        "path": "dev/inspect-build/SKILL.md",
+        "skill_dir": "/sample/skills/dev/inspect-build",
+        "linked_files": {
+          "references": [
+            "references/errors.md"
+          ]
+        },
+        "usage_hint": "To view linked files, call skill_view(name, file_path)",
+        "required_environment_variables": [],
+        "required_commands": [],
+        "missing_required_environment_variables": [],
+        "missing_credential_files": [],
+        "missing_required_commands": [],
+        "setup_needed": false,
+        "setup_skipped": false,
+        "readiness_status": "available",
+        "_source_path": "/sample/skills/dev/inspect-build/SKILL.md"
+      }
+    },
+    {
+      "id": "skill_support_literal",
+      "name": "skill_view",
+      "input": {
+        "name": "inspect-build",
+        "file_path": "scripts/check.py"
+      },
+      "output": {
+        "success": true,
+        "name": "inspect-build",
+        "file": "scripts/check.py",
+        "content": "print(\"# literal source\")\n",
+        "file_type": ".py",
+        "_source_path": "/sample/skills/dev/inspect-build/scripts/check.py"
+      }
+    },
+    {
+      "id": "skill_binary_receipt",
+      "name": "skill_view",
+      "input": {
+        "name": "inspect-build",
+        "file_path": "assets/sample.bin"
+      },
+      "output": {
+        "success": true,
+        "name": "inspect-build",
+        "file": "assets/sample.bin",
+        "is_binary": true,
+        "content": "[Binary file: sample.bin, size: 24 bytes]"
+      }
+    },
+    {
+      "id": "skill_unchanged",
+      "name": "skill_view",
+      "input": {
+        "name": "dev/inspect-build"
+      },
+      "output": {
+        "success": true,
+        "status": "unchanged",
+        "name": "inspect-build",
+        "file": "SKILL.md",
+        "dedup": true,
+        "content_returned": false,
+        "message": "Skill content unchanged since it was loaded earlier in this conversation \u2014 refer to the earlier skill_view result; it is still current and complete. (Re-issued after context compression, this returns the full content again.)"
+      }
+    },
+    {
+      "id": "skill_batch_compact_success",
+      "name": "skill_manage",
+      "input": {
+        "operations": [
+          {
+            "action": "patch",
+            "name": "inspect-build",
+            "old_string": "actual error",
+            "new_string": "reported error"
+          },
+          {
+            "action": "write_file",
+            "name": "inspect-build",
+            "file_path": "references/errors.md",
+            "file_content": "# Errors\nPreserve the exact receipt.\n"
+          }
+        ]
+      },
+      "output": {
+        "success": true,
+        "operations_applied": 2,
+        "results": [
+          {
+            "name": "inspect-build",
+            "action": "patch",
+            "file_path": null,
+            "success": true
+          },
+          {
+            "name": "inspect-build",
+            "action": "write_file",
+            "file_path": "references/errors.md",
+            "success": true,
+            "lint_warnings": [
+              {
+                "severity": "WARNING",
+                "rule": "references-sprawl",
+                "message": "Review overlapping references."
+              }
+            ],
+            "lint_hint": "The write succeeded. These are advisory authoring-convention findings (not blockers)."
+          }
+        ]
+      }
+    },
+    {
+      "id": "skill_batch_rollback",
+      "name": "skill_manage",
+      "input": {
+        "operations": [
+          {
+            "action": "patch",
+            "name": "inspect-build",
+            "old_string": "actual error",
+            "new_string": "reported error"
+          },
+          {
+            "action": "write_file",
+            "name": "inspect-build",
+            "file_path": "references/errors.md",
+            "file_content": "# Errors\nPreserve the exact receipt.\n"
+          }
+        ]
+      },
+      "output": {
+        "success": false,
+        "error": "operations[1] (write_file on 'inspect-build') failed: write refused \u2014 batch aborted, all touched skills rolled back.",
+        "failed_index": 1,
+        "completed_before_failure": 1,
+        "file_preview": "# Existing reference\n"
+      }
+    },
+    {
+      "id": "delegate_completed",
+      "name": "delegate_task",
+      "input": {
+        "tasks": [
+          {
+            "goal": "Read log A"
+          },
+          {
+            "goal": "Read log B"
+          },
+          {
+            "goal": "Read log C"
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "task_index": 2,
+            "status": "completed",
+            "summary": "Found the error in the supplied log.",
+            "api_calls": 2,
+            "duration_seconds": 1.25,
+            "model": "sample-model",
+            "exit_reason": "completed",
+            "truncated": false,
+            "tokens": {
+              "input": 42,
+              "output": 12
+            },
+            "tool_trace": [],
+            "cost_usd": 0.001,
+            "cost_status": "estimated"
+          }
+        ],
+        "total_duration_seconds": 1.25
+      }
+    },
+    {
+      "id": "delegate_budget_partial",
+      "name": "delegate_task",
+      "input": {
+        "tasks": [
+          {
+            "goal": "Read log A"
+          },
+          {
+            "goal": "Read log B"
+          },
+          {
+            "goal": "Read log C"
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "task_index": 2,
+            "status": "completed",
+            "summary": "Checked the first two files.",
+            "api_calls": 2,
+            "duration_seconds": 1.25,
+            "model": "sample-model",
+            "exit_reason": "max_iterations",
+            "truncated": true,
+            "tokens": {
+              "input": 42,
+              "output": 12
+            },
+            "tool_trace": [],
+            "cost_usd": 0.001,
+            "cost_status": "estimated"
+          }
+        ],
+        "total_duration_seconds": 1.25
+      }
+    },
+    {
+      "id": "delegate_schema_invalid",
+      "name": "delegate_task",
+      "input": {
+        "tasks": [
+          {
+            "goal": "Read log A"
+          },
+          {
+            "goal": "Read log B"
+          },
+          {
+            "goal": "Read log C"
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "task_index": 2,
+            "status": "completed",
+            "summary": "Plain-text findings.",
+            "api_calls": 3,
+            "duration_seconds": 1.25,
+            "model": "sample-model",
+            "exit_reason": "completed",
+            "truncated": false,
+            "tokens": {
+              "input": 42,
+              "output": 12
+            },
+            "tool_trace": [],
+            "cost_usd": 0.001,
+            "cost_status": "estimated",
+            "schema_valid": false,
+            "schema_retries": 1,
+            "schema_errors": [
+              "Expected JSON object."
+            ],
+            "schema_note": "Final answer does not satisfy the declared output_schema (after 1 retry); `summary` is the child's raw, UNVALIDATED final text \u2014 extract what you need from it yourself (see schema_errors) rather than re-running the task."
+          }
+        ],
+        "total_duration_seconds": 1.25
+      }
+    },
+    {
+      "id": "delegate_failed",
+      "name": "delegate_task",
+      "input": {
+        "tasks": [
+          {
+            "goal": "Read log A"
+          },
+          {
+            "goal": "Read log B"
+          },
+          {
+            "goal": "Read log C"
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "task_index": 2,
+            "status": "failed",
+            "summary": "Provider quota exceeded.",
+            "api_calls": 1,
+            "duration_seconds": 1.25,
+            "model": "sample-model",
+            "exit_reason": "error",
+            "truncated": false,
+            "tokens": {
+              "input": 42,
+              "output": 12
+            },
+            "tool_trace": [],
+            "cost_usd": 0.001,
+            "cost_status": "estimated",
+            "error": "Provider quota exceeded.",
+            "failure_reason": "rate_limit"
+          }
+        ],
+        "total_duration_seconds": 1.25
+      }
+    },
+    {
+      "id": "delegate_dispatch_mixed",
+      "name": "delegate_task",
+      "input": {
+        "tasks": [
+          {
+            "goal": "Check A",
+            "group": "review"
+          },
+          {
+            "goal": "Check B"
+          },
+          {
+            "goal": "Check C",
+            "group": "review"
+          }
+        ]
+      },
+      "output": {
+        "status": "dispatched",
+        "mode": "background",
+        "count": 3,
+        "delegation_id": "sample-delegation",
+        "goals": [
+          "Check A",
+          "Check B",
+          "Check C"
+        ],
+        "note": "Subagents run in the background; results return independently.",
+        "units": [
+          {
+            "delegation_id": "sample-delegation-1",
+            "group": "review",
+            "task_indexes": [
+              0,
+              2
+            ]
+          }
+        ],
+        "subagent_ids": [
+          "sample-a",
+          "sample-b",
+          "sample-c"
+        ],
+        "live_transcripts": [
+          "/sample/live/task-0.log",
+          "/sample/live/task-1.log",
+          "/sample/live/task-2.log"
+        ],
+        "inline_results": [
+          {
+            "task_index": 1,
+            "status": "completed",
+            "summary": "Checked B.",
+            "api_calls": 1,
+            "duration_seconds": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "delegate_live_empty",
+      "name": "delegate_task",
+      "input": {
+        "action": "list"
+      },
+      "output": {
+        "action": "list",
+        "count": 0,
+        "subagents": [],
+        "note": "No live subagents right now. Children that already finished have delivered (or will deliver) their results as normal completion messages \u2014 there is nothing to steer or stop."
+      }
+    },
+    {
+      "id": "delegate_control_steer",
+      "name": "delegate_task",
+      "input": {
+        "action": "steer",
+        "subagent_id": "sample-a",
+        "message": "Inspect the specific error first."
+      },
+      "output": {
+        "action": "steer",
+        "subagent_id": "sample-a",
+        "status": "queued",
+        "note": "Steering text queued. The subagent sees it appended to its next tool result \u2014 the current tool call is never cut. If the child finishes before a delivery boundary remains, the text is reported back as missed_steer in its completion entry."
+      }
+    },
+    {
+      "id": "delegate_control_stop",
+      "name": "delegate_task",
+      "input": {
+        "action": "stop",
+        "subagent_id": "sample-a"
+      },
+      "output": {
+        "action": "stop",
+        "subagent_id": "sample-a",
+        "status": "interrupt_requested",
+        "note": "The subagent stops at its next iteration boundary (in-flight tool calls are asked to cancel). Its partial result still re-enters the conversation as a completion message \u2014 do not wait or poll."
+      }
+    },
+    {
+      "id": "cron_create_gateway_stopped",
+      "name": "cronjob_manage",
+      "input": {
+        "action": "create",
+        "name": "Daily brief",
+        "prompt": "Collect the reported results.",
+        "schedule": "every day at 9am"
+      },
+      "output": {
+        "success": true,
+        "job_id": "sample-job",
+        "name": "Daily brief",
+        "skill": null,
+        "skills": [],
+        "schedule": "every day at 9am",
+        "repeat": "forever",
+        "deliver": "local",
+        "next_run_at": "2026-10-09T01:00:00+00:00",
+        "job": {
+          "job_id": "sample-job",
+          "name": "Daily brief",
+          "skill": null,
+          "skills": [],
+          "prompt_preview": "Collect the reported results.",
+          "model": null,
+          "provider": null,
+          "pinned": false,
+          "base_url": null,
+          "schedule": "every day at 9am",
+          "repeat": "forever",
+          "deliver": "local",
+          "next_run_at": "2026-10-09T01:00:00+00:00",
+          "last_run_at": null,
+          "last_status": null,
+          "last_delivery_error": null,
+          "last_delivery_unverified": null,
+          "last_fire_error": null,
+          "last_error": null,
+          "enabled": true,
+          "state": "scheduled",
+          "paused_at": null,
+          "paused_reason": null
+        },
+        "message": "Cron job 'Daily brief' created.",
+        "gateway_running": false,
+        "warning": "The Hermes gateway is not running \u2014 this job is saved but will NOT fire until the gateway is started."
+      }
+    },
+    {
+      "id": "cron_empty",
+      "name": "cronjob_manage",
+      "input": {
+        "action": "list"
+      },
+      "output": {
+        "success": true,
+        "count": 0,
+        "jobs": []
+      }
+    },
+    {
+      "id": "cron_background_admitted",
+      "name": "cronjob_manage",
+      "input": {
+        "action": "run",
+        "job_id": "sample-job"
+      },
+      "output": {
+        "success": true,
+        "job": {
+          "job_id": "sample-job",
+          "name": "Daily brief",
+          "skill": null,
+          "skills": [],
+          "prompt_preview": "Collect the reported results.",
+          "model": null,
+          "provider": null,
+          "pinned": false,
+          "base_url": null,
+          "schedule": "every day at 9am",
+          "repeat": "forever",
+          "deliver": "local",
+          "next_run_at": "2026-10-09T01:00:00+00:00",
+          "last_run_at": null,
+          "last_status": null,
+          "last_delivery_error": null,
+          "last_delivery_unverified": null,
+          "last_fire_error": null,
+          "last_error": null,
+          "enabled": true,
+          "state": "scheduled",
+          "paused_at": null,
+          "paused_reason": null,
+          "executed": true,
+          "execution_mode": "background",
+          "delegation_id": "sample-run"
+        },
+        "note": "The job is running in the background. Its outcome re-enters the conversation when it finishes."
+      }
+    },
+    {
+      "id": "cron_inline_failed",
+      "name": "cronjob_manage",
+      "input": {
+        "action": "run",
+        "job_id": "sample-job"
+      },
+      "output": {
+        "success": true,
+        "job": {
+          "job_id": "sample-job",
+          "name": "Daily brief",
+          "skill": null,
+          "skills": [],
+          "prompt_preview": "Collect the reported results.",
+          "model": null,
+          "provider": null,
+          "pinned": false,
+          "base_url": null,
+          "schedule": "every day at 9am",
+          "repeat": "forever",
+          "deliver": "local",
+          "next_run_at": "2026-10-09T01:00:00+00:00",
+          "last_run_at": null,
+          "last_status": "failed",
+          "last_delivery_error": null,
+          "last_delivery_unverified": null,
+          "last_fire_error": null,
+          "last_error": "Script exited with code 1.",
+          "enabled": true,
+          "state": "scheduled",
+          "paused_at": null,
+          "paused_reason": null,
+          "executed": true,
+          "execution_success": false,
+          "execution_error": "Script exited with code 1."
+        }
+      }
+    },
+    {
+      "id": "cron_inline_skipped",
+      "name": "cronjob_manage",
+      "input": {
+        "action": "run",
+        "job_id": "sample-job"
+      },
+      "output": {
+        "success": true,
+        "job": {
+          "job_id": "sample-job",
+          "name": "Daily brief",
+          "skill": null,
+          "skills": [],
+          "prompt_preview": "Collect the reported results.",
+          "model": null,
+          "provider": null,
+          "pinned": false,
+          "base_url": null,
+          "schedule": "every day at 9am",
+          "repeat": "forever",
+          "deliver": "local",
+          "next_run_at": "2026-10-09T01:00:00+00:00",
+          "last_run_at": null,
+          "last_status": null,
+          "last_delivery_error": null,
+          "last_delivery_unverified": null,
+          "last_fire_error": null,
+          "last_error": null,
+          "enabled": true,
+          "state": "scheduled",
+          "paused_at": null,
+          "paused_reason": null,
+          "executed": false,
+          "execution_success": false,
+          "execution_skipped": "Job is already being fired by the scheduler; not run again."
+        }
+      }
+    },
+    {
+      "id": "session_discover_parent",
+      "name": "session_search",
+      "input": {
+        "query": "build error"
+      },
+      "output": {
+        "success": true,
+        "mode": "discover",
+        "query": "build error",
+        "detail": "adaptive",
+        "results": [
+          {
+            "session_id": "child-sample",
+            "when": "October 08, 2026 at 09:00 AM",
+            "source": "cli",
+            "model": "sample-model",
+            "title": "Build investigation",
+            "matched_role": "assistant",
+            "match_message_id": 24,
+            "snippet": "Verified the supplied error receipt.",
+            "bookend_start": [],
+            "messages": [
+              {
+                "id": 24,
+                "role": "assistant",
+                "content": "Verified the supplied error receipt.",
+                "timestamp": 1791417600,
+                "anchor": true
+              },
+              {
+                "id": 25,
+                "role": "assistant",
+                "content": null,
+                "timestamp": 1791417601,
+                "tool_calls": [
+                  {
+                    "id": "call-sample",
+                    "type": "function",
+                    "function": {
+                      "name": "read_file",
+                      "arguments": "{\"path\":\"/sample/log.txt\"}"
+                    }
+                  }
+                ]
+              }
+            ],
+            "bookend_end": [],
+            "messages_before": 2,
+            "messages_after": 5,
+            "detail": "full",
+            "parent_session_id": "parent-sample",
+            "link": "@session:sample/child-sample"
+          }
+        ],
+        "count": 1,
+        "sessions_searched": 1
+      }
+    },
+    {
+      "id": "session_empty_index_rebuild",
+      "name": "session_search",
+      "input": {
+        "query": "missing topic"
+      },
+      "output": {
+        "success": true,
+        "mode": "discover",
+        "query": "missing topic",
+        "detail": "adaptive",
+        "results": [],
+        "count": 0,
+        "message": "No matching sessions found. Broaden the query.",
+        "index_rebuild": {
+          "percent": 40,
+          "note": "The search index is rebuilding in the background (40% done). Results from older messages may be incomplete until it finishes."
+        }
+      }
+    },
+    {
+      "id": "session_read_partial",
+      "name": "session_search",
+      "input": {
+        "session_id": "child-sample"
+      },
+      "output": {
+        "success": true,
+        "mode": "read",
+        "session_id": "child-sample",
+        "link": "@session:sample/child-sample",
+        "session_meta": {
+          "when": "October 08, 2026",
+          "source": "cli",
+          "model": "sample-model",
+          "title": "Build investigation"
+        },
+        "message_count": 45,
+        "truncated": true,
+        "messages": [
+          {
+            "id": 1,
+            "role": "tool",
+            "content": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\u2026",
+            "tool_name": "terminal",
+            "content_truncated": true,
+            "original_content_chars": 2005
+          },
+          {
+            "id": 2,
+            "role": "user",
+            "content": "Sanitized message 2."
+          },
+          {
+            "id": 3,
+            "role": "user",
+            "content": "Sanitized message 3."
+          },
+          {
+            "id": 4,
+            "role": "user",
+            "content": "Sanitized message 4."
+          },
+          {
+            "id": 5,
+            "role": "user",
+            "content": "Sanitized message 5."
+          },
+          {
+            "id": 6,
+            "role": "user",
+            "content": "Sanitized message 6."
+          },
+          {
+            "id": 7,
+            "role": "user",
+            "content": "Sanitized message 7."
+          },
+          {
+            "id": 8,
+            "role": "user",
+            "content": "Sanitized message 8."
+          },
+          {
+            "id": 9,
+            "role": "user",
+            "content": "Sanitized message 9."
+          },
+          {
+            "id": 10,
+            "role": "user",
+            "content": "Sanitized message 10."
+          },
+          {
+            "id": 11,
+            "role": "user",
+            "content": "Sanitized message 11."
+          },
+          {
+            "id": 12,
+            "role": "user",
+            "content": "Sanitized message 12."
+          },
+          {
+            "id": 13,
+            "role": "user",
+            "content": "Sanitized message 13."
+          },
+          {
+            "id": 14,
+            "role": "user",
+            "content": "Sanitized message 14."
+          },
+          {
+            "id": 15,
+            "role": "user",
+            "content": "Sanitized message 15."
+          },
+          {
+            "id": 16,
+            "role": "user",
+            "content": "Sanitized message 16."
+          },
+          {
+            "id": 17,
+            "role": "user",
+            "content": "Sanitized message 17."
+          },
+          {
+            "id": 18,
+            "role": "user",
+            "content": "Sanitized message 18."
+          },
+          {
+            "id": 19,
+            "role": "user",
+            "content": "Sanitized message 19."
+          },
+          {
+            "id": 20,
+            "role": "user",
+            "content": "Sanitized message 20."
+          },
+          {
+            "id": 36,
+            "role": "user",
+            "content": "Sanitized message 36."
+          },
+          {
+            "id": 37,
+            "role": "user",
+            "content": "Sanitized message 37."
+          },
+          {
+            "id": 38,
+            "role": "user",
+            "content": "Sanitized message 38."
+          },
+          {
+            "id": 39,
+            "role": "user",
+            "content": "Sanitized message 39."
+          },
+          {
+            "id": 40,
+            "role": "user",
+            "content": "Sanitized message 40."
+          },
+          {
+            "id": 41,
+            "role": "user",
+            "content": "Sanitized message 41."
+          },
+          {
+            "id": 42,
+            "role": "user",
+            "content": "Sanitized message 42."
+          },
+          {
+            "id": 43,
+            "role": "user",
+            "content": "Sanitized message 43."
+          },
+          {
+            "id": 44,
+            "role": "user",
+            "content": "Sanitized message 44."
+          },
+          {
+            "id": 45,
+            "role": "user",
+            "content": "Sanitized message 45."
+          }
+        ],
+        "message": "Session has 45 messages; showing first 20 + last 10. Pass around_message_id to scroll the middle."
+      }
+    },
+    {
+      "id": "session_scroll_rebound",
+      "name": "session_search",
+      "input": {
+        "session_id": "parent-sample",
+        "around_message_id": 24,
+        "window": 5
+      },
+      "output": {
+        "success": true,
+        "mode": "scroll",
+        "session_id": "child-sample",
+        "around_message_id": 24,
+        "session_meta": {
+          "when": "October 08, 2026",
+          "source": "cli",
+          "model": "sample-model",
+          "title": "Build investigation"
+        },
+        "window": 5,
+        "messages": [
+          {
+            "id": 24,
+            "role": "assistant",
+            "content": "Verified the supplied error receipt.",
+            "timestamp": 1791417600,
+            "anchor": true
+          },
+          {
+            "id": 25,
+            "role": "assistant",
+            "content": null,
+            "timestamp": 1791417601,
+            "tool_calls": [
+              {
+                "id": "call-sample",
+                "type": "function",
+                "function": {
+                  "name": "read_file",
+                  "arguments": "{\"path\":\"/sample/log.txt\"}"
+                }
+              }
+            ]
+          }
+        ],
+        "messages_before": 2,
+        "messages_after": 5,
+        "hint": "Scroll using an actual message id.",
+        "warning": "around_message_id 24 lives in child-sample (child of parent-sample); rebound transparently"
+      }
+    },
+    {
+      "id": "session_browse_empty",
+      "name": "session_search",
+      "input": {},
+      "output": {
+        "success": true,
+        "mode": "browse",
+        "results": [],
+        "count": 0,
+        "message": "Showing 0 most recent sessions. Pass a query= to search, or session_id+around_message_id to scroll."
+      }
+    },
+    {
+      "id": "search-multiple-capabilities",
+      "name": "tool_search",
+      "input": {
+        "queries": [
+          "gmail fetch emails",
+          "tracker create issue"
+        ],
+        "limit": 5
+      },
+      "output": {
+        "queries": [
+          "gmail fetch emails",
+          "tracker create issue"
+        ],
+        "total_available": 14,
+        "results": [
+          {
+            "query": "gmail fetch emails",
+            "matches": [
+              "connectors__gmail__FETCH_EMAILS"
+            ]
+          },
+          {
+            "query": "tracker create issue",
+            "matches": [
+              "mcp__tracker__create_issue"
+            ]
+          }
+        ],
+        "tools": {
+          "connectors__gmail__FETCH_EMAILS": {
+            "source": "connectors",
+            "source_name": "gmail",
+            "description": "Fetch emails from Gmail matching supplied search criteria.",
+            "required": [
+              "query"
+            ]
+          },
+          "mcp__tracker__create_issue": {
+            "source": "mcp",
+            "source_name": "mcp-tracker",
+            "description": "Create an issue in the tracker.",
+            "required": [
+              "title"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "id": "search-no-lexical-match",
+      "name": "tool_search",
+      "input": {
+        "queries": [
+          "tracker puppy"
+        ]
+      },
+      "output": {
+        "queries": [
+          "tracker puppy"
+        ],
+        "total_available": 13,
+        "results": [
+          {
+            "query": "tracker puppy",
+            "matches": [],
+            "available_sources": [
+              {
+                "name": "tracker",
+                "tool_count": 12
+              },
+              {
+                "name": "archive",
+                "tool_count": 1,
+                "unavailable": "Archive server is unavailable."
+              }
+            ],
+            "hint": "This query returned no lexical matches, but the sources above are connected and their tools remain available. Retry tool_search with the service name plus a concrete action or object before concluding the capability is unavailable."
+          }
+        ],
+        "tools": {}
+      }
+    },
+    {
+      "id": "search-partial-hosted-unavailable",
+      "name": "tool_search",
+      "input": {
+        "queries": [
+          "tracker create issue"
+        ]
+      },
+      "output": {
+        "queries": [
+          "tracker create issue"
+        ],
+        "total_available": 13,
+        "results": [
+          {
+            "query": "tracker create issue",
+            "matches": [
+              "mcp__tracker__create_issue"
+            ]
+          }
+        ],
+        "tools": {
+          "mcp__tracker__create_issue": {
+            "source": "mcp",
+            "source_name": "mcp-tracker",
+            "description": "Create an issue in the tracker.",
+            "required": [
+              "title"
+            ]
+          }
+        },
+        "connectors": {
+          "status": "unavailable",
+          "reason": "sign_in_expired",
+          "hint": "Hosted connector tools could not be searched right now. Do not conclude the app is missing. The user must sign in to Nous again."
+        }
+      }
+    },
+    {
+      "id": "describe-partial",
+      "name": "tool_describe",
+      "input": {
+        "names": [
+          "connectors__gmail__FETCH_EMAILS",
+          "mcp__tracker__create_issue",
+          "mcp__archive__read",
+          "terminal"
+        ]
+      },
+      "output": {
+        "tools": {
+          "mcp__tracker__create_issue": {
+            "description": "Create an issue in the tracker.",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "title": {
+                  "type": "string"
+                },
+                "body": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "title"
+              ]
+            }
+          }
+        },
+        "not_found": [
+          "mcp__archive__read"
+        ],
+        "hint": "Names in not_found are not currently available. Re-run tool_search to refresh.",
+        "errors": {
+          "terminal": "'terminal' is a directly-listed tool, not a deferred one. Call it directly instead of via tool_call."
+        },
+        "connectors": {
+          "status": "unavailable",
+          "reason": "unreachable",
+          "hint": "Hosted connector tools could not be described right now. Do not conclude the app is missing.",
+          "names": [
+            "connectors__gmail__FETCH_EMAILS"
+          ]
+        }
+      }
+    },
+    {
+      "id": "call-local-mcp-distinct-structured",
+      "name": "mcp__tracker__lookup",
+      "input": {
+        "query": "release notes"
+      },
+      "output": {
+        "result": "Two matching notes are available.",
+        "structuredContent": {
+          "items": [
+            {
+              "title": "Release checklist",
+              "excerpt": "Check installation and account sign-in."
+            },
+            {
+              "title": "UI review",
+              "excerpt": "Review both themes."
+            }
+          ],
+          "has_more": true
+        },
+        "_meta": {
+          "example.org/source": "tracker"
+        }
+      }
+    },
+    {
+      "id": "call-connector-single",
+      "name": "tool_call",
+      "input": {
+        "calls": [
+          {
+            "name": "connectors__gmail__FETCH_EMAILS",
+            "arguments": {
+              "query": "from:teammate@example.invalid"
+            }
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "index": 0,
+            "name": "connectors__gmail__FETCH_EMAILS",
+            "response": "No matching emails were returned."
+          }
+        ],
+        "success_count": 1,
+        "error_count": 0,
+        "total_count": 1
+      }
+    },
+    {
+      "id": "call-connector-mixed-outcomes",
+      "name": "tool_call",
+      "input": {
+        "calls": [
+          {
+            "name": "connectors__tracker__CREATE_ISSUE",
+            "arguments": {
+              "title": "Review readable tool history",
+              "body": "Keep request and actual response visible."
+            }
+          },
+          {
+            "name": "connectors__gmail__SEND_EMAIL",
+            "arguments": {
+              "to": "reviewer@example.invalid",
+              "subject": "Activity review",
+              "body": "Please review the activity proposal."
+            }
+          },
+          {
+            "name": "connectors__slack__POST_MESSAGE",
+            "arguments": {
+              "text": "The proposal is ready."
+            }
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "index": 0,
+            "name": "connectors__tracker__CREATE_ISSUE",
+            "response": {
+              "message": "Issue was created.",
+              "url": "https://tracker.example.invalid/issues/42"
+            }
+          },
+          {
+            "index": 1,
+            "name": "connectors__gmail__SEND_EMAIL",
+            "error": {
+              "code": "CONNECTION_REQUIRED",
+              "message": "The gmail connector is not connected for this account.",
+              "connector": "gmail",
+              "connect_url": "https://accounts.example.invalid/authorize/sanitized",
+              "hint": "Connect Gmail before sending this email."
+            }
+          },
+          {
+            "index": 2,
+            "name": "connectors__slack__POST_MESSAGE",
+            "error": {
+              "code": "INTERRUPTED",
+              "message": "Stopped by the user before this call was made."
+            }
+          }
+        ],
+        "success_count": 1,
+        "error_count": 2,
+        "total_count": 3
+      }
+    },
+    {
+      "id": "call-connector-response-status-opaque",
+      "name": "tool_call",
+      "input": {
+        "calls": [
+          {
+            "name": "connectors__custom__CHECK_JOB",
+            "arguments": {
+              "job": "sanitized-job"
+            }
+          }
+        ]
+      },
+      "output": {
+        "results": [
+          {
+            "index": 0,
+            "name": "connectors__custom__CHECK_JOB",
+            "response": {
+              "status": "failed",
+              "error": "A domain record contains this text, not necessarily a transport error.",
+              "structuredContent": {
+                "state": "needs-review"
+              }
+            }
+          }
+        ],
+        "success_count": 1,
+        "error_count": 0,
+        "total_count": 1
+      }
+    },
+    {
+      "id": "call-validation-not-invoked",
+      "name": "tool_call",
+      "input": {
+        "calls": [
+          {
+            "name": "mcp__tracker__create_issue",
+            "arguments": {}
+          }
+        ]
+      },
+      "output": {
+        "error": "tool_call to 'mcp__tracker__create_issue' is missing required argument(s): title. The tool was NOT invoked.",
+        "path": "arguments",
+        "constraint": "required",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "title": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "title"
+          ]
+        },
+        "hint": "Retry tool_call with 'arguments' matching the parameters schema above."
+      }
+    },
+    {
+      "id": "clarify-submitted",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "Which release should the notes cover?",
+            "choices": [
+              "Current release",
+              "Previous release"
+            ]
+          },
+          {
+            "question": "Which checks should be included?",
+            "choices": [
+              "Installation",
+              "Sign-in",
+              "Accessibility"
+            ],
+            "multi_select": true
+          }
+        ]
+      },
+      "output": {
+        "responses": [
+          {
+            "question": "Which release should the notes cover?",
+            "choices_offered": [
+              "Current release",
+              "Previous release"
+            ],
+            "status": "answered",
+            "user_response": "Current release"
+          },
+          {
+            "question": "Which checks should be included?",
+            "choices_offered": [
+              "Installation",
+              "Sign-in",
+              "Accessibility"
+            ],
+            "status": "answered",
+            "user_response": [
+              "Installation",
+              "Accessibility"
+            ]
+          }
+        ],
+        "outcome": "submitted"
+      }
+    },
+    {
+      "id": "clarify-timed-out-retained-answer",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "Which format should be used?",
+            "choices": [
+              "Markdown",
+              "Plain text"
+            ]
+          },
+          {
+            "question": "Who is the audience?"
+          },
+          {
+            "question": "Include the appendix?",
+            "choices": [
+              "Yes",
+              "No"
+            ]
+          }
+        ]
+      },
+      "output": {
+        "responses": [
+          {
+            "question": "Which format should be used?",
+            "choices_offered": [
+              "Markdown",
+              "Plain text"
+            ],
+            "status": "answered",
+            "user_response": "Markdown"
+          },
+          {
+            "question": "Who is the audience?",
+            "choices_offered": null,
+            "status": "skipped",
+            "user_response": null
+          },
+          {
+            "question": "Include the appendix?",
+            "choices_offered": [
+              "Yes",
+              "No"
+            ],
+            "status": "unanswered",
+            "user_response": null
+          }
+        ],
+        "outcome": "timed_out",
+        "notice": "The waiting period ended before all questions were answered."
+      }
+    },
+    {
+      "id": "clarify-cancelled",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "What should the new report be called?"
+          }
+        ]
+      },
+      "output": {
+        "responses": [
+          {
+            "question": "What should the new report be called?",
+            "choices_offered": null,
+            "status": "unanswered",
+            "user_response": null
+          }
+        ],
+        "outcome": "cancelled"
+      }
+    },
+    {
+      "id": "clarify-undelivered",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "Which deployment target?",
+            "choices": [
+              "Staging",
+              "Production"
+            ]
+          }
+        ]
+      },
+      "output": {
+        "responses": [
+          {
+            "question": "Which deployment target?",
+            "choices_offered": [
+              "Staging",
+              "Production"
+            ],
+            "status": "unanswered",
+            "user_response": null
+          }
+        ],
+        "outcome": "undelivered"
+      }
+    },
+    {
+      "id": "clarify-free-text-long",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "What acceptance criteria should the report include?"
+          }
+        ]
+      },
+      "output": {
+        "responses": [
+          {
+            "question": "What acceptance criteria should the report include?",
+            "choices_offered": null,
+            "status": "answered",
+            "user_response": "Show the requested operation beside the actual outcome.\n\nPreserve exact received payloads for copying.\n\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes.\nCheck narrow screens and enlarged text in both themes."
+          }
+        ],
+        "outcome": "submitted"
+      }
+    },
+    {
+      "id": "clarify-unavailable",
+      "name": "clarify",
+      "input": {
+        "questions": [
+          {
+            "question": "Which report?"
+          }
+        ]
+      },
+      "output": {
+        "error": "Clarify tool is not available in this execution context."
+      }
+    },
+    {
+      "id": "malformed-unknown",
+      "name": "tool_call",
+      "input": {
+        "calls": []
+      },
+      "output": "The received result could not be decoded as structured JSON."
+    },
+    {
+      "id": "search-contradictory-context-location",
+      "name": "search_files",
+      "input": {
+        "path": "/workspace/demo/report.py",
+        "pattern": "booking",
+        "context": 2,
+        "limit": 15
+      },
+      "output": {
+        "matches_format": "path-grouped: each file path on its own line, followed by indented '<line>: <content>' rows for matches in that file",
+        "matches_text": "/workspace/demo/report.py-28-assert dates == ['2030-10-03', '2030\n  10: 05']\n/workspace/demo/report.py\n  29: booking = records[0]",
+        "total_count": 2
+      }
+    }
+  ]
+}

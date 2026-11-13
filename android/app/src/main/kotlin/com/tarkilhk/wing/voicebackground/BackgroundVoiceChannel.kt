@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.util.Log
 import androidx.core.content.ContextCompat
+import com.tarkilhk.wing.LiveVoiceRuntime
 import com.tarkilhk.wing.MonitoringRuntime
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodCall
@@ -58,6 +59,8 @@ class BackgroundVoiceChannel(private val activity: Activity, messenger: BinaryMe
     }
 
     private fun refusal(): String? = when {
+        // A live call owns the microphone and the speaker (spec §8).
+        LiveVoiceRuntime.audioOwned -> "liveCall"
         !MonitoringRuntime.activityVisible -> "notVisible"
         activity.checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED -> "permission"
         !BackgroundVoiceService.notificationsAllowed(activity) -> "notifications"

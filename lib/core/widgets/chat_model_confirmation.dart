@@ -1,3 +1,4 @@
+import 'studio_form_actions.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/wing_theme.dart';
@@ -35,7 +36,8 @@ class _ModelConfirmationDialogState extends State<_ModelConfirmationDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => AlertDialog(
+  Widget build(BuildContext context) => StudioDialog(
+    scrollable: false,
     insetPadding: const EdgeInsets.all(WingSpacing.md),
     title: Text(
       'Confirm model change',
@@ -53,13 +55,10 @@ class _ModelConfirmationDialogState extends State<_ModelConfirmationDialog> {
       ),
     ),
     actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context, false),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, true),
-        child: const Text('Switch model'),
+      StudioFormActions(
+        onCancel: () => Navigator.pop(context, false),
+        onConfirm: () => Navigator.pop(context, true),
+        confirmLabel: 'Switch model',
       ),
     ],
   );

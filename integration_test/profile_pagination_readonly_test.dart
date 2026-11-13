@@ -1,3 +1,4 @@
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
@@ -6,6 +7,7 @@ import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_connection_identity.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/profile_gateway.dart';
 
 /// Uses a saved Android connection and its secure credentials. No server writes,
 /// model turns, seeded conversations, or transcript reads. Logs counts only.
@@ -25,12 +27,47 @@ void main() {
       final connection = connections.singleWhere(
         (c) => c.label == label && c.host == expectedHost,
       );
+      // Reuse credentials only. Restoring the installed app's pending work can
+      // mutate the server, even when this test only calls browsing methods.
+      SharedPreferences.setMockInitialValues({});
+      final isolatedPreferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(isolatedPreferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
-        connection: connection,
+        appPreferences: appPreferences,
+        access: manager.accessFor(connection),
         connectionIdentity: await ProfileConnectionIdentity().resolve(
           connection,
         ),
-        preferences: preferences,
+        preferences: isolatedPreferences,
+        gatewayFactory: (scope) {
+          final live = ProfileGateway.forConnection(
+            manager.accessFor(connection),
+            scope,
+          );
+          return ProfileGateway(
+            scope: scope,
+            discover: live.discover,
+            connect: live.connect,
+            close: live.close,
+            get: (endpoint, query) {
+              if (endpoint != 'sessions' && endpoint != 'sessions/search') {
+                throw StateError(
+                  'Read-only paging blocked an unexpected route',
+                );
+              }
+              return live.read(endpoint, query);
+            },
+            rpc: (method, params) {
+              if (method != 'projects.tree') {
+                throw StateError(
+                  'Read-only paging blocked a non-allowlisted RPC',
+                );
+              }
+              return live.call(method, params);
+            },
+          );
+        },
       );
       addTearDown(controller.dispose);
       await controller.initialize();
@@ -40,10 +77,16 @@ void main() {
       );
       var largeProfiles = 0;
       final names = controller.discovery!.profiles.map((p) => p.name).toList();
+      expect(names, isNotEmpty, reason: 'Paging requires at least one profile');
       for (var index = 0; index < names.length; index++) {
         await controller.navigateProfile(names[index]);
         expect(controller.error, isNull);
         final data = controller.current!;
+        expect(data.scope.profileName, names[index]);
+        expect(
+          data.sessions.every((row) => row['profile'] == names[index]),
+          isTrue,
+        );
         final pins = data.sessions
             .where((r) => r['pinned'] == true)
             .map((r) => r['id'])
@@ -87,30 +130,35 @@ void main() {
             isTrue,
           );
           await tester.pumpAndSettle();
-          for (var i = 0; i < 6; i++) {
-            await tester.drag(
-              find.byType(ListView).last,
-              const Offset(0, -1500),
-            );
-            await tester.pumpAndSettle();
-          }
-          final list = tester.widget<ListView>(find.byType(ListView).last);
-          final renderedRows = list.childrenDelegate.estimatedChildCount;
           if (data.projectSessions.length > 100) {
-            expect(renderedRows, greaterThan(100));
+            final last = data.projectSessions.last;
+            final row = find.byKey(
+              ValueKey('chat-${names[index]}-${last['id']}'),
+            );
+            await tester.scrollUntilVisible(
+              row,
+              500,
+              scrollable: find.byType(Scrollable).last,
+              maxScrolls: 100,
+            );
+            expect(
+              row.hitTestable(),
+              findsOneWidget,
+              reason:
+                  'A project member beyond the first page must be reachable',
+            );
           }
           debugPrint(
-            '[paging-readonly] project ${index + 1}: members=${data.projectSessions.length} revealed=$renderedRows',
+            '[paging-readonly] project ${index + 1}: members=${data.projectSessions.length}',
           );
           await controller.selectProject(null);
         }
       }
-      // Real pending-request navigation, even on a single-profile host.
+      // Check navigation retention. This is not a held-read race test: the
+      // previous loop may already have exhausted pagination on the live host.
       await controller.navigateProfile(names.first);
       final initial = controller.current!;
-      final pending = controller.loadMoreSessions();
       await controller.navigateProfile(names.last);
-      await pending;
       expect(controller.current!.scope.profileName, names.last);
       await controller.navigateProfile(names.first);
       expect(controller.current, same(initial));

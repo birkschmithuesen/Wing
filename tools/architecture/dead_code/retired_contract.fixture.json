@@ -1,0 +1,645 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "name": "retired-voice-preferences",
+      "files": {
+        "lib/core/services/voice_preferences.dart": "class VoicePreferences {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-voice-processing",
+      "files": {
+        "lib/core/services/voice_preferences.dart": "enum VoiceProcessing { local, hermes }\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-composer-fallback-reader",
+      "files": {
+        "lib/core/models/composer_action.dart": "enum ComposerAction { steer;\n static ComposerAction fromPreference(String? value) => steer;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-visibility-fallback-reader",
+      "files": {
+        "lib/core/models/session_visibility.dart": "enum SessionVisibility { chats;\n static SessionVisibility fromStored(String? value) => chats;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-text-size-store",
+      "files": {
+        "lib/core/services/text_size_preference.dart": "class TextSizePreferenceStore {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-text-size-enum",
+      "files": {
+        "lib/core/services/text_size_preference.dart": "enum TextSizePreference { system }\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-text-size-scaler",
+      "files": {
+        "lib/core/services/text_size_preference.dart": "class _MultiplierTextScaler {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-backup-catalog-field",
+      "files": {
+        "lib/core/services/config_backup_service.dart": "class ConfigBackupService {\n static final exactPreferenceKeys = <String>{};\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-backup-catalog-helper",
+      "files": {
+        "lib/core/services/config_backup_service.dart": "class ConfigBackupService {\n static bool isBackedUpKey(String key) => true;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-backup-card",
+      "files": {
+        "lib/core/widgets/config_backup_card.dart": "class ConfigBackupCard {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-backup-card-state",
+      "files": {
+        "lib/core/widgets/config_backup_card.dart": "class _ConfigBackupCardState {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-voice-alias",
+      "files": {
+        "lib/core/services/voice_preferences.dart": "import '../models/app_preferences.dart' as model;\ntypedef VoiceProcessing = model.AppVoiceProcessing;\n",
+        "lib/core/models/app_preferences.dart": "enum AppVoiceProcessing { local, hermes }\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "canonical-preferences-and-render-owners-valid",
+      "files": {
+        "lib/core/models/app_preferences.dart": "enum AppVoiceProcessing { local, hermes }\nenum AppTextSizePreference { system }\n",
+        "lib/core/services/voice_preferences_session.dart": "class VoicePreferencesSession {}\n",
+        "lib/core/widgets/config_backup_card.dart": "class ExportPassphraseSheet {}\nclass _ExportPassphraseSheetState {}\nclass ImportOptionsSheet {}\nclass _ImportOptionsSheetState {}\n",
+        "lib/core/services/config_backup_service.dart": "class ConfigBackupService { void export() {} void import() {} }\n",
+        "lib/core/models/composer_action.dart": "enum ComposerAction { send, steer, stop, queue, fork }\n",
+        "lib/core/models/session_visibility.dart": "enum SessionVisibility { chats, all; bool includes(String? source) => true; }\n",
+        "lib/core/theme/app_preferences_rendering.dart": "class _AppTextScaler {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated-preference-owner-spellings-valid",
+      "files": {
+        "lib/unrelated.dart": "class VoicePreferences {}\nenum VoiceProcessing { local }\nclass ConfigBackupCard {}\nclass TextSizePreferenceStore {}\n",
+        "lib/core/models/composer_action.dart": "class Other { void fromPreference() {} }\n",
+        "lib/core/models/session_visibility.dart": "class Other { void fromStored() {} }\n",
+        "lib/core/services/config_backup_service.dart": "class Other { final exactPreferenceKeys = {}; bool isBackedUpKey(String key) => true; }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-class",
+      "files": {
+        "lib/core/services/connection_manager.dart": "class ApiClient {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-getter",
+      "files": {
+        "lib/core/services/ws_client.dart": "class WsClient {\n  bool get isConnected => true;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-field",
+      "files": {
+        "lib/core/services/ws_client.dart": "class WsClient {\n  final _streams = {};\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-typedef",
+      "files": {
+        "lib/core/services/ws_client.dart": "typedef GatewayReadyCallback = void Function();\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-top-function",
+      "files": {
+        "lib/core/services/ws_client.dart": "void _gatewayResponseError() {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-enum",
+      "files": {
+        "lib/core/theme/wing_theme.dart": "enum WingStatus { idle }\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "real-part",
+      "files": {
+        "lib/core/models/session.dart": "part 'session_part.dart';\n",
+        "lib/core/models/session_part.dart": "part of 'session.dart';\nclass Session {}\n"
+      },
+      "exit": 1,
+      "line": 2,
+      "diagnosticFile": "lib/core/models/session_part.dart"
+    },
+    {
+      "name": "unrelated-owner-and-library",
+      "files": {
+        "lib/core/services/ws_client.dart": "class Other { void sendMessage() {} bool get isConnected => true; }\n",
+        "lib/other.dart": "class ApiClient {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "active-raw-transport",
+      "files": {
+        "lib/core/services/ws_client.dart": "class WsClient { void send() {} void close() {} void connect() {} }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "prefix-barrel-alias-keeps-declaration-owner",
+      "files": {
+        "lib/other.dart": "class ApiClient {}\n",
+        "lib/barrel.dart": "export 'other.dart';\n",
+        "lib/core/services/ws_client.dart": "import '../../barrel.dart' as p;\ntypedef Alias = p.ApiClient;\nclass Other { void sendMessage() {} }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "unowned-part-fails-closed",
+      "files": {
+        "lib/core/models/part.dart": "part of 'session.dart';\nclass Session {}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "legacy-typedef-spelling",
+      "files": {
+        "lib/core/services/ws_client.dart": "typedef void GatewayReadyCallback();\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "mixin-spelling",
+      "files": {
+        "lib/core/services/connection_manager.dart": "mixin ApiClient {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "extension-type-spelling",
+      "files": {
+        "lib/core/services/connection_manager.dart": "extension type ApiClient(int value) {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "extension-spelling",
+      "files": {
+        "lib/core/services/connection_manager.dart": "extension ApiClient on int {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "local-function-not-top-api",
+      "files": {
+        "lib/core/services/ws_client.dart": "void active() { void _gatewayResponseError() {} _gatewayResponseError(); }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "former-model-widget-owner",
+      "files": {
+        "lib/core/widgets/model_chooser.dart": "class ModelChoice {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "supported-new-model-owner",
+      "files": {
+        "lib/core/models/model_choice.dart": "class ModelChoice {}\nclass ModelSelection {}\nenum ModelSpecialChoice { automatic }\n",
+        "lib/core/widgets/model_chooser.dart": "class ModelSpecialOption {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "former-diagnostic-owner",
+      "files": {
+        "lib/core/widgets/profile_diagnostics_panel.dart": "class _AccessResult {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "supported-new-diagnostic-owner",
+      "files": {
+        "lib/core/services/profile_diagnostics_controller.dart": "class ProfileDiagnosticsController {}\nclass ProfileAccessResult {}\nenum ProfileAccessRecovery { none }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-attachment-mode",
+      "files": {
+        "lib/core/services/attachment_draft_service.dart": "enum AttachmentDraftMode { remoteGateway, rest }\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "retired-outer-provider-busy",
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": "class _AdminProvidersPageState {\n  final bool _busy = false;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "active-provider-operation-busy",
+      "files": {
+        "lib/core/screens/administration/admin_providers_page.dart": "class _AdminSecretPageState { bool _busy = false; void save() { _busy = true; } }\nclass _AdminOAuthPageState { bool _busy = false; void poll() { _busy = true; } }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-task-raw-preferences-field",
+      "files": {
+        "lib/core/services/scheduled_tasks_controller.dart": "class ScheduledTasksController {\n  final Object preferences = Object();\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "task-private-storage-and-lease-capability-valid",
+      "files": {
+        "lib/core/services/scheduled_tasks_controller.dart": "class ScheduledTasksController {\n  final Object _preferences = Object();\n  ScheduledTasksController acquireLease() => this;\n}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-health-application-value",
+      "files": {
+        "lib/core/services/administration_health.dart": "class AdministrationHealthFinding {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "pure-health-value-owner-valid",
+      "files": {
+        "lib/core/models/health_finding.dart": "enum AdministrationHealthStatus { healthy }\nclass AdministrationHealthFinding {}\n",
+        "lib/core/services/administration_health.dart": "import '../models/health_finding.dart';\nclass AdministrationHealth {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-health-owner-restoration-helper",
+      "files": {
+        "lib/core/services/health_snapshot.dart": "void restoreHealthObservation(Object target, Map data) {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "moved-oauth-owner-cannot-return-to-domain",
+      "files": {
+        "lib/core/models/dashboard_oauth_session.dart": "class DashboardOAuthSession {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "moved-oauth-runtime-error-cannot-return-to-domain",
+      "files": {
+        "lib/core/models/dashboard_oauth_session.dart": "class CloudAccessException {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "oauth-domain-value-and-runtime-owner-valid",
+      "files": {
+        "lib/core/models/dashboard_oauth_grant.dart": "class DashboardOAuthGrant {}\n",
+        "lib/core/services/dashboard_oauth_session.dart": "class DashboardOAuthSession {}\nclass CloudAccessException {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-wing-text-size-forwarder",
+      "files": {
+        "lib/main.dart": "class WingAppState {\n  Future<void> setTextSizePreference(Object preference) async {}\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "wing-direct-preference-owner-and-unrelated-name-valid",
+      "files": {
+        "lib/main.dart": "class WingAppState {}\nclass Unrelated { void setTextSizePreference() {} }\n",
+        "lib/core/services/app_preferences.dart": "class AppPreferences { void setTextSize() {} }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-profile-colour-store",
+      "files": {
+        "lib/core/services/profile_color_store.dart": "class ProfileColorStore {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "typed-profile-colour-owners-and-unrelated-name-valid",
+      "files": {
+        "lib/core/models/profile_colors.dart": "enum ProfileColorChoice { automatic, blue }\n",
+        "lib/core/services/app_preferences.dart": "class AppPreferences {}\n",
+        "lib/core/services/profile_color_palette.dart": "class ProfileColorStore {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-controller-session-key",
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": "class ProfileSessionKey {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "canonical-domain-session-key-valid",
+      "files": {
+        "lib/core/models/profile_session_key.dart": "class ProfileSessionKey {}\n",
+        "lib/core/services/profile_workspace_controller.dart": "import '../models/profile_session_key.dart';\nclass ProfileWorkspaceController {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-profile-selection-store",
+      "files": {
+        "lib/core/services/profile_selection_store.dart": "class ProfileSelectionStore {}\n"
+      },
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "typed-profile-selection-owner-and-unrelated-name-valid",
+      "files": {
+        "lib/core/models/profile_selection.dart": "class ProfileSelectionCodec {}\n",
+        "lib/core/services/app_preferences.dart": "class AppPreferences {}\n",
+        "lib/core/services/unrelated_selection.dart": "class ProfileSelectionStore {}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-administration-health-cache",
+      "files": {
+        "lib/core/screens/administration/administration_content.dart": "class _HermesAdministrationContentState {\n Object? _health;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-administration-refresh-policy",
+      "files": {
+        "lib/core/screens/administration/administration_content.dart": "class _HermesAdministrationContentState {\n void _refreshAfter() {}\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-administration-destination-key-getter",
+      "files": {
+        "lib/core/screens/administration/administration_content.dart": "class _Destination {\n Set<String> get summaryKeys => {};\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-overview-session-factory",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": "class AdminProfileOverview {\n final Object? createSession = null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-overview-publishing-callback",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": "class AdminProfileOverview {\n Object? get onOverviewChanged => null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-overview-observation-publisher",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": "class _AdminProfileOverviewState {\n void _publishObservations() {}\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-overview-completion-generation",
+      "files": {
+        "lib/core/services/profile_overview_session.dart": "class ProfileOverviewSession {\n int _completionGeneration = 0;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "borrowed-overview-and-retained-health-valid",
+      "files": {
+        "lib/core/screens/administration/admin_profile_overview.dart": "class AdminProfileOverview { final Object session; AdminProfileOverview(this.session); }\nclass _AdminProfileOverviewState { Object? get session => null; void initState() {} void dispose() {} }\nclass AdministrationHealthSession { Object? get health => null; }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "administration-homonymous-members-valid",
+      "files": {
+        "lib/core/screens/administration/administration_content.dart": "class OtherView { Object? _health; void _refreshAfter() {} Set<String> get summaryKeys => {}; }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-unnamed-notification-constructor",
+      "files": {
+        "lib/core/services/turn_notification_service.dart": "class TurnNotificationService {\n TurnNotificationService();\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "same-name-other-constructor-and-active-statics",
+      "files": {
+        "lib/core/services/turn_notification_service.dart": "abstract final class TurnNotificationService { static int notificationIdFor(String id) => 1; }\nclass OtherService { OtherService(); }\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "field-retirement-keeps-named-constructors",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n const ToolSetupAcknowledgement.provider();\n const ToolSetupAcknowledgement.model();\n const ToolSetupAcknowledgement.setup();\n}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "retired-ack-provider-field",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n final Object? provider = null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-ack-model-field",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n final Object? model = null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-ack-setupKey-field",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n final Object? setupKey = null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "retired-ack-capability-field",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n final Object? capability = null;\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "manifest-old-schema-fails-closed",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {}\n"
+      },
+      "manifest": {
+        "schema": 1,
+        "entries": [
+          {
+            "library": "lib/core/models/profile_tool_setup.dart",
+            "symbol": "ToolSetupAcknowledgement.provider",
+            "kind": "any"
+          }
+        ]
+      },
+      "exit": 2
+    },
+    {
+      "name": "manifest-missing-kind-fails-closed",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {}\n"
+      },
+      "manifest": {
+        "schema": 2,
+        "entries": [
+          {
+            "library": "lib/core/models/profile_tool_setup.dart",
+            "symbol": "ToolSetupAcknowledgement.provider"
+          }
+        ]
+      },
+      "exit": 2
+    },
+    {
+      "name": "manifest-unsupported-kind-fails-closed",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {}\n"
+      },
+      "manifest": {
+        "schema": 2,
+        "entries": [
+          {
+            "library": "lib/core/models/profile_tool_setup.dart",
+            "symbol": "ToolSetupAcknowledgement.provider",
+            "kind": "constructor"
+          }
+        ]
+      },
+      "exit": 2
+    },
+    {
+      "name": "manifest-nonstring-kind-fails-closed",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {}\n"
+      },
+      "manifest": {
+        "schema": 2,
+        "entries": [
+          {
+            "library": "lib/core/models/profile_tool_setup.dart",
+            "symbol": "ToolSetupAcknowledgement.provider",
+            "kind": false
+          }
+        ]
+      },
+      "exit": 2
+    },
+    {
+      "name": "any-kind-still-retires-named-constructor",
+      "files": {
+        "lib/core/models/profile_tool_setup.dart": "class ToolSetupAcknowledgement {\n const ToolSetupAcknowledgement.provider();\n}\n"
+      },
+      "manifest": {
+        "schema": 2,
+        "entries": [
+          {
+            "library": "lib/core/models/profile_tool_setup.dart",
+            "symbol": "ToolSetupAcknowledgement.provider",
+            "kind": "any"
+          }
+        ]
+      },
+      "exit": 1,
+      "line": 2
+    }
+  ]
+}

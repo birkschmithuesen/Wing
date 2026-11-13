@@ -14,8 +14,10 @@ import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/widgets/profile_diagnostics_panel.dart';
+import 'package:wing/core/services/profile_diagnostics_controller.dart';
 import 'package:wing/core/screens/administration/admin_widgets.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 class _DiagnosticsHost {
   final reads = <(String, Map<String, String>)>[];
@@ -48,8 +50,9 @@ class _DiagnosticsHost {
                 method == 'setup.status'
                     ? <String, dynamic>{'provider_configured': true}
                     : <String, dynamic>{
+                        // Stock native gateway validates the request's profile
+                        // and returns readiness without a profile echo.
                         'ok': true,
-                        'profile': profile,
                         'model': 'gpt-5.6-sol',
                         'provider': 'openai-codex',
                       },
@@ -70,11 +73,7 @@ Widget _app(
   double textScale = 1,
 }) {
   final diagnostics =
-      controller ??
-      ProfileDiagnosticsController(
-        workspace: workspace,
-        connectionLabel: 'Home server',
-      );
+      controller ?? ProfileDiagnosticsController(gateway: workspace.gateway);
   if (controller == null) addTearDown(diagnostics.dispose);
   return MaterialApp(
     debugShowCheckedModeBanner: false,
@@ -108,13 +107,15 @@ Widget _app(
             children: [
               ProfileModelAccessRow(
                 controller: diagnostics,
-                modelObservation:
-                    observation ??
-                    (AdministrationObservation()
-                      ..data = {
-                        'model': 'gpt-5.6-sol',
-                        'provider': 'openai-codex',
-                      }),
+                modelObservation: ModelAccessObservation.fromObservation(
+                  observation ??
+                      AdministrationObservation(
+                        data: {
+                          'model': 'gpt-5.6-sol',
+                          'provider': 'openai-codex',
+                        },
+                      ),
+                ),
                 refreshing: false,
                 onRetry: diagnostics.check,
                 onManageConnections: onManage ?? () {},
@@ -139,7 +140,7 @@ Widget _app(
 
 void main() {
   testWidgets(
-    'healthy access is a passive row with no settings or recovery action',
+    'native readiness without a profile echo shows healthy passive access',
     (tester) async {
       final host = _DiagnosticsHost();
       await tester.pumpWidget(_app(host.workspace('work')));
@@ -238,8 +239,7 @@ void main() {
       final host = _DiagnosticsHost();
       final workspace = host.workspace('work');
       final controller = ProfileDiagnosticsController(
-        workspace: workspace,
-        connectionLabel: 'Claw',
+        gateway: workspace.gateway,
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_app(workspace, controller: controller));
@@ -255,7 +255,15 @@ void main() {
       for (final response in [
         {},
         {'ok': true},
+        {'ok': true, 'model': 'gpt-5.6-sol'},
+        {'ok': true, 'provider': 'openai-codex'},
         {'ok': true, 'profile': 'another'},
+        {
+          'ok': true,
+          'profile': 'another',
+          'model': 'gpt-5.6-sol',
+          'provider': 'openai-codex',
+        },
         {'ok': false, 'profile': 'another'},
       ]) {
         host.onCall = (_, _) async => Map<String, dynamic>.from(response);
@@ -276,8 +284,17 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('Retry'), findsOneWidget);
       expect(find.text('Fix access'), findsNothing);
-      host.onCall = null;
+      final retry = Completer<Map<String, dynamic>>();
+      host.onCall = (_, _) => retry.future;
       await tester.tap(find.text('Retry'));
+      await tester.pump();
+      expect(find.text('Checking access…'), findsOneWidget);
+      expect(find.text('Retry'), findsNothing);
+      retry.complete({
+        'ok': true,
+        'model': 'gpt-5.6-sol',
+        'provider': 'openai-codex',
+      });
       await tester.pumpAndSettle();
       expect(find.text('Access is set up'), findsOneWidget);
       expect(find.text('Retry'), findsNothing);
@@ -295,8 +312,7 @@ void main() {
         method == 'setup.status' ? setup.future : runtime.future;
     final oldWorkspace = oldHost.workspace('old');
     final controller = ProfileDiagnosticsController(
-      workspace: oldWorkspace,
-      connectionLabel: 'Home server',
+      gateway: oldWorkspace.gateway,
     );
     addTearDown(controller.dispose);
     await tester.pumpWidget(_app(oldWorkspace, controller: controller));
@@ -305,10 +321,7 @@ void main() {
 
     final newHost = _DiagnosticsHost();
     final newWorkspace = newHost.workspace('new');
-    controller.updateWorkspace(
-      workspace: newWorkspace,
-      connectionLabel: 'Home server',
-    );
+    controller.updateGateway(newWorkspace.gateway);
     await tester.pumpWidget(_app(newWorkspace, controller: controller));
     dashboard.complete({});
     setup.complete({'provider_configured': true});
@@ -325,10 +338,7 @@ void main() {
     host.onRead = (_, _) => pending.future;
     host.onCall = (_, _) => pending.future;
     final workspace = host.workspace('work');
-    final controller = ProfileDiagnosticsController(
-      workspace: workspace,
-      connectionLabel: 'Home server',
-    );
+    final controller = ProfileDiagnosticsController(gateway: workspace.gateway);
     await tester.pumpWidget(_app(workspace, controller: controller));
     await tester.tap(find.byTooltip('Refresh profile status'));
     await tester.pump();
@@ -350,10 +360,7 @@ void main() {
   ) async {
     final host = _DiagnosticsHost();
     final workspace = host.workspace('work');
-    final controller = ProfileDiagnosticsController(
-      workspace: workspace,
-      connectionLabel: 'Home server',
-    );
+    final controller = ProfileDiagnosticsController(gateway: workspace.gateway);
     addTearDown(controller.dispose);
     await tester.pumpWidget(_app(workspace, controller: controller));
     await tester.tap(find.byTooltip('Refresh profile status'));
@@ -361,10 +368,7 @@ void main() {
     final checkedAt = controller.healthObservation.finding!.checkedAt;
 
     await tester.pumpWidget(const MaterialApp(home: SizedBox()));
-    controller.updateWorkspace(
-      workspace: workspace,
-      connectionLabel: 'Home server',
-    );
+    controller.updateGateway(workspace.gateway);
     await tester.pumpWidget(_app(workspace, controller: controller));
 
     expect(find.text('Access is set up'), findsOneWidget);
@@ -382,10 +386,7 @@ void main() {
     host.onRead = (_, _) => pending.future;
     host.onCall = (_, _) => pending.future;
     final workspace = host.workspace('work');
-    final controller = ProfileDiagnosticsController(
-      workspace: workspace,
-      connectionLabel: 'Home server',
-    );
+    final controller = ProfileDiagnosticsController(gateway: workspace.gateway);
     addTearDown(controller.dispose);
     await tester.pumpWidget(_app(workspace, controller: controller));
     await tester.tap(find.byTooltip('Refresh profile status'));
@@ -417,8 +418,7 @@ void main() {
       oldHost.onCall = (_, _) => pending.future;
       final oldWorkspace = oldHost.workspace('work');
       final controller = ProfileDiagnosticsController(
-        workspace: oldWorkspace,
-        connectionLabel: 'Home server',
+        gateway: oldWorkspace.gateway,
       );
       addTearDown(controller.dispose);
       await tester.pumpWidget(_app(oldWorkspace, controller: controller));
@@ -426,10 +426,7 @@ void main() {
       await tester.pump();
       final newHost = _DiagnosticsHost();
       final newWorkspace = newHost.workspace('work');
-      controller.updateWorkspace(
-        workspace: newWorkspace,
-        connectionLabel: 'Home server',
-      );
+      controller.updateGateway(newWorkspace.gateway);
       await tester.pumpWidget(_app(newWorkspace, controller: controller));
       pending.complete({
         'profile': 'work',
@@ -454,8 +451,7 @@ void main() {
     () async {
       final host = _DiagnosticsHost();
       final controller = ProfileDiagnosticsController(
-        workspace: host.workspace('work'),
-        connectionLabel: 'Claw',
+        gateway: host.workspace('work').gateway,
       );
       addTearDown(controller.dispose);
       controller.updateModel({
@@ -497,10 +493,7 @@ void main() {
         'provider': 'anthropic',
       };
     final workspace = host.workspace('work');
-    final controller = ProfileDiagnosticsController(
-      workspace: workspace,
-      connectionLabel: 'Claw',
-    );
+    final controller = ProfileDiagnosticsController(gateway: workspace.gateway);
     addTearDown(controller.dispose);
     controller.updateModel({
       'model': 'gpt-5.6-sol',
@@ -558,6 +551,7 @@ void main() {
         'initial',
         'model-loading',
         'model-unavailable',
+        'model-malformed',
         'model-stale',
         'checking',
         'ready',
@@ -597,8 +591,7 @@ void main() {
           };
           final workspace = host.workspace('work');
           final controller = ProfileDiagnosticsController(
-            workspace: workspace,
-            connectionLabel: 'Claw',
+            gateway: workspace.gateway,
           );
           addTearDown(controller.dispose);
           controller.updateModel({
@@ -621,16 +614,17 @@ void main() {
               textScale: scale,
               brightness: brightness,
               observation: switch (state) {
-                'model-loading' => AdministrationObservation()..loading = true,
-                'model-unavailable' =>
-                  AdministrationObservation()..error = 'Offline',
-                'model-stale' =>
-                  AdministrationObservation()
-                    ..data = {
-                      'model': 'gpt-5.6-sol',
-                      'provider': 'openai-codex',
-                    }
-                    ..error = 'Offline',
+                'model-loading' => AdministrationObservation(loading: true),
+                'model-unavailable' => AdministrationObservation(
+                  error: 'Offline',
+                ),
+                'model-malformed' => AdministrationObservation(
+                  data: {'model': 17},
+                ),
+                'model-stale' => AdministrationObservation(
+                  data: {'model': 'gpt-5.6-sol', 'provider': 'openai-codex'},
+                  error: 'Offline',
+                ),
                 _ => null,
               },
             ),
@@ -648,6 +642,37 @@ void main() {
             'missing' || 'failed' => tokens.danger,
             _ => Theme.of(tester.element(row)).colorScheme.onSurfaceVariant,
           });
+          expect(
+            find.text(switch (state) {
+              'checking' => 'Checking access…',
+              'ready' => 'Access is set up',
+              'different' => 'Selected model access unconfirmed',
+              'missing' => 'Credentials missing',
+              'failed' => 'Provider check failed',
+              'offline' || 'incomplete' => 'Check incomplete',
+              _ => 'Credentials not checked',
+            }),
+            findsOneWidget,
+          );
+          if (state == 'model-loading') {
+            expect(find.text('Loading model…'), findsOneWidget);
+          } else if (const {
+            'model-unavailable',
+            'model-malformed',
+            'model-stale',
+          }.contains(state)) {
+            expect(
+              find.descendant(
+                of: find.byType(StudioError),
+                matching: find.text('Could not read the selected model.'),
+              ),
+              findsOneWidget,
+            );
+            expect(
+              find.text('Showing the last known model.'),
+              state == 'model-stale' ? findsOneWidget : findsNothing,
+            );
+          }
           await snapshot(tester, name);
           expect(tester.takeException(), isNull);
           await tester.ensureVisible(

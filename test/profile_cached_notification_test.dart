@@ -1,3 +1,5 @@
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -14,11 +16,13 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late NotificationCoverageHost host;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   late ProfileChat cached;
   late List<ProfileInputNotification> notices;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     const identity = 'cached-notification-owner';
     await WorkspaceSnapshotStore(preferences, identity).write({
       'selected': 'a',
@@ -52,31 +56,38 @@ void main() {
     host = NotificationCoverageHost();
     notices = <ProfileInputNotification>[];
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: identity,
       preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
       onAttention: (_) async {},
       onNotificationInputs: (notice) async => notices.add(notice),
     );
     cached = controller.notificationChats.single;
     expect(
-      cached.runtimeId,
+      cached.runtime.runtimeId,
       'outside',
       reason: 'reading cache contains a durable ID, not a live runtime',
     );
-    expect(cached.offlineSnapshot, isTrue);
+    expect(cached.runtime.offline, isTrue);
     await controller.initialize();
     expect(controller.current!.chat, isNull);
     expect(host.resumeCalls, isEmpty);
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
 
   Future<void> snapshot(String status) async {
     final reads = host.activeReads;
@@ -100,7 +111,10 @@ void main() {
 
   void expectCached() {
     expect(controller.notificationChats.single, same(cached));
-    expect(cached.messages.single['content'], 'Earlier completed reply');
+    expect(
+      cached.reading.messages.single['content'],
+      'Earlier completed reply',
+    );
     expect(controller.current!.chat, isNull);
   }
 
@@ -115,7 +129,7 @@ void main() {
         notices,
         hasLength(1),
         reason:
-            'new waiting runtime must hydrate the existing cached slot; resume calls: ${host.resumeCalls.length}, cached runtime: ${cached.runtimeId}, status: ${cached.status}, watcher: ${controller.hasActiveChats}',
+            'new waiting runtime must hydrate the existing cached slot; resume calls: ${host.resumeCalls.length}, cached runtime: ${cached.runtime.runtimeId}, status: ${cached.runtime.execution}, watcher: ${controller.hasActiveChats}',
       );
       expect(notices.single.alert, isTrue);
       expect(notices.single.inputs.single.count, 3);
@@ -124,9 +138,9 @@ void main() {
         notices.single.inputs.single.content.preview,
         contains('Choose environment 0'),
       );
-      expect(host.resumeCalls.single['omit_messages'], isTrue);
-      expect(cached.runtimeId, 'outside-runtime');
-      expect(cached.offlineSnapshot, isFalse);
+      expect(host.resumeCalls.single['display_projection'], isTrue);
+      expect(cached.runtime.runtimeId, 'outside-runtime');
+      expect(cached.runtime.offline, isFalse);
     },
   );
 
@@ -138,21 +152,21 @@ void main() {
       await question();
       expect(host.resumeCalls, hasLength(1));
       expectCached();
-      expect(cached.runtimeId, 'outside');
-      expect(cached.offlineSnapshot, isTrue);
+      expect(cached.runtime.runtimeId, 'outside');
+      expect(cached.runtime.offline, isTrue);
       expect(notices, isEmpty);
       host.resumeFails = false;
       await snapshot('waiting');
       expectCached();
       expect(notices.single.inputs.single.count, 3);
-      expect(cached.runtimeId, 'outside-runtime');
-      expect(cached.offlineSnapshot, isFalse);
+      expect(cached.runtime.runtimeId, 'outside-runtime');
+      expect(cached.runtime.offline, isFalse);
     },
   );
 
   for (final mismatch in [
     {'session_id': 'wrong-runtime'},
-    {'session_key': 'wrong-session'},
+    {'stored_session_id': 'wrong-session'},
     {
       'info': {'profile_name': 'b'},
     },
@@ -165,8 +179,8 @@ void main() {
         await question();
         expect(host.resumeCalls, hasLength(1));
         expectCached();
-        expect(cached.runtimeId, 'outside');
-        expect(cached.offlineSnapshot, isTrue);
+        expect(cached.runtime.runtimeId, 'outside');
+        expect(cached.runtime.offline, isTrue);
         expect(notices, isEmpty);
         host.resumeOverrides = {};
         await snapshot('waiting');
@@ -199,11 +213,14 @@ void main() {
         host.resumeDelays[1]!.complete();
         await Future<void>.delayed(Duration.zero);
         expectCached();
-        expect(cached.pendingQuestion!['request_id'], 'newer-live-question');
+        expect(
+          cached.runtime.pendingQuestion!.requestId,
+          'newer-live-question',
+        );
         expect(notices.single.inputs.single.focus.id, 'newer-live-question');
         expect(notices.single.alert, isTrue);
-        expect(cached.runtimeId, 'outside-runtime');
-        expect(cached.offlineSnapshot, isFalse);
+        expect(cached.runtime.runtimeId, 'outside-runtime');
+        expect(cached.runtime.offline, isFalse);
       },
     );
   }
@@ -216,9 +233,9 @@ void main() {
       await question();
       expect(host.resumeCalls, hasLength(1));
       expectCached();
-      expect(cached.runtimeId, 'outside-runtime');
-      expect(cached.offlineSnapshot, isFalse);
-      expect(cached.pendingQuestion, isNull);
+      expect(cached.runtime.runtimeId, 'outside-runtime');
+      expect(cached.runtime.offline, isFalse);
+      expect(cached.runtime.pendingQuestion, isNull);
       expect(notices, isEmpty);
     },
   );
@@ -238,13 +255,16 @@ void main() {
       host.resumeDelays[1]!.complete();
       await Future<void>.delayed(Duration.zero);
       expect(controller.notificationChats.single, same(cached));
-      expect(cached.messages.single['content'], 'Earlier completed reply');
+      expect(
+        cached.reading.messages.single['content'],
+        'Earlier completed reply',
+      );
       host.resumeDelays[2]!.complete();
       await opening;
       expect(controller.current!.chat, same(cached));
-      expect(cached.pendingQuestion!['request_id'], 'question-a');
-      expect(cached.runtimeId, 'outside-runtime');
-      expect(cached.offlineSnapshot, isFalse);
+      expect(cached.runtime.pendingQuestion!.requestId, 'question-a');
+      expect(cached.runtime.runtimeId, 'outside-runtime');
+      expect(cached.runtime.offline, isFalse);
     },
   );
 
@@ -258,8 +278,8 @@ void main() {
       await question();
       expect(host.resumeCalls, isEmpty);
       expectCached();
-      expect(cached.runtimeId, 'outside');
-      expect(cached.offlineSnapshot, isTrue);
+      expect(cached.runtime.runtimeId, 'outside');
+      expect(cached.runtime.offline, isTrue);
       expect(notices, isEmpty);
     },
   );

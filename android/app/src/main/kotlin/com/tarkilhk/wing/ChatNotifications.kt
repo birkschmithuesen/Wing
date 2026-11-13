@@ -5,26 +5,28 @@ import android.content.*
 import android.content.res.Configuration
 import android.os.Handler
 import android.os.Looper
-import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.text.Layout
-import android.text.StaticLayout
-import android.text.TextPaint
-import android.view.View
-import android.widget.RemoteViews
+import android.widget.Toast
+import androidx.core.app.Person
+import androidx.core.content.pm.ShortcutInfoCompat
+import androidx.core.content.pm.ShortcutManagerCompat
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import org.json.JSONArray
 import org.json.JSONObject
+import java.lang.ref.WeakReference
 
 /** Render and deliver interactions on the retained app engine, including cold starts. */
 object ChatNotifications {
-    const val extra = "wing_notification_interaction"
+    const val handleExtra = "wing_notification_handle"
+    private const val navigationExtra = "wing_conversation_navigation"
+    private const val publicRawExtra = "wing_notification_interaction"
     private const val channelName = "com.tarkilhk.wing/chat_notifications"
     private const val turnChannel = "wing_turn_notifications"
     private const val attentionChannel = "wing_attention_notifications"
@@ -33,6 +35,38 @@ object ChatNotifications {
     private val pendingActions = mutableListOf<JSONObject>()
     private val displayed = mutableMapOf<Int, Map<*, *>>()
     private var observesConfiguration = false
+    private var handleStore: NotificationHandleStore? = null
+    private var directActionHost: Pair<Int, WeakReference<Activity>>? = null
+    private fun handles(context: Context): NotificationHandleStore = handleStore ?: run {
+        val prefs = preferences(context.applicationContext)
+        NotificationHandleStore(
+            read = { prefs.getString("handles", null) },
+            write = { prefs.edit().putString("handles", it).commit() },
+        ).also { handleStore = it }
+    }
+    fun consumeAction(context: Context, intent: Intent): JSONObject? =
+        consumeIntent(context, intent, NotificationHandleStore.actionPurpose)
+    private fun consumeIntent(context: Context, intent: Intent?, purpose: String): JSONObject? = try {
+        val token = intent?.getStringExtra(handleExtra)
+        intent?.removeExtra(handleExtra)
+        handles(context).consume(token, purpose)
+    } catch (_: Exception) { null }
+    fun mainHandoff(context: Context, value: JSONObject): String? =
+        handles(context).issue(value.getInt("notification_id"), NotificationHandleStore.mainPurpose,
+            JSONObject(value.toString()))
+    private fun pendingDismissals(context: Context): JSONArray {
+        return try {
+            val raw = preferences(context).getString("pending", "[]") ?: "[]"
+            if (raw.length > NotificationInteractionSchema.maxChars * 512) return JSONArray()
+            val source = JSONArray(raw)
+            val valid = JSONArray()
+            for (index in 0 until minOf(source.length(), 512)) {
+                val value = NotificationInteractionSchema.parse(source.optJSONObject(index)?.toString())
+                if (value?.opt("dismiss") == true) valid.put(value)
+            }
+            valid
+        } catch (_: Exception) { JSONArray() }
+    }
     private fun preferences(context: Context) = context.getSharedPreferences("notification_interactions", Context.MODE_PRIVATE)
 
     fun attach(source: Context, engine: FlutterEngine) {
@@ -63,14 +97,14 @@ object ChatNotifications {
                         "initialize" -> {
                             createChannels(context)
                             ready = true
-                            val queue = JSONArray(preferences(context).getString("pending", "[]"))
+                            val queue = pendingDismissals(context)
                             val deliveries = (0 until queue.length()).map { asMap(queue.getJSONObject(it)) } + pendingActions.map { asMap(it) }
                             pendingActions.clear()
                             result.success(deliveries)
                         }
                         "acknowledge" -> {
                             val prefs = preferences(context)
-                            val queue = JSONArray(prefs.getString("pending", "[]"))
+                            val queue = pendingDismissals(context)
                             val remaining = JSONArray()
                             for (index in 0 until queue.length()) {
                                 val entry = queue.getJSONObject(index)
@@ -79,12 +113,27 @@ object ChatNotifications {
                             prefs.edit().putString("pending", remaining.toString()).commit()
                             result.success(null)
                         }
-                        "show" -> { show(context, call.arguments as Map<*, *>); result.success(null) }
-                        "cancel" -> {
-                            context.getSystemService(NotificationManager::class.java).cancel((call.arguments as Number).toInt())
+                        "finishDirectAction" -> {
+                            val host = directActionHost
+                            if (host != null && host.first == call.arguments) {
+                                directActionHost = null
+                                result.success(null)
+                                host.second.get()?.finish()
+                            } else result.success(null)
+                        }
+                        "actionStatus" -> {
+                            Toast.makeText(context, call.arguments as String, Toast.LENGTH_LONG).show()
                             result.success(null)
                         }
-                        "cancelAll" -> { NotificationManagerCompat.from(context).cancelAll(); result.success(null) }
+                        "show" -> { show(context, call.arguments as Map<*, *>); result.success(null) }
+                        "cancel" -> {
+                            val id = (call.arguments as Number).toInt()
+                            check(handles(context).invalidate(id))
+                            displayed.remove(id)
+                            ShortcutManagerCompat.removeLongLivedShortcuts(context, listOf("wing-chat-$id"))
+                            context.getSystemService(NotificationManager::class.java).cancel(id)
+                            result.success(null)
+                        }
                         "channels" -> result.success(channelStates(context))
                         "openChannelSettings" -> {
                             val intent = if (Build.VERSION.SDK_INT >= 26) Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
@@ -100,16 +149,20 @@ object ChatNotifications {
             }
         }
     }
-    fun detach() { channel?.setMethodCallHandler(null); channel = null; ready = false; pendingActions.clear() }
+    fun detach() { channel?.setMethodCallHandler(null); channel = null; ready = false; pendingActions.clear(); directActionHost = null }
 
     fun interact(context: Context, value: JSONObject, completed: (() -> Unit)? = null) {
+        if (NotificationInteractionSchema.parse(value.toString()) == null) {
+            completed?.invoke()
+            return
+        }
         // Only dismissals survive process death. A permission choice must never
         // become a deferred grant replayed on some later launch.
         if (value.optBoolean("dismiss")) {
             value.put("interaction_id", java.util.UUID.randomUUID().toString())
             val prefs = preferences(context)
-            val queue = JSONArray(prefs.getString("pending", "[]"))
-            queue.put(value)
+            val queue = pendingDismissals(context)
+            if (queue.length() < 512) queue.put(value)
             prefs.edit().putString("pending", queue.toString()).commit()
         }
         if (ready && channel != null) {
@@ -119,7 +172,7 @@ object ChatNotifications {
                 override fun notImplemented() { completed?.invoke() }
             })
         } else {
-            if (!value.optBoolean("dismiss")) pendingActions.add(value)
+            if (!value.optBoolean("dismiss") && pendingActions.size < 512) pendingActions.add(value)
             completed?.invoke()
         }
     }
@@ -128,9 +181,21 @@ object ChatNotifications {
         if (item == JSONObject.NULL) null else item
     }
     fun handleMainIntent(context: Context, intent: Intent?) {
-        val value = intent?.getStringExtra(extra) ?: return
-        intent.removeExtra(extra)
-        interact(context, JSONObject(value))
+        // MainActivity is exported. Raw JSON can never authorize an interaction.
+        try { intent?.removeExtra(publicRawExtra) } catch (_: Exception) { return }
+        val navigation = try { intent?.getStringExtra(navigationExtra) } catch (_: Exception) { null }
+        try { intent?.removeExtra(navigationExtra) } catch (_: Exception) { return }
+        val value = if (navigation != null) handles(context).readNavigation(navigation)
+            else consumeIntent(context, intent, NotificationHandleStore.mainPurpose)
+        value ?: return
+        if (context is Activity && value.optString("choice").isNotEmpty() && !value.optBoolean("review")) {
+            directActionHost = value.getInt("notification_id") to WeakReference(context)
+        }
+        interact(context, value)
+    }
+    fun dismiss(context: Context, intent: Intent) {
+        val value = consumeIntent(context, intent, NotificationHandleStore.dismissPurpose) ?: return
+        interact(context, value)
     }
     fun hasLiveEngine() = ready && channel != null && MonitoringRuntime.engine != null
 
@@ -151,27 +216,43 @@ object ChatNotifications {
         }
     }
     private fun intent(context: Context, data: Map<*, *>, choice: String, review: Boolean): PendingIntent {
-        val value = JSONObject().put("payload", data["payload"]).put("choice", choice).put("review", review)
-            .put("chat", data["chat"]).put("revision", data["revision"])
-        // Extras are not PendingIntent identity. Bind the full immutable target and choice into data.
-        val identity = Uri.Builder().scheme("wing-notification").authority("action")
-            .appendPath(data["id"].toString()).appendPath(data["payload"].toString()).appendPath(choice).appendPath(review.toString()).build()
-        val intent = Intent(context, NotificationActionActivity::class.java).setData(identity).putExtra(extra, value.toString())
+        return intent(context, data, NotificationInteractionSchema.action(data, choice, review))
+    }
+    private fun intent(context: Context, data: Map<*, *>, value: JSONObject): PendingIntent {
+        // Immutable PendingIntent identity contains only an opaque token; trusted storage binds its target and choice.
+        val token = handles(context).issue((data["id"] as Number).toInt(), NotificationHandleStore.actionPurpose, value)
+            ?: throw IllegalStateException("Notification handoff could not be stored")
+        val identity = Uri.Builder().scheme("wing-notification").authority("action").appendPath(token).build()
+        val intent = Intent(context, NotificationActionActivity::class.java).setData(identity).putExtra(handleExtra, token)
         return PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
+    fun monitoringIntent(context: Context, id: Int, payload: String): PendingIntent {
+        if (payload.isEmpty()) {
+            return PendingIntent.getActivity(context, id,
+                Intent(context, MainActivity::class.java)
+                    .setAction("com.tarkilhk.wing.action.ACTIVITY")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
+        }
+        val data = mapOf("id" to id, "payload" to payload, "chat" to payload,
+            "revision" to "monitoring", "expanded" to "")
+        check(handles(context).replace(id, payload, "monitoring"))
+        return intent(context, data, NotificationInteractionSchema.contentTap(data))
+    }
+
     private fun deleteIntent(context: Context, data: Map<*, *>): PendingIntent {
         val value = JSONObject().put("dismiss", true).put("chat", data["chat"]).put("revision", data["revision"])
+        // Local test alerts do not own a chat dismissal.
+        val token = handles(context).issue((data["id"] as Number).toInt(), NotificationHandleStore.dismissPurpose, value)
         val target = Intent(context, NotificationDismissReceiver::class.java)
-            .setData(Uri.Builder().scheme("wing-notification").authority("dismiss").appendPath(data["payload"].toString()).build())
-            .putExtra(extra, value.toString())
+            .setData(Uri.Builder().scheme("wing-notification").authority("dismiss").appendPath(token ?: java.util.UUID.randomUUID().toString()).build())
+            .putExtra(handleExtra, token)
         return PendingIntent.getBroadcast(context, 0, target, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
     }
     private fun show(context: Context, data: Map<*, *>) {
         createChannels(context)
         val id = (data["id"] as Number).toInt()
-        val kind = data["kind"] as? String
-        val choices = data["choices"] as? List<*> ?: emptyList<String>()
-        val approval = kind == "approval" && data["preview"] == true && choices.isNotEmpty()
+        check(handles(context).replace(id, data["payload"] as? String, data["revision"] as? String))
         val pending = data["pending"] as? String ?: ""
         val error = data["error"] as? String
         val busy = data["submitting"] == true
@@ -184,37 +265,56 @@ object ChatNotifications {
         val builder = NotificationCompat.Builder(context, data["channel"] as String)
             .setSmallIcon(icon).setContentTitle(data["title"] as String)
             .setContentText(body).setSubText(data["scope"] as? String)
-            .setAutoCancel(false).setOnlyAlertOnce(data["alert"] != true)
+            .setAutoCancel(true).setOnlyAlertOnce(data["alert"] != true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setPublicVersion(NotificationCompat.Builder(context, data["channel"] as String)
                 .setSmallIcon(icon).setContentTitle("Wing").setContentText("Open Wing to review this chat").build())
             .setCategory(if (pending.isNotEmpty()) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_MESSAGE)
             .setPriority(if (data["channel"] == attentionChannel) NotificationCompat.PRIORITY_HIGH else NotificationCompat.PRIORITY_DEFAULT)
-            .setContentIntent(intent(context, data, "", true)).setDeleteIntent(deleteIntent(context, data))
+            .setContentIntent(intent(context, data, NotificationInteractionSchema.contentTap(data))).setDeleteIntent(deleteIntent(context, data))
         if (data["alert"] == true) builder.setDefaults(NotificationCompat.DEFAULT_ALL)
         else builder.setSilent(true)
-        if (approval) {
-            val large = context.resources.configuration.fontScale > 1.3f
-            val views = RemoteViews(context.packageName, if (large) R.layout.notification_approval_grid else R.layout.notification_approval_row)
-            val command = data["expanded"] as String
-            views.setTextViewText(R.id.notice_title, data["title"] as String)
-            views.setTextViewText(R.id.notice_pending, when { busy -> "Sending decision…"; !error.isNullOrEmpty() -> error; else -> pending })
-            views.setTextViewText(R.id.notice_command, command)
-            val metrics = context.resources.displayMetrics
-            val paint = TextPaint().apply { textSize = 15f * metrics.scaledDensity; typeface = Typeface.MONOSPACE }
-            val width = ((context.resources.configuration.screenWidthDp - 100) * metrics.density).toInt().coerceAtLeast(1)
-            val layout = StaticLayout.Builder.obtain(command, 0, command.length, paint, width).setAlignment(Layout.Alignment.ALIGN_NORMAL).build()
-            val needsReview = layout.lineCount > (if (large) 1 else 3)
-            for ((choice, viewId) in listOf("once" to R.id.once, "session" to R.id.session, "always" to R.id.always, "deny" to R.id.deny)) {
-                views.setViewVisibility(viewId, if (choices.contains(choice)) View.VISIBLE else View.GONE)
-                views.setBoolean(viewId, "setEnabled", !busy)
-                views.setOnClickPendingIntent(viewId, intent(context, data, choice, needsReview || choice == "always"))
-            }
-            builder.setStyle(NotificationCompat.DecoratedCustomViewStyle()).setCustomBigContentView(views)
+        val largeText = context.resources.configuration.fontScale > 1.3f
+        val command = data["expanded"] as String
+        val preview = if (data["kind"] == "approval")
+            NotificationInteractionSchema.approvalPreview(command, largeText) else command
+        val expanded = listOf(
+            when { busy -> "Sending decision…"; !error.isNullOrEmpty() -> error; else -> pending },
+            preview,
+        ).filter { it.isNotEmpty() }.joinToString("\n")
+        if ((data["payload"] as String).isNotEmpty()) {
+            val user = Person.Builder().setName("You").setKey("wing-user").build()
+            val sender = Person.Builder().setName(data["title"] as String).setBot(true).build()
+            val shortcut = "wing-chat-$id"
+            val navigation = handles(context).issue(id, NotificationHandleStore.navigationPurpose,
+                NotificationInteractionSchema.contentTap(data))
+                ?: throw IllegalStateException("Conversation navigation could not be stored")
+            val shortcutIntent = Intent(context, MainActivity::class.java)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("wing-conversation://chat/$id"))
+                .putExtra(navigationExtra, navigation)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            check(ShortcutManagerCompat.pushDynamicShortcut(context,
+                ShortcutInfoCompat.Builder(context, shortcut)
+                    .setShortLabel(data["title"] as String)
+                    .setLongLived(true)
+                    .setPersons(arrayOf(user, sender))
+                    .setIcon(IconCompat.createWithResource(context, R.mipmap.ic_launcher))
+                    .setIntent(shortcutIntent)
+                    .build()))
+            builder.setShortcutId(shortcut)
+                .setStyle(NotificationCompat.MessagingStyle(user)
+                    .setConversationTitle(data["title"] as String)
+                    .setGroupConversation(JSONObject(data["payload"] as String).has("room"))
+                    .addMessage(expanded, System.currentTimeMillis(), sender))
         } else {
-            val expanded = listOf(pending, data["expanded"] as String).filter { it.isNotEmpty() }.joinToString("\n")
             builder.setStyle(NotificationCompat.BigTextStyle().bigText(expanded))
-            if (pending.isNotEmpty()) builder.addAction(0, "Review", intent(context, data, "", true))
+        }
+        for (action in NotificationInteractionSchema.visibleActions(
+            data, largeText)) {
+            val review = action == "review"
+            val label = when (action) { "once" -> "Once"; "deny" -> "Deny"; else -> "Review" }
+            builder.addAction(0, label, intent(context, data, if (review) "" else action, review))
         }
         NotificationManagerCompat.from(context).notify(id, builder.build())
         displayed[id] = data
@@ -223,8 +323,7 @@ object ChatNotifications {
 
 class NotificationDismissReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val data = intent.getStringExtra(ChatNotifications.extra) ?: return
-        ChatNotifications.interact(context, JSONObject(data))
+        ChatNotifications.dismiss(context, intent)
     }
 }
 
@@ -244,7 +343,8 @@ class NotificationActionActivity : Activity() {
             })
         } else if (keyguard.isKeyguardLocked) {
             // On API 24/25 let the normal app activity wait behind the lock screen.
-            openMain()
+            val value = ChatNotifications.consumeAction(this, intent)
+            if (value == null) finish() else openMain(value)
         }
     }
     override fun onResume() {
@@ -259,9 +359,8 @@ class NotificationActionActivity : Activity() {
     private fun deliver() {
         if (!resumed || sent || getSystemService(KeyguardManager::class.java).isKeyguardLocked) return
         sent = true
-        val raw = intent.getStringExtra(ChatNotifications.extra) ?: return finish()
-        val value = JSONObject(raw)
-        if (value.optBoolean("review") || !ChatNotifications.hasLiveEngine()) openMain()
+        val value = ChatNotifications.consumeAction(this, intent) ?: return finish()
+        if (NotificationInteractionSchema.opensMain(value, ChatNotifications.hasLiveEngine())) openMain(value)
         else {
             // A retained engine does not give a background UID network access.
             // Keep this user-started activity resumed through recovery and the
@@ -269,10 +368,11 @@ class NotificationActionActivity : Activity() {
             ChatNotifications.interact(this, value) { finish() }
         }
     }
-    private fun openMain() {
+    private fun openMain(value: JSONObject) {
+        val token = ChatNotifications.mainHandoff(this, value) ?: return finish()
         startActivity(Intent(this, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-            .putExtra(ChatNotifications.extra, intent.getStringExtra(ChatNotifications.extra)))
+            .putExtra(ChatNotifications.handleExtra, token))
         finish()
     }
 }

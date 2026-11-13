@@ -1,3 +1,8 @@
+import 'support/canonical_gateway_fixture.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:ui' show PointerDeviceKind;
 
@@ -19,8 +24,9 @@ class _ColdDraftHost {
   int creates = 0;
   Object resumeError = JsonRpcError(
     'session.resume',
-    'session not found',
-    code: 4007,
+    'Session does not exist',
+    code: 4001,
+    reason: 'not_found',
   );
   Completer<void>? resumeStarted;
   Completer<void>? resumeDelay;
@@ -39,11 +45,14 @@ class _ColdDraftHost {
       if (endpoint == 'sessions') {
         return {
           'sessions': <Map<String, dynamic>>[],
-          'offset': 0,
-          'limit': 50,
+          'offset': int.parse(query['offset'] ?? '0'),
+          'limit': int.parse(query['limit'] ?? '50'),
           'total': 0,
         };
       }
+      if (endpoint == 'model/options') return {'providers': <Object>[]};
+      if (endpoint == 'model/info') return {};
+      if (endpoint == 'logs') return {'file': 'gui', 'lines': <String>[]};
       if (endpoint.endsWith('/messages')) {
         return {
           'session_id': endpoint.split('/')[1],
@@ -73,6 +82,7 @@ class _ColdDraftHost {
               ? 'replacement-draft'
               : 'unexpected-replacement-$creates';
           return {
+            ...canonicalSnapshotFields,
             'session_id': 'runtime-$storedId',
             'stored_session_id': storedId,
             'messages': <Map<String, dynamic>>[],
@@ -100,6 +110,8 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    addTearDown(appPreferences.dispose);
     final host = _ColdDraftHost()..creates = 1;
     final store = ComposerDraftStore(
       preferences,
@@ -113,15 +125,19 @@ void main() {
       attachments: const [],
     );
     final controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'verified-host-auth',
       preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     addTearDown(controller.dispose);
@@ -136,7 +152,10 @@ void main() {
           ).copyWith(textScaler: TextScaler.linear(2)),
           child: child!,
         ),
-        home: ProfileWorkspaceScreen(controller: controller),
+        home: ProfileWorkspaceScreen(
+          controller: controller,
+          createBotsSession: () => BotsSession((_) async => const []),
+        ),
       ),
     );
     await tester.pumpAndSettle();
@@ -153,7 +172,10 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.tap(find.text('Continue editing'));
     await tester.pumpAndSettle();
-    expect(controller.current!.chat!.draft, startsWith('A long draft preview'));
+    expect(
+      controller.current!.chat!.composer.observation.text,
+      startsWith('A long draft preview'),
+    );
     expect(host.creates, 2);
     expect(host.calls.where((call) => call.$1 == 'prompt.submit'), isEmpty);
     expect(tester.takeException(), isNull);
@@ -164,21 +186,27 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
-        connection: SavedConnection(
-          id: 'host',
-          label: 'Host',
-          host: 'localhost',
-          port: 1,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'host',
+            label: 'Host',
+            host: 'localhost',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
         connectionIdentity: 'verified-host-auth',
         preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: _ColdDraftHost().gateway,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
-      final chat = await controller.createChat();
+      final chat = await controller.createChat(canDispatch: () => true);
       await controller.updateDraft(chat, 'Original');
       final owner = chat.key.workspace;
       final original = controller.savedDrafts(owner).single;
@@ -186,14 +214,14 @@ void main() {
         controller.discardSavedDraft(owner, original),
         throwsStateError,
       );
-      controller.current!.selectedSession = null;
+      controller.showList();
       await controller.updateDraft(chat, 'Newer text');
       await expectLater(
         controller.discardSavedDraft(owner, original),
         throwsStateError,
       );
       expect((await controller.savedDraft(chat.key))!.text, 'Newer text');
-      chat.status = ProfileTurnStatus.running;
+      emitChatEvent(controller, chat, 'message.start');
       await expectLater(
         controller.discardSavedDraft(
           owner,
@@ -201,13 +229,16 @@ void main() {
         ),
         throwsStateError,
       );
-      chat.status = ProfileTurnStatus.idle;
+      emitChatEvent(controller, chat, 'session.info', {
+        'open_requests': [],
+        'running': false,
+      });
       await controller.discardSavedDraft(
         owner,
         controller.savedDrafts(owner).single,
       );
-      expect(chat.draft, isEmpty);
-      expect(chat.queuedPrompts, isEmpty);
+      expect(chat.composer.observation.text, isEmpty);
+      expect(chat.composer.observation.queue, isEmpty);
       expect(await controller.savedDraft(chat.key), isNull);
     },
   );
@@ -217,6 +248,8 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    addTearDown(appPreferences.dispose);
     final store = ComposerDraftStore(
       preferences,
       connectionIdentity: 'verified-host-auth',
@@ -233,21 +266,31 @@ void main() {
     }
     final host = _ColdDraftHost();
     ProfileWorkspaceController buildController() => ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Host',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Host',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'verified-host-auth',
       preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: host.gateway,
     );
     var controller = buildController();
+    addTearDown(() => controller.dispose());
     await controller.initialize();
     await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+      MaterialApp(
+        home: ProfileWorkspaceScreen(
+          controller: controller,
+          createBotsSession: () => BotsSession((_) async => const []),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     final row = find.byKey(const ValueKey('saved-draft-orphan-draft'));
@@ -260,7 +303,7 @@ void main() {
     expect(find.text('Continue editing'), findsOneWidget);
     await tester.tap(find.text('Discard draft'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(find.byTooltip('Cancel'));
     await tester.pumpAndSettle();
     expect(
       await store.read(profileName: 'default', sessionId: 'orphan-draft'),
@@ -270,7 +313,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Discard draft'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Discard'));
+    await tester.tap(find.byTooltip('Discard draft'));
     await tester.pumpAndSettle();
     expect(row, findsNothing);
     expect(
@@ -294,10 +337,14 @@ void main() {
     await tester.pumpWidget(const SizedBox());
     controller.dispose();
     controller = buildController();
-    addTearDown(controller.dispose);
     await controller.initialize();
     await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+      MaterialApp(
+        home: ProfileWorkspaceScreen(
+          controller: controller,
+          createBotsSession: () => BotsSession((_) async => const []),
+        ),
+      ),
     );
     await tester.pumpAndSettle();
     expect(row, findsNothing);
@@ -309,6 +356,8 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final host = _ColdDraftHost();
       final connection = SavedConnection(
         id: 'host',
@@ -319,15 +368,20 @@ void main() {
       );
       ProfileWorkspaceController buildController() =>
           ProfileWorkspaceController(
-            connection: connection,
+            access: ConnectionAccess(
+              connection: connection,
+              dashboardOAuth: null,
+            ),
             connectionIdentity: 'verified-host-auth',
             preferences: preferences,
+            appPreferences: appPreferences,
             gatewayFactory: host.gateway,
           );
 
       var controller = buildController();
+      addTearDown(() => controller.dispose());
       await controller.initialize();
-      final original = await controller.createChat();
+      final original = await controller.createChat(canDispatch: () => true);
       await controller.updateDraft(
         original,
         'Ordinary restart draft QA retained',
@@ -338,14 +392,13 @@ void main() {
       ).write(
         profileName: 'default',
         sessionId: original.key.sessionId,
-        text: original.draft,
+        text: original.composer.observation.text,
         attachments: const [],
         submissionUncertain: true,
       );
       controller.dispose();
 
       controller = buildController();
-      addTearDown(controller.dispose);
       await controller.initialize();
       expect(controller.current!.visibleSessions, isEmpty);
       expect(
@@ -359,7 +412,12 @@ void main() {
       await tester.binding.setSurfaceSize(const Size(430, 900));
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => const []),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 
@@ -369,20 +427,22 @@ void main() {
         ..resumeStarted = Completer<void>()
         ..resumeDelay = Completer<void>();
       await tester.tap(find.byKey(const ValueKey('saved-draft-orphan-draft')));
-      await tester.pump();
-      await host.resumeStarted!.future;
       await tester.tap(find.byKey(const ValueKey('saved-draft-orphan-draft')));
       await tester.pump();
+      await host.resumeStarted!.future;
       host.resumeDelay!.complete();
       await tester.pumpAndSettle();
 
       expect(host.creates, 2);
       expect(controller.current!.chat!.key.sessionId, 'replacement-draft');
       expect(
-        controller.current!.chat!.draft,
+        controller.current!.chat!.composer.observation.text,
         'Ordinary restart draft QA retained',
       );
-      expect(controller.current!.chat!.draftSubmissionUncertain, isTrue);
+      expect(
+        controller.current!.chat!.composer.observation.submissionUncertain,
+        isTrue,
+      );
       expect(find.text('Ordinary restart draft QA retained'), findsOneWidget);
       final store = ComposerDraftStore(
         preferences,
@@ -408,6 +468,8 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final store = ComposerDraftStore(
         preferences,
         connectionIdentity: 'verified-host-auth',
@@ -435,21 +497,30 @@ void main() {
         ..creates = 1
         ..resumeError = TimeoutException('lost response');
       final controller = ProfileWorkspaceController(
-        connection: SavedConnection(
-          id: 'host',
-          label: 'Host',
-          host: 'localhost',
-          port: 1,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'host',
+            label: 'Host',
+            host: 'localhost',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
         connectionIdentity: 'verified-host-auth',
         preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: host.gateway,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => const []),
+          ),
+        ),
       );
       await tester.pumpAndSettle();
 

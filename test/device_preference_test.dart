@@ -4,9 +4,9 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/models/composer_action.dart';
 import 'package:wing/core/services/device_preference.dart';
-import 'package:wing/core/services/text_size_preference.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/widgets/composer_action_settings.dart';
 import 'package:wing/core/widgets/text_size_settings_card.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -19,7 +19,7 @@ void main() {
 
   setUp(() {
     SharedPreferences.resetStatic();
-    disk = {'flutter.${ComposerAction.preferenceKey}': 'steer'};
+    disk = {'flutter.${AppPreferenceField.runningAction.storageKey}': 'steer'};
     pending = null;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -52,7 +52,7 @@ void main() {
         final write = pending = Completer<bool>();
         final result = saveDevicePreference(
           prefs,
-          ComposerAction.preferenceKey,
+          AppPreferenceField.runningAction.storageKey,
           'queue',
         );
         final assertion = expectLater(result, throwsA(anything));
@@ -62,9 +62,15 @@ void main() {
           write.complete(false);
         }
         await assertion;
-        expect(prefs.getString(ComposerAction.preferenceKey), 'steer');
+        expect(
+          prefs.getString(AppPreferenceField.runningAction.storageKey),
+          'steer',
+        );
         await prefs.reload();
-        expect(prefs.getString(ComposerAction.preferenceKey), 'steer');
+        expect(
+          prefs.getString(AppPreferenceField.runningAction.storageKey),
+          'steer',
+        );
       },
     );
   }
@@ -73,9 +79,11 @@ void main() {
     'composer keeps confirmed selection pending, after failure and reopening',
     (tester) async {
       final prefs = await SharedPreferences.getInstance();
+      final owner = AppPreferences(prefs);
+      addTearDown(owner.dispose);
       Future<void> show() => tester.pumpWidget(
         MaterialApp(
-          home: Scaffold(body: ComposerActionSettings(preferences: prefs)),
+          home: Scaffold(body: ComposerActionSettings(preferences: owner)),
         ),
       );
       await show();
@@ -108,15 +116,11 @@ void main() {
     tester,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    var changes = 0;
+    final owner = AppPreferences(prefs);
+    addTearDown(owner.dispose);
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: TextSizeSettingsCard(
-            preferences: prefs,
-            onChanged: (_) => changes++,
-          ),
-        ),
+        home: Scaffold(body: TextSizeSettingsCard(preferences: owner)),
       ),
     );
     await tester.tap(find.text('Text size'));
@@ -126,8 +130,8 @@ void main() {
     await tester.pump();
     expect(
       tester
-          .widget<StudioRadioTile<TextSizePreference>>(
-            find.byType(StudioRadioTile<TextSizePreference>).first,
+          .widget<StudioRadioTile<AppTextSizePreference>>(
+            find.byType(StudioRadioTile<AppTextSizePreference>).first,
           )
           .enabled,
       isFalse,
@@ -139,7 +143,7 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('Extra large'), findsOneWidget);
-    expect(changes, 0);
+    expect(owner.current.values.textSize, AppTextSizePreference.system);
     expect(prefs.getString('app_text_size_preference'), isNull);
   });
 }

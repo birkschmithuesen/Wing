@@ -1,3 +1,4 @@
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../screens/connection_guide_screen.dart';
@@ -47,42 +48,48 @@ class WingWelcome extends StatelessWidget {
                     const SizedBox(height: 24),
                     SizedBox(
                       width: double.infinity,
-                      child: FilledButton.icon(
-                        key: const Key('wing-connect'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                        ),
-                        onPressed: onConnect,
-                        icon: const Icon(Icons.add),
-                        label: const Text(
-                          'Connect your agent',
-                          textAlign: TextAlign.center,
+                      child: StudioButtonPress(
+                        child: FilledButton.icon(
+                          key: const Key('wing-connect'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          onPressed: onConnect,
+                          icon: const Icon(Icons.add),
+                          label: const Text(
+                            'Connect your agent',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 12),
                     SizedBox(
                       width: double.infinity,
-                      child: OutlinedButton(
-                        key: const Key('home_restore_config_button'),
-                        style: OutlinedButton.styleFrom(
-                          minimumSize: const Size(48, 48),
-                        ),
-                        onPressed: onRestore,
-                        child: const Text(
-                          'Restore configuration',
-                          textAlign: TextAlign.center,
+                      child: StudioButtonPress(
+                        child: OutlinedButton(
+                          key: const Key('home_restore_config_button'),
+                          style: OutlinedButton.styleFrom(
+                            minimumSize: const Size(48, 48),
+                          ),
+                          onPressed: onRestore,
+                          child: const Text(
+                            'Restore configuration',
+                            textAlign: TextAlign.center,
+                          ),
                         ),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const ConnectionGuideScreen(),
+                    StudioButtonPress(
+                      child: TextButton(
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const ConnectionGuideScreen(),
+                          ),
                         ),
+                        child: const Text('Connection guide'),
                       ),
-                      child: const Text('Connection guide'),
                     ),
                   ],
                 ),

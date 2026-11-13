@@ -6,7 +6,7 @@ import 'remote_files_client.dart';
 /// Plays an authenticated audio or video download in the native media viewer.
 class MediaPreviewService {
   static const channelName = 'com.tarkilhk.wing/media_preview';
-  static const maxBytes = RemoteFilesClient.defaultMaxDownloadBytes;
+  static const maxBytes = maxFilePreviewBytes;
 
   final MethodChannel _channel;
 

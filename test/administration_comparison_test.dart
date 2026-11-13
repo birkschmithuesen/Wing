@@ -1,3 +1,6 @@
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/services/profile_overview_session.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -30,7 +33,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.byType(LinearProgressIndicator), findsNothing);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(find.text('Partial total'), findsOneWidget);
     expect(find.text('USD 0.00'), findsOneWidget);
     expect(tester.takeException(), isNull);
@@ -64,7 +67,7 @@ void main() {
                   of: find.byType(ListView),
                   matching: find.byType(Scrollable),
                 )
-                .last,
+                .first,
           )
           .position
           .jumpTo(0);
@@ -89,6 +92,7 @@ void main() {
     (tester) async {
       SharedPreferences.setMockInitialValues({});
       final fixture = AdministrationDesignFixture();
+      final overviewPreferences = await SharedPreferences.getInstance();
       fixture.jobs.addAll([
         taskJson(id: 'running', name: 'Working now', state: 'running'),
         taskJson(id: 'next', name: 'Actual next task')
@@ -96,14 +100,20 @@ void main() {
         taskJson(id: 'later', name: 'Later task')
           ..['next_run_at'] = '2026-09-19T01:00:00Z',
       ]);
+      final session = ProfileOverviewSession(
+        fixture.server.profile('personal'),
+        overviewPreferences,
+        refreshWorkspace: () async {},
+      );
+      addTearDown(session.dispose);
+      unawaited(session.load());
       await tester.pumpWidget(
         MaterialApp(
           theme: wingTheme(Brightness.dark),
           home: Scaffold(
             body: AdminProfileOverview(
-              profile: fixture.server.profile('personal'),
               metadata: null,
-              preferences: await SharedPreferences.getInstance(),
+              session: session,
               selector: const Text('Personal'),
               search: const TextField(
                 decoration: InputDecoration(hintText: 'Search settings'),
@@ -147,9 +157,9 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.ensureVisible(find.text('Add service key'));
+      await tester.ensureVisible(find.byTooltip('Add service key'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Add service key'));
+      await tester.tap(find.byTooltip('Add service key'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Search service'));
       await tester.pumpAndSettle();

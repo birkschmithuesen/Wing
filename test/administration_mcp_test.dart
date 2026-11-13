@@ -1,3 +1,8 @@
+import 'package:wing/core/widgets/studio_error.dart';
+import 'support/form_family_capture.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'dart:async';
+import 'package:wing/core/services/profile_connectors_session.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -7,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_connectors_page.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/services/mcp_error.dart';
+import 'package:wing/core/screens/administration/admin_connector_routes.dart';
 import 'package:wing/core/services/mcp_oauth.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'support/administration_fixture.dart';
@@ -17,7 +23,14 @@ AdministrationFixture fixtureWith(Map<String, dynamic> result) {
     if (path == 'mcp/servers') {
       return {
         'servers': [
-          {'name': 'aspire', 'auth': 'oauth'},
+          {
+            'name': 'aspire',
+            'auth': 'oauth',
+            'transport': 'http',
+            'enabled': true,
+            'source': 'config',
+            'plugin': null,
+          },
         ],
       };
     }
@@ -44,7 +57,7 @@ AdministrationFixture fixtureWith(Map<String, dynamic> result) {
 Future<McpLoopback> fakeLoopback(
   Uri target,
   Future<bool> Function(Uri) receive,
-) async => McpLoopback(redirectUri: target, close: () async {});
+) async => McpLoopback(close: () async {});
 
 Map<String, dynamic> started(Map<String, dynamic> params) => {
   'ok': true,
@@ -60,11 +73,48 @@ Future<void> testConnection(WidgetTester tester) async {
   await tester.scrollUntilVisible(find.text('Test connection'), 200);
   await tester.tap(find.text('Test connection'));
   await tester.pumpAndSettle();
-  await tester.tap(find.text('Test'));
+  await tester.tap(find.byTooltip('Test'));
   await tester.pumpAndSettle();
 }
 
 void main() {
+  testWidgets(
+    'connector probe uses accessible progress without repeated text',
+    (tester) async {
+      final fixture = fixtureWith({'ok': true, 'tools': []});
+      addTearDown(fixture.server.close);
+      final get = fixture.override!;
+      final gate = Completer<Map<String, dynamic>>();
+      fixture.override = (method, path, query, body) =>
+          method == 'POST' ? gate.future : get(method, path, query, body);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: AdminConnectorDetail(
+            createRoute: () {
+              final parent = ProfileConnectorsSession(
+                fixture.server.profile('personal'),
+              );
+              addTearDown(parent.dispose);
+              return parent.openDetail('aspire', signInOnOpen: false);
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Test connection'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Test'));
+      await tester.pump();
+      expect(find.text('Testing connection…'), findsNothing);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(find.bySemanticsLabel('Testing connection'), findsOneWidget);
+      gate.complete({'ok': true, 'tools': []});
+      await tester.pumpAndSettle();
+      expect(find.text('Connected'), findsOneWidget);
+    },
+  );
+
   testWidgets(
     'MCP sign-in starts a profile-scoped loopback flow with paste-back',
     (tester) async {
@@ -77,9 +127,11 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: AdminMcpSignIn(
-            profile: fixture.server.profile('personal'),
-            name: 'aspire',
-            bindLoopback: fakeLoopback,
+            createFlow: () => McpOAuth(
+              profile: fixture.server.profile('personal'),
+              name: 'aspire',
+              bindLoopback: fakeLoopback,
+            ),
           ),
         ),
       );
@@ -96,6 +148,7 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+  setUpAll(loadFormFamilyFonts);
   const capture = bool.fromEnvironment('CAPTURE_MCP');
   setUpAll(() async {
     if (!capture) return;
@@ -147,14 +200,22 @@ void main() {
         MaterialApp(
           theme: wingTheme(Brightness.dark),
           home: AdminConnectorDetail(
-            profile: fixture.server.profile('personal'),
-            name: 'aspire',
+            createRoute: () {
+              final parent = ProfileConnectorsSession(
+                fixture.server.profile('personal'),
+              );
+              addTearDown(parent.dispose);
+              return parent.openDetail('aspire', signInOnOpen: false);
+            },
           ),
         ),
       );
       await tester.pumpAndSettle();
       await testConnection(tester);
-      expect(find.text('Connection failed'), findsOneWidget);
+      expect(
+        find.widgetWithText(StudioError, 'Connection failed'),
+        findsOneWidget,
+      );
       expect(
         find.textContaining('OAuth authentication required'),
         findsNothing,
@@ -201,9 +262,11 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             home: AdminMcpSignIn(
-              profile: fixture.server.profile('personal'),
-              name: 'aspire',
-              bindLoopback: fakeLoopback,
+              createFlow: () => McpOAuth(
+                profile: fixture.server.profile('personal'),
+                name: 'aspire',
+                bindLoopback: fakeLoopback,
+              ),
             ),
           ),
         );
@@ -231,7 +294,7 @@ void main() {
     final response = <String, dynamic>{
       'ok': true,
       'tools': [
-        {'name': 'fixture_tool'},
+        {'name': 'fixture_tool', 'description': ''},
       ],
       'prompts': 2,
       'resources': 1,
@@ -240,8 +303,13 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         home: AdminConnectorDetail(
-          profile: fixture.server.profile('personal'),
-          name: 'aspire',
+          createRoute: () {
+            final parent = ProfileConnectorsSession(
+              fixture.server.profile('personal'),
+            );
+            addTearDown(parent.dispose);
+            return parent.openDetail('aspire', signInOnOpen: false);
+          },
         ),
       ),
     );
@@ -258,7 +326,10 @@ void main() {
       'tools': [],
     });
     await testConnection(tester);
-    expect(find.text('Connection failed'), findsOneWidget);
+    expect(
+      find.widgetWithText(StudioError, 'Connection failed'),
+      findsOneWidget,
+    );
     expect(find.text('Available tools (1)'), findsNothing);
     expect(find.textContaining('Connection timed out.'), findsNothing);
     await tester.tap(find.text('Failure details'));
@@ -270,6 +341,61 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final enlarged in [false, true]) {
+      testWidgets(
+        'connector detail inventory failure ${brightness.name} enlarged=$enlarged',
+        (tester) async {
+          final fixture = fixtureWith({});
+          addTearDown(fixture.server.close);
+          final read = fixture.override!;
+          var fail = true;
+          fixture.override = (method, path, query, body) {
+            if (fail && path == 'mcp/servers') {
+              throw StateError('Connector inventory unavailable');
+            }
+            return read(method, path, query, body);
+          };
+          tester.view.physicalSize = Size(enlarged ? 320 : 390, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(
+                  context,
+                ).copyWith(textScaler: TextScaler.linear(enlarged ? 2 : 1)),
+                child: RepaintBoundary(key: formFamilyCapture, child: child!),
+              ),
+              home: profileConnectorIssuePage(
+                fixture.server.profile('personal'),
+                ['aspire'],
+              ),
+            ),
+          );
+          await tester.pumpAndSettle();
+          final inventoryFailure = find.byType(StudioError);
+          expect(inventoryFailure, findsOneWidget);
+          final failure = find.widgetWithText(
+            StudioError,
+            tester.widget<StudioError>(inventoryFailure).message,
+          );
+          expect(
+            find.text('This connector is not available in this profile.'),
+            findsNothing,
+          );
+          await captureFormFamily(
+            tester,
+            'error-screen-connector-inventory-${brightness.name}-$enlarged',
+          );
+          fail = false;
+          await tester.tap(find.text('Refresh'));
+          await tester.pumpAndSettle();
+          expect(failure, findsNothing);
+          expect(find.text('Test connection'), findsOneWidget);
+          expect(tester.takeException(), isNull);
+        },
+      );
       for (final operation in [
         'test',
         'signin',
@@ -335,18 +461,26 @@ void main() {
                   child: child!,
                 ),
                 home: reload || reconnect
-                    ? AdminConnectorsPage(
-                        profile: fixture.server.profile('personal'),
-                      )
+                    ? profileConnectorsPage(fixture.server.profile('personal'))
                     : signIn
                     ? AdminMcpSignIn(
-                        profile: fixture.server.profile('personal'),
-                        name: 'aspire',
-                        bindLoopback: fakeLoopback,
+                        createFlow: () => McpOAuth(
+                          profile: fixture.server.profile('personal'),
+                          name: 'aspire',
+                          bindLoopback: fakeLoopback,
+                        ),
                       )
                     : AdminConnectorDetail(
-                        profile: fixture.server.profile('personal'),
-                        name: 'aspire',
+                        createRoute: () {
+                          final parent = ProfileConnectorsSession(
+                            fixture.server.profile('personal'),
+                          );
+                          addTearDown(parent.dispose);
+                          return parent.openDetail(
+                            'aspire',
+                            signInOnOpen: false,
+                          );
+                        },
                       ),
               ),
             ),
@@ -354,32 +488,40 @@ void main() {
           await tester.pumpAndSettle();
           if (reconnect) {
             await tester.scrollUntilVisible(
-              find.text('Reconnect MCP tools'),
+              find.byTooltip('Reconnect MCP tools'),
               200,
             );
             await tester.ensureVisible(
-              find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Reconnect MCP tools',
+              ),
             );
             await tester.pumpAndSettle();
             if (operation == 'reconnect-confirm') {
-              await tester.tap(find.text('Reconnect MCP tools'));
+              await tester.tap(find.byTooltip('Reconnect MCP tools'));
               await tester.pumpAndSettle();
               expect(find.byType(AlertDialog), findsOneWidget);
               expect(
                 find.textContaining('all profiles on this server'),
                 findsWidgets,
               );
-              expect(fixture.rpcRequests, isEmpty);
+              expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
             }
           } else if (reload) {
             await tester.scrollUntilVisible(
-              find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              find.byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Reconnect MCP tools',
+              ),
               200,
             );
             await tester.pumpAndSettle();
-            await tester.tap(find.text('Reconnect MCP tools'));
+            await tester.tap(find.byTooltip('Reconnect MCP tools'));
             await tester.pumpAndSettle();
-            await tester.tap(find.text('Reconnect'));
+            await tester.tap(find.byTooltip('Reconnect tools'));
             await tester.pumpAndSettle();
           } else if (signIn) {
             await tester.scrollUntilVisible(find.text('Start sign-in'), 200);
@@ -387,6 +529,16 @@ void main() {
             await tester.pumpAndSettle();
           } else {
             await testConnection(tester);
+            if (!success) {
+              expect(
+                find.widgetWithText(StudioError, 'Connection failed'),
+                findsOneWidget,
+              );
+              expect(
+                find.textContaining('OAuth discovery failed'),
+                findsNothing,
+              );
+            }
           }
           if (success) {
             expect(find.text('Connected'), findsOneWidget);
@@ -439,15 +591,18 @@ void main() {
           }
           if (!reload && !reconnect) {
             await tester.scrollUntilVisible(
-              find.text(signIn ? 'Close' : 'Remove connector'),
+              signIn ? find.byTooltip('Close') : find.text('Remove connector'),
               200,
             );
           }
           if (operation == 'reconnect-confirm') {
-            await tester.tap(find.text('Reconnect'));
+            await tester.tap(find.byTooltip('Reconnect tools'));
             await tester.pumpAndSettle();
             expect(find.byType(AlertDialog), findsNothing);
-            expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+            expect(fixture.rpcRequests, [
+              ('personal', 'mcp.servers.status'),
+              ('default', 'reload.mcp'),
+            ]);
             expect(find.text('MCP tools reconnected.'), findsOneWidget);
           }
           await tester.pumpAndSettle();

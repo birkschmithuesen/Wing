@@ -4,14 +4,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/config_backup.dart';
 import 'package:wing/core/services/config_backup_service.dart';
+import 'package:wing/core/models/config_backup_operation.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_manager.dart';
 
 class _Secrets implements CredentialStore {
   final values = <String, String>{};
   int writes = 0;
 
-  @override
-  String? readCached(String key) => values[key];
   @override
   Future<String?> read(String key) async => values[key];
   @override
@@ -129,25 +129,41 @@ void main() {
       }
       expect(secrets.values, originalSecrets);
       expect(secrets.writes, writes);
-      await manager.updateConnection(
-        saved.id,
-        'Renamed',
-        saved.baseUrl,
-        saved.port,
-        saved.apiKey,
-      );
-      expect(manager.getConnections().single.icon, ConnectionIcon.desktop);
-      await manager.updateConnection(
-        saved.id,
-        'Renamed',
-        saved.baseUrl,
-        saved.port,
-        saved.apiKey,
-        icon: ConnectionIcon.star,
-      );
-      expect(manager.getConnections().single.icon, ConnectionIcon.star);
     },
   );
+
+  for (final replacement in [null, ConnectionIcon.star]) {
+    test(
+      'connection edit ${replacement == null ? 'preserves its selected icon' : 'applies an explicit icon replacement'}',
+      () async {
+        SharedPreferences.setMockInitialValues({});
+        final prefs = await SharedPreferences.getInstance();
+        final manager = await ConnectionManager.create(
+          prefs,
+          credentialStore: _Secrets(),
+        );
+        final saved = await manager.saveConnection(
+          'Claw',
+          'https://hermes.example',
+          443,
+          '',
+          icon: ConnectionIcon.cloud,
+        );
+        await manager.updateConnection(
+          saved.id,
+          'Renamed',
+          saved.baseUrl,
+          saved.port,
+          saved.apiKey,
+          icon: replacement,
+        );
+        expect(
+          manager.getConnections().single.icon,
+          replacement ?? ConnectionIcon.cloud,
+        );
+      },
+    );
+  }
 
   for (final mode in ConfigImportMode.values) {
     for (final passphrase in ['', 'test-passphrase']) {
@@ -160,9 +176,11 @@ void main() {
             prefs,
             credentialStore: _Secrets(),
           );
+          final owner = AppPreferences(prefs);
+          addTearDown(owner.dispose);
           final service = ConfigBackupService(
             connectionManager: manager,
-            preferences: prefs,
+            appPreferences: owner,
           );
           final saved = await manager.saveConnection(
             'Claw',
@@ -189,7 +207,7 @@ void main() {
             encoded,
             passphrase: passphrase,
           );
-          await service.import(decoded, mode: mode);
+          await service.import(decoded, mode: mode, canCommit: () => true);
           final connections = manager.getConnections();
           expect(
             connections.firstWhere((c) => c.id == saved.id).icon,

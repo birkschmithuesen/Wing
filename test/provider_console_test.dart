@@ -67,7 +67,16 @@ void main() {
         channel.frame({'type': 'complete', 'command': command, 'status': 'ok'});
       }
     };
-    expect(await console.run('personal', command, confirm: true), 'Refreshed');
+    expect(
+      await console.run(
+        'personal',
+        command,
+        confirm: true,
+        canDispatch: () => true,
+        onDispatched: () {},
+      ),
+      'Refreshed',
+    );
     expect(channel.sent.length, 2);
   });
 
@@ -78,7 +87,12 @@ void main() {
       return channel;
     });
     await expectLater(
-      console.run('personal', 'auth list anthropic'),
+      console.run(
+        'personal',
+        'auth list anthropic',
+        canDispatch: () => true,
+        onDispatched: () {},
+      ),
       throwsA(isA<ProviderRecoveryFailure>()),
     );
     expect(channel.sent, isEmpty);
@@ -97,7 +111,13 @@ void main() {
       });
     };
     await expectLater(
-      console.run('personal', 'auth refresh anthropic 333ccc', confirm: true),
+      console.run(
+        'personal',
+        'auth refresh anthropic 333ccc',
+        confirm: true,
+        canDispatch: () => true,
+        onDispatched: () {},
+      ),
       throwsA(isA<ProviderRecoveryFailure>()),
     );
     expect(channel.sent.length, 1);
@@ -128,6 +148,8 @@ void main() {
             'personal',
             'auth refresh anthropic 333ccc',
             confirm: true,
+            canDispatch: () => true,
+            onDispatched: () {},
           ),
           throwsA(isA<ProviderRecoveryFailure>()),
         );
@@ -143,7 +165,12 @@ void main() {
       return channel;
     }, timeout: const Duration(milliseconds: 20));
     await expectLater(
-      console.run('personal', 'auth list anthropic'),
+      console.run(
+        'personal',
+        'auth list anthropic',
+        canDispatch: () => true,
+        onDispatched: () {},
+      ),
       throwsA(isA<ProviderRecoveryFailure>()),
     );
     expect(channel.sent.length, 1);
@@ -161,14 +188,86 @@ void main() {
       'auth refresh anthropic 333ccc; auth logout anthropic',
     ]) {
       await expectLater(
-        console.run('personal', command, confirm: true),
+        console.run(
+          'personal',
+          command,
+          confirm: true,
+          canDispatch: () => true,
+          onDispatched: () {},
+        ),
         throwsArgumentError,
       );
     }
     await expectLater(
-      console.run('current', 'auth list anthropic'),
+      console.run(
+        'current',
+        'auth list anthropic',
+        canDispatch: () => true,
+        onDispatched: () {},
+      ),
       throwsA(isA<ProviderRecoveryFailure>()),
     );
     expect(connections, 0);
   });
+  test('retired capture cannot send after held console connection', () async {
+    final gate = Completer<WebSocketChannel>();
+    final channel = _Channel();
+    var active = true, dispatched = 0;
+    final console = ProviderConsole((_) => gate.future);
+    final pending = console.run(
+      'personal',
+      'auth refresh anthropic 333ccc',
+      confirm: true,
+      canDispatch: () => active,
+      onDispatched: () => dispatched++,
+    );
+    final rejected = expectLater(
+      pending,
+      throwsA(isA<ProviderRecoveryFailure>()),
+    );
+    active = false;
+    gate.complete(channel);
+    await rejected;
+    expect(channel.sent, isEmpty);
+    expect(dispatched, 0);
+    console.close();
+  });
+
+  test(
+    'retirement after input prevents final physical renewal confirmation',
+    () async {
+      final channel = _Channel();
+      var active = true, dispatched = 0;
+      const command = 'auth refresh anthropic 333ccc';
+      final console = ProviderConsole((profile) async {
+        channel.frame({'type': 'ready', 'profile': profile});
+        return channel;
+      });
+      channel.onSend = (frame) {
+        expect(frame['type'], 'input');
+        active = false;
+        channel.frame({'type': 'confirm_required', 'command': command});
+        channel.frame({
+          'type': 'complete',
+          'command': command,
+          'status': 'confirm_required',
+        });
+      };
+      await expectLater(
+        console.run(
+          'personal',
+          command,
+          confirm: true,
+          canDispatch: () => active,
+          onDispatched: () => dispatched++,
+        ),
+        throwsA(isA<ProviderRecoveryFailure>()),
+      );
+      expect(channel.sent, [
+        {'type': 'input', 'line': command},
+      ]);
+      expect(dispatched, 0);
+      console.close();
+    },
+  );
 }

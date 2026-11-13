@@ -1,4 +1,4 @@
-import '../models/connection.dart';
+import '../services/connection_access.dart';
 import 'drawer_versions.dart';
 import '../services/versions_controller.dart';
 import '../services/server_connection_status.dart';
@@ -10,6 +10,7 @@ import 'wing_wordmark.dart';
 enum AppDestination {
   chats('Chats', Icons.chat_bubble_outline),
   activity('Recents', Icons.history),
+  bots('Bots', Icons.smart_toy_outlined),
   connections('Hermes instances', Icons.dns_outlined),
   settings('App settings', Icons.tune_outlined),
   administration('Hermes administration', Icons.manage_accounts_outlined),
@@ -27,7 +28,7 @@ class AppDrawer extends StatelessWidget {
     super.key,
     required this.selected,
     required this.onSelected,
-    this.connection,
+    this.access,
     this.versionsControllerFactory,
     this.connectionStatus,
     this.hasConnection = true,
@@ -35,7 +36,7 @@ class AppDrawer extends StatelessWidget {
 
   final AppDestination selected;
   final ValueChanged<AppDestination> onSelected;
-  final SavedConnection? connection;
+  final ConnectionAccess? access;
   final VersionsControllerFactory? versionsControllerFactory;
   final ServerConnectionStatus? connectionStatus;
   final bool hasConnection;
@@ -85,24 +86,12 @@ class AppDrawer extends StatelessWidget {
                             padding: EdgeInsets.symmetric(vertical: 12),
                             child: Divider(),
                           ),
-                        ListTile(
-                          key: ValueKey('nav-${destination.name}'),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: WingRadius.control,
-                          ),
+                        _DrawerTile(
+                          tileKey: ValueKey('nav-${destination.name}'),
+                          label: destination.label,
+                          icon: destination.icon,
+                          largeText: largeText,
                           selected: selected == destination,
-                          selectedTileColor: colors.primaryContainer,
-                          leading: largeText ? null : Icon(destination.icon),
-                          title: largeText
-                              ? Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Icon(destination.icon),
-                                    const SizedBox(height: 4),
-                                    Text(destination.label),
-                                  ],
-                                )
-                              : Text(destination.label),
                           enabled:
                               hasConnection ||
                               destination == AppDestination.connections ||
@@ -116,7 +105,7 @@ class AppDrawer extends StatelessWidget {
                     ],
                   ),
                   DrawerVersions(
-                    connection: connection,
+                    access: access,
                     connectionStatus: connectionStatus,
                     controllerFactory: versionsControllerFactory,
                   ),
@@ -128,4 +117,41 @@ class AppDrawer extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DrawerTile extends StatelessWidget {
+  const _DrawerTile({
+    required this.tileKey,
+    required this.label,
+    required this.icon,
+    required this.largeText,
+    required this.onTap,
+    this.selected = false,
+    this.enabled = true,
+  });
+
+  final Key tileKey;
+  final String label;
+  final IconData icon;
+  final bool largeText, selected, enabled;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => StudioButtonPress(
+    child: ListTile(
+      key: tileKey,
+      shape: RoundedRectangleBorder(borderRadius: WingRadius.control),
+      selected: selected,
+      selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
+      leading: largeText ? null : Icon(icon),
+      title: largeText
+          ? Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [Icon(icon), const SizedBox(height: 4), Text(label)],
+            )
+          : Text(label),
+      enabled: enabled,
+      onTap: onTap,
+    ),
+  );
 }

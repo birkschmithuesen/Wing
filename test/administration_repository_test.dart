@@ -1,6 +1,22 @@
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
+import 'package:wing/core/models/settings_edit.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'support/administration_fixture.dart';
+
+Future<void> saveSettings(
+  ProfileAdministration profile,
+  Map<String, dynamic> values,
+) async {
+  await profile.requireProfile();
+  final baseline = settingsProjection(await profile.config(), values.keys);
+  await profile.saveSettings(
+    SettingsEditIntent(baseline: baseline, desired: values),
+    canDispatch: () => true,
+    onDispatched: () {},
+  );
+}
 
 void main() {
   test(
@@ -11,9 +27,9 @@ void main() {
       final personalA = a.server.profile('personal');
       final workA = a.server.profile('work');
       final personalB = b.server.profile('personal');
-      await personalA.saveSettings({'memory.memory_char_limit': 2500});
-      await workA.saveSettings({'memory.memory_enabled': true});
-      await personalB.saveSettings({'memory.memory_char_limit': 4000});
+      await saveSettings(personalA, {'memory.memory_char_limit': 2500});
+      await saveSettings(workA, {'memory.memory_enabled': true});
+      await saveSettings(personalB, {'memory.memory_char_limit': 4000});
       expect(setting(a.configs['personal']!, 'memory.memory_char_limit'), 2500);
       expect(setting(a.configs['work']!, 'memory.memory_char_limit'), 3000);
       expect(setting(b.configs['personal']!, 'memory.memory_char_limit'), 4000);
@@ -68,7 +84,7 @@ void main() {
       final p = f.server.profile('work');
       f.configs.remove('work');
       await expectLater(
-        p.saveSettings({'memory.memory_enabled': true}),
+        saveSettings(p, {'memory.memory_enabled': true}),
         throwsA(isA<AdministrationFailure>()),
       );
       expect(f.requests.where((r) => r.$1 != 'GET'), isEmpty);
@@ -81,14 +97,14 @@ void main() {
       final f = AdministrationFixture()..reject = true;
       final p = f.server.profile('personal');
       await expectLater(
-        p.saveSettings({'memory.memory_char_limit': 9999}),
+        saveSettings(p, {'memory.memory_char_limit': 9999}),
         throwsA(isA<AdministrationFailure>()),
       );
       f.reject = false;
       f.ignoreSave = true;
       await expectLater(
-        p.saveSettings({'memory.memory_char_limit': 9999}),
-        throwsA(isA<AdministrationFailure>()),
+        saveSettings(p, {'memory.memory_char_limit': 9999}),
+        throwsA(isA<SettingsSaveUnconfirmed>()),
       );
       expect(setting(f.configs['personal']!, 'memory.memory_char_limit'), 2000);
     },
@@ -96,28 +112,40 @@ void main() {
 
   test('same-name background actions must match the returned PID', () async {
     final f = AdministrationFixture();
+    addTearDown(f.server.close);
     f.override = (_, _, _, _) async => {
+      'name': 'skills-update',
       'pid': 222,
       'running': false,
       'exit_code': 0,
+      'lines': <String>[],
     };
-    const action = AdministrationAction('skills-update', 111);
-    await expectLater(
-      action.status(f.server),
-      throwsA(isA<AdministrationFailure>()),
+    final operation = fixtureOperation(
+      f.server,
+      const AdministrationAction('skills-update', 111),
     );
+    await operation.refresh();
+    expect(
+      operation.state.observation.readError,
+      contains('no longer available'),
+    );
+    expect(operation.state.observation.checkedAt, isNull);
     f.override = (_, _, _, _) async => {
+      'name': 'skills-update',
       'pid': 111,
       'running': false,
       'exit_code': 1,
+      'lines': <String>[],
     };
-    expect((await action.status(f.server))['exit_code'], 1);
+    await operation.refresh();
+    expect(operation.state.observation.exitCode, 1);
+    expect(operation.state.observation.readError, isNull);
   });
 
   test('uncertain start is not an invented tracked operation', () {
     expect(
       () => AdministrationAction.fromJson({'ok': true}),
-      throwsA(isA<AdministrationFailure>()),
+      throwsFormatException,
     );
     expect(
       () => AdministrationFixture().server.profile('current'),
@@ -134,7 +162,14 @@ void main() {
     () async {
       final f = AdministrationFixture();
       f.override = (_, _, _, _) async => {'ok': true};
-      await f.server.write('PATCH', 'profiles/work', {'new_name': 'research'});
+      await f.server.ownedMutation(
+        'PATCH',
+        'profiles/work',
+        const {},
+        {'new_name': 'research'},
+        () => true,
+        () {},
+      );
       expect(f.requests.single.$3, isEmpty);
       expect(f.requests.single.$4, {'new_name': 'research'});
     },

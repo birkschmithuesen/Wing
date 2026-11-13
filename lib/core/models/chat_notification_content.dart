@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart' show StringCharacters;
+import 'turn_failure.dart';
 
 enum ChatNotificationCategory { update, inputNeeded, stopped }
 
@@ -45,6 +46,13 @@ class ChatNotificationContent {
     'Open the chat for details.',
     true,
   );
+  factory ChatNotificationContent.failure(TurnFailure failure) =>
+      ChatNotificationContent._(
+        ChatNotificationCategory.stopped,
+        failure.title,
+        failure.recovery ?? 'Open the chat for details.',
+        true,
+      );
   static const stopped = ChatNotificationContent._(
     ChatNotificationCategory.stopped,
     'Stopped',

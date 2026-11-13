@@ -69,66 +69,135 @@ void main() {
   }
 
   group('file-backed drafts and limits', () {
-    test(
-      'generic selection copies into private cache without model bytes',
-      () async {
-        final source = File(
-          '${sandbox.path}${Platform.pathSeparator}report.txt',
-        );
-        await source.writeAsString('synthetic report');
+    test('generic selection copies into private cache', () async {
+      final source = File('${sandbox.path}${Platform.pathSeparator}report.txt');
+      await source.writeAsString('synthetic report');
 
-        final draft = await service.prepareGenericFile(
-          sourcePath: source.path,
-          displayName: 'report.txt',
-          mediaType: 'text/plain',
-          existingDrafts: const [],
-        );
-
-        expect(draft.cachedPath, isNot(source.path));
-        expect(await File(draft.cachedPath).readAsString(), 'synthetic report');
-        expect(draft.byteLength, await source.length());
-        expect(draft.kind, AttachmentDraftKind.genericFile);
-        expect(draft.mediaType, 'text/plain');
-
-        final modelSource = await File(
-          'lib/core/models/attachment_draft.dart',
-        ).readAsString();
-        expect(modelSource, isNot(contains('Uint8List')));
-        expect(modelSource, isNot(contains('dataUrl')));
-
-        await service.removeCachedFile(draft);
-        expect(await File(draft.cachedPath).exists(), isFalse);
-      },
-    );
-
-    test('accepts 10 items and rejects item 11', () {
-      final ten = List.generate(
-        maxRemoteAttachmentDrafts,
-        (index) => fakeDraft(name: '$index.bin', byteLength: 1),
+      final draft = await service.prepareGenericFile(
+        sourcePath: source.path,
+        displayName: 'report.txt',
+        mediaType: 'text/plain',
+        existingDrafts: const [],
       );
-      expect(() => service.validateRemoteDrafts(ten), returnsNormally);
+
+      expect(draft.cachedPath, isNot(source.path));
+      expect(await File(draft.cachedPath).readAsString(), 'synthetic report');
+      expect(draft.byteLength, await source.length());
+      expect(draft.kind, AttachmentDraftKind.genericFile);
+      expect(draft.mediaType, 'text/plain');
+
+      await service.removeCachedFile(draft);
+      expect(await File(draft.cachedPath).exists(), isFalse);
+    });
+
+    test('upload reads the cached file when the upload begins', () async {
+      final draft = await cachedDraft('current.txt');
+      await File(draft.cachedPath).writeAsString('updated cached payload');
+      String? submittedData;
+      await service.uploadSequential(
+        drafts: [draft],
+        upload: ({required draft, required dataUrl}) async {
+          submittedData = dataUrl;
+          return const AttachmentUploadReceipt(refText: '@file:current.txt');
+        },
+      );
       expect(
-        () => service.validateRemoteDrafts([
-          ...ten,
-          fakeDraft(name: 'eleven.bin', byteLength: 1),
-        ]),
-        throwsA(isA<AttachmentDraftException>()),
+        submittedData,
+        'data:application/octet-stream;base64,${base64Encode(utf8.encode('updated cached payload'))}',
       );
     });
 
-    test('enforces the numeric 64 MiB aggregate budget', () {
-      final exact = fakeDraft(
-        name: 'exact.png',
-        byteLength: 64 * 1024 * 1024,
-        kind: AttachmentDraftKind.image,
+    test('accepts 40 items and rejects item 41', () async {
+      final source = File('${sandbox.path}/item.txt');
+      await source.writeAsString('One more attachment');
+      final forty = List.generate(
+        40,
+        (index) => fakeDraft(name: '$index.bin', byteLength: 1),
       );
-      expect(() => service.validateRemoteDrafts([exact]), returnsNormally);
+      expect(() => service.validateRemoteDrafts(forty), returnsNormally);
       expect(
         () => service.validateRemoteDrafts([
-          exact,
+          ...forty,
           fakeDraft(name: 'overflow.bin', byteLength: 1),
         ]),
-        throwsA(isA<AttachmentDraftException>()),
+        throwsA(
+          isA<AttachmentDraftException>().having(
+            (error) => error.message,
+            'message',
+            contains('40 items'),
+          ),
+        ),
+      );
+      final last = await service.prepareGenericFile(
+        sourcePath: source.path,
+        displayName: 'item.txt',
+        existingDrafts: forty.take(39),
+      );
+      expect(last.name, 'item.txt');
+      await expectLater(
+        service.prepareGenericFile(
+          sourcePath: source.path,
+          displayName: 'item.txt',
+          existingDrafts: forty,
+        ),
+        throwsA(
+          isA<AttachmentDraftException>().having(
+            (error) => error.message,
+            'message',
+            contains('40 items'),
+          ),
+        ),
+      );
+    });
+
+    test('accepts exactly 128 MiB total and rejects one additional byte', () {
+      final exact = List.generate(
+        8,
+        (index) => fakeDraft(name: '$index.bin', byteLength: 16 * 1024 * 1024),
+      );
+      expect(() => service.validateRemoteDrafts(exact), returnsNormally);
+      expect(
+        () => service.validateRemoteDrafts([
+          ...exact,
+          fakeDraft(name: 'overflow.bin', byteLength: 1),
+        ]),
+        throwsA(
+          isA<AttachmentDraftException>().having(
+            (error) => error.message,
+            'message',
+            contains('128 MiB'),
+          ),
+        ),
+      );
+    });
+
+    test('preparation accounts for the 128 MiB aggregate budget', () async {
+      final source = File('${sandbox.path}/small.txt');
+      await source.writeAsString('x');
+      final existing = [
+        for (var index = 0; index < 7; index++)
+          fakeDraft(name: '$index.bin', byteLength: 16 * 1024 * 1024),
+        fakeDraft(name: 'remaining.bin', byteLength: 16 * 1024 * 1024 - 1),
+      ];
+      final finalByte = await service.prepareGenericFile(
+        sourcePath: source.path,
+        displayName: 'small.txt',
+        existingDrafts: existing,
+      );
+      expect(finalByte.byteLength, 1);
+      await expectLater(
+        service.prepareGenericFile(
+          sourcePath: source.path,
+          displayName: 'small.txt',
+          existingDrafts: [...existing, finalByte],
+        ),
+        throwsA(
+          isA<AttachmentDraftException>().having(
+            (error) => error.message,
+            'message',
+            contains('128 MiB'),
+          ),
+        ),
       );
     });
 
@@ -142,35 +211,6 @@ void main() {
       expect(
         () => service.validateRemoteDrafts([
           fakeDraft(name: 'large.bin', byteLength: 16 * 1024 * 1024 + 1),
-        ]),
-        throwsA(isA<AttachmentDraftException>()),
-      );
-    });
-
-    test('REST is fail-closed for multiple images and generic files', () {
-      final first = fakeDraft(
-        name: 'first.png',
-        byteLength: 10,
-        kind: AttachmentDraftKind.image,
-      );
-      final second = fakeDraft(
-        name: 'second.png',
-        byteLength: 10,
-        kind: AttachmentDraftKind.image,
-      );
-      expect(() => service.validateRestDrafts([first]), returnsNormally);
-      expect(allowsMultipleImageSelection(AttachmentDraftMode.rest), isFalse);
-      expect(
-        allowsMultipleImageSelection(AttachmentDraftMode.remoteGateway),
-        isTrue,
-      );
-      expect(
-        () => service.validateRestDrafts([first, second]),
-        throwsA(isA<AttachmentDraftException>()),
-      );
-      expect(
-        () => service.validateRestDrafts([
-          fakeDraft(name: 'document.pdf', byteLength: 10),
         ]),
         throwsA(isA<AttachmentDraftException>()),
       );
@@ -202,7 +242,6 @@ void main() {
             sourcePath: unsupported.path,
             displayName: 'animation.gif',
             existingDrafts: drafts,
-            mode: AttachmentDraftMode.remoteGateway,
           ),
           throwsA(
             isA<AttachmentDraftException>().having(
@@ -241,7 +280,6 @@ void main() {
             sourcePath: source.path,
             displayName: 'source.png',
             existingDrafts: const [],
-            mode: AttachmentDraftMode.remoteGateway,
           ),
           throwsA(isA<AttachmentDraftException>()),
         );
@@ -259,7 +297,6 @@ void main() {
         sourcePath: source.path,
         displayName: name,
         existingDrafts: const [],
-        mode: AttachmentDraftMode.remoteGateway,
       );
     }
 
@@ -327,13 +364,12 @@ void main() {
 
   group('ordered upload, retry, and cleanup', () {
     test(
-      'reorder changes sequential file.attach order with concurrency one',
+      'supplied attachment order controls sequential upload with concurrency one',
       () async {
         final first = await cachedDraft('first.txt');
         final second = await cachedDraft('second.txt');
         final third = await cachedDraft('third.txt');
-        final drafts = [first, second, third];
-        expect(service.moveDraft(drafts, fromIndex: 2, offset: -1), isTrue);
+        final drafts = [first, third, second];
         expect(drafts.map((draft) => draft.name), [
           'first.txt',
           'third.txt',
@@ -344,8 +380,15 @@ void main() {
         var active = 0;
         var maxActive = 0;
         var promptSubmitCalls = 0;
+        final entered = List.generate(3, (_) => Completer<void>());
+        final release = List.generate(3, (_) => Completer<void>());
+        addTearDown(() {
+          for (final gate in release) {
+            if (!gate.isCompleted) gate.complete();
+          }
+        });
         final coordinator = AttachmentDraftSendCoordinator(service);
-        await coordinator.uploadThenSubmit(
+        final sending = coordinator.uploadThenSubmit(
           drafts: drafts,
           upload: ({required draft, required dataUrl}) async {
             active++;
@@ -355,7 +398,9 @@ void main() {
               dataUrl,
               startsWith('data:application/octet-stream;base64,'),
             );
-            await Future<void>.delayed(const Duration(milliseconds: 5));
+            final index = calls.length - 1;
+            entered[index].complete();
+            await release[index].future;
             active--;
             return AttachmentUploadReceipt(refText: '@file:${draft.name}');
           },
@@ -371,6 +416,14 @@ void main() {
           },
         );
 
+        for (var index = 0; index < drafts.length; index++) {
+          await entered[index].future;
+          expect(calls, drafts.take(index + 1).map((draft) => draft.name));
+          expect(active, 1);
+          expect(promptSubmitCalls, 0);
+          release[index].complete();
+        }
+        await sending;
         expect(calls, ['first.txt', 'third.txt', 'second.txt']);
         expect(maxActive, 1);
         expect(promptSubmitCalls, 1);
@@ -409,7 +462,10 @@ void main() {
     test('attached state is saved before ordinary cache cleanup', () async {
       final draft = await cachedDraft('ordered.txt');
       final allowSave = Completer<void>();
-      var savingAttachedState = false;
+      final savingAttachedState = Completer<void>();
+      addTearDown(() {
+        if (!allowSave.isCompleted) allowSave.complete();
+      });
 
       final sending = AttachmentDraftSendCoordinator(service).uploadThenSubmit(
         drafts: [draft],
@@ -417,16 +473,13 @@ void main() {
             const AttachmentUploadReceipt(refText: '@file:ordered.txt'),
         onChanged: (changed) async {
           if (changed.status != AttachmentDraftStatus.attached) return;
-          savingAttachedState = true;
           expect(await File(changed.cachedPath).exists(), isTrue);
+          savingAttachedState.complete();
           await allowSave.future;
         },
         submitPrompt: (_) async {},
       );
-      for (var i = 0; i < 100 && !savingAttachedState; i++) {
-        await Future<void>.delayed(const Duration(milliseconds: 1));
-      }
-      expect(savingAttachedState, isTrue);
+      await savingAttachedState.future;
       expect(await File(draft.cachedPath).exists(), isTrue);
 
       allowSave.complete();
@@ -468,11 +521,9 @@ void main() {
         );
         final untouched = await cachedDraft('untouched.txt');
         var attachCalls = 0;
-        var promptSubmitCalls = 0;
-        final coordinator = AttachmentDraftSendCoordinator(service);
 
-        final receipt = await coordinator.retryFailed(
-          draft: failed,
+        final receipts = await service.uploadSequential(
+          drafts: [failed],
           upload: ({required draft, required dataUrl}) async {
             attachCalls++;
             expect(draft, same(failed));
@@ -480,9 +531,8 @@ void main() {
           },
         );
 
-        expect(receipt.refText, '@file:failed.txt');
+        expect(receipts.single.refText, '@file:failed.txt');
         expect(attachCalls, 1);
-        expect(promptSubmitCalls, 0);
         expect(failed.status, AttachmentDraftStatus.attached);
         expect(untouched.status, AttachmentDraftStatus.ready);
         expect(await File(failed.cachedPath).exists(), isFalse);
@@ -490,4 +540,54 @@ void main() {
       },
     );
   });
+  test(
+    'truncated sanitized cache output cannot become an attachment',
+    () async {
+      final truncated = AttachmentDraftService(
+        cacheDirectoryProvider: () async => cache,
+        cacheFileWriter: (file, bytes) async {
+          await file.writeAsBytes(bytes.take(8).toList());
+        },
+      );
+      await expectLater(
+        truncated.prepareImageBytes(
+          bytes: image_lib.encodePng(image_lib.Image(width: 2, height: 2)),
+          displayName: 'image.png',
+          existingDrafts: const [],
+        ),
+        throwsA(isA<AttachmentDraftException>()),
+      );
+      expect(await cache.list().toList(), isEmpty);
+    },
+  );
+
+  test(
+    'cancel after encoding but during cache writing prevents publication',
+    () async {
+      final started = Completer<void>();
+      final finish = Completer<void>();
+      final held = AttachmentDraftService(
+        cacheDirectoryProvider: () async => cache,
+        cacheFileWriter: (file, bytes) async {
+          await file.writeAsBytes(bytes);
+          started.complete();
+          await finish.future;
+        },
+      );
+      final preparing = held.prepareImageBytes(
+        bytes: image_lib.encodePng(image_lib.Image(width: 2, height: 2)),
+        displayName: 'image.png',
+        existingDrafts: const [],
+      );
+      final failure = expectLater(
+        preparing,
+        throwsA(isA<AttachmentDraftException>()),
+      );
+      await started.future;
+      held.cancelImagePreparations();
+      finish.complete();
+      await failure;
+      expect(await cache.list().toList(), isEmpty);
+    },
+  );
 }

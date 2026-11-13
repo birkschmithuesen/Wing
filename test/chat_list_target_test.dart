@@ -1,3 +1,15 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/widgets/deleted_chat_recovery_notice.dart';
+import 'package:wing/core/widgets/bot_avatar.dart';
+import 'dart:convert';
+import 'package:wing/core/models/chat_runtime.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/administration_repository.dart';
+import 'package:wing/core/services/connection_access.dart';
+import 'package:wing/core/models/chat_list_status.dart';
 import 'dart:async';
 import 'dart:collection';
 import 'dart:io';
@@ -8,6 +20,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/chat_list_view.dart';
+import 'package:wing/core/models/chat_browser_preferences.dart';
+import 'package:wing/core/models/session_visibility.dart';
 import 'package:wing/core/models/profile_live_activity.dart';
 import 'package:wing/core/screens/profile_workspace_browser.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
@@ -17,53 +31,43 @@ import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/chat_profile_bar.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:wing/core/widgets/chat_working_border.dart';
 import 'support/profile_browser_fixture.dart';
 
 class TargetFixture extends ProfileBrowserFixture {
   final rowUpdates = <String, Map<String, dynamic>>{};
   final tokenInputs = <int, num>{};
+  final projectSessionIds = <String, List<String>>{};
 
-  @override
-  List<Map<String, dynamic>> searchRows(String profile, String query) {
-    if (liveSessions.values
-        .expand((rows) => rows)
-        .any((row) => row['session_key'] == query)) {
-      return [
-        for (final row in sessions(profile))
-          if (row['id'] == query &&
-              (liveSessions[profile] ?? []).any(
-                (live) => live['session_key'] == query,
-              ))
-            {...row, 'session_id': row['id']},
-      ];
-    }
-    return super.searchRows(profile, query);
-  }
+  // Activity rows without a runtime profile require one actual stored owner.
+  final exclusiveOwners = <String, String>{};
 
   @override
   List<Map<String, dynamic>> sessions(String profile) => [
     for (var i = 0; i < 12; i++)
-      {
-        'id': 'session-$i',
-        'profile': profile,
-        'title': [
-          'Prepare release notes',
-          'Summarize a research paper',
-          'Sketch a landing page',
-          'Plan a weekend hike',
-        ][i % 4],
-        'message_count': i == 4 ? 0 : 10,
-        'last_active': now - i * 3600,
-        'started_at': now - i * 86400,
-        'input_tokens': tokenInputs[i] ?? 1000,
-        'output_tokens': 500,
-        'unread': i == 0,
-        'pinned': i == 11,
-        'source': i == 8 ? 'cron' : 'cli',
-        'archived': false,
-        ...?rowUpdates['$profile/session-$i'],
-      },
+      if (exclusiveOwners['session-$i'] == null ||
+          exclusiveOwners['session-$i'] == profile)
+        {
+          'id': 'session-$i',
+          'profile': profile,
+          'title': [
+            'Prepare release notes',
+            'Summarize a research paper',
+            'Sketch a landing page',
+            'Plan a weekend hike',
+          ][i % 4],
+          'message_count': i == 4 ? 0 : 10,
+          'last_active': now - i * 3600,
+          'started_at': now - i * 86400,
+          'input_tokens': tokenInputs[i] ?? 1000,
+          'output_tokens': 500,
+          'unread': i == 0,
+          'pinned': i == 11,
+          'source': i == 8 ? 'cron' : 'cli',
+          'archived': false,
+          ...?rowUpdates['$profile/session-$i'],
+        },
   ];
   @override
   List<Map<String, dynamic>> projects(String profile) => [
@@ -76,9 +80,9 @@ class TargetFixture extends ProfileBrowserFixture {
             (i > 3 ? ' $i' : ''),
         'path': '/p$i',
         'lastActive': now - i * 3600,
-        'sessionIds': [
-          for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j',
-        ],
+        'sessionIds':
+            projectSessionIds['$profile/p$i'] ??
+            [for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j'],
       },
   ];
 }
@@ -90,17 +94,31 @@ class _ChatListReviewBinding extends AutomatedTestWidgetsFlutterBinding {
 
 class _CountingController extends ProfileWorkspaceController {
   _CountingController({
-    required super.connection,
+    required super.access,
     required super.connectionIdentity,
     required super.preferences,
+    required super.appPreferences,
     required super.gatewayFactory,
     super.onAttention,
   });
   int browserReads = 0;
   int activityProjectionReads = 0;
+  bool _readingRecents = false;
+  @override
+  List<ProfileRecentChat> recentChats({DateTime? now}) {
+    // Recents legitimately projects activity on workspace updates. The counter
+    // below measures Chats index scans, independently of that shared consumer.
+    _readingRecents = true;
+    try {
+      return super.recentChats(now: now);
+    } finally {
+      _readingRecents = false;
+    }
+  }
+
   @override
   List<ProfileLiveActivity> get liveActivity {
-    activityProjectionReads++;
+    if (!_readingRecents) activityProjectionReads++;
     return super.liveActivity;
   }
 
@@ -135,6 +153,7 @@ void main() {
   if (const bool.fromEnvironment('CHAT_LIST_REVIEW')) _ChatListReviewBinding();
   late TargetFixture fixture;
   late _CountingController controller;
+  late AppPreferences appPreferences;
   const capture = bool.fromEnvironment('CHAT_LIST_REVIEW');
   setUpAll(() async {
     if (!capture) return;
@@ -153,23 +172,49 @@ void main() {
   });
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     fixture = TargetFixture();
     controller = _CountingController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Demo server',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Demo server',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'target',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
       onAttention: (_) async {},
     );
+    final server = AdministrationRepository(
+      connectionId: controller.connection.id,
+      connectionIdentity: controller.connectionIdentity,
+      connectionLabel: controller.connection.label,
+      gateway: (profile) => fixture.gateway(
+        WorkspaceScope(
+          connectionId: controller.connection.id,
+          connectionIdentity: controller.connectionIdentity,
+          profileName: profile,
+        ),
+      ),
+      request: (_, _, _, _) async => throw StateError('RPC only'),
+      settingsWrite: (_, _, _, _) async => throw StateError('Read only'),
+      ownedMutation: (_, _, _, _, _, _) async => throw StateError('Read only'),
+    );
+    controller.healthSession(repository: server);
+    addTearDown(server.close);
     await controller.initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
   Future<void> show(
     WidgetTester tester, {
     Brightness brightness = Brightness.dark,
@@ -194,11 +239,22 @@ void main() {
             child: child!,
           ),
           home: workspace
-              ? ProfileWorkspaceScreen(controller: controller)
-              : ProfileWorkspaceBrowser(
+              ? ProfileWorkspaceScreen(
                   controller: controller,
+                  createBotsSession: () => BotsSession((_) async => const []),
+                )
+              : ProfileWorkspaceBrowser(
+                  onOpenBotChat: (_) {},
+                  createData: () => ChatBrowserData(controller),
+                  connectionLabel: controller.connection.label,
+                  connectionIcon: controller.connection.icon,
+                  connectionStatus: controller.connectionStatus,
+                  createColors: controller.createProfileColors,
+                  deletionRecovery: DeletedChatRecoveryNotice(
+                    presentation: controller.deletedDraftCleanupPresentation,
+                  ),
                   drawer: const Drawer(),
-                  newProject: () async {},
+                  newProject: (_) async {},
                 ),
         ),
       ),
@@ -242,7 +298,7 @@ void main() {
       );
       final image = await boundary.toImage(pixelRatio: 2);
       final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
-      final file = File('build/chat-list-review/$name.png');
+      final file = File('build/design-previews/chat-list-review/$name.png');
       file.parent.createSync(recursive: true);
       file.writeAsBytesSync(bytes!.buffer.asUint8List());
       image.dispose();
@@ -254,7 +310,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(ValueKey('chat-menu-$id')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
+    await tester.tap(find.byTooltip('Close filters'));
     await tester.pumpAndSettle();
   }
 
@@ -264,6 +320,234 @@ void main() {
     await tester.tap(find.byKey(ValueKey('chat-menu-$id')));
     await tester.pumpAndSettle();
   }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'opened chat metadata is local and survives return $brightness $scale',
+        (tester) async {
+          await appPreferences.chooseBrowserPreferences(
+            'target',
+            BrowserPreferenceIntent.exclusiveProfile('personal'),
+          );
+          fixture.rowUpdates['personal/session-0'] = {'title': null};
+          fixture.projectSessionIds['personal/p0'] = [
+            for (var i = 1; i < 6; i++) 'session-$i',
+          ];
+          fixture.exclusiveOwners['session-0'] = 'personal';
+          await show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            workspace: true,
+          );
+          final row = find.byKey(const ValueKey('chat-personal-session-0'));
+          expect(
+            find.descendant(of: row, matching: find.text('Untitled chat')),
+            findsOneWidget,
+          );
+          await screenshot(
+            tester,
+            'opened-metadata-before-${brightness.name}-$scale',
+          );
+
+          fixture.rowUpdates['personal/session-0'] = {
+            'title': 'Cairns planning',
+          };
+          fixture.projectSessionIds['personal/p0']!.insert(0, 'session-0');
+          controller.setGroupNotificationsForeground(false);
+          controller.current!.gateway.onEvent!(
+            StreamEvent(type: 'sessions.changed', data: const {}),
+          );
+          await tester.ensureVisible(row);
+          await tester.tap(
+            find.descendant(of: row, matching: find.text('Untitled chat')),
+          );
+          await tester.pumpAndSettle();
+          final chat = controller.current!.chat!;
+          expect(chat.key.sessionId, 'session-0');
+          expect(controller.chatProject(chat)?.id, 'p0');
+          int catalogReads() => fixture.reads
+              .where(
+                (read) => read.$1 == 'sessions' && read.$2['limit'] == '100',
+              )
+              .length;
+          final reads = catalogReads();
+          fixture.rowUpdates['personal/session-0'] = {
+            'title': 'Plan Cairns flights',
+          };
+          emitChatEvent(controller, chat, 'session.title', {
+            'session_id': 'session-0',
+            'title': 'Plan Cairns flights',
+          });
+          controller.current!.gateway.onEvent!(
+            StreamEvent(type: 'sessions.changed', data: const {}),
+          );
+          await tester.pumpAndSettle();
+          expect(chat.title, 'Plan Cairns flights');
+          expect(
+            catalogReads(),
+            reads,
+            reason: 'Only the opened chat receives metadata; no list scan',
+          );
+          expect(find.byType(ProfileWorkspaceBrowser), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-conversation-${brightness.name}-$scale',
+          );
+
+          final held = Completer<void>();
+          fixture.delays['personal'] = held;
+          addTearDown(() {
+            if (!held.isCompleted) held.complete();
+          });
+          await tester.binding.handlePopRoute();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(find.byType(ProfileWorkspaceBrowser), findsOneWidget);
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.text('Plan Cairns flights'),
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Untitled chat'), findsNothing);
+          expect(find.text('< personal >'), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-return-held-${brightness.name}-$scale',
+          );
+          held.complete();
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.text('Plan Cairns flights'),
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('< personal >'), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-after-${brightness.name}-$scale',
+          );
+        },
+      );
+
+      testWidgets('canonical Bot Chat avatar ${brightness.name} $scale', (
+        tester,
+      ) async {
+        fixture.hiddenSessions['personal'] = [
+          {
+            'id': 'bot-chat',
+            'title': 'Bot Chat',
+            'profile': 'personal',
+            'source': 'tui',
+            'hidden': 1,
+            'archived': 0,
+            'last_active': fixture.now,
+            'input_tokens': 15000,
+            'output_tokens': 500,
+          },
+        ];
+        await controller.setSessionVisibility(SessionVisibility.all);
+        await show(tester, brightness: brightness, scale: scale);
+        await tester.tap(find.byKey(const ValueKey('chat-profile-personal')));
+        await tester.pumpAndSettle();
+        final row = find.byKey(const ValueKey('chat-personal-bot-chat'));
+        final avatar = find.byKey(
+          const ValueKey('bot-chat-avatar-personal-bot-chat'),
+        );
+        final title = find.descendant(of: row, matching: find.text('Bot Chat'));
+        expect(row, findsOneWidget);
+        expect(avatar, findsOneWidget);
+        final renderedAvatar = find.descendant(
+          of: avatar,
+          matching: find.byType(BotAvatar),
+        );
+        expect(renderedAvatar, findsOneWidget);
+        final face = tester.widget<BotAvatar>(renderedAvatar);
+        expect(face.name, 'personal');
+        expect(face.shape, 'circle');
+        expect(face.color, '#65c7bc');
+        expect(title.hitTestable(), findsOneWidget);
+        final avatarBounds = tester.getRect(avatar);
+        expect(avatarBounds.width, greaterThan(0));
+        expect(avatarBounds.height, greaterThan(0));
+        expect(tester.getRect(row).contains(avatarBounds.center), isTrue);
+        expect(
+          find.descendant(
+            of: find.byKey(const ValueKey('chat-personal-session-0')),
+            matching: find.byType(BotAvatar),
+          ),
+          findsNothing,
+        );
+        await screenshot(tester, 'bot-chat-avatar-${brightness.name}-$scale');
+        const png =
+            'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAAJUlEQVR4nGNwCj/ynxLMMGoApgH/byeBMbHiw9GAgY+FUQNIxwDOD2oPx3g6jQAAAABJRU5ErkJggg==';
+        fixture.botAvatars['personal'] = png;
+        await tester.runAsync(controller.refresh);
+        // A fresh list visit reads newly saved appearance, as opening Bots does.
+        await tester.pumpWidget(const SizedBox());
+        await show(tester, brightness: brightness, scale: scale);
+        expect(
+          tester.widget<BotAvatar>(renderedAvatar).image,
+          base64Decode(png),
+        );
+        expect(tester.getRect(avatar).size, avatarBounds.size);
+        final uploaded = find.descendant(
+          of: avatar,
+          matching: find.byType(Image),
+        );
+        await tester.runAsync(
+          () => precacheImage(
+            tester.widget<Image>(uploaded).image,
+            tester.element(avatar),
+          ),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          tester
+              .widget<RawImage>(
+                find.descendant(of: avatar, matching: find.byType(RawImage)),
+              )
+              .image,
+          isNotNull,
+        );
+        await screenshot(tester, 'bot-chat-uploaded-${brightness.name}-$scale');
+        await openViewMenu(tester, 'include-automated');
+        expect(find.text('Bot Chat'), findsNothing);
+        expect(avatar, findsNothing);
+        expect(controller.sessionVisibility, SessionVisibility.chats);
+        expect(tester.takeException(), isNull);
+      });
+    }
+  }
+
+  testWidgets('chat ellipsis menu survives a live regroup during opening', (
+    tester,
+  ) async {
+    await show(tester, reducedMotion: true);
+    await tester.tap(find.byKey(const ValueKey('chat-profile-personal')));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('chat-personal-session-0'));
+    await Scrollable.ensureVisible(tester.element(row));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.descendant(of: row, matching: find.byTooltip('Chat actions')),
+    );
+    fixture.rowUpdates['personal/session-0'] = {'pinned': true};
+    await tester.runAsync(controller.refresh);
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(ErrorWidget), findsNothing);
+    expect(find.text('Copy ID'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await tester.pumpAndSettle();
+    expect(find.text('Copy ID'), findsNothing);
+  });
 
   testWidgets('profile bar toggles the shared filter without changing owner', (
     tester,
@@ -305,6 +589,73 @@ void main() {
     expect(bar().selectedProfiles, isEmpty);
   });
 
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'project picker follows profile filter ${brightness.name} $scale',
+        (tester) async {
+          await show(tester, brightness: brightness, scale: scale);
+          final owner = controller.current!.scope;
+          await tester.tap(find.byKey(const ValueKey('chat-profile-work')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('chat-filter-project')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('chat-menu-work/p0')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('chat-menu-work/home')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('chat-menu-personal/p0')),
+            findsNothing,
+          );
+          expect(
+            find.byKey(const ValueKey('chat-menu-personal/home')),
+            findsNothing,
+          );
+          await screenshot(
+            tester,
+            '${brightness.name}-$scale-projects-filtered',
+          );
+          await tester.tap(find.byTooltip('Close filters'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const ValueKey('chat-profile-personal')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('chat-filter-project')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('chat-menu-personal/p0')),
+            findsOneWidget,
+          );
+          expect(find.byKey(const ValueKey('chat-menu-work/p0')), findsNothing);
+          await tester.tap(find.byTooltip('Close filters'));
+          await tester.pumpAndSettle();
+
+          await tester.tap(find.byKey(const ValueKey('chat-profile-personal')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.byKey(const ValueKey('chat-filter-project')));
+          await tester.pumpAndSettle();
+          expect(
+            find.byKey(const ValueKey('chat-menu-personal/p0')),
+            findsOneWidget,
+          );
+          expect(
+            find.byKey(const ValueKey('chat-menu-work/p0')),
+            findsOneWidget,
+          );
+          await tester.tap(find.byTooltip('Close filters'));
+          await tester.pumpAndSettle();
+          expect(controller.current!.scope, owner);
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets(
     'filters are independent, multi-select and clear leaves search intact',
     (tester) async {
@@ -318,7 +669,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chat-menu-draft')));
       await tester.pumpAndSettle();
       expect(find.text('Status 2'), findsOneWidget);
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byTooltip('Close filters'));
       await tester.pumpAndSettle();
       await select(tester, 'profile', 'work');
       expect(controller.current!.scope.profileName, 'personal');
@@ -344,6 +695,49 @@ void main() {
       expect(find.text('Status 2'), findsNothing);
     },
   );
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('startup sort is immediate in $brightness at $scale', (
+        tester,
+      ) async {
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.exclusiveProfile('personal'),
+        );
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.ordering(ChatOrdering.updated),
+        );
+        fixture.rowUpdates['personal/session-1'] = {
+          'last_active': fixture.now + 100,
+        };
+        fixture.rowUpdates['personal/session-11'] = {'pinned': false};
+        final held = Completer<void>();
+        fixture.delays['work'] = held;
+        addTearDown(() {
+          if (!held.isCompleted) held.complete();
+        });
+        await show(tester, brightness: brightness, scale: scale, settle: false);
+        await tester.pump(const Duration(milliseconds: 100));
+        final first = find.byKey(const ValueKey('chat-personal-session-0'));
+        final newest = find.byKey(const ValueKey('chat-personal-session-1'));
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+        // The other profile is still loading: no refresh or sort-menu action
+        // is needed to put the already loaded project's newest chat first.
+        expect(held.isCompleted, isFalse);
+        await screenshot(tester, 'startup-${brightness.name}-$scale');
+        held.complete();
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+      });
+    }
+  }
   for (final boundary in ['refresh', 'return', 'order by']) {
     testWidgets('live updates keep chat positions until $boundary', (
       tester,
@@ -356,22 +750,11 @@ void main() {
         tester.getTopLeft(first).dy,
         lessThan(tester.getTopLeft(second).dy),
       );
-      final resource = controller.browserResource('personal');
       fixture.rowUpdates['personal/session-1'] = {
         'last_active': fixture.now + 100,
         'title': 'Live title update',
       };
-      resource.sessions = [
-        for (final row in resource.sessions)
-          if (row['id'] == 'session-1')
-            {
-              ...row,
-              'last_active': fixture.now + 100,
-              'title': 'Live title update',
-            }
-          else
-            row,
-      ];
+      await controller.switchProfile('personal');
       await controller.refreshActivity();
       await tester.pumpAndSettle();
       expect(find.text('Live title update'), findsOneWidget);
@@ -402,12 +785,15 @@ void main() {
     tester,
   ) async {
     final owner = controller.browserResource('personal');
-    final chat = ProfileChat(
-      key: ProfileSessionKey(owner.scope, 'session-1'),
-      runtimeId: 'answer-runtime',
-      title: 'Summarize a research paper',
-    );
-    owner.chats[chat.key.sessionId] = chat;
+    final chat = (await tester.runAsync(
+      () => openFixtureChat(
+        controller: controller,
+        key: ProfileSessionKey(owner.scope, 'session-1'),
+        title: 'Summarize a research paper',
+        select: false,
+      ),
+    ))!;
+
     await show(tester, workspace: true);
     await select(tester, 'profile', 'personal');
     final first = find.byKey(const ValueKey('chat-personal-session-0'));
@@ -416,8 +802,8 @@ void main() {
     owner.gateway.onEvent!(
       StreamEvent(
         type: 'message.start',
-        sessionId: chat.runtimeId,
-        data: const {},
+        sessionId: chat.runtime.runtimeId,
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pump();
@@ -425,8 +811,10 @@ void main() {
       owner.gateway.onEvent!(
         StreamEvent(
           type: 'message.delta',
-          sessionId: chat.runtimeId,
-          data: {'text': 'answer $i'},
+          sessionId: chat.runtime.runtimeId,
+          data: stockChatReply(owner.gateway, 'message.delta', {
+            'text': 'answer $i',
+          }),
         ),
       );
       await tester.pump(const Duration(milliseconds: 20));
@@ -441,17 +829,17 @@ void main() {
       () => owner.gateway.onEvent!(
         StreamEvent(
           type: 'message.complete',
-          sessionId: chat.runtimeId,
+          sessionId: chat.runtime.runtimeId,
           data: const {'text': 'Completed answer'},
         ),
       ),
     );
-    expect(chat.status, ProfileTurnStatus.completed);
+    expect(chat.runtime.execution, ChatExecution.completed);
     expect(
       owner.sessions.singleWhere((row) => row['id'] == 'session-1')['title'],
       'Completed answer',
     );
-    expect(chat.error, isNull);
+    expect(chat.runtime.error, isNull);
     expect(find.text('Completed answer'), findsOneWidget);
     expect(tester.getTopLeft(second), initial);
     expect(tester.getTopLeft(first).dy, lessThan(tester.getTopLeft(second).dy));
@@ -461,17 +849,20 @@ void main() {
       tester,
     ) async {
       final owner = controller.browserResource(profile);
-      final chat = ProfileChat(
-        key: ProfileSessionKey(owner.scope, 'session-1'),
-        runtimeId: 'streaming-runtime',
-        title: 'Background answer',
-      );
-      owner.chats[chat.key.sessionId] = chat;
+      final chat = (await tester.runAsync(
+        () => openFixtureChat(
+          controller: controller,
+          key: ProfileSessionKey(owner.scope, 'session-1'),
+          title: 'Background answer',
+          select: false,
+        ),
+      ))!;
+
       await show(tester, workspace: true);
       void event(String type) => owner.gateway.onEvent!(
         StreamEvent(
           type: type,
-          sessionId: chat.runtimeId,
+          sessionId: chat.runtime.runtimeId,
           data: const {'text': 'more answer'},
         ),
       );
@@ -494,6 +885,9 @@ void main() {
         event('reasoning.delta');
         await tester.pump(const Duration(milliseconds: 16));
       }
+      // Include deferred stream presentation in the work budget, and finish
+      // its timer before this test disposes the widget tree.
+      await tester.pump(const Duration(milliseconds: 200));
       expect(builds, isEmpty, reason: 'Answer text is not displayed in Chats');
       expect(
         controller.browserReads,
@@ -507,12 +901,15 @@ void main() {
     tester,
   ) async {
     final owner = controller.browserResource('personal');
-    final chat = ProfileChat(
-      key: ProfileSessionKey(owner.scope, 'session-1'),
-      runtimeId: 'row-runtime',
-      title: 'Live row',
-    );
-    owner.chats[chat.key.sessionId] = chat;
+    final chat = (await tester.runAsync(
+      () => openFixtureChat(
+        controller: controller,
+        key: ProfileSessionKey(owner.scope, 'session-1'),
+        title: 'Live row',
+        select: false,
+      ),
+    ))!;
+
     await show(tester, workspace: true);
     await select(tester, 'profile', 'personal');
     final unaffected = find.byKey(const ValueKey('chat-personal-session-0'));
@@ -523,16 +920,19 @@ void main() {
     owner.gateway.onEvent!(
       StreamEvent(
         type: 'message.start',
-        sessionId: chat.runtimeId,
-        data: const {},
+        sessionId: chat.runtime.runtimeId,
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pump();
     expect(
-      tester.widget<ChatWorkingBorder>(
-        find.ancestor(of: affected, matching: find.byType(ChatWorkingBorder)),
+      find.ancestor(
+        of: affected,
+        matching: find.byWidgetPredicate(
+          (widget) => widget is ChatWorkingBorder && widget.working,
+        ),
       ),
-      isA<ChatWorkingBorder>().having((w) => w.working, 'working', isTrue),
+      findsOneWidget,
     );
     expect(tester.widget(unaffected), same(originalRow));
     expect(tester.widget(list), same(originalList));
@@ -545,7 +945,7 @@ void main() {
       () => owner.gateway.onEvent!(
         StreamEvent(
           type: 'message.complete',
-          sessionId: chat.runtimeId,
+          sessionId: chat.runtime.runtimeId,
           data: const {'text': 'Done'},
         ),
       ),
@@ -559,14 +959,18 @@ void main() {
     );
   });
   test(
-    'arrangement reads sort fields only at explicit ordering boundaries',
+    'admitted scalar sort facts detach from wire and reorder only at explicit boundaries',
     () {
       final owner = controller.browserResource('personal');
       final first = _SortReadCounter({'id': 'a', 'started_at': 100});
       final second = _SortReadCounter({'id': 'b', 'started_at': 90});
       final entries = [
         for (final row in [first, second])
-          ChatListEntry(owner: owner, row: row, status: ChatListStatus.idle),
+          ChatListEntry.fromWire(
+            scope: owner.scope,
+            row: row,
+            status: ChatListStatus.idle,
+          ),
       ];
       final arrangement = ChatListArrangement();
       List<String> arranged() => arrangement
@@ -579,16 +983,25 @@ void main() {
       expect(first.sortReads + second.sortReads, greaterThan(0));
       first.sortReads = second.sortReads = 0;
       second['started_at'] = 200;
+      expect(entries[1].startedAt, 90);
+      entries[1] = ChatListEntry.fromWire(
+        scope: owner.scope,
+        row: second,
+        status: ChatListStatus.idle,
+      );
+      expect(second.sortReads, greaterThan(0));
+      first.sortReads = second.sortReads = 0;
       expect(arranged(), ['a', 'b']);
       expect(first.sortReads + second.sortReads, 0);
       arrangement.reset();
       expect(arranged(), ['b', 'a']);
-      expect(first.sortReads + second.sortReads, greaterThan(0));
+      expect(first.sortReads + second.sortReads, 0);
     },
   );
   testWidgets('unopened chat activity updates without rebuilding the index', (
     tester,
   ) async {
+    fixture.exclusiveOwners['session-1'] = 'personal';
     await show(tester, workspace: true, reducedMotion: true);
     await select(tester, 'profile', 'personal');
     final list = find.byKey(const ValueKey('chat-list-false'));
@@ -596,7 +1009,9 @@ void main() {
     final affected = find.byKey(const ValueKey('chat-personal-session-1'));
     final border = find.ancestor(
       of: affected,
-      matching: find.byType(ChatWorkingBorder),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is ChatWorkingBorder && widget.working,
+      ),
     );
     controller.activityProjectionReads = 0;
     fixture.liveSessions['personal'] = [
@@ -609,11 +1024,11 @@ void main() {
     ];
     await controller.refreshActivity();
     await tester.pumpAndSettle();
-    expect(tester.widget<ChatWorkingBorder>(border).working, isTrue);
+    expect(border, findsOneWidget);
     fixture.liveSessions.clear();
     await controller.refreshActivity();
     await tester.pumpAndSettle();
-    expect(tester.widget<ChatWorkingBorder>(border).working, isFalse);
+    expect(border, findsNothing);
     expect(tester.widget(list), same(originalList));
     expect(
       controller.activityProjectionReads,
@@ -624,6 +1039,7 @@ void main() {
   testWidgets('global completion notification does not rebuild the index', (
     tester,
   ) async {
+    fixture.exclusiveOwners['session-1'] = 'personal';
     fixture.liveSessions['personal'] = [
       {
         'id': 'outside-runtime',
@@ -637,9 +1053,11 @@ void main() {
     final affected = find.byKey(const ValueKey('chat-personal-session-1'));
     final border = find.ancestor(
       of: affected,
-      matching: find.byType(ChatWorkingBorder),
+      matching: find.byWidgetPredicate(
+        (widget) => widget is ChatWorkingBorder && widget.working,
+      ),
     );
-    expect(tester.widget<ChatWorkingBorder>(border).working, isTrue);
+    expect(border, findsOneWidget);
     final owner = controller.browserResource('personal');
     final list = find.byKey(const ValueKey('chat-list-false'));
     final originalList = tester.widget(list);
@@ -662,7 +1080,7 @@ void main() {
       }
     });
     await tester.pumpAndSettle();
-    expect(tester.widget<ChatWorkingBorder>(border).working, isFalse);
+    expect(border, findsNothing);
     expect(tester.widget(list), same(originalList));
     expect(controller.activityProjectionReads, 0);
   });
@@ -674,32 +1092,62 @@ void main() {
     await openViewMenu(tester, 'show-details');
     await tester.tap(find.byKey(const ValueKey('chat-menu-tokens')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Done'));
+    await tester.tap(find.byTooltip('Close filters'));
     await tester.pumpAndSettle();
     expect(find.text('9.0k'), findsOneWidget);
     final list = find.byKey(const ValueKey('chat-list-false'));
     final originalList = tester.widget(list);
-    final owner = controller.browserResource('personal');
-    owner.sessions = [
-      for (final row in owner.sessions)
-        {...row, if (row['id'] == 'session-1') 'input_tokens': 2000},
-    ];
-    controller.clearSearch();
+    fixture.rowUpdates['personal/session-1'] = {'input_tokens': 2000};
+    await controller.switchProfile('personal');
     await tester.pumpAndSettle();
     expect(find.text('10.0k'), findsOneWidget);
     expect(find.text('2.5k'), findsOneWidget);
     expect(tester.widget(list), same(originalList));
   });
+  testWidgets(
+    'unread membership follows a canonical refresh in the mounted list',
+    (tester) async {
+      await show(tester, workspace: true, reducedMotion: true);
+      await select(tester, 'profile', 'personal');
+      await select(tester, 'status', 'unread');
+      final browserState = tester.state(find.byType(ProfileWorkspaceBrowser));
+      final row = find.byKey(const ValueKey('chat-personal-session-0'));
+      expect(row, findsOneWidget);
+
+      fixture.rowUpdates['personal/session-0'] = {'unread': false};
+      await controller.switchProfile('personal');
+      await tester.pumpAndSettle();
+      expect(row, findsNothing);
+      expect(
+        tester.state(find.byType(ProfileWorkspaceBrowser)),
+        same(browserState),
+      );
+
+      fixture.rowUpdates['personal/session-0'] = {'unread': true};
+      await controller.switchProfile('personal');
+      await tester.pumpAndSettle();
+      expect(row, findsOneWidget);
+      expect(
+        tester.state(find.byType(ProfileWorkspaceBrowser)),
+        same(browserState),
+      );
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   testWidgets('status filter membership follows live row changes', (
     tester,
   ) async {
     final owner = controller.browserResource('personal');
-    final chat = ProfileChat(
-      key: ProfileSessionKey(owner.scope, 'session-1'),
-      runtimeId: 'filter-runtime',
-      title: 'Filtered chat',
-    );
-    owner.chats[chat.key.sessionId] = chat;
+    final chat = (await tester.runAsync(
+      () => openFixtureChat(
+        controller: controller,
+        key: ProfileSessionKey(owner.scope, 'session-1'),
+        title: 'Filtered chat',
+        select: false,
+      ),
+    ))!;
+
     await show(tester, workspace: true, reducedMotion: true);
     await select(tester, 'status', 'working');
     final row = find.byKey(const ValueKey('chat-personal-session-1'));
@@ -707,8 +1155,8 @@ void main() {
     owner.gateway.onEvent!(
       StreamEvent(
         type: 'message.start',
-        sessionId: chat.runtimeId,
-        data: const {},
+        sessionId: chat.runtime.runtimeId,
+        data: stockChatReply(owner.gateway, 'message.start', const {}),
       ),
     );
     await tester.pumpAndSettle();
@@ -718,7 +1166,7 @@ void main() {
       () => owner.gateway.onEvent!(
         StreamEvent(
           type: 'message.complete',
-          sessionId: chat.runtimeId,
+          sessionId: chat.runtime.runtimeId,
           data: const {'text': 'Done'},
         ),
       ),
@@ -729,9 +1177,10 @@ void main() {
     testWidgets(
       'late $boundary activity read cannot reorder already loaded chats',
       (tester) async {
+        fixture.exclusiveOwners['session-1'] = 'personal';
         if (boundary == 'refresh') await show(tester, workspace: true);
         final delay = Completer<void>();
-        fixture.searchDelays['session-1'] = delay;
+        fixture.sessionMetadataDelays[('personal', 'session-1')] = delay;
         fixture.liveSessions['personal'] = [
           {
             'id': 'answer-runtime',
@@ -741,12 +1190,15 @@ void main() {
           },
         ];
         final owner = controller.browserResource('personal');
-        final chat = ProfileChat(
-          key: ProfileSessionKey(owner.scope, 'session-1'),
-          runtimeId: 'answer-runtime',
-          title: 'Pending answer',
-        );
-        owner.chats[chat.key.sessionId] = chat;
+        final chat = (await tester.runAsync(
+          () => openFixtureChat(
+            controller: controller,
+            key: ProfileSessionKey(owner.scope, 'session-1'),
+            title: 'Pending answer',
+            select: false,
+          ),
+        ))!;
+
         if (boundary == 'entry') {
           await show(tester, workspace: true, settle: false);
         } else {
@@ -761,7 +1213,8 @@ void main() {
         expect(
           fixture.reads.any(
             (read) =>
-                read.$1 == 'sessions/search' && read.$2['q'] == 'session-1',
+                read.$1 == 'sessions/session-1' &&
+                read.$2['profile'] == 'personal',
           ),
           isTrue,
         );
@@ -778,14 +1231,14 @@ void main() {
         owner.gateway.onEvent!(
           StreamEvent(
             type: 'message.start',
-            sessionId: chat.runtimeId,
-            data: const {},
+            sessionId: chat.runtime.runtimeId,
+            data: stockChatReply(owner.gateway, 'message.start', const {}),
           ),
         );
         owner.gateway.onEvent!(
           StreamEvent(
             type: 'message.complete',
-            sessionId: chat.runtimeId,
+            sessionId: chat.runtime.runtimeId,
             data: const {'text': 'Completed answer'},
           ),
         );
@@ -833,7 +1286,7 @@ void main() {
           .hitTestable();
       await tester.tap(choices.first);
       await tester.pumpAndSettle();
-      expect(find.text('Done'), findsOneWidget);
+      expect(find.byTooltip('Close filters'), findsOneWidget);
       expect(
         tester
             .state<ScrollableState>(
@@ -896,10 +1349,10 @@ void main() {
         isEmpty,
       );
       expect(find.text('$title 2'), findsOneWidget);
-      await tester.tap(find.text('Clear'));
+      await tester.tap(find.byTooltip('Clear filters'));
       await tester.pumpAndSettle();
       expect(find.text('$title 2'), findsNothing);
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byTooltip('Close filters'));
       await tester.pumpAndSettle();
       expect(search, findsNothing);
     });
@@ -915,19 +1368,16 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('chat-menu-tokens')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byTooltip('Close filters'));
       await tester.pumpAndSettle();
       expect(find.text('9.0k'), findsOneWidget);
       expect(find.text('Show more'), findsWidgets);
       final chat = find.byKey(const ValueKey('chat-personal-session-0'));
-      final tokenCount = find.descendant(of: chat, matching: find.text('1.5k'));
-      final title = find.descendant(
-        of: chat,
-        matching: find.text('Prepare release notes'),
+      expect(
+        find.descendant(of: chat, matching: find.text('1.5k')).hitTestable(),
+        findsOneWidget,
       );
-      expect(tester.getCenter(tokenCount).dy, tester.getCenter(title).dy);
-      expect(tester.getSize(chat).height, 48);
-      expect(tester.widget<Text>(title).overflow, TextOverflow.ellipsis);
+      expect(chat.hitTestable(), findsOneWidget);
       await tester.tap(
         find.byKey(const ValueKey('chat-group-project/personal/p0')),
       );
@@ -958,7 +1408,7 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(const ValueKey('chat-menu-updated')));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Done'));
+      await tester.tap(find.byTooltip('Close filters'));
       await tester.pumpAndSettle();
       expect(find.text('Unread'), findsOneWidget);
       expect(find.text('1.5k'), findsWidgets);
@@ -986,19 +1436,32 @@ void main() {
     },
   );
   testWidgets('loading and failure preserve readable rows', (tester) async {
+    await show(tester);
+    final row = find.byKey(const ValueKey('chat-personal-session-0'));
+    expect(row.hitTestable(), findsOneWidget);
     final gate = Completer<void>();
+    addTearDown(() {
+      if (!gate.isCompleted) gate.complete();
+    });
     fixture.pageDelays[('personal', 0)] = gate;
-    await show(tester, settle: false);
-    await screenshot(tester, 'dark-loading');
     fixture.failProjects = true;
+    final refresh = tester
+        .widget<RefreshIndicator>(find.byType(RefreshIndicator))
+        .onRefresh();
+    await tester.pump();
+    expect(row.hitTestable(), findsOneWidget);
+    await screenshot(tester, 'dark-loading');
     gate.complete();
+    await refresh;
     await tester.pumpAndSettle();
-    expect(find.textContaining('Could not finish loading'), findsWidgets);
+    expect(row.hitTestable(), findsOneWidget);
+    expect(find.textContaining('Could not refresh chats'), findsOneWidget);
     await screenshot(tester, 'dark-error');
   });
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets('working border ${brightness.name} $scale', (tester) async {
+        fixture.exclusiveOwners['session-11'] = 'personal';
         await show(tester, brightness: brightness, scale: scale);
         final row = find.byKey(const ValueKey('chat-personal-session-11'));
         final initialBounds = tester.getRect(row);
@@ -1015,9 +1478,15 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         final border = find.ancestor(
           of: row,
-          matching: find.byType(ChatWorkingBorder),
+          matching: find.byWidgetPredicate(
+            (widget) => widget is ChatWorkingBorder && widget.working,
+          ),
         );
-        expect(tester.widget<ChatWorkingBorder>(border).working, isTrue);
+        expect(
+          find.descendant(of: row, matching: find.byType(StudioLoading)),
+          findsNothing,
+        );
+        expect(border, findsOneWidget);
         expect(tester.getRect(row), initialBounds);
         await screenshot(tester, '${brightness.name}-$scale-working');
         await tester.pump(const Duration(milliseconds: 600));
@@ -1027,18 +1496,18 @@ void main() {
         fixture.liveSessions['personal']!.single['status'] = 'waiting';
         await controller.refreshActivity();
         await tester.pumpAndSettle();
-        expect(tester.widget<ChatWorkingBorder>(border).working, isFalse);
+        expect(border, findsNothing);
         expect(tester.binding.hasScheduledFrame, isFalse);
 
         fixture.liveSessions['personal']!.single['status'] = 'working';
         await controller.refreshActivity();
         await tester.pump();
-        expect(tester.widget<ChatWorkingBorder>(border).working, isTrue);
+        expect(border, findsOneWidget);
 
         fixture.liveSessions.clear();
         await controller.refreshActivity();
         await tester.pumpAndSettle();
-        expect(tester.widget<ChatWorkingBorder>(border).working, isFalse);
+        expect(border, findsNothing);
         expect(tester.getRect(row), initialBounds);
         expect(tester.binding.hasScheduledFrame, isFalse);
       });
@@ -1085,11 +1554,11 @@ void main() {
           find.byKey(const ValueKey('chat-menu-profile')).hitTestable(),
           findsOneWidget,
         );
-        expect(find.text('Done').hitTestable(), findsOneWidget);
+        expect(find.byTooltip('Close filters').hitTestable(), findsOneWidget);
         await screenshot(tester, '${brightness.name}-$scale-show-details');
         await tester.tap(find.byKey(const ValueKey('chat-menu-tokens')));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Done'));
+        await tester.tap(find.byTooltip('Close filters'));
         await tester.pumpAndSettle();
         await screenshot(tester, '${brightness.name}-$scale-tokens');
         await tester.tap(find.byKey(const ValueKey('chat-filter-status')));
@@ -1117,9 +1586,9 @@ void main() {
             kind == 'project' ? 'research-notes' : 'work',
           );
           await tester.pumpAndSettle();
-          expect(find.text('Done').hitTestable(), findsOneWidget);
+          expect(find.byTooltip('Close filters').hitTestable(), findsOneWidget);
           await screenshot(tester, '${brightness.name}-$scale-$kind-keyboard');
-          await tester.tap(find.text('Done'));
+          await tester.tap(find.byTooltip('Close filters'));
           tester.view.resetViewInsets();
           await tester.pumpAndSettle();
         }
@@ -1127,12 +1596,15 @@ void main() {
     }
   }
   test('index keeps owners distinct and includes all pages', () async {
-    final data = ChatBrowserData(controller);
+    final data = ChatBrowserData(
+      controller,
+      readBotAppearances: fixture.botAppearances,
+    );
     addTearDown(data.dispose);
     await data.refresh(archivedOnly: false);
     expect(data.entries.length, 24);
     expect(data.entries.map((e) => e.key).toSet().length, 24);
-    expect(data.entries.where((e) => e.project?['id'] == 'p0').length, 12);
+    expect(data.entries.where((e) => e.project?.id == 'p0').length, 12);
     final grouped = groupChats(
       data.entries,
       ChatGrouping.project,
@@ -1152,8 +1624,8 @@ void main() {
           int value, {
           String project = 'p0',
           bool pinned = false,
-        }) => ChatListEntry(
-          owner: owner,
+        }) => ChatListEntry.fromWire(
+          scope: owner.scope,
           row: {
             'id': id,
             'last_active': value,
@@ -1163,7 +1635,7 @@ void main() {
             'pinned': pinned,
           },
           status: value > 100 ? ChatListStatus.needsInput : ChatListStatus.idle,
-          project: {'id': project, 'name': project},
+          project: BrowserProject(id: project, name: project),
         );
         final arrangement = ChatListArrangement();
         List<ChatListGroup> arrange(List<ChatListEntry> entries) =>
@@ -1196,8 +1668,8 @@ void main() {
         final owner = controller.browserResource('personal');
         final now = DateTime.now();
         ChatListEntry entry({required bool active, bool pinned = false}) =>
-            ChatListEntry(
-              owner: owner,
+            ChatListEntry.fromWire(
+              scope: owner.scope,
               row: {
                 'id': 'a',
                 'last_active':

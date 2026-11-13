@@ -1,0 +1,193 @@
+{
+  "cases": [
+    {
+      "name": "current-isolated-qa",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 0
+    },
+    {
+      "name": "reordered-parenthesized-condition",
+      "native": "class MainActivity {\n fun camera() {\n  if ((BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") && (BuildConfig.NATIVE_SHARE_QA && BuildConfig.DEBUG)) {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 0
+    },
+    {
+      "name": "normal-implicit-camera",
+      "native": "class MainActivity { fun camera() { val capture = Intent() } }",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 0
+    },
+    {
+      "name": "comments-unrelated-symbols",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n\n// setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"bad\")\nclass Other { fun setClassName(a: String, b: String) {}\n fun go() { setClassName(\"other\", \"Other\") } }\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 0
+    },
+    {
+      "name": "missing-debug-fence",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "missing-qa-fence",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "wrong-isolated-package",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.dev\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "or-condition",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG || BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "else-is-not-guarded",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {} else {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "unguarded-call",
+      "native": "class MainActivity { fun camera() { setClassName(\"x\", \"y\") } }",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "callable-escape",
+      "native": "class MainActivity { fun camera() { val callback = ::setClassName } }",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "hoisted-fixture-component",
+      "native": "val component = \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\"\nclass MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "wrong-fixture-target",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.OtherActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "default-opted-in",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"true\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 5
+    },
+    {
+      "name": "debug-not-explicit-opt-in",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"true\")\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 9
+    },
+    {
+      "name": "release-enabled",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  release { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"true\") }\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 7
+    },
+    {
+      "name": "missing-property",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = true\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "mutable-property",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nvar nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "implicit-qa-property",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"otherOption\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "missing-isolation-check",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\n\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "conditional-isolation-check",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\nif (enabled) { check(!nativeShareQa || notificationQa) { \"Requires isolated QA\" } }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "wrong-debug-package",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".dev\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 8
+    },
+    {
+      "name": "native-parse-error",
+      "native": "class MainActivity { fun broken(",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 2
+    },
+    {
+      "name": "gradle-parse-error",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "android {",
+      "exit": 2
+    },
+    {
+      "name": "missing-scoped-owner",
+      "native": "class Other {}",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 2
+    },
+    {
+      "name": "escaped-unprotected-fixture",
+      "native": "class MainActivity { fun camera() { val component = \"com.tarkilhk.wing.shareqa.fixt\\u0075re.ControlledCameraActivity\" } }",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 1
+    },
+    {
+      "name": "computed-buildconfig-field",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", computedName, \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\n",
+      "exit": 1,
+      "line": 5
+    },
+    {
+      "name": "buildconfig-callable-escape",
+      "native": "class MainActivity {\n fun camera() {\n  if (BuildConfig.DEBUG && BuildConfig.NATIVE_SHARE_QA && BuildConfig.APPLICATION_ID == \"com.tarkilhk.wing.notificationqa\") {\n   setClassName(\"com.tarkilhk.wing.shareqa.fixture\", \"com.tarkilhk.wing.shareqa.fixture.ControlledCameraActivity\")\n  }\n }\n}\n",
+      "gradle": "val notificationQa = providers.gradleProperty(\"notificationQa\").orNull == \"true\"\nval nativeShareQa = providers.gradleProperty(\"nativeShareQa\").orNull == \"true\"\ncheck(!nativeShareQa || notificationQa) { \"Requires isolated QA\" }\nandroid {\n defaultConfig { buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", \"false\") }\n buildTypes {\n  debug {\n   applicationIdSuffix = if (notificationQa) \".notificationqa\" else \".dev\"\n   buildConfigField(\"boolean\", \"NATIVE_SHARE_QA\", nativeShareQa.toString())\n  }\n }\n}\nval declare = ::buildConfigField\n",
+      "exit": 1,
+      "line": 13
+    }
+  ]
+}

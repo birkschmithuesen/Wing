@@ -4,12 +4,12 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../widgets/profile_diagnostics_panel.dart';
+import 'profile_diagnostics_controller.dart';
 import 'administration_health.dart';
 import 'administration_overview.dart';
 import 'administration_repository.dart';
 import 'health_snapshot.dart';
-import 'profile_workspace_controller.dart';
+import 'profile_gateway.dart';
 import 'scheduled_tasks_controller.dart';
 import 'server_connection_status.dart';
 
@@ -42,6 +42,7 @@ class AdministrationHealthSession extends ChangeNotifier {
       }
     }
     health.addListener(_changed);
+    server.connectorInventory.addListener(_connectorsChanged);
   }
 
   final AdministrationRepository server;
@@ -49,7 +50,9 @@ class AdministrationHealthSession extends ChangeNotifier {
   final AdministrationHealth health;
   final bool ownsServer;
   final DateTime Function() _now;
-  final overviews = <String, AdministrationOverview>{};
+  final _overviews = <String, AdministrationOverview>{};
+  Map<String, AdministrationOverview> get overviews =>
+      Map.unmodifiable(_overviews);
   final _tasks = <String, ScheduledTasksController>{};
   final _taskListeners = <String, VoidCallback>{};
   final _checks = <String, ProfileDiagnosticsController>{};
@@ -58,7 +61,8 @@ class AdministrationHealthSession extends ChangeNotifier {
   final _savedProfiles = <String, dynamic>{};
   bool _disposed = false;
   Future<void> _saveQueue = Future.value();
-  String? persistenceError;
+  String? _persistenceError;
+  String? get persistenceError => _persistenceError;
 
   String get _key =>
       'health-results:v2:${server.profile('default').scope.storageNamespace}';
@@ -66,13 +70,18 @@ class AdministrationHealthSession extends ChangeNotifier {
   bool checking(String? name) => _refreshes.containsKey(name);
   DateTime? checkedAt(String? name) => _refreshedAt[name];
 
-  ProfileDiagnosticsController checksFor(ProfileWorkspaceData workspace) {
-    final name = workspace.scope.profileName;
+  void _requireConnection(ProfileGateway gateway) {
+    if (gateway.scope.connectionId != server.connectionId ||
+        gateway.scope.connectionIdentity != server.connectionIdentity) {
+      throw ArgumentError('Health belongs to another connection');
+    }
+  }
+
+  ProfileDiagnosticsController checksFor(ProfileGateway gateway) {
+    _requireConnection(gateway);
+    final name = gateway.scope.profileName;
     final checks = _checks.putIfAbsent(name, () {
-      final checks = ProfileDiagnosticsController(
-        workspace: workspace,
-        connectionLabel: server.connectionLabel,
-      );
+      final checks = ProfileDiagnosticsController(gateway: gateway);
       final snapshot = _savedProfiles[name];
       if (snapshot != null && snapshot['checks'] != null) {
         try {
@@ -86,72 +95,94 @@ class AdministrationHealthSession extends ChangeNotifier {
       });
       return checks;
     });
-    checks.updateWorkspace(
-      workspace: workspace,
-      connectionLabel: server.connectionLabel,
-    );
+    checks.updateGateway(gateway);
     return checks;
   }
 
-  void select(ProfileWorkspaceData? workspace) {
+  void select(ProfileGateway? gateway) {
     if (_disposed) return;
-    if (workspace == null) {
+    if (gateway == null) {
       health.selectProfile(null);
       return;
     }
-    if (workspace.scope.connectionId != server.connectionId ||
-        workspace.scope.connectionIdentity != server.connectionIdentity) {
-      throw ArgumentError('Health belongs to another connection');
-    }
-    final name = workspace.scope.profileName;
-    final overview = overviews.putIfAbsent(name, () {
-      final overview = AdministrationOverview(server.profile(name));
-      final snapshot = _savedProfiles[name];
-      if (snapshot != null) {
-        try {
-          overview.restoreHealth(snapshot['overview'] as Map);
-          final at = healthSnapshotTime(snapshot['refreshedAt']);
-          if (at != null) _refreshedAt[name] = at;
-        } on Object {
-          _savedProfiles.remove(name);
-        }
-      }
-      overview.addListener(() {
-        _checks[name]?.updateModel(overview.observations['model']?.data);
-        _changed();
-      });
-      return overview;
-    });
-    final checks = checksFor(workspace);
+    _requireConnection(gateway);
+    final name = gateway.scope.profileName;
+    final overview = _overviewFor(name);
+    final checks = checksFor(gateway);
     checks.updateModel(overview.observations['model']?.data);
+    // Attach independently of full-check expiry. The task list may already
+    // hold a newer result, which must win before publishing restored findings.
+    final tasks = _tasksFor(overview.profile);
+    if (tasks.tasks != null) health.updateTasks(tasks);
     health.selectProfile(overview);
     health.updateProfileChecks(checks.healthObservation);
     if (healthSnapshotExpired(_refreshedAt[name], _now()) ||
         checks.healthObservation.finding == null) {
-      unawaited(refresh(workspace));
+      unawaited(refresh(gateway));
     }
   }
 
-  Future<void> refresh(ProfileWorkspaceData workspace) {
+  AdministrationOverview _overviewFor(String name) =>
+      _overviews.putIfAbsent(name, () {
+        final overview = AdministrationOverview(server.profile(name));
+        final snapshot = _savedProfiles[name];
+        if (snapshot != null) {
+          try {
+            overview.restoreHealth(snapshot['overview'] as Map);
+            final at = healthSnapshotTime(snapshot['refreshedAt']);
+            if (at != null) _refreshedAt[name] = at;
+          } on Object {
+            _savedProfiles.remove(name);
+          }
+        }
+        overview.addListener(() {
+          _checks[name]?.updateModel(overview.observations['model']?.data);
+          _changed();
+        });
+        return overview;
+      });
+
+  void _connectorsChanged() {
+    if (_disposed) return;
+    // Unopened profiles still have saved probe failures. Restore their existing
+    // observation owner to reconcile/persist membership, without selecting the
+    // profile or starting diagnostics. Otherwise a second restart resurrects it.
+    for (final name in server.connectorInventory.observations.keys) {
+      if (_savedProfiles.containsKey(name)) _overviewFor(name);
+    }
+    _changed();
+  }
+
+  ScheduledTasksController _tasksFor(ProfileAdministration profile) =>
+      _tasks.putIfAbsent(profile.name, () {
+        final source = ScheduledTasksController.acquire(profile, preferences);
+        void listener() {
+          if (!_disposed) health.updateTasks(source);
+        }
+
+        _taskListeners[profile.name] = listener;
+        source.addListener(listener);
+        return source;
+      });
+
+  /// Recheck a retained task issue without selecting its profile or launching
+  /// provider, connector or server diagnostics. Borrow the list's shared owner.
+  Future<void> refreshScheduledTasks(String profileName) {
     if (_disposed) return Future.value();
-    final name = workspace.scope.profileName;
-    final overview = overviews[name];
+    final source = _tasksFor(server.profile(profileName));
+    if (source.tasks != null) health.updateTasks(source);
+    return source.loading ? Future.value() : source.refresh();
+  }
+
+  Future<void> refresh(ProfileGateway gateway) {
+    if (_disposed) return Future.value();
+    _requireConnection(gateway);
+    final name = gateway.scope.profileName;
+    final overview = _overviews[name];
     if (overview == null) return Future.value();
     if (_refreshes[name] case final pending?) return pending;
-    final checks = checksFor(workspace);
-    final tasks = _tasks.putIfAbsent(name, () {
-      final source = ScheduledTasksController.acquire(
-        overview.profile,
-        preferences,
-      );
-      void listener() {
-        if (!_disposed) health.updateTasks(source);
-      }
-
-      _taskListeners[name] = listener;
-      source.addListener(listener);
-      return source;
-    });
+    final checks = checksFor(gateway);
+    final tasks = _tasksFor(overview.profile);
     // Schedule after registering the future so synchronous notifications cannot
     // expose an enabled refresh button while this work is already underway.
     final refresh =
@@ -178,6 +209,29 @@ class AdministrationHealthSession extends ChangeNotifier {
     return refresh;
   }
 
+  /// The editor and its follow-up reads keep the admitted profile, even if the
+  /// visible selection changes. An invalidated older pass must settle before
+  /// starting observations of the configuration left by the editor.
+  Future<void> reviewAccess(
+    ProfileGateway gateway,
+    Future<void> Function(ProfileAdministration profile) openEditor,
+  ) async {
+    if (_disposed) return;
+    _requireConnection(gateway);
+    final name = gateway.scope.profileName;
+    final checks = checksFor(gateway);
+    await openEditor(server.profile(name));
+    if (_disposed) return;
+    checks.invalidate();
+    final pending = _refreshes[name];
+    if (pending != null) await pending;
+    if (_disposed) return;
+    // The older pass may have still been reading its model when invalidated.
+    // Clear any observation it started later before the fresh captured pass.
+    checks.invalidate();
+    await refresh(gateway);
+  }
+
   void _changed() {
     if (_disposed) return;
     _persist();
@@ -186,10 +240,12 @@ class AdministrationHealthSession extends ChangeNotifier {
 
   void _persist() {
     final profiles = Map<String, dynamic>.of(_savedProfiles);
-    for (final entry in overviews.entries) {
+    for (final entry in _overviews.entries) {
       profiles[entry.key] = {
         'overview': entry.value.healthSnapshot(),
-        'checks': _checks[entry.key]?.snapshot(),
+        'checks':
+            _checks[entry.key]?.snapshot() ??
+            _savedProfiles[entry.key]?['checks'],
         'refreshedAt': _refreshedAt[entry.key]?.toUtc().toIso8601String(),
       };
     }
@@ -202,10 +258,10 @@ class AdministrationHealthSession extends ChangeNotifier {
           if (!await preferences.setString(_key, encoded)) {
             throw StateError('Health snapshot was not saved');
           }
-          persistenceError = null;
+          _persistenceError = null;
         })
         .catchError((Object _) {
-          persistenceError = 'Could not save Health results on this device.';
+          _persistenceError = 'Could not save Health results on this device.';
           if (!_disposed) notifyListeners();
         });
   }
@@ -214,8 +270,9 @@ class AdministrationHealthSession extends ChangeNotifier {
   void dispose() {
     _persist();
     _disposed = true;
+    server.connectorInventory.removeListener(_connectorsChanged);
     health.dispose();
-    for (final overview in overviews.values) {
+    for (final overview in _overviews.values) {
       overview.dispose();
     }
     for (final checks in _checks.values) {

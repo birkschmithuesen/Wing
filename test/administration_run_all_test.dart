@@ -1,3 +1,5 @@
+import 'package:wing/core/services/host_resources_session.dart';
+import 'support/host_resources_fixture.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -6,10 +8,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:wing/core/models/administration_operation.dart';
 import 'package:wing/core/screens/administration/admin_health_page.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
 import 'package:wing/core/services/administration_health.dart';
 import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_error.dart';
 
 import 'support/administration_fixture.dart';
 
@@ -50,21 +54,26 @@ void main() {
       testWidgets('run all ${brightness.name} at $scale', (tester) async {
         final fixture = AdministrationFixture();
         final health = AdministrationHealth(fixture.server);
+        final host = HostResourcesSession(fixture.server);
+        addTearDown(host.dispose);
         addTearDown(health.dispose);
         addTearDown(fixture.server.close);
         final starts = Completer<void>();
         var doctorRunning = true;
         var auditRunning = true;
         fixture.override = (method, path, query, body) async {
+          if (path == 'system/stats') return hostStatsPayload();
+          if (path == 'status') return hostPressurePayload();
           if (path.startsWith('ops/')) {
             await starts.future;
-            return {'name': path.substring(4), 'pid': 7};
+            return {'ok': true, 'name': path.substring(4), 'pid': 7};
           }
           if (path.startsWith('actions/')) {
             final running = path.contains('/doctor/')
                 ? doctorRunning
                 : auditRunning;
             return {
+              'name': path.split('/')[1],
               'pid': 7,
               'running': running,
               'exit_code': running ? null : 0,
@@ -92,9 +101,10 @@ void main() {
             home: Scaffold(
               appBar: AppBar(title: const Text('Hermes health')),
               body: AdminHealthContent(
-                server: fixture.server,
                 health: health,
+                hostResources: host,
                 accessChecks: () => null,
+                onReviewAccess: null,
                 profile: fixture.server.profile('default'),
                 onRefresh: () async => fail('Must not refresh'),
                 onOpenDestination: (_) async {},
@@ -107,6 +117,8 @@ void main() {
         final runAll = find.byWidgetPredicate(
           (w) => w is IconButton && w.tooltip == 'Run all diagnostics',
         );
+        await tester.scrollUntilVisible(runAll, 200);
+        await tester.pumpAndSettle();
         bool enabled() => tester.widget<IconButton>(runAll).onPressed != null;
         expect(enabled(), isTrue);
         expect(
@@ -115,7 +127,13 @@ void main() {
         );
         expect(find.byTooltip('Refresh health'), findsNothing);
         expect(find.textContaining('Runtime profile'), findsNothing);
-        expect(fixture.requests, isEmpty);
+        expect(
+          fixture.requests.map((r) => r.$2),
+          unorderedEquals(['system/stats', 'status']),
+        );
+        fixture.requests.clear();
+        await tester.ensureVisible(runAll);
+        await tester.pumpAndSettle();
         await snapshot(tester, '${brightness.name}-$scale-idle');
         await tester.tap(runAll);
         await tester.pump();
@@ -123,10 +141,7 @@ void main() {
         expect(find.byType(AlertDialog), findsNothing);
         expect(enabled(), isFalse);
         expect(
-          find.descendant(
-            of: runAll,
-            matching: find.byType(CircularProgressIndicator),
-          ),
+          find.descendant(of: runAll, matching: find.byIcon(Icons.refresh)),
           findsOneWidget,
         );
         expect(find.text('Starting…'), findsNWidgets(2));
@@ -145,10 +160,7 @@ void main() {
         expect(find.textContaining('Running'), findsNWidgets(2));
         expect(enabled(), isFalse);
         expect(
-          find.descendant(
-            of: runAll,
-            matching: find.byType(CircularProgressIndicator),
-          ),
+          find.descendant(of: runAll, matching: find.byIcon(Icons.refresh)),
           findsOneWidget,
         );
         await snapshot(tester, '${brightness.name}-$scale-running');
@@ -158,10 +170,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 400));
         expect(enabled(), isFalse);
         expect(
-          find.descendant(
-            of: runAll,
-            matching: find.byType(CircularProgressIndicator),
-          ),
+          find.descendant(of: runAll, matching: find.byIcon(Icons.refresh)),
           findsOneWidget,
         );
         expect(find.textContaining('No issues found'), findsOneWidget);
@@ -196,16 +205,21 @@ void main() {
   ) async {
     final fixture = AdministrationFixture();
     final health = AdministrationHealth(fixture.server);
+    final host = HostResourcesSession(fixture.server);
+    addTearDown(host.dispose);
     addTearDown(health.dispose);
     addTearDown(fixture.server.close);
     fixture.override = (method, path, query, body) async => switch (path) {
+      'system/stats' => hostStatsPayload(),
+      'status' => hostPressurePayload(),
       'ops/doctor' => throw StateError('Doctor unavailable'),
-      'ops/security-audit' => {'name': 'security-audit', 'pid': 8},
+      'ops/security-audit' => {'ok': true, 'name': 'security-audit', 'pid': 8},
       'actions/security-audit/status' => {
+        'name': path.split('/')[1],
         'pid': 8,
         'running': false,
         'exit_code': 1,
-        'lines': ['Audit failed'],
+        'lines': File('test/fixtures/security_audit.txt').readAsLinesSync(),
       },
       _ => throw StateError('Unexpected $method $path'),
     };
@@ -216,9 +230,10 @@ void main() {
         theme: wingTheme(Brightness.dark),
         home: Scaffold(
           body: AdminHealthContent(
-            server: fixture.server,
             health: health,
+            hostResources: host,
             accessChecks: () => null,
+            onReviewAccess: null,
             profile: null,
             onRefresh: () async {},
             onOpenDestination: (_) async {},
@@ -226,6 +241,8 @@ void main() {
         ),
       ),
     );
+    await tester.ensureVisible(find.byTooltip('Run all diagnostics'));
+    await tester.pumpAndSettle();
     await tester.tap(
       find.byWidgetPredicate(
         (w) => w is IconButton && w.tooltip == 'Run all diagnostics',
@@ -235,13 +252,14 @@ void main() {
     await tester.pump(const Duration(milliseconds: 400));
     expect(fixture.requests.where((r) => r.$1 == 'POST'), hasLength(2));
     expect(
-      find.descendant(
-        of: find.byType(SnackBar),
-        matching: find.textContaining('Doctor:'),
-      ),
+      find.widgetWithText(StudioError, 'Start not confirmed'),
       findsOneWidget,
     );
-    expect(find.textContaining('Review audit findings'), findsOneWidget);
+    expect(
+      health.diagnostics['ops/security-audit']!.classification,
+      AdministrationOperationOutcome.findings,
+    );
+    expect(find.textContaining('21 vulnerabilities found'), findsOneWidget);
     expect(health.diagnostics.keys, ['ops/security-audit']);
     expect(health.starting, isEmpty);
     expect(

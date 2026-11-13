@@ -108,40 +108,37 @@ void main() {
     expect(snapshot.heartbeat!.fireCount, 4);
   });
 
-  test(
-    'accepts absent or null background controls but rejects malformed ones',
-    () {
-      expect(
-        SessionControlSnapshot.parse({
-          'control': {'goal': null, 'revision': 'r', 'updated_at': 0},
-        }),
-        isNotNull,
-      );
-      expect(
-        SessionControlSnapshot.parse({
-          'control': {
-            'goal': null,
-            'revision': 'r',
-            'updated_at': 0,
-            'loop': null,
-            'heartbeat': null,
-          },
-        }),
-        isNotNull,
-      );
-      expect(
-        SessionControlSnapshot.parse({
-          'control': {
-            'goal': null,
-            'revision': 'r',
-            'updated_at': 0,
-            'loop': {'status': 'active'},
-          },
-        }),
-        isNull,
-      );
-    },
-  );
+  for (final entry in <String, Map<String, dynamic>>{
+    'absent': {},
+    'null': {'loop': null, 'heartbeat': null},
+  }.entries) {
+    test('accepts ${entry.key} background controls', () {
+      final snapshot = SessionControlSnapshot.parse({
+        'control': {
+          'goal': null,
+          'revision': 'r',
+          'updated_at': 0,
+          ...entry.value,
+        },
+      });
+      expect(snapshot, isNotNull);
+      expect(snapshot!.loop, isNull);
+      expect(snapshot.heartbeat, isNull);
+    });
+  }
+  test('rejects incomplete background loop', () {
+    expect(
+      SessionControlSnapshot.parse({
+        'control': {
+          'goal': null,
+          'revision': 'r',
+          'updated_at': 0,
+          'loop': {'status': 'active'},
+        },
+      }),
+      isNull,
+    );
+  });
 
   test('keeps additive server fields instead of hiding the goal', () {
     final value = goal()..['future_field'] = {'new': true};
@@ -152,38 +149,22 @@ void main() {
     expect(snapshot!.goal!.title, 'Ship D24');
   });
 
-  test('rejects malformed snapshots and unsupported barrier fields', () {
-    expect(
-      SessionControlSnapshot.parse({
-        'control': {
-          'goal': goal(status: 'running'),
-          'revision': 'r',
-          'updated_at': 1,
-        },
-      }),
-      isNull,
-    );
-    expect(
-      SessionControlSnapshot.parse({
-        'control': {
-          'goal': goal(barrier: {'type': 'pid', 'target': '42', 'reason': 'x'}),
-          'revision': 'r',
-          'updated_at': 1,
-        },
-      }),
-      isNull,
-    );
-    expect(
-      SessionControlSnapshot.parse({
-        'control': {'goal': null},
-      }),
-      isNull,
-    );
-    expect(
-      SessionControlSnapshot.parse({
-        'control': {'revision': 'r', 'updated_at': 1},
-      }),
-      isNull,
-    );
-  });
+  for (final entry in <String, Map<String, dynamic>>{
+    'unsupported goal status': {
+      'goal': goal(status: 'running'),
+      'revision': 'r',
+      'updated_at': 1,
+    },
+    'unsupported barrier': {
+      'goal': goal(barrier: {'type': 'pid', 'target': '42', 'reason': 'x'}),
+      'revision': 'r',
+      'updated_at': 1,
+    },
+    'missing snapshot metadata': {'goal': null},
+    'missing goal': {'revision': 'r', 'updated_at': 1},
+  }.entries) {
+    test('rejects ${entry.key}', () {
+      expect(SessionControlSnapshot.parse({'control': entry.value}), isNull);
+    });
+  }
 }

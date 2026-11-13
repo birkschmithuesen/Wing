@@ -1,9 +1,13 @@
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../widgets/wing_app_bar.dart';
 import '../widgets/studio_task_marker.dart';
 import '../widgets/studio_error.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../services/web_preview.dart';
+import '../widgets/web_link_scope.dart';
 
 /// Bundled with the app so privacy information is available before connecting.
 class PrivacyPolicyScreen extends StatefulWidget {
@@ -24,7 +28,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Privacy policy')),
+    appBar: WingAppBar(context: context, title: const Text('Privacy policy')),
     body: FutureBuilder<String>(
       future: _policy,
       builder: (context, snapshot) {
@@ -36,13 +40,15 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const StudioError('Could not load the privacy policy.'),
-                  TextButton(
-                    onPressed: () => setState(() {
-                      _policy = DefaultAssetBundle.of(
-                        context,
-                      ).loadString('PRIVACY.md');
-                    }),
-                    child: const Text('Retry'),
+                  StudioButtonPress(
+                    child: TextButton(
+                      onPressed: () => setState(() {
+                        _policy = DefaultAssetBundle.of(
+                          context,
+                        ).loadString('PRIVACY.md');
+                      }),
+                      child: const Text('Retry'),
+                    ),
                   ),
                 ],
               ),
@@ -50,7 +56,7 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           );
         }
         if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
+          return StudioPageLoading.waiting(label: 'Loading privacy policy');
         }
         return Markdown(
           checkboxBuilder: (checked) => StudioTaskMarker(completed: checked),
@@ -60,13 +66,9 @@ class _PrivacyPolicyScreenState extends State<PrivacyPolicyScreen> {
           onTapLink: (_, href, _) async {
             final uri = href == null ? null : externalWebLink(href);
             if (uri == null) return;
-            final opened = await openWebPreview(uri);
+            final opened = await WebLinkScope.open(context, uri);
             if (!opened && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: StudioError('Could not open the link.'),
-                ),
-              );
+              showStudioError(context, 'Could not open the link.');
             }
           },
         );

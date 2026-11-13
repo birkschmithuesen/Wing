@@ -3,22 +3,20 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:image/image.dart' as image_lib;
 import 'package:path_provider/path_provider.dart';
 
 import '../models/attachment_draft.dart';
+import 'attachment_image_preflight.dart';
+import 'attachment_image_worker.dart';
 
 /// Maximum number of mixed image/file drafts in a Remote Gateway composer.
-const maxRemoteAttachmentDrafts = 10;
+const maxRemoteAttachmentDrafts = 40;
 
-/// Aggregate Remote Gateway draft budget: exactly 64 MiB (67,108,864 bytes).
-const maxRemoteAttachmentDraftBytes = 64 * 1024 * 1024;
+/// Aggregate Remote Gateway draft budget: exactly 128 MiB (134,217,728 bytes).
+const maxRemoteAttachmentDraftBytes = 128 * 1024 * 1024;
 
 /// Existing per-item limit for generic files: exactly 16 MiB.
 const maxGenericAttachmentBytes = 16 * 1024 * 1024;
-
-/// The legacy REST transport remains single-image and proxy-budgeted.
-const maxRestImageBytes = 680 * 1024;
 
 final _mediaTypePattern = RegExp(
   r'^[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*/[a-zA-Z0-9][a-zA-Z0-9!#$&^_.+-]*$',
@@ -30,11 +28,6 @@ String _safeMediaType(String value) {
       ? normalized
       : 'application/octet-stream';
 }
-
-enum AttachmentDraftMode { remoteGateway, rest }
-
-bool allowsMultipleImageSelection(AttachmentDraftMode mode) =>
-    mode == AttachmentDraftMode.remoteGateway;
 
 typedef AttachmentCacheDirectoryProvider = Future<Directory> Function();
 typedef AttachmentCacheFileWriter =
@@ -61,6 +54,54 @@ class AttachmentUploadReceipt {
   });
 }
 
+/// Capability created only after validating the whole deletion-cleanup batch.
+/// Paths are bound to the service's trusted app-managed cache directory.
+class ValidatedAttachmentCleanup {
+  ValidatedAttachmentCleanup._(this._root, this._files);
+  final String? _root;
+  final List<({String name, int bytes})> _files;
+}
+
+/// An immutable read capability for one app-managed image. Upload/error state
+/// is not part of its identity, and it retains neither image bytes nor a Future.
+final class AttachmentPreviewSource {
+  AttachmentPreviewSource._(this._owner, AttachmentDraft draft)
+    : _metadata = (
+        id: draft.id,
+        path: draft.cachedPath,
+        bytes: draft.byteLength,
+      ),
+      _isImage = draft.isImage,
+      _sanitized = draft.sanitized,
+      _mediaType = draft.mediaType;
+
+  final AttachmentDraftService _owner;
+  final ({String id, String path, int bytes}) _metadata;
+  final bool _isImage;
+  final bool _sanitized;
+  final String _mediaType;
+
+  Future<Uint8List> readBytes() => _owner._readPreview(this);
+
+  @override
+  bool operator ==(Object other) =>
+      other is AttachmentPreviewSource &&
+      identical(_owner, other._owner) &&
+      _metadata == other._metadata &&
+      _isImage == other._isImage &&
+      _sanitized == other._sanitized &&
+      _mediaType == other._mediaType;
+
+  @override
+  int get hashCode => Object.hash(
+    identityHashCode(_owner),
+    _metadata,
+    _isImage,
+    _sanitized,
+    _mediaType,
+  );
+}
+
 class AttachmentDraftException implements Exception {
   final String message;
 
@@ -71,8 +112,7 @@ class AttachmentDraftException implements Exception {
 }
 
 /// Testable boundary between ordered attachment upload and the single prompt
-/// submission that follows it. Individual retry deliberately lives on a
-/// separate method with no prompt callback.
+/// submission that follows it. Individual retry belongs to AttachmentDraftService.
 class AttachmentDraftSendCoordinator {
   final AttachmentDraftService draftService;
 
@@ -104,20 +144,6 @@ class AttachmentDraftSendCoordinator {
     }
     await submitPrompt(refs);
   }
-
-  Future<AttachmentUploadReceipt> retryFailed({
-    required AttachmentDraft draft,
-    required AttachmentUploadCallback upload,
-    AttachmentDraftChanged? onChanged,
-    bool removeCachedFileAfterUpload = true,
-  }) {
-    return draftService.retryFailed(
-      draft: draft,
-      upload: upload,
-      onChanged: onChanged,
-      removeCachedFileAfterUpload: removeCachedFileAfterUpload,
-    );
-  }
 }
 
 /// Owns staged attachment I/O, image metadata sanitization, policy checks, and
@@ -127,6 +153,7 @@ class AttachmentDraftService {
   final AttachmentCacheFileWriter _cacheFileWriter;
   final DateTime Function() _clock;
   int _sequence = 0;
+  final _imageJobs = <AttachmentImageJob>{};
 
   AttachmentDraftService({
     AttachmentCacheDirectoryProvider? cacheDirectoryProvider,
@@ -149,112 +176,96 @@ class AttachmentDraftService {
     return Directory('${root.path}${Platform.pathSeparator}attachment_drafts');
   }
 
+  /// Cancels CPU work and prevents an in-progress cache write from publishing.
+  void cancelImagePreparations() {
+    for (final job in _imageJobs.toList(growable: false)) {
+      job.cancel();
+    }
+  }
+
   Future<AttachmentDraft> prepareImage({
     required String sourcePath,
     required String displayName,
     required Iterable<AttachmentDraft> existingDrafts,
-    required AttachmentDraftMode mode,
-  }) async {
-    final source = File(sourcePath);
-    final stat = await source.stat();
-    if (stat.type != FileSystemEntityType.file || stat.size <= 0) {
-      throw const AttachmentDraftException(
-        'The selected image is empty or unreadable.',
-      );
-    }
-    if (stat.size > maxRemoteAttachmentDraftBytes) {
-      throw const AttachmentDraftException(
-        'The selected image exceeds the 64 MiB draft budget.',
-      );
-    }
-    if (mode == AttachmentDraftMode.remoteGateway) {
-      _ensureRemoteSlot(existingDrafts);
-    }
-
-    return prepareImageBytes(
-      bytes: await source.readAsBytes(),
-      displayName: displayName,
-      existingDrafts: existingDrafts,
-      mode: mode,
-    );
-  }
+    void Function(AttachmentImageJob)? onImageJob,
+  }) => _prepareImage(
+    displayName: displayName,
+    existingDrafts: existingDrafts,
+    onImageJob: onImageJob,
+    start: (limit) => AttachmentImageWorker.shared.prepareFile(
+      sourcePath,
+      maxOutputBytes: limit,
+    ),
+  );
 
   Future<AttachmentDraft> prepareImageBytes({
     required Uint8List bytes,
     required String displayName,
     required Iterable<AttachmentDraft> existingDrafts,
-    required AttachmentDraftMode mode,
-  }) async {
-    if (bytes.isEmpty) {
-      throw const AttachmentDraftException('The image is empty or unreadable.');
-    }
-    if (bytes.length > maxRemoteAttachmentDraftBytes) {
-      throw const AttachmentDraftException(
-        'The image exceeds the 64 MiB draft budget.',
-      );
-    }
-    if (mode == AttachmentDraftMode.remoteGateway) {
-      _ensureRemoteSlot(existingDrafts);
-    }
+    void Function(AttachmentImageJob)? onImageJob,
+  }) => _prepareImage(
+    displayName: displayName,
+    existingDrafts: existingDrafts,
+    onImageJob: onImageJob,
+    start: (limit) =>
+        AttachmentImageWorker.shared.prepareBytes(bytes, maxOutputBytes: limit),
+  );
 
-    image_lib.Image? decoded;
+  Future<AttachmentDraft> _prepareImage({
+    required String displayName,
+    required Iterable<AttachmentDraft> existingDrafts,
+    required AttachmentImageJob Function(int) start,
+    void Function(AttachmentImageJob)? onImageJob,
+  }) async {
+    _ensureRemoteSlot(existingDrafts);
     File? destination;
+    AttachmentImageJob? job;
     var committed = false;
     try {
-      final format = _detectImageFormat(bytes);
-      if (format == null) {
-        throw const AttachmentDraftException(
-          'Unsupported image format. Choose a JPEG, PNG, or WebP image.',
-        );
-      }
-      decoded = image_lib.decodeImage(bytes);
-      if (decoded == null) {
-        throw const AttachmentDraftException(
-          'The selected JPEG, PNG, or WebP image could not be decoded safely.',
-        );
-      }
-
-      var sanitized = image_lib.bakeOrientation(decoded);
-      decoded = null;
-      sanitized
-        ..exif.clear()
-        ..iccProfile = null
-        ..textData = null;
-
-      final outputIsJpeg = format == AttachmentImageFormat.jpeg;
-      Uint8List? outputBytes = outputIsJpeg
-          ? image_lib.encodeJpg(sanitized, quality: 85)
-          : image_lib.encodePng(sanitized, level: 6);
-      sanitized = image_lib.Image(width: 1, height: 1);
-
-      final outputLength = outputBytes.length;
-      if (mode == AttachmentDraftMode.rest &&
-          outputLength > maxRestImageBytes) {
-        throw const AttachmentDraftException(
-          'The sanitized image is too large for the legacy REST limit.',
-        );
-      }
-      if (mode == AttachmentDraftMode.remoteGateway) {
-        _ensureRemoteAggregate(existingDrafts, outputLength);
-      }
-
-      final extension = outputIsJpeg ? 'jpg' : 'png';
-      final outputName = _replaceExtension(displayName, extension);
+      final current = existingDrafts.fold<int>(
+        0,
+        (sum, draft) => sum + draft.byteLength,
+      );
+      final remaining = maxRemoteAttachmentDraftBytes - current;
+      final limit = remaining < maxAttachmentImageOutputBytes
+          ? remaining
+          : maxAttachmentImageOutputBytes;
+      job = start(limit);
+      _imageJobs.add(job);
+      // Observe errors even if the owner's registration callback throws.
+      job.result.ignore();
+      onImageJob?.call(job);
+      final output = await job.result;
+      _ensureImageAuthority(job);
+      _ensureRemoteAggregate(existingDrafts, output.bytes.length);
+      final extension = output.isJpeg ? 'jpg' : 'png';
       destination = await _newCacheFile(extension);
-      await _cacheFileWriter(destination, outputBytes);
-      outputBytes = null;
+      _ensureImageAuthority(job);
+      await _cacheFileWriter(destination, output.bytes);
+      _ensureImageAuthority(job);
       final outputStat = await destination.stat();
+      _ensureImageAuthority(job);
+      if (outputStat.type != FileSystemEntityType.file ||
+          outputStat.size != output.bytes.length) {
+        throw const AttachmentDraftException(
+          'The prepared image could not be stored completely.',
+        );
+      }
+      _ensureRemoteSlot(existingDrafts);
+      _ensureRemoteAggregate(existingDrafts, outputStat.size);
       committed = true;
       return AttachmentDraft(
         id: _draftId(destination.path),
         cachedPath: destination.path,
-        name: outputName,
+        name: _replaceExtension(displayName, extension),
         byteLength: outputStat.size,
-        mediaType: outputIsJpeg ? 'image/jpeg' : 'image/png',
+        mediaType: output.isJpeg ? 'image/jpeg' : 'image/png',
         kind: AttachmentDraftKind.image,
-        sourceImageFormat: format,
+        sourceImageFormat: output.inspection.format,
         sanitized: true,
       );
+    } on AttachmentImageException catch (error) {
+      throw AttachmentDraftException(error.message);
     } on AttachmentDraftException {
       rethrow;
     } catch (_) {
@@ -262,10 +273,19 @@ class AttachmentDraftService {
         'Unable to sanitize this image. Choose a valid JPEG, PNG, or WebP image.',
       );
     } finally {
-      decoded = null;
+      if (job != null) {
+        if (!committed) job.cancel();
+        _imageJobs.remove(job);
+      }
       if (!committed && destination != null) {
         await _deleteIfPresent(destination);
       }
+    }
+  }
+
+  void _ensureImageAuthority(AttachmentImageJob job) {
+    if (job.isCancelled) {
+      throw const AttachmentImageException('Image preparation was cancelled.');
     }
   }
 
@@ -322,13 +342,13 @@ class AttachmentDraftService {
     final snapshot = drafts.toList(growable: false);
     if (snapshot.length > maxRemoteAttachmentDrafts) {
       throw const AttachmentDraftException(
-        'You can attach up to 10 items to one Remote Gateway draft.',
+        'You can attach up to 40 items to one Remote Gateway draft.',
       );
     }
     final total = snapshot.fold<int>(0, (sum, draft) => sum + draft.byteLength);
     if (total > maxRemoteAttachmentDraftBytes) {
       throw const AttachmentDraftException(
-        'Attachments are limited to 64 MiB total per draft.',
+        'Attachments are limited to 128 MiB total per draft.',
       );
     }
     for (final draft in snapshot) {
@@ -346,47 +366,84 @@ class AttachmentDraftService {
     }
   }
 
-  void validateRestDrafts(Iterable<AttachmentDraft> drafts) {
-    final snapshot = drafts.toList(growable: false);
-    if (snapshot.length > 1 ||
-        snapshot.any((draft) => !draft.isImage || !draft.sanitized)) {
-      throw const AttachmentDraftException(
-        'Legacy REST accepts exactly one sanitized image at most.',
-      );
-    }
-    if (snapshot.isNotEmpty && snapshot.single.byteLength > maxRestImageBytes) {
-      throw const AttachmentDraftException(
-        'The sanitized image exceeds the legacy REST limit.',
-      );
-    }
-  }
-
-  bool moveDraft(
-    List<AttachmentDraft> drafts, {
-    required int fromIndex,
-    required int offset,
-  }) {
-    final toIndex = fromIndex + offset;
-    if (fromIndex < 0 ||
-        fromIndex >= drafts.length ||
-        toIndex < 0 ||
-        toIndex >= drafts.length ||
-        offset == 0) {
-      return false;
-    }
-    final draft = drafts.removeAt(fromIndex);
-    drafts.insert(toIndex, draft);
-    return true;
-  }
-
   Future<String> readDataUrl(AttachmentDraft draft) async {
     final bytes = await File(draft.cachedPath).readAsBytes();
-    try {
-      return 'data:${draft.mediaType};base64,${base64Encode(bytes)}';
-    } finally {
-      // The byte array is scoped to this one file and is never stored in the
-      // draft model. The returned Base64 value is handed directly to transport.
+    // The byte array is scoped to this one file and is never stored in the
+    // draft model. The returned Base64 value is handed directly to transport.
+    return 'data:${draft.mediaType};base64,${base64Encode(bytes)}';
+  }
+
+  AttachmentPreviewSource previewSource(AttachmentDraft draft) =>
+      AttachmentPreviewSource._(this, draft);
+
+  Future<Uint8List> _readPreview(AttachmentPreviewSource source) async {
+    final metadata = source._metadata;
+    if (!source._isImage ||
+        !source._sanitized ||
+        metadata.bytes <= 0 ||
+        metadata.bytes > maxAttachmentImageOutputBytes ||
+        (source._mediaType != 'image/jpeg' &&
+            source._mediaType != 'image/png')) {
+      throw const AttachmentDraftException(
+        'This image preview is unavailable.',
+      );
     }
+    final managed = await _validateManagedFiles([metadata]);
+    final root = managed._root!;
+    final item = managed._files.single;
+    if (!await _checkCleanupFile(root, item)) {
+      throw const AttachmentDraftException(
+        'This staged image is no longer available.',
+      );
+    }
+    // Dart has no directory-handle-relative open. Revalidate after reading as
+    // well; this does not claim an atomic filesystem identity guarantee.
+    final file = await File(
+      '$root${Platform.pathSeparator}${item.name}',
+    ).open();
+    late final Uint8List bytes;
+    try {
+      bytes = Uint8List(metadata.bytes);
+      var offset = 0;
+      while (offset < bytes.length) {
+        final end = offset + 65536 < bytes.length
+            ? offset + 65536
+            : bytes.length;
+        final count = await file.readInto(bytes, offset, end);
+        if (count == 0) {
+          throw const AttachmentDraftException(
+            'The staged image changed while reading.',
+          );
+        }
+        offset += count;
+      }
+      if (await file.readByte() != -1) {
+        throw const AttachmentDraftException(
+          'The staged image exceeds its declared size.',
+        );
+      }
+    } finally {
+      await file.close();
+    }
+    if (!await _checkCleanupFile(root, item)) {
+      throw const AttachmentDraftException(
+        'This staged image is no longer available.',
+      );
+    }
+    try {
+      final inspection = inspectAttachmentImage(bytes);
+      if ((source._mediaType == 'image/jpeg' &&
+              inspection.format != AttachmentImageFormat.jpeg) ||
+          (source._mediaType == 'image/png' &&
+              inspection.format != AttachmentImageFormat.png)) {
+        throw const AttachmentDraftException(
+          'The staged image format changed.',
+        );
+      }
+    } on AttachmentImageException catch (error) {
+      throw AttachmentDraftException(error.message);
+    }
+    return bytes;
   }
 
   Future<List<AttachmentUploadReceipt>> uploadSequential({
@@ -420,27 +477,6 @@ class AttachmentDraftService {
       );
     }
     return receipts;
-  }
-
-  /// Retries one failed `file.attach` only. This service has no prompt API, so
-  /// retry cannot submit or replay the user's prompt.
-  Future<AttachmentUploadReceipt> retryFailed({
-    required AttachmentDraft draft,
-    required AttachmentUploadCallback upload,
-    AttachmentDraftChanged? onChanged,
-    bool removeCachedFileAfterUpload = true,
-  }) async {
-    if (draft.status != AttachmentDraftStatus.failed) {
-      throw const AttachmentDraftException(
-        'Only a failed attachment can be retried.',
-      );
-    }
-    return _uploadOne(
-      draft,
-      upload: upload,
-      onChanged: onChanged,
-      removeCachedFileAfterUpload: removeCachedFileAfterUpload,
-    );
   }
 
   Future<AttachmentUploadReceipt> _uploadOne(
@@ -492,6 +528,120 @@ class AttachmentDraftService {
     }
   }
 
+  /// Validate before clearing any draft. Persisted metadata alone never grants
+  /// authority to delete arbitrary paths. Missing managed files are idempotent.
+  Future<ValidatedAttachmentCleanup> validateDeletedDraftCleanup(
+    Iterable<AttachmentDraft> drafts,
+  ) => _validateManagedFiles([
+    for (final draft in drafts)
+      (id: draft.id, path: draft.cachedPath, bytes: draft.byteLength),
+  ]);
+
+  Future<ValidatedAttachmentCleanup> _validateManagedFiles(
+    List<({String id, String path, int bytes})> captured,
+  ) async {
+    if (captured.isEmpty) return ValidatedAttachmentCleanup._(null, const []);
+    final directory = await _cacheDirectoryProvider();
+    final absoluteRoot = directory.absolute.path;
+    final rootType = await FileSystemEntity.type(
+      absoluteRoot,
+      followLinks: false,
+    );
+    if (rootType != FileSystemEntityType.directory &&
+        rootType != FileSystemEntityType.notFound) {
+      throw const AttachmentDraftException(
+        'Managed attachment cache is unavailable.',
+      );
+    }
+    // A missing cache grants no arbitrary-path authority. Bind the absent leaf
+    // to the existing trusted parent; never guess/create a replacement root.
+    final parent = directory.absolute.parent;
+    if (await FileSystemEntity.type(parent.path, followLinks: false) !=
+        FileSystemEntityType.directory) {
+      throw const AttachmentDraftException(
+        'Managed attachment cache parent is unavailable.',
+      );
+    }
+    final canonicalParent = await parent.resolveSymbolicLinks();
+    final leaf = absoluteRoot.substring(
+      absoluteRoot.lastIndexOf(Platform.pathSeparator) + 1,
+    );
+    final root = rootType == FileSystemEntityType.notFound
+        ? '$canonicalParent${Platform.pathSeparator}$leaf'
+        : await directory.resolveSymbolicLinks();
+    final files = <({String name, int bytes})>[];
+    for (final draft in captured) {
+      final path = draft.path;
+      final file = File(path);
+      final name = path.substring(path.lastIndexOf(Platform.pathSeparator) + 1);
+      if (path.length > 8192 ||
+          path.contains('\u0000') ||
+          path != file.absolute.path ||
+          file.parent.path != absoluteRoot ||
+          name != draft.id ||
+          !RegExp(r'^draft-[0-9]+-[0-9]+\.(bin|jpg|png)$').hasMatch(name) ||
+          draft.bytes <= 0 ||
+          draft.bytes > maxRemoteAttachmentDraftBytes) {
+        throw const AttachmentDraftException(
+          'Invalid managed attachment cleanup metadata.',
+        );
+      }
+      final item = (name: name, bytes: draft.bytes);
+      await _checkCleanupFile(root, item);
+      files.add(item);
+    }
+    return ValidatedAttachmentCleanup._(root, List.unmodifiable(files));
+  }
+
+  /// Strict completion: unlike accepted-upload housekeeping, I/O failures remain
+  /// pending. Recheck symlinks immediately before removal; Dart does not expose
+  /// an atomic directory-handle-relative unlink capability.
+  Future<void> removeDeletedDraftCleanup(
+    ValidatedAttachmentCleanup batch,
+  ) async {
+    final root = batch._root;
+    if (root == null) return;
+    for (final item in batch._files) {
+      final rootType = await FileSystemEntity.type(root, followLinks: false);
+      if (rootType == FileSystemEntityType.notFound) {
+        final parent = Directory(root).parent;
+        if (await FileSystemEntity.type(parent.path, followLinks: false) !=
+                FileSystemEntityType.directory ||
+            await parent.resolveSymbolicLinks() != parent.path) {
+          throw const AttachmentDraftException(
+            'Managed attachment cache parent changed.',
+          );
+        }
+        return; // All validated direct children are absent; no unlink authority needed.
+      }
+      if (rootType != FileSystemEntityType.directory ||
+          await Directory(root).resolveSymbolicLinks() != root) {
+        throw const AttachmentDraftException(
+          'Managed attachment cache changed.',
+        );
+      }
+      final exists = await _checkCleanupFile(root, item);
+      if (exists) {
+        await File('$root${Platform.pathSeparator}${item.name}').delete();
+      }
+    }
+  }
+
+  Future<bool> _checkCleanupFile(
+    String root,
+    ({String name, int bytes}) item,
+  ) async {
+    final path = '$root${Platform.pathSeparator}${item.name}';
+    final type = await FileSystemEntity.type(path, followLinks: false);
+    if (type == FileSystemEntityType.notFound) return false;
+    if (type != FileSystemEntityType.file ||
+        await File(path).resolveSymbolicLinks() != path ||
+        await File(path).length() != item.bytes) {
+      throw const AttachmentDraftException('Managed attachment file changed.');
+    }
+    return true;
+  }
+
   static bool isSensitiveFileName(String fileName) {
     final lower = fileName.trim().toLowerCase();
     if (lower.isEmpty) return true;
@@ -520,7 +670,7 @@ class AttachmentDraftService {
   void _ensureRemoteSlot(Iterable<AttachmentDraft> drafts) {
     if (drafts.length >= maxRemoteAttachmentDrafts) {
       throw const AttachmentDraftException(
-        'You can attach up to 10 items to one Remote Gateway draft.',
+        'You can attach up to 40 items to one Remote Gateway draft.',
       );
     }
   }
@@ -532,41 +682,9 @@ class AttachmentDraftService {
     final current = drafts.fold<int>(0, (sum, draft) => sum + draft.byteLength);
     if (current + candidateBytes > maxRemoteAttachmentDraftBytes) {
       throw const AttachmentDraftException(
-        'Attachments are limited to 64 MiB total per draft.',
+        'Attachments are limited to 128 MiB total per draft.',
       );
     }
-  }
-
-  AttachmentImageFormat? _detectImageFormat(Uint8List bytes) {
-    if (bytes.length >= 3 &&
-        bytes[0] == 0xff &&
-        bytes[1] == 0xd8 &&
-        bytes[2] == 0xff) {
-      return AttachmentImageFormat.jpeg;
-    }
-    if (bytes.length >= 8 &&
-        bytes[0] == 0x89 &&
-        bytes[1] == 0x50 &&
-        bytes[2] == 0x4e &&
-        bytes[3] == 0x47 &&
-        bytes[4] == 0x0d &&
-        bytes[5] == 0x0a &&
-        bytes[6] == 0x1a &&
-        bytes[7] == 0x0a) {
-      return AttachmentImageFormat.png;
-    }
-    if (bytes.length >= 12 &&
-        bytes[0] == 0x52 &&
-        bytes[1] == 0x49 &&
-        bytes[2] == 0x46 &&
-        bytes[3] == 0x46 &&
-        bytes[8] == 0x57 &&
-        bytes[9] == 0x45 &&
-        bytes[10] == 0x42 &&
-        bytes[11] == 0x50) {
-      return AttachmentImageFormat.webp;
-    }
-    return null;
   }
 
   Future<File> _newCacheFile(String extension) async {

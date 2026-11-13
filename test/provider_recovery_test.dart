@@ -57,9 +57,11 @@ void main() {
   test(
     'matches the Claude source among different same-provider credentials',
     () {
-      final candidates = ProviderRenewal.forAccess(
-        ProviderAccess(claude()),
-      )!.candidates(pool);
+      final renewal = ProviderRenewal.forAccess(ProviderAccess(claude()))!;
+      final candidates = ProviderCredential.parseList(
+        renewal.pool,
+        pool,
+      ).where(renewal.accepts).toList();
       expect(candidates.single.id, '333ccc');
       expect(candidates.single.label, 'Claude work account');
       expect(
@@ -99,7 +101,12 @@ void main() {
   num modified = 10;
   setUp(() {
     fixture = AdministrationFixture();
-    recovery = ProviderRecovery(fixture.server.profile('personal'));
+    addTearDown(fixture.server.close);
+    recovery = ProviderRecovery(
+      fixture.server.profile('personal'),
+      providerId: 'claude-code',
+    );
+    addTearDown(recovery.dispose);
     observation = claude();
     modified = 10;
     fixture.override = (method, path, query, body) async {
@@ -170,12 +177,9 @@ void main() {
         ('personal', 'auth list anthropic', false),
         ('personal', 'auth refresh anthropic 333ccc', true),
       ]);
-      expect(
-        fixture.requests
-            .where((r) => r.$2 == 'providers/oauth')
-            .every((r) => r.$3['profile'] == 'personal'),
-        isTrue,
-      );
+      final reads = fixture.requests.where((r) => r.$2 == 'providers/oauth');
+      expect(reads, isNotEmpty);
+      expect(reads.map((r) => r.$3['profile']), everyElement('personal'));
     },
   );
 
@@ -215,7 +219,9 @@ void main() {
         ),
         throwsA(isA<ProviderRecoveryFailure>()),
       );
-      expect(fixture.consoleRequests.every((r) => !r.$3), isTrue);
+      expect(fixture.consoleRequests, [
+        ('personal', 'auth list anthropic', false),
+      ]);
     },
   );
 
@@ -392,7 +398,33 @@ void main() {
       )!;
       final output =
           '$id (2 credentials):\n  #1  Personal account oauth id=111aaa priority=0 device_code\n  #2  Work account oauth id=222bbb priority=1 device_code ←\n';
-      expect(adapter.candidates(output).single.id, '222bbb');
+      expect(
+        ProviderCredential.parseList(
+          adapter.pool,
+          output,
+        ).where(adapter.accepts).single.id,
+        '222bbb',
+      );
     }
   });
+  test('listener retirement revokes refresh before its first read', () async {
+    recovery.addListener(recovery.dispose);
+    await recovery.refresh();
+    expect(fixture.requests, isEmpty);
+    expect(fixture.consoleRequests, isEmpty);
+  });
+
+  test(
+    'retained recovery facts are detached from later wire mutation',
+    () async {
+      await recovery.refresh();
+      final retained = recovery.state.observation!;
+      final expectedSource = retained.sourceLabel;
+      observation['name'] = 'Changed elsewhere';
+      (observation['status'] as Map)['source_label'] = 'other-source';
+      expect(recovery.state.observation!.sourceLabel, expectedSource);
+      expect(retained.name, 'Claude Code');
+      expect(retained.reportedName, 'Long Claude provider name');
+    },
+  );
 }

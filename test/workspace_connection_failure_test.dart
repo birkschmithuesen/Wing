@@ -4,6 +4,25 @@ import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/services/workspace_connection_failure.dart';
 
 void main() {
+  test('superseded snapshots retry only resume observations', () {
+    for (final method in [
+      'session.resume',
+      'session.create',
+      'prompt.submit',
+    ]) {
+      expect(
+        isTemporaryWorkspaceFailure(
+          JsonRpcError(method, 'Stale snapshot', reason: 'snapshot_superseded'),
+        ),
+        method == 'session.resume',
+      );
+    }
+    expect(
+      isTemporaryWorkspaceFailure(StateError('Unrelated failure')),
+      isFalse,
+    );
+  });
+
   test(
     'resume retries distinguish server recovery from missing chats and writes',
     () {

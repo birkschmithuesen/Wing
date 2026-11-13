@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/voice_offline/chat_voice_view.dart';
 import '../support/voice_workspace_fixture.dart';
 
 void main() {
@@ -25,10 +25,10 @@ void main() {
       h.fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
       'How is the weather',
     );
-    expect(h.controller.current!.chat!.draft, isEmpty);
+    expect(h.controller.current!.chat!.composer.observation.text, isEmpty);
     h.gatewayEvent('message.complete', {'text': 'Done.'});
     await h.settle(tester);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -42,7 +42,7 @@ void main() {
       await tester.pump();
       await h.sayFinal(tester, 'How is the weather');
       expect(h.prompts(), 1);
-      expect(chat.busy, isTrue);
+      expect(chat.voiceBusy, isTrue);
       // The reply has not arrived yet; the mic can be tapped again.
       await tester.tap(find.byTooltip('Dictate message'));
       await tester.pump();
@@ -53,12 +53,12 @@ void main() {
         h.fixture.calls.lastWhere((c) => c.$2 == 'session.steer').$3['text'],
         'Actually, for tomorrow',
       );
-      expect(chat.draft, isEmpty);
+      expect(chat.composer.observation.text, isEmpty);
       // The conversation stayed alive: the turn's eventual reply still
       // continues the hands-free loop.
       await h.completeReply(tester, 'Tomorrow looks sunny.');
       expect(h.device.spoken, 'Tomorrow looks sunny.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -69,22 +69,22 @@ void main() {
       await h.conversationMode(true);
       await h.show(tester);
       final chat = h.controller.current!.chat!;
-      chat.offlineSnapshot = true;
+      h.controller.networkUnavailable();
       await tester.tap(find.byTooltip('Dictate message'));
       await tester.pump();
       await h.sayFinal(tester, 'Queue me please');
       expect(h.prompts(), 0);
-      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
-      expect(chat.draft, isEmpty);
-      chat.offlineSnapshot = false;
+      expect(chat.composer.observation.queue.map((p) => p.text), ['Queue me please']);
+      expect(chat.composer.observation.text, isEmpty);
+      h.controller.networkRestored();
       await tester.runAsync(() => h.controller.reconnect(chat.key.workspace));
       await h.settle(tester);
       expect(h.prompts(), 1);
-      expect(chat.queuedPrompts, isEmpty);
+      expect(chat.composer.observation.queue, isEmpty);
       await h.completeReply(tester, 'Queued answer.');
       expect(h.device.spoken, 'Queued answer.');
       expect(h.starts(), 2, reason: 'the mic reopened after the queued reply');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -95,13 +95,13 @@ void main() {
       await h.conversationMode(true);
       await h.show(tester);
       final chat = h.controller.current!.chat!;
-      chat.offlineSnapshot = true;
+      h.controller.networkUnavailable();
       await tester.tap(find.byTooltip('Dictate message'));
       await tester.pump();
       await h.sayFinal(tester, 'Queue me please');
       expect(h.prompts(), 0);
-      expect(chat.queuedPrompts.map((p) => p.text), ['Queue me please']);
-      chat.offlineSnapshot = false;
+      expect(chat.composer.observation.queue.map((p) => p.text), ['Queue me please']);
+      h.controller.networkRestored();
       // Card t_8c76c35a observation 2026-10-19: the connection is still
       // flaky right after reconnect; the first drain attempt hits that.
       h.fixture.promptSubmitFailures = 1;
@@ -110,20 +110,20 @@ void main() {
       // The flaky send leaves an uncertain ack, same as the non-conversation
       // case: it pauses rather than guessing. Crucially chat.status stays
       // "reconnecting", not "failed" - the conversation keeps running.
-      expect(chat.queuePaused, isTrue);
-      expect(chat.queuedPrompts, isNotEmpty);
+      expect(chat.composer.observation.paused, isTrue);
+      expect(chat.composer.observation.queue, isNotEmpty);
       expect(h.prompts(), 1);
       // Old (buggy) behavior: nothing short of a manual resume (not
       // available in conversation mode) ever drains this again, and the
       // conversation already ended when chat.status flipped to failed.
       await tester.runAsync(() => h.controller.reconnect(chat.key.workspace));
       await h.settle(tester);
-      expect(chat.queuedPrompts, isEmpty);
+      expect(chat.composer.observation.queue, isEmpty);
       expect(h.prompts(), 2);
       await h.completeReply(tester, 'Queued answer.');
       expect(h.device.spoken, 'Queued answer.');
       expect(h.starts(), 2, reason: 'the mic reopened after the queued reply');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -136,7 +136,7 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     await h.sayFinal(tester, 'Just a draft');
-    expect(h.controller.current!.chat!.draft, 'Just a draft');
+    expect(h.controller.current!.chat!.composer.observation.text, 'Just a draft');
     expect(h.prompts(), 0);
   });
 
@@ -148,11 +148,11 @@ void main() {
     await tester.tap(find.byTooltip('Dictate message'));
     await tester.pump();
     final id = h.device.recording;
-    await tester.tap(find.text('Stop recording'));
+    await tester.tap(find.byTooltip('Stop recording'));
     await tester.pump();
     h.device.stream.add({'id': id, 'text': 'Stopped words', 'final': true});
     await h.settle(tester);
-    expect(h.controller.current!.chat!.draft, 'Stopped words');
+    expect(h.controller.current!.chat!.composer.observation.text, 'Stopped words');
     expect(h.prompts(), 0);
   });
 
@@ -182,7 +182,7 @@ void main() {
     expect(h.prompts(), 2);
     await h.completeReply(tester, 'Answer two.');
     expect(h.starts(), 3);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
   });
 
@@ -203,7 +203,7 @@ void main() {
       expect(h.device.calls.where((c) => c == 'speak').length, 1);
       // A follow-up reply for this chat arrives while the first is still
       // playing (e.g. the gateway ran a steer as a follow-up turn).
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       h.gatewayEvent('message.complete', {'text': 'Answer two.'});
       await tester.pump();
       await tester.pump();
@@ -240,7 +240,7 @@ void main() {
       // both have been spoken - exercised directly by the dedicated
       // unsolicited-reply tests below.
       expect(h.device.spoken, 'Answer two.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -258,7 +258,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(h.device.spoken, 'Answer one.');
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       h.gatewayEvent('message.complete', {'text': 'Answer two.'});
       await tester.pump();
       await tester.pump();
@@ -276,7 +276,7 @@ void main() {
       // The queued second reply must never speak: the tap cleared it.
       expect(h.device.calls.where((c) => c == 'speak').length, 1);
       expect(h.device.spoken, 'Answer one.');
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -298,7 +298,7 @@ void main() {
       // is recording their next utterance; it is unsolicited (the
       // conversation's own awaiting-reply flag was already consumed by the
       // first reply) and must not cut the recording off or break the loop.
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       await h.completeReply(tester, 'Unsolicited answer.');
       expect(
         h.device.spoken,
@@ -324,7 +324,7 @@ void main() {
         3,
         reason: 'the loop stays on after the queued reply speaks',
       );
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
@@ -345,7 +345,7 @@ void main() {
       // job's own turn now completes for the same chat; it is unsolicited
       // (the conversation's own awaiting-reply flag was already consumed by
       // the first reply).
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       h.gatewayEvent('message.complete', {'text': 'Unsolicited answer.'});
       await tester.pump();
       await tester.pump();
@@ -371,12 +371,12 @@ void main() {
         2,
         reason: 'the loop stays on: the mic reopens like after a normal reply',
       );
-      await tester.tap(find.text('Cancel recording'));
+      await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
     },
   );
 
-  testWidgets('Cancel ends the conversation and the microphone stays closed', (
+  testWidgets('Cancel discards the recording and the conversation keeps listening', (
     tester,
   ) async {
     await h.conversationMode(true);
@@ -386,13 +386,15 @@ void main() {
     await h.sayFinal(tester, 'Question');
     await h.completeReply(tester);
     expect(h.starts(), 2);
-    await tester.tap(find.text('Cancel recording'));
+    await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
-    // A later reply in this chat must not reopen the microphone.
-    h.controller.current!.chat!.status = ProfileTurnStatus.running;
-    await h.completeReply(tester, 'Late reply.');
-    expect(h.starts(), 2);
-    expect(h.device.recording, isNull);
+    // Birk 2026-11-13 ledger L26: the loop stays on, a new round started.
+    expect(h.starts(), 3);
+    expect(h.device.recording, isNotNull);
+    expect(h.prompts(), 1);
+    await h.conversationMode(false);
+    await tester.tap(find.byTooltip('Cancel recording'));
+    await h.settle(tester);
   });
 
   for (final failure in ['error', 'no speech']) {
@@ -414,7 +416,7 @@ void main() {
       }
       expect(find.textContaining('Recording ·'), findsNothing);
       expect(h.prompts(), 1);
-      h.controller.current!.chat!.status = ProfileTurnStatus.running;
+      h.gatewayEvent('message.start');
       await h.completeReply(tester, 'Late reply.');
       expect(h.starts(), 2);
     });

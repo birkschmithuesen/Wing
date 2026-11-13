@@ -73,7 +73,7 @@ async function main() {
     }
   }
   parts.push({ input: Buffer.from(`<svg width="1000" height="510">${labels.join('')}</svg>`), left: 0, top: 0 });
-  await write('docs/design/images/icon-production-proof.png',
+  await write('build/design-previews/icon-production-proof.png',
     await sharp({ create: { width: 1000, height: 550, channels: 4, background: '#F4F7F6' } }).composite(parts).png().toBuffer());
   console.log('Generated launcher density assets, store icon, notification vector and themed wing.');
 }

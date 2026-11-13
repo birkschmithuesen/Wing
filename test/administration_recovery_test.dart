@@ -1,11 +1,16 @@
+import 'dart:async';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/models/provider_inventory.dart';
+import 'package:wing/core/screens/administration/admin_provider_credentials.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/screens/administration/admin_connectors_page.dart';
+import 'package:wing/core/screens/administration/admin_connector_routes.dart';
 import 'package:wing/core/screens/administration/admin_defaults_page.dart';
 import 'package:wing/core/screens/administration/admin_profiles_page.dart';
-import 'package:wing/core/screens/administration/admin_providers_page.dart';
 import 'package:wing/core/services/ws_client.dart';
+import 'package:wing/core/services/profiles_management_session.dart';
 import 'support/administration_fixture.dart';
+import 'support/model_defaults_fixture.dart';
 
 Map<String, dynamic> profiles({String display = 'Shared root'}) => {
   'profiles': [
@@ -33,19 +38,43 @@ void main() {
       'MCP reconnection reports ${failure.reason ?? 'server error'} without retrying',
       (tester) async {
         final fixture = AdministrationFixture();
-        fixture.rpcOverride = (_, _) async => throw failure;
+        final release = Completer<void>();
+        fixture.rpcOverride = (method, _) async {
+          if (method == 'mcp.servers.status') {
+            return {
+              'servers': [],
+              'checked_at': DateTime.now().millisecondsSinceEpoch,
+            };
+          }
+          expectSync(method, 'reload.mcp');
+          await release.future;
+          throw failure;
+        };
         await tester.pumpWidget(
           MaterialApp(
-            home: AdminConnectorsPage(
-              profile: fixture.server.profile('personal'),
-            ),
+            home: profileConnectorsPage(fixture.server.profile('personal')),
           ),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Reconnect MCP tools'));
+        await tester.tap(find.byTooltip('Reconnect MCP tools'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Reconnect'));
+        await tester.tap(find.byTooltip('Reconnect tools'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 300));
+        expect(
+          find.descendant(
+            of: find.byType(AppBar),
+            matching: find.byType(StudioLoading),
+          ),
+          findsOneWidget,
+        );
+        expect(
+          tester.widget<StudioLoading>(find.byType(StudioLoading)).label,
+          'Reconnecting MCP tools',
+        );
+        release.complete();
         await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
         expect(find.textContaining('Your edits are kept'), findsNothing);
         expect(find.text('MCP tools reconnected.'), findsNothing);
         expect(
@@ -56,11 +85,18 @@ void main() {
           }),
           findsOneWidget,
         );
-        expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+        expect(fixture.rpcRequests, [
+          ('personal', 'mcp.servers.status'),
+          ('default', 'reload.mcp'),
+        ]);
         expect(
           tester
-              .widget<OutlinedButton>(
-                find.widgetWithText(OutlinedButton, 'Reconnect MCP tools'),
+              .widget<IconButton>(
+                find.byWidgetPredicate(
+                  (widget) =>
+                      widget is IconButton &&
+                      widget.tooltip == 'Reconnect MCP tools',
+                ),
               )
               .onPressed,
           isNotNull,
@@ -74,7 +110,13 @@ void main() {
   ) async {
     final fixture = AdministrationFixture();
     final requests = <Map<String, dynamic>>[];
-    fixture.rpcOverride = (_, params) async {
+    fixture.rpcOverride = (method, params) async {
+      if (method == 'mcp.servers.status') {
+        return {
+          'servers': [],
+          'checked_at': DateTime.now().millisecondsSinceEpoch,
+        };
+      }
       requests.add({...params});
       return {
         'status': 'confirm_required',
@@ -83,13 +125,13 @@ void main() {
     };
     await tester.pumpWidget(
       MaterialApp(
-        home: AdminConnectorsPage(profile: fixture.server.profile('personal')),
+        home: profileConnectorsPage(fixture.server.profile('personal')),
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reconnect MCP tools'));
+    await tester.tap(find.byTooltip('Reconnect MCP tools'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel'));
+    await tester.tap(find.byTooltip('Cancel'));
     await tester.pumpAndSettle();
     expect(requests, isEmpty);
     expect(find.text('MCP tools reconnected.'), findsNothing);
@@ -100,8 +142,15 @@ void main() {
   ) async {
     final fixture = AdministrationFixture();
     final requests = <Map<String, dynamic>>[];
+    final release = Completer<void>();
     fixture.rpcOverride = (method, params) async {
-      expect(method, 'reload.mcp');
+      if (method == 'mcp.servers.status') {
+        return {
+          'servers': [],
+          'checked_at': DateTime.now().millisecondsSinceEpoch,
+        };
+      }
+      expectSync(method, 'reload.mcp');
       requests.add({...params});
       // Stock ReloadMcpParams forbids extra fields, including profile.
       if (params.keys.any(
@@ -113,6 +162,7 @@ void main() {
           code: 4000,
         );
       }
+      await release.future;
       return params['confirm'] == true
           ? {'status': 'reloaded'}
           : {
@@ -122,18 +172,31 @@ void main() {
     };
     await tester.pumpWidget(
       MaterialApp(
-        home: AdminConnectorsPage(profile: fixture.server.profile('personal')),
+        home: profileConnectorsPage(fixture.server.profile('personal')),
       ),
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reconnect MCP tools'));
+    await tester.tap(find.byTooltip('Reconnect MCP tools'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Reconnect'));
+    await tester.tap(find.byTooltip('Reconnect tools'));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    expect(
+      find.descendant(
+        of: find.byType(AppBar),
+        matching: find.byType(StudioLoading),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester.widget<StudioLoading>(find.byType(StudioLoading)).label,
+      'Reconnecting MCP tools',
+    );
+    release.complete();
     expect(find.textContaining('Your edits are kept'), findsNothing);
     await tester.pumpAndSettle();
     expect(find.byType(AlertDialog), findsNothing);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(requests, [
       {'confirm': true},
     ]);
@@ -146,14 +209,12 @@ void main() {
       final fixture = AdministrationFixture();
       await tester.pumpWidget(
         MaterialApp(
-          home: AdminConnectorsPage(
-            profile: fixture.server.profile('personal'),
-          ),
+          home: profileConnectorsPage(fixture.server.profile('personal')),
         ),
       );
       await tester.pumpAndSettle();
       expect(find.text('Backend version'), findsNothing);
-      await tester.tap(find.text('Reconnect MCP tools'));
+      await tester.tap(find.byTooltip('Reconnect MCP tools'));
       await tester.pumpAndSettle();
       expect(
         find.descendant(
@@ -162,15 +223,18 @@ void main() {
         ),
         findsOneWidget,
       );
-      expect(fixture.rpcRequests, isEmpty);
-      await tester.tap(find.text('Cancel'));
+      expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
+      await tester.tap(find.byTooltip('Cancel'));
       await tester.pumpAndSettle();
-      expect(fixture.rpcRequests, isEmpty);
-      await tester.tap(find.text('Reconnect MCP tools'));
+      expect(fixture.rpcRequests, [('personal', 'mcp.servers.status')]);
+      await tester.tap(find.byTooltip('Reconnect MCP tools'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Reconnect'));
+      await tester.tap(find.byTooltip('Reconnect tools'));
       await tester.pumpAndSettle();
-      expect(fixture.rpcRequests, [('default', 'reload.mcp')]);
+      expect(fixture.rpcRequests, [
+        ('personal', 'mcp.servers.status'),
+        ('default', 'reload.mcp'),
+      ]);
       expect(find.text('MCP tools reconnected.'), findsOneWidget);
       expect(
         fixture.requests.any((request) => request.$2.contains('update')),
@@ -190,18 +254,25 @@ void main() {
           return {
             'session_id': 'owned-session',
             'flow': 'device_code',
+            'verification_url': 'https://example.invalid/sign-in',
+            'expires_in': 900,
             'user_code': 'ABCD',
             'poll_interval': 60,
           };
         }
-        if (method == 'DELETE') return {'ok': true};
+        if (method == 'DELETE') {
+          return {'ok': true, 'session_id': 'owned-session'};
+        }
         throw StateError('Unexpected request');
       };
       Future<void> show(String name) => tester.pumpWidget(
         MaterialApp(
           home: AdminProviderSignIn(
             profile: f.server.profile(name),
-            provider: const {'id': 'provider-a', 'name': 'Provider A'},
+            target: const ProviderSignInTarget(
+              id: 'provider-a',
+              name: 'Provider A',
+            ),
           ),
         ),
       );
@@ -213,14 +284,14 @@ void main() {
       expect(find.text('Server A / personal'), findsOneWidget);
       expect(find.text('Start sign-in'), findsNothing);
       expect(find.text('ABCD'), findsOneWidget);
-      await tester.tap(find.text('Cancel sign-in'));
+      await tester.tap(find.byTooltip('Cancel sign-in'));
       await tester.pumpAndSettle();
       final writes = f.requests.where((r) => r.$1 != 'GET').toList();
       expect(writes.length, 2);
       expect(writes.last.$2, 'providers/oauth/sessions/owned-session');
       for (final r in writes) {
         expect(r.$3['profile'], 'personal');
-        expect(r.$4!['profile'], 'personal');
+        if (r.$1 != 'DELETE') expect(r.$4!['profile'], 'personal');
       }
       await tester.pumpWidget(const SizedBox());
     },
@@ -230,35 +301,51 @@ void main() {
     tester,
   ) async {
     final f = AdministrationFixture();
+    var cancelled = false;
     f.override = (method, path, query, body) async {
       if (path == 'profiles') return profiles();
       if (path.endsWith('/start')) {
         return {
           'session_id': 'pending',
           'flow': 'device_code',
+          'verification_url': 'https://example.invalid/sign-in',
+          'user_code': 'fixture-code',
+          'expires_in': 900,
           'poll_interval': 60,
         };
       }
-      return {'ok': false};
+      return {'ok': cancelled, 'session_id': 'pending'};
     };
     await tester.pumpWidget(
       MaterialApp(
         home: AdminProviderSignIn(
           profile: f.server.profile('default'),
-          provider: const {'id': 'provider-a', 'name': 'Provider A'},
+          target: const ProviderSignInTarget(
+            id: 'provider-a',
+            name: 'Provider A',
+          ),
         ),
       ),
     );
     await tester.tap(find.text('Start sign-in'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Cancel sign-in'));
+    await tester.tap(find.byTooltip('Cancel sign-in'));
     await tester.pumpAndSettle();
     expect(
       find.textContaining('Cancellation could not be confirmed'),
       findsOneWidget,
     );
-    expect(find.text('Cancel sign-in'), findsOneWidget);
+    expect(find.byTooltip('Cancel sign-in'), findsOneWidget);
     expect(find.text('Server A / default'), findsOneWidget);
+    cancelled = true;
+    await tester.tap(find.byTooltip('Cancel sign-in'));
+    await tester.pumpAndSettle();
+    expect(f.requests.where((request) => request.$1 == 'DELETE'), hasLength(2));
+    expect(
+      find.textContaining('Cancellation could not be confirmed'),
+      findsNothing,
+    );
+    expect(find.byType(AdminProviderSignIn), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
@@ -271,16 +358,21 @@ void main() {
         if (path == 'mcp/servers') {
           return {
             'servers': [
-              {'name': 'docs', 'enabled': false, 'transport': 'http'},
+              {
+                'name': 'docs',
+                'enabled': false,
+                'transport': 'http',
+                'auth': null,
+                'source': 'config',
+                'plugin': null,
+              },
             ],
           };
         }
         return {'ok': true};
       };
       await tester.pumpWidget(
-        MaterialApp(
-          home: AdminConnectorsPage(profile: f.server.profile('personal')),
-        ),
+        MaterialApp(home: profileConnectorsPage(f.server.profile('personal'))),
       );
       await tester.pumpAndSettle();
       expect(f.requests.where((r) => r.$1 != 'GET'), isEmpty);
@@ -306,15 +398,22 @@ void main() {
         if (path == 'profiles/active') return {'current': 'default'};
         if (method == 'PATCH') {
           display = body!['new_name'] as String;
-          return {'ok': true, 'name': 'default'};
+          return {
+            'ok': true,
+            'name': 'default',
+            'display_name': display,
+            'path': '/fixture/default',
+          };
         }
         throw StateError('Unexpected request');
       };
       await tester.pumpWidget(
         MaterialApp(
           home: AdminProfilesPage(
-            server: f.server,
-            onOpenProfile: (_) async => true,
+            createSession: () => ProfilesManagementSession(
+              server: f.server,
+              openProfile: (_) async => true,
+            ),
           ),
         ),
       );
@@ -326,9 +425,9 @@ void main() {
       await tester.pumpAndSettle();
       await tester.enterText(find.byType(TextFormField), 'My shared account');
       await tester.pump();
-      await tester.tap(find.text('Continue'));
+      await tester.tap(find.byTooltip('Save profile name'));
       await tester.pumpAndSettle();
-      await tester.tap(find.widgetWithText(FilledButton, 'Rename'));
+      await tester.tap(find.byTooltip('Rename'));
       await tester.pumpAndSettle();
       expect(find.text('Profile renamed.'), findsOneWidget);
       expect(find.text('My shared account'), findsOneWidget);
@@ -351,6 +450,7 @@ void main() {
             'providers': [
               {
                 'slug': 'provider-a',
+                'name': 'Provider A',
                 'models': ['model-a'],
               },
             ],
@@ -359,7 +459,15 @@ void main() {
         if (path == 'model/auxiliary') {
           return {
             'tasks': [
-              {'task': 'vision', 'provider': 'auto', 'model': ''},
+              for (final task in ModelDefaultsFixture.tasks)
+                {
+                  'task': task,
+                  'provider': 'auto',
+                  'model': '',
+                  'base_url': '',
+                  'reasoning_effort': null,
+                  'local_endpoint': false,
+                },
             ],
           };
         }
@@ -384,7 +492,7 @@ void main() {
         find.textContaining('credentials will be cleared'),
         findsOneWidget,
       );
-      await tester.tap(find.text('Cancel'));
+      await tester.tap(find.byTooltip('Cancel'));
       await tester.pumpAndSettle();
       expect(f.requests.where((r) => r.$1 != 'GET'), isEmpty);
     },

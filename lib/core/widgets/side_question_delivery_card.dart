@@ -1,3 +1,5 @@
+import 'studio_error.dart';
+import 'selection_viewport.dart';
 import 'package:flutter/material.dart';
 
 import '../models/side_question_delivery.dart';
@@ -27,39 +29,38 @@ class SideQuestionDeliveryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                Icon(
-                  failed
-                      ? Icons.error_outline
-                      : pending
-                      ? Icons.schedule
-                      : Icons.call_split,
-                  size: 18,
-                  color: failed ? colors.error : colors.onSecondaryContainer,
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    label,
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: failed
-                          ? colors.error
-                          : colors.onSecondaryContainer,
+            if (failed)
+              StudioError(label, icon: Icons.call_split, announce: false)
+            else
+              Row(
+                children: [
+                  Icon(
+                    pending ? Icons.schedule : Icons.call_split,
+                    size: 18,
+                    color: colors.onSecondaryContainer,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                        color: colors.onSecondaryContainer,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
             if (delivery.question.isNotEmpty) ...[
               const SizedBox(height: 8),
-              SelectableText(delivery.question),
+              viewportSelection(SelectableText(delivery.question)),
               if (delivery.questionTruncated)
                 const Text('Prompt shortened by Hermes.'),
             ],
             const SizedBox(height: 8),
-            SelectableText(
-              pending ? 'Waiting for the Hermes host.' : delivery.result,
+            viewportSelection(
+              SelectableText(
+                pending ? 'Waiting for the Hermes host.' : delivery.result,
+              ),
             ),
             if (!pending && delivery.resultTruncated)
               const Text('Result shortened by Hermes.'),

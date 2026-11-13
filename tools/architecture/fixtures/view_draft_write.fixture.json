@@ -1,0 +1,334 @@
+{
+  "cases": [
+    {
+      "name": "direct",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefix-package",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'package:wing/core/services/profile_workspace_controller.dart' as owner;\nvoid change(owner.ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "typealias-and-local-alias",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\ntypedef Chat = ProfileChat;\nvoid change(Chat chat) { final alias = chat; alias.draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 3
+    },
+    {
+      "name": "cascade",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat..draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "compound",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat.draft += 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "prefix-increment",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { ++chat.draft; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "postfix-increment",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat.draft++; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "extension-implicit-setter",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nextension ViewChange on ProfileChat { void change() { draft = 'x'; } }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "reexport",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'barrel.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        },
+        "lib/barrel.dart": {
+          "source": "export 'core/services/profile_workspace_controller.dart';",
+          "role": "utility"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\npart 'view_part.dart';",
+          "role": "view"
+        },
+        "lib/view_part.dart": {
+          "source": "part of 'view.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view",
+          "library": "lib/view.dart"
+        }
+      },
+      "diagnosticFile": "lib/view_part.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "explicit-setter",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { String _draft = ''; String get draft => _draft; set draft(String value) { _draft = value; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    },
+    {
+      "name": "read-only",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nString show(ProfileChat chat) => chat.draft;",
+          "role": "view"
+        }
+      }
+    },
+    {
+      "name": "controller-command",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(Owner owner, ProfileChat chat) { owner.updateDraft(chat, 'x'); }",
+          "role": "view"
+        }
+      }
+    },
+    {
+      "name": "ui-local-draft",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "void change() { var draft = ''; draft = 'x'; }",
+          "role": "view"
+        }
+      }
+    },
+    {
+      "name": "unrelated-draft-field",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "class UiForm { String draft = ''; }\nvoid change(UiForm form) { form..draft = 'x'; }",
+          "role": "view"
+        }
+      }
+    },
+    {
+      "name": "unrelated-same-class-name",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'decoy.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        },
+        "lib/decoy.dart": {
+          "source": "class ProfileChat { String draft = ''; }",
+          "role": "utility"
+        }
+      }
+    },
+    {
+      "name": "dynamic-is-unverifiable",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "void change(dynamic chat) { chat.draft = 'x'; }",
+          "role": "view"
+        }
+      }
+    },
+    {
+      "name": "conditional-is-unverifiable",
+      "exit": 2,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart' if (dart.library.io) 'decoy.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        },
+        "lib/decoy.dart": {
+          "source": "class ProfileChat { String draft = ''; }",
+          "role": "utility"
+        }
+      }
+    },
+    {
+      "name": "conditional-read-only",
+      "exit": 0,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "class ProfileChat { dynamic draft = ''; }\nclass Owner { void updateDraft(ProfileChat chat, String text) { chat.draft = text; } }",
+          "role": "application"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart' if (dart.library.io) 'decoy.dart';\nString show(ProfileChat chat) => chat.draft;",
+          "role": "view"
+        },
+        "lib/decoy.dart": {
+          "source": "class ProfileChat { String draft = ''; }",
+          "role": "utility"
+        }
+      }
+    },
+    {
+      "name": "owner-definition-part",
+      "exit": 1,
+      "files": {
+        "lib/core/services/profile_workspace_controller.dart": {
+          "source": "part 'draft_state.dart';",
+          "role": "application"
+        },
+        "lib/core/services/draft_state.dart": {
+          "source": "part of 'profile_workspace_controller.dart';\nclass ProfileChat { String draft = ''; }",
+          "role": "application",
+          "library": "lib/core/services/profile_workspace_controller.dart"
+        },
+        "lib/view.dart": {
+          "source": "import 'core/services/profile_workspace_controller.dart';\nvoid change(ProfileChat chat) { chat.draft = 'x'; }",
+          "role": "view"
+        }
+      },
+      "diagnosticFile": "lib/view.dart",
+      "diagnosticLine": 2
+    }
+  ]
+}

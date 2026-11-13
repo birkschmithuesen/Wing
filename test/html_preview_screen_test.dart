@@ -1,3 +1,4 @@
+import 'package:wing/core/services/chat_outputs_session.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -84,17 +85,19 @@ void main() {
                       url: null,
                       label: 'index.html',
                     ),
-                    loadHistory: (_) => throw StateError('Unneeded history'),
-                    readText: (_) => throw StateError(
-                      'HTML must bypass the text-preview limit',
+                    createSession: () => ChatOutputsSession(
+                      loadHistory: (_) => throw StateError('Unneeded history'),
+                      readText: (_) => throw StateError(
+                        'HTML must bypass the text-preview limit',
+                      ),
+                      download: (path) async {
+                        downloads.add(path);
+                        return RemoteFileDownload(
+                          filename: 'index.html',
+                          bytes: utf8.encode(source),
+                        );
+                      },
                     ),
-                    download: (path) async {
-                      downloads.add(path);
-                      return RemoteFileDownload(
-                        filename: 'index.html',
-                        bytes: utf8.encode(source),
-                      );
-                    },
                   ),
                 ),
               ),
@@ -168,7 +171,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining("can't be read here"), findsOneWidget);
       expect(find.byType(WebOutputPreview), findsNothing);
-      await tester.tap(find.text('Save or share'));
+      await tester.tap(find.byTooltip('Save or share'));
       await tester.pumpAndSettle();
       expect(shared, same(file));
       expect(downloads, 1);

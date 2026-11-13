@@ -131,15 +131,17 @@ class _SelectionSurface extends StatelessWidget {
             : BorderSide.none,
       ),
       clipBehavior: Clip.antiAlias,
-      child: ListTile(
-        selected: selected,
-        enabled: enabled,
-        title: title,
-        subtitle: subtitle,
-        contentPadding: contentPadding,
-        minTileHeight: minTileHeight,
-        minVerticalPadding: minVerticalPadding,
-        onTap: onTap,
+      child: StudioButtonPress(
+        child: ListTile(
+          selected: selected,
+          enabled: enabled,
+          title: title,
+          subtitle: subtitle,
+          contentPadding: contentPadding,
+          minTileHeight: minTileHeight,
+          minVerticalPadding: minVerticalPadding,
+          onTap: onTap,
+        ),
       ),
     );
   }

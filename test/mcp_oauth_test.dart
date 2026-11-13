@@ -20,7 +20,6 @@ class FlowFixture {
       target = uri;
       receive = callback;
       return McpLoopback(
-        redirectUri: uri,
         close: () async {
           closed++;
         },

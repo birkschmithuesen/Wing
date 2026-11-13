@@ -6,6 +6,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/voice_preferences_session.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/voice_preferences_card.dart';
 import 'voice_fixture.dart';
@@ -68,6 +70,8 @@ Future<void> showVoiceSettings(
   double scale = 1,
   VoidCallback? link,
 }) async {
+  final app = AppPreferences(prefs);
+  addTearDown(app.dispose);
   await tester.pumpWidget(
     MaterialApp(
       theme: wingTheme(brightness),
@@ -82,10 +86,12 @@ Future<void> showVoiceSettings(
             child: SingleChildScrollView(
               padding: const EdgeInsets.all(16),
               child: VoicePreferencesCard(
-                preferences: prefs,
-                device: device,
-                hermesProfileLabel: 'Personal',
-                openHermesSettings: link,
+                createSession: () => VoicePreferencesSession(
+                  preferences: app,
+                  device: device,
+                  hermesProfileLabel: 'Personal',
+                  openHermesSettings: link,
+                ),
               ),
             ),
           ),

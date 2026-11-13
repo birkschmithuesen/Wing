@@ -1,4 +1,0 @@
-<resources>
- <color name="notification_ink">#F1F3F4</color><color name="notification_secondary">#C3C6CB</color>
- <color name="notification_action">#B9D2FA</color><color name="notification_deny">#FFB4AB</color>
-</resources>

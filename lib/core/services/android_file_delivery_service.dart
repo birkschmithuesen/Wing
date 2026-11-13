@@ -5,7 +5,7 @@ import 'remote_files_client.dart';
 /// Hands an already authenticated download to an installed Android viewer.
 class AndroidFileDeliveryService {
   static const channelName = 'com.tarkilhk.wing/file_delivery';
-  static const _maxBytes = RemoteFilesClient.defaultMaxDownloadBytes;
+  static const _maxBytes = maxFilePreviewBytes;
 
   final MethodChannel _channel;
 

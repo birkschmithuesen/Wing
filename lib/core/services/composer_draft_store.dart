@@ -1,3 +1,5 @@
+import '../models/composer_reference.dart';
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -6,8 +8,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/attachment_draft.dart';
 import '../models/queued_prompt_draft.dart';
 
+class _DraftWrites {
+  final tails = <String, Future<void>>{};
+  final revisions = <String, int>{};
+}
+
 class ComposerDraftSnapshot {
   final String text;
+  final List<ComposerReference> references;
   final List<AttachmentDraft> attachments;
   final bool submissionUncertain;
   final List<QueuedPromptDraft> queuedPrompts;
@@ -15,6 +23,7 @@ class ComposerDraftSnapshot {
 
   const ComposerDraftSnapshot({
     required this.text,
+    this.references = const [],
     required this.attachments,
     required this.submissionUncertain,
     this.queuedPrompts = const [],
@@ -32,6 +41,7 @@ typedef ComposerDraftSummary = ({
 
 /// Stores only work that has not been accepted by Hermes yet.
 class ComposerDraftStore {
+  static final _writesByPreferences = Expando<_DraftWrites>();
   final SharedPreferences _preferences;
   final String connectionIdentity;
 
@@ -41,25 +51,43 @@ class ComposerDraftStore {
     }
   }
 
-  String get _key => 'composer_drafts_v1_$connectionIdentity';
+  _DraftWrites get _writes =>
+      _writesByPreferences[_preferences] ??= _DraftWrites();
+
+  int get revision => _writes.revisions[connectionIdentity] ?? 0;
+
+  String _component(String value) => base64Url.encode(utf8.encode(value));
+
+  String _profilePrefix(String profileName) =>
+      'composer_work_v3.${_component(connectionIdentity)}.'
+      '${_component(profileName)}.';
+
+  String _recordKey(String profileName, String sessionId) {
+    if (profileName.isEmpty || sessionId.isEmpty) {
+      throw ArgumentError('A profile and conversation identity are required');
+    }
+    return '${_profilePrefix(profileName)}${_component(sessionId)}';
+  }
 
   List<ComposerDraftSummary> summaries({required String profileName}) {
     return [
-      for (final record in _readRecords())
-        if (record['profile'] == profileName &&
-            record['session'] is String &&
-            (record['session'] as String).isNotEmpty &&
-            record['text'] is String &&
-            record['attachments'] is List)
-          (
-            sessionId: record['session'] as String,
-            text: record['text'] as String,
-            attachmentCount: (record['attachments'] as List).length,
-            queuedCount: record['queue'] is List
-                ? (record['queue'] as List).length
-                : 0,
-            submissionUncertain: record['submission_uncertain'] == true,
-          ),
+      for (final key in _preferences.getKeys())
+        if (key.startsWith(_profilePrefix(profileName)))
+          for (final record in [?_readRecord(key)])
+            if (record['profile'] == profileName &&
+                record['session'] is String &&
+                (record['session'] as String).isNotEmpty &&
+                record['text'] is String &&
+                record['attachments'] is List)
+              (
+                sessionId: record['session'] as String,
+                text: record['text'] as String,
+                attachmentCount: (record['attachments'] as List).length,
+                queuedCount: record['queue'] is List
+                    ? (record['queue'] as List).length
+                    : 0,
+                submissionUncertain: record['submission_uncertain'] == true,
+              ),
     ];
   }
 
@@ -67,10 +95,7 @@ class ComposerDraftStore {
     required String profileName,
     required String sessionId,
   }) async {
-    final records = _readRecords();
-    final record = records.where((value) {
-      return value['profile'] == profileName && value['session'] == sessionId;
-    }).firstOrNull;
+    final record = _readRecord(_recordKey(profileName, sessionId));
     if (record == null) return null;
     return _decodeRecord(record);
   }
@@ -79,35 +104,32 @@ class ComposerDraftStore {
     required String profileName,
     required String sessionId,
     required String text,
+    Iterable<ComposerReference> references = const [],
     required Iterable<AttachmentDraft> attachments,
     bool submissionUncertain = false,
     Iterable<QueuedPromptDraft> queuedPrompts = const [],
     bool queuePaused = false,
-  }) async {
-    final records = _readRecords()
-      ..removeWhere(
-        (value) =>
-            value['profile'] == profileName && value['session'] == sessionId,
-      );
+  }) {
+    final key = _recordKey(profileName, sessionId);
     final files = attachments.toList(growable: false);
     final queue = queuedPrompts.toList(growable: false);
-    if (text.isNotEmpty || files.isNotEmpty || queue.isNotEmpty) {
-      records.add(
-        _encodeRecord(
-          profileName: profileName,
-          sessionId: sessionId,
-          text: text,
-          attachments: files,
-          submissionUncertain: submissionUncertain,
-          queuedPrompts: queue,
-          queuePaused: queuePaused,
-        ),
-      );
-    }
-    final saved = records.isEmpty
-        ? await _preferences.remove(_key)
-        : await _preferences.setString(_key, jsonEncode(records));
-    if (!saved) throw StateError('Could not save unsent messages.');
+    // Capture mutable attachment/queue state before waiting for an older write.
+    // Typing in one conversation never reads or encodes another conversation.
+    final encoded = text.isNotEmpty || files.isNotEmpty || queue.isNotEmpty
+        ? jsonEncode(
+            _encodeRecord(
+              profileName: profileName,
+              sessionId: sessionId,
+              text: text,
+              references: references.toList(growable: false),
+              attachments: files,
+              submissionUncertain: submissionUncertain,
+              queuedPrompts: queue,
+              queuePaused: queuePaused,
+            ),
+          )
+        : null;
+    return _ordered([key], () => _commit(key, encoded));
   }
 
   Future<ComposerDraftSnapshot?> move({
@@ -115,63 +137,106 @@ class ComposerDraftStore {
     required String fromSessionId,
     required String toSessionId,
     bool forNewSession = false,
-  }) async {
+  }) {
     if (fromSessionId == toSessionId) {
       throw ArgumentError('Draft destination must be new.');
     }
-    final records = _readRecords();
-    if (records.any(
-      (value) =>
-          value['profile'] == profileName && value['session'] == toSessionId,
-    )) {
-      throw StateError('The replacement chat already has a draft.');
-    }
-    final index = records.indexWhere(
-      (value) =>
-          value['profile'] == profileName && value['session'] == fromSessionId,
-    );
-    if (index < 0) return null;
-    if (!forNewSession) {
-      records[index] = {...records[index], 'session': toSessionId};
-      if (!await _preferences.setString(_key, jsonEncode(records))) {
-        throw StateError('Could not move unsent messages.');
+    final sourceKey = _recordKey(profileName, fromSessionId);
+    final destinationKey = _recordKey(profileName, toSessionId);
+    // Reserve both records before attachment decoding can yield. Edits through
+    // any store sharing these preferences cannot overtake the transfer.
+    return _ordered([sourceKey, destinationKey], () async {
+      if (_preferences.containsKey(destinationKey)) {
+        throw StateError('The replacement chat already has a draft.');
       }
-      return null;
-    }
-    final sourceRecord = jsonEncode(records[index]);
-    final snapshot = await _decodeRecord(records[index], forNewSession: true);
-    if (snapshot == null) {
-      throw StateError('The saved draft could not be read.');
-    }
-    final currentRecords = _readRecords();
-    if (currentRecords.any(
-      (value) =>
-          value['profile'] == profileName && value['session'] == toSessionId,
-    )) {
-      throw StateError('The replacement chat already has a draft.');
-    }
-    final currentIndex = currentRecords.indexWhere(
-      (value) =>
-          value['profile'] == profileName &&
-          value['session'] == fromSessionId &&
-          jsonEncode(value) == sourceRecord,
+      final record = _readRecord(sourceKey);
+      if (record == null) return null;
+      final snapshot = forNewSession
+          ? await _decodeRecord(record, forNewSession: true)
+          : null;
+      if (forNewSession && snapshot == null) {
+        throw StateError('The saved draft could not be read.');
+      }
+      final destination = snapshot == null
+          ? {...record, 'session': toSessionId}
+          : _encodeRecord(
+              profileName: profileName,
+              sessionId: toSessionId,
+              text: snapshot.text,
+              references: snapshot.references,
+              attachments: snapshot.attachments,
+              submissionUncertain: snapshot.submissionUncertain,
+              queuedPrompts: snapshot.queuedPrompts,
+              queuePaused: true,
+            );
+      // Save before removing the source. Preferences cannot atomically move
+      // two keys: an interrupted transfer can leave two recoverable copies.
+      await _commit(destinationKey, jsonEncode(destination));
+      try {
+        await _commit(sourceKey, null);
+      } catch (_) {
+        try {
+          await _commit(destinationKey, null);
+        } catch (_) {
+          // Keep the recoverable copies if rollback also fails.
+        }
+        rethrow;
+      }
+      return snapshot;
+    });
+  }
+
+  Future<T> _ordered<T>(List<String> keys, Future<T> Function() action) {
+    final pending = [
+      for (final key in keys)
+        if (_writes.tails[key] != null) _writes.tails[key]!,
+    ];
+    final writing = pending.isEmpty
+        ? Future<T>.sync(action)
+        : Future.wait(pending).then((_) => action());
+    final settled = writing.then<void>(
+      (_) {},
+      onError: (Object _, StackTrace _) {},
     );
-    if (currentIndex < 0) {
-      throw StateError('The saved draft changed while it was being moved.');
+    for (final key in keys) {
+      _writes.tails[key] = settled;
     }
-    currentRecords[currentIndex] = _encodeRecord(
-      profileName: profileName,
-      sessionId: toSessionId,
-      text: snapshot.text,
-      attachments: snapshot.attachments,
-      submissionUncertain: snapshot.submissionUncertain,
-      queuedPrompts: snapshot.queuedPrompts,
-      queuePaused: true,
+    unawaited(
+      settled.then((_) {
+        for (final key in keys) {
+          if (identical(_writes.tails[key], settled)) _writes.tails.remove(key);
+        }
+      }),
     );
-    if (!await _preferences.setString(_key, jsonEncode(currentRecords))) {
-      throw StateError('Could not move unsent messages.');
+    return writing;
+  }
+
+  Future<void> _commit(String key, String? encoded) async {
+    final previous = _preferences.get(key);
+    if (previous == encoded) return;
+    try {
+      final saved = encoded == null
+          ? await _preferences.remove(key)
+          : await _preferences.setString(key, encoded);
+      if (!saved) throw StateError('Could not save unsent messages.');
+    } catch (_) {
+      // SharedPreferences updates its in-memory value before the platform write.
+      // Restore this record on failure so an unsuccessful save is not presented
+      // as durable work. A failing restore must not hide the original error.
+      try {
+        await switch (previous) {
+          null => _preferences.remove(key),
+          String value => _preferences.setString(key, value),
+          bool value => _preferences.setBool(key, value),
+          int value => _preferences.setInt(key, value),
+          double value => _preferences.setDouble(key, value),
+          List<String> value => _preferences.setStringList(key, value),
+          _ => throw StateError('Unsupported saved draft value'),
+        };
+      } catch (_) {}
+      rethrow;
     }
-    return snapshot;
+    _writes.revisions[connectionIdentity] = revision + 1;
   }
 
   Future<ComposerDraftSnapshot?> _decodeRecord(
@@ -180,9 +245,14 @@ class ComposerDraftStore {
   }) async {
     final text = record['text'];
     final rawAttachments = record['attachments'];
-    if (text is! String || rawAttachments is! List) return null;
+    if (text is! String ||
+        rawAttachments is! List ||
+        record['references'] is! List) {
+      return null;
+    }
     return ComposerDraftSnapshot(
       text: text,
+      references: ComposerReference.decode(record['references']),
       attachments: await _decodeAttachments(
         rawAttachments,
         forNewSession: forNewSession,
@@ -202,30 +272,37 @@ class ComposerDraftStore {
     required String text,
     required Iterable<AttachmentDraft> attachments,
     required bool submissionUncertain,
+    required Iterable<ComposerReference> references,
     required Iterable<QueuedPromptDraft> queuedPrompts,
     required bool queuePaused,
   }) => {
     'profile': profileName,
     'session': sessionId,
     'text': text,
+    'references': references.map((r) => r.toJson()).toList(),
     'submission_uncertain': submissionUncertain,
     'queue': queuedPrompts.map(_encodeQueuedPrompt).toList(),
     'queue_paused': queuePaused,
     'attachments': attachments.map(_encodeAttachment).toList(),
   };
 
-  List<Map<String, dynamic>> _readRecords() {
-    final raw = _preferences.getString(_key);
-    if (raw == null || raw.isEmpty) return [];
+  Map<String, dynamic>? _readRecord(String key) {
+    final raw = _preferences.get(key);
+    if (raw is! String || raw.isEmpty) return null;
     try {
       final decoded = jsonDecode(raw);
-      if (decoded is! List) return [];
-      return [
-        for (final value in decoded)
-          if (value is Map) Map<String, dynamic>.from(value),
-      ];
+      if (decoded is! Map) return null;
+      final record = Map<String, dynamic>.from(decoded);
+      final profile = record['profile'];
+      final session = record['session'];
+      if (profile is! String ||
+          session is! String ||
+          _recordKey(profile, session) != key) {
+        return null;
+      }
+      return record;
     } catch (_) {
-      return [];
+      return null;
     }
   }
 
@@ -248,7 +325,13 @@ class ComposerDraftStore {
 
   Map<String, dynamic> _encodeQueuedPrompt(QueuedPromptDraft prompt) => {
     'text': prompt.text,
+    if (prompt.voiceContext != null) 'voice_context': prompt.voiceContext,
+    if (prompt.submissionId != null) 'submission_id': prompt.submissionId,
+    if (prompt.submissionPayload != null)
+      'submission_payload': prompt.submissionPayload,
+    'references': prompt.references.map((r) => r.toJson()).toList(),
     'attachments': prompt.attachments.map(_encodeAttachment).toList(),
+    if (prompt.submissionUncertain) 'submission_uncertain': true,
   };
 
   Future<List<QueuedPromptDraft>> _decodeQueue(
@@ -258,15 +341,15 @@ class ComposerDraftStore {
     if (value is! List) return [];
     final queued = <QueuedPromptDraft>[];
     for (final entry in value) {
-      if (entry is String) {
-        queued.add(QueuedPromptDraft(text: entry));
-        continue;
-      }
       try {
         final record = Map<String, dynamic>.from(entry as Map);
         final text = record['text'];
         final rawAttachments = record['attachments'];
-        if (text is! String || rawAttachments is! List) {
+        final submissionUncertain = record['submission_uncertain'];
+        if (text is! String ||
+            rawAttachments is! List ||
+            record['references'] is! List ||
+            (submissionUncertain != null && submissionUncertain is! bool)) {
           throw const FormatException('Invalid queued prompt');
         }
         final attachments = await _decodeAttachments(
@@ -274,7 +357,21 @@ class ComposerDraftStore {
           forNewSession: forNewSession,
         );
         if (text.trim().isNotEmpty || attachments.isNotEmpty) {
-          queued.add(QueuedPromptDraft(text: text, attachments: attachments));
+          queued.add(
+            QueuedPromptDraft(
+              text: text,
+              voiceContext: record['voice_context'] as String?,
+              references: ComposerReference.decode(record['references']),
+              attachments: attachments,
+              submissionUncertain: submissionUncertain == true,
+              submissionId: record['submission_id'] as String?,
+              submissionPayload: record['submission_payload'] is Map
+                  ? Map<String, dynamic>.from(
+                      record['submission_payload'] as Map,
+                    )
+                  : null,
+            ),
+          );
         }
       } catch (_) {
         // One damaged queue entry must not discard the other unsent work.
@@ -287,6 +384,7 @@ class ComposerDraftStore {
     List<dynamic> values, {
     bool forNewSession = false,
   }) async {
+    const missingFile = 'File missing. Remove and reattach.';
     final attachments = <AttachmentDraft>[];
     for (final value in values) {
       try {
@@ -307,8 +405,7 @@ class ComposerDraftStore {
           if (!cachedFileExists) {
             draft
               ..status = AttachmentDraftStatus.failed
-              ..error =
-                  'This staged file is no longer available. Remove it and attach it again.';
+              ..error = missingFile;
           } else if (draft.status == AttachmentDraftStatus.attached ||
               draft.status == AttachmentDraftStatus.uploading) {
             draft
@@ -318,8 +415,7 @@ class ComposerDraftStore {
         } else if (!cachedFileExists) {
           draft
             ..status = AttachmentDraftStatus.failed
-            ..error =
-                'This staged file is no longer available. Remove it and attach it again.';
+            ..error = missingFile;
         } else if (draft.status == AttachmentDraftStatus.uploading) {
           draft.status = AttachmentDraftStatus.ready;
         }

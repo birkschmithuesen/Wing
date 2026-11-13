@@ -1,96 +1,77 @@
+import 'studio_loading.dart';
+import 'package:wing/core/models/chat_runtime.dart';
 import 'package:flutter/material.dart';
-import '../models/profile_live_activity.dart';
-import '../services/profile_workspace_controller.dart';
+import '../models/gateway_insight.dart';
 import '../theme/wing_theme.dart';
 
-/// Precise state comes from an owned runtime. REST is_active is only a recent
-/// activity heuristic, never evidence that an unseen chat is still running.
+/// Precise state comes from the owned runtime and its active children.
 class ProfileChatIndicator extends StatelessWidget {
-  final ProfileChat? chat;
-  final Map<String, dynamic> row;
-  const ProfileChatIndicator({super.key, this.chat, required this.row});
+  final ChatRuntimeObservation runtime;
+  final List<GatewaySubagentActivity> subagents;
+  final Set<String> unconfirmedSubagentIds;
+  const ProfileChatIndicator({
+    super.key,
+    required this.runtime,
+    required this.subagents,
+    required this.unconfirmedSubagentIds,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tokens = WingTokens.of(context);
+    final confirmedChildWork = subagents.any(
+      (item) => !item.isTerminal && !unconfirmedSubagentIds.contains(item.id),
+    );
     final status =
-        chat?.activityState == ProfileLiveActivityState.running &&
-            chat?.status != ProfileTurnStatus.reconnecting
-        ? ProfileTurnStatus.running
-        : chat?.status;
-    final (label, color, icon, spinning) = switch (status) {
-      ProfileTurnStatus.attention => (
-        'Input needed',
-        tokens.blocked,
-        Icons.help_rounded,
-        false,
-      ),
-      ProfileTurnStatus.submitting || ProfileTurnStatus.running => (
-        'Working',
-        tokens.running,
-        Icons.pending_outlined,
-        true,
-      ),
-      ProfileTurnStatus.reconnecting => (
-        'Reconnecting',
-        tokens.warning,
-        Icons.wifi_off_rounded,
-        false,
-      ),
-      ProfileTurnStatus.failed => (
-        'Failed',
-        tokens.danger,
-        Icons.error_outline,
-        false,
-      ),
-      ProfileTurnStatus.completed => (
-        'Completed',
-        tokens.success,
-        Icons.flag_outlined,
-        false,
-      ),
-      ProfileTurnStatus.cancelled => (
-        'Stopped',
-        tokens.muted,
-        Icons.stop_circle_outlined,
-        false,
-      ),
-      _ when row['unread'] == true => (
-        'Unread',
-        tokens.running,
-        Icons.circle,
-        false,
-      ),
-      _ when row['is_active'] == true => (
-        'Recent activity',
-        tokens.running,
-        Icons.more_horiz,
-        false,
-      ),
-      _ when row['ended_at'] != null => (
-        'Finished',
-        tokens.success,
-        Icons.flag_outlined,
-        false,
-      ),
-      _ => ('', tokens.muted, Icons.circle_outlined, false),
-    };
+        runtime.execution == ChatExecution.running || confirmedChildWork
+        ? ChatExecution.running
+        : runtime.execution;
+    final (label, color, icon, spinning) = runtime.reconnecting
+        ? ('Reconnecting', tokens.warning, Icons.wifi_off_rounded, false)
+        : runtime.needsInput
+        ? ('Input needed', tokens.blocked, Icons.help_rounded, false)
+        : switch (status) {
+            ChatExecution.submitting => (
+              'Sending',
+              tokens.muted,
+              Icons.arrow_upward,
+              false,
+            ),
+            ChatExecution.running => ('Working', tokens.running, null, true),
+            ChatExecution.failed => (
+              'Failed',
+              tokens.danger,
+              Icons.error_outline,
+              false,
+            ),
+            ChatExecution.completed => (
+              'Completed',
+              tokens.success,
+              Icons.flag_outlined,
+              false,
+            ),
+            ChatExecution.cancelled => (
+              'Stopped',
+              tokens.muted,
+              Icons.stop_circle_outlined,
+              false,
+            ),
+            _ => ('', tokens.muted, Icons.circle_outlined, false),
+          };
     if (label.isEmpty) return const SizedBox.shrink();
     return Tooltip(
       message: label,
       child: Semantics(
         label: label,
-        child: SizedBox(
-          width: 18,
-          height: 18,
-          child: spinning && !MediaQuery.disableAnimationsOf(context)
-              ? CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: color,
-                  semanticsLabel: label,
-                )
-              : Icon(icon, size: label == 'Unread' ? 8 : 18, color: color),
-        ),
+        child: spinning
+            ? runtime.opening || runtime.offline
+                  ? const SizedBox.square(dimension: 18)
+                  : StudioWorkingIndicator(
+                      conversation: true,
+                      label: 'Working',
+                      color: color,
+                    )
+            : Icon(icon, size: 18, color: color),
       ),
     );
   }

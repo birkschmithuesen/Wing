@@ -1,0 +1,2860 @@
+{
+  "schema": 1,
+  "files": {
+    "lib/car_mode/car_mode_bridge.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_bridge.dart"
+    },
+    "lib/car_mode/car_mode_palette.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_palette.dart"
+    },
+    "lib/car_mode/car_mode_screen.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_screen.dart"
+    },
+    "lib/car_mode/car_mode_session.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_session.dart"
+    },
+    "lib/car_mode/car_mode_state.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/car_mode/car_mode_state.dart"
+    },
+    "lib/core/config/support_wing.dart": {
+      "role": "utility",
+      "feature": "app-shell",
+      "library": "lib/core/config/support_wing.dart"
+    },
+    "lib/core/controllers/profile_voice_controller.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/controllers/profile_voice_controller.dart"
+    },
+    "lib/core/controllers/voice_input_controller.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/controllers/voice_input_controller.dart"
+    },
+    "lib/core/controllers/voice_output_controller.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/controllers/voice_output_controller.dart"
+    },
+    "lib/core/models/administration_logs.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/models/administration_logs.dart"
+    },
+    "lib/core/models/administration_operation.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/models/administration_operation.dart"
+    },
+    "lib/core/models/answer_versions.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/answer_versions.dart"
+    },
+    "lib/core/models/app_preferences.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/models/app_preferences.dart"
+    },
+    "lib/core/models/app_preferences_backup.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/models/app_preferences_backup.dart"
+    },
+    "lib/core/models/attachment_draft.dart": {
+      "role": "domain",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/models/attachment_draft.dart"
+    },
+    "lib/core/models/backend_update.dart": {
+      "role": "domain",
+      "feature": "versions-updates",
+      "library": "lib/core/models/backend_update.dart"
+    },
+    "lib/core/models/bot_display.dart": {
+      "role": "domain",
+      "feature": "bots",
+      "library": "lib/core/models/bot_display.dart"
+    },
+    "lib/core/models/bot_exchange.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/bot_exchange.dart"
+    },
+    "lib/core/models/bots.dart": {
+      "role": "domain",
+      "feature": "bots",
+      "library": "lib/core/models/bots.dart"
+    },
+    "lib/core/models/browser_actions.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/browser_actions.dart"
+    },
+    "lib/core/models/browser_mutation.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/browser_mutation.dart"
+    },
+    "lib/core/models/canonical_session.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/canonical_session.dart"
+    },
+    "lib/core/models/chat_browser_preferences.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/chat_browser_preferences.dart"
+    },
+    "lib/core/models/chat_intelligence.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/chat_intelligence.dart"
+    },
+    "lib/core/models/chat_list_status.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/chat_list_status.dart"
+    },
+    "lib/core/models/chat_list_view.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/chat_list_view.dart"
+    },
+    "lib/core/models/chat_notification_content.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/chat_notification_content.dart"
+    },
+    "lib/core/models/chat_output.dart": {
+      "role": "domain",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/models/chat_output.dart"
+    },
+    "lib/core/models/chat_reading.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/chat_reading.dart"
+    },
+    "lib/core/models/chat_runtime.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/chat_runtime.dart"
+    },
+    "lib/core/models/composer_action.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/composer_action.dart"
+    },
+    "lib/core/models/composer_reference.dart": {
+      "role": "domain",
+      "feature": "composer-references",
+      "library": "lib/core/models/composer_reference.dart"
+    },
+    "lib/core/models/composer_work.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/composer_work.dart"
+    },
+    "lib/core/models/config_backup_operation.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/models/config_backup_operation.dart"
+    },
+    "lib/core/models/connection.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/models/connection.dart"
+    },
+    "lib/core/models/connection_address.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/models/connection_address.dart"
+    },
+    "lib/core/models/connection_icon.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/models/connection_icon.dart"
+    },
+    "lib/core/models/connection_import_result.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/models/connection_import_result.dart"
+    },
+    "lib/core/models/connection_setup.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/models/connection_setup.dart"
+    },
+    "lib/core/models/context_occupancy.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/context_occupancy.dart"
+    },
+    "lib/core/models/dashboard_oauth_grant.dart": {
+      "role": "domain",
+      "feature": "connection-authentication",
+      "library": "lib/core/models/dashboard_oauth_grant.dart"
+    },
+    "lib/core/models/deleted_draft_cleanup.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/deleted_draft_cleanup.dart"
+    },
+    "lib/core/models/deliverable_reference.dart": {
+      "role": "domain",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/models/deliverable_reference.dart"
+    },
+    "lib/core/models/detached_work.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/detached_work.dart"
+    },
+    "lib/core/models/email_draft.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/email_draft.dart"
+    },
+    "lib/core/models/fallback_model.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/fallback_model.dart"
+    },
+    "lib/core/models/gateway_activity.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/gateway_activity.dart"
+    },
+    "lib/core/models/gateway_approval.dart": {
+      "role": "domain",
+      "feature": "chat-inputs",
+      "library": "lib/core/models/gateway_approval.dart"
+    },
+    "lib/core/models/gateway_clarify.dart": {
+      "role": "domain",
+      "feature": "chat-inputs",
+      "library": "lib/core/models/gateway_clarify.dart"
+    },
+    "lib/core/models/gateway_insight.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/gateway_insight.dart"
+    },
+    "lib/core/models/gateway_process.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/gateway_process.dart"
+    },
+    "lib/core/models/gateway_sensitive_prompt.dart": {
+      "role": "domain",
+      "feature": "chat-inputs",
+      "library": "lib/core/models/gateway_sensitive_prompt.dart"
+    },
+    "lib/core/models/gateway_todo.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/gateway_todo.dart"
+    },
+    "lib/core/models/git_review.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/git_review.dart"
+    },
+    "lib/core/models/group_notification.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/group_notification.dart"
+    },
+    "lib/core/models/health_alert.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/models/health_alert.dart"
+    },
+    "lib/core/models/health_alert_evaluator.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/models/health_alert_evaluator.dart"
+    },
+    "lib/core/models/health_finding.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/models/health_finding.dart"
+    },
+    "lib/core/models/hermes_profile.dart": {
+      "role": "domain",
+      "feature": "profiles",
+      "library": "lib/core/models/hermes_profile.dart"
+    },
+    "lib/core/models/hermes_question.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/hermes_question.dart"
+    },
+    "lib/core/models/host_resources.dart": {
+      "role": "domain",
+      "feature": "host-resources",
+      "library": "lib/core/models/host_resources.dart"
+    },
+    "lib/core/models/host_thresholds.dart": {
+      "role": "domain",
+      "feature": "host-resources",
+      "library": "lib/core/models/host_thresholds.dart"
+    },
+    "lib/core/models/hosted_connector_accounts.dart": {
+      "role": "domain",
+      "feature": "administration-connectors",
+      "library": "lib/core/models/hosted_connector_accounts.dart"
+    },
+    "lib/core/models/live_voice_turn.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/models/live_voice_turn.dart"
+    },
+    "lib/core/models/local_transcript_message.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/local_transcript_message.dart"
+    },
+    "lib/core/models/media_reference.dart": {
+      "role": "domain",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/models/media_reference.dart"
+    },
+    "lib/core/models/model_catalog.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/model_catalog.dart"
+    },
+    "lib/core/models/model_catalog_details.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/model_catalog_details.dart"
+    },
+    "lib/core/models/model_choice.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/model_choice.dart"
+    },
+    "lib/core/models/models_dev_prices.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/models_dev_prices.dart"
+    },
+    "lib/core/models/notification_focus.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/notification_focus.dart"
+    },
+    "lib/core/models/notification_input.dart": {
+      "role": "domain",
+      "feature": "notifications",
+      "library": "lib/core/models/notification_input.dart"
+    },
+    "lib/core/models/operational_error.dart": {
+      "role": "domain",
+      "feature": "health-alerts",
+      "library": "lib/core/models/operational_error.dart"
+    },
+    "lib/core/models/profile_capabilities.dart": {
+      "role": "domain",
+      "feature": "capabilities",
+      "library": "lib/core/models/profile_capabilities.dart"
+    },
+    "lib/core/models/profile_colors.dart": {
+      "role": "domain",
+      "feature": "profile-colours",
+      "library": "lib/core/models/profile_colors.dart"
+    },
+    "lib/core/models/profile_connectors.dart": {
+      "role": "domain",
+      "feature": "administration-connectors",
+      "library": "lib/core/models/profile_connectors.dart"
+    },
+    "lib/core/models/profile_identity_edit.dart": {
+      "role": "domain",
+      "feature": "profile-identity",
+      "library": "lib/core/models/profile_identity_edit.dart"
+    },
+    "lib/core/models/profile_live_activity.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/profile_live_activity.dart"
+    },
+    "lib/core/models/profile_model_defaults.dart": {
+      "role": "domain",
+      "feature": "model-selection",
+      "library": "lib/core/models/profile_model_defaults.dart"
+    },
+    "lib/core/models/profile_overview_summary.dart": {
+      "role": "domain",
+      "feature": "administration",
+      "library": "lib/core/models/profile_overview_summary.dart"
+    },
+    "lib/core/models/profile_plugins.dart": {
+      "role": "domain",
+      "feature": "administration-connectors",
+      "library": "lib/core/models/profile_plugins.dart"
+    },
+    "lib/core/models/profile_selection.dart": {
+      "role": "domain",
+      "feature": "profiles",
+      "library": "lib/core/models/profile_selection.dart"
+    },
+    "lib/core/models/profile_session_key.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/profile_session_key.dart"
+    },
+    "lib/core/models/profile_skills.dart": {
+      "role": "domain",
+      "feature": "administration-skills",
+      "library": "lib/core/models/profile_skills.dart"
+    },
+    "lib/core/models/profile_supervision.dart": {
+      "role": "domain",
+      "feature": "profile-supervision",
+      "library": "lib/core/models/profile_supervision.dart"
+    },
+    "lib/core/models/profile_tool_setup.dart": {
+      "role": "domain",
+      "feature": "administration-tools",
+      "library": "lib/core/models/profile_tool_setup.dart"
+    },
+    "lib/core/models/profile_voice.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/models/profile_voice.dart"
+    },
+    "lib/core/models/profiles_management.dart": {
+      "role": "domain",
+      "feature": "profiles-management",
+      "library": "lib/core/models/profiles_management.dart"
+    },
+    "lib/core/models/project_icon.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/project_icon.dart"
+    },
+    "lib/core/models/provider_access.dart": {
+      "role": "domain",
+      "feature": "administration-providers",
+      "library": "lib/core/models/provider_access.dart"
+    },
+    "lib/core/models/provider_device_sign_in.dart": {
+      "role": "domain",
+      "feature": "administration-providers",
+      "library": "lib/core/models/provider_device_sign_in.dart"
+    },
+    "lib/core/models/provider_inventory.dart": {
+      "role": "domain",
+      "feature": "administration-providers",
+      "library": "lib/core/models/provider_inventory.dart"
+    },
+    "lib/core/models/provider_recovery.dart": {
+      "role": "domain",
+      "feature": "administration-providers",
+      "library": "lib/core/models/provider_recovery.dart"
+    },
+    "lib/core/models/queued_prompt_draft.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/queued_prompt_draft.dart"
+    },
+    "lib/core/models/reading_snapshot_message.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/reading_snapshot_message.dart"
+    },
+    "lib/core/models/recent_conversation.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/recent_conversation.dart"
+    },
+    "lib/core/models/retained_memory.dart": {
+      "role": "domain",
+      "feature": "administration-memory",
+      "library": "lib/core/models/retained_memory.dart"
+    },
+    "lib/core/models/review_notice.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/review_notice.dart"
+    },
+    "lib/core/models/scheduled_task.dart": {
+      "role": "domain",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/models/scheduled_task.dart"
+    },
+    "lib/core/models/scheduled_task_edit.dart": {
+      "role": "domain",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/models/scheduled_task_edit.dart"
+    },
+    "lib/core/models/server_reference.dart": {
+      "role": "domain",
+      "feature": "composer-references",
+      "library": "lib/core/models/server_reference.dart"
+    },
+    "lib/core/models/session_control.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/session_control.dart"
+    },
+    "lib/core/models/session_visibility.dart": {
+      "role": "domain",
+      "feature": "chat-browser",
+      "library": "lib/core/models/session_visibility.dart"
+    },
+    "lib/core/models/settings_edit.dart": {
+      "role": "domain",
+      "feature": "settings-and-forms",
+      "library": "lib/core/models/settings_edit.dart"
+    },
+    "lib/core/models/shared_draft.dart": {
+      "role": "domain",
+      "feature": "attachments-sharing",
+      "library": "lib/core/models/shared_draft.dart"
+    },
+    "lib/core/models/side_question_delivery.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/side_question_delivery.dart"
+    },
+    "lib/core/models/skill_invocation.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/skill_invocation.dart"
+    },
+    "lib/core/models/skill_reader.dart": {
+      "role": "domain",
+      "feature": "administration-skills-tools",
+      "library": "lib/core/models/skill_reader.dart"
+    },
+    "lib/core/models/slash_command.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/slash_command.dart"
+    },
+    "lib/core/models/tool_payload.dart": {
+      "role": "domain",
+      "feature": "chat-activity",
+      "library": "lib/core/models/tool_payload.dart"
+    },
+    "lib/core/models/transcript_message.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_message.dart"
+    },
+    "lib/core/models/transcript_notice.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_notice.dart"
+    },
+    "lib/core/models/transcript_position.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_position.dart"
+    },
+    "lib/core/models/transcript_presentation.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_presentation.dart"
+    },
+    "lib/core/models/transcript_reader.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_reader.dart"
+    },
+    "lib/core/models/transcript_reading.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_reading.dart"
+    },
+    "lib/core/models/transcript_timeline.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/transcript_timeline.dart"
+    },
+    "lib/core/models/turn_failure.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/turn_failure.dart"
+    },
+    "lib/core/models/usage_analytics.dart": {
+      "role": "domain",
+      "feature": "usage-analytics",
+      "library": "lib/core/models/usage_analytics.dart"
+    },
+    "lib/core/models/usage_cost.dart": {
+      "role": "domain",
+      "feature": "usage-analytics",
+      "library": "lib/core/models/usage_cost.dart"
+    },
+    "lib/core/models/user_message_content.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/user_message_content.dart"
+    },
+    "lib/core/models/user_message_delivery.dart": {
+      "role": "domain",
+      "feature": "conversation",
+      "library": "lib/core/models/user_message_delivery.dart"
+    },
+    "lib/core/models/voice_processing_settings.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/models/voice_processing_settings.dart"
+    },
+    "lib/core/models/wing_plugin.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/models/wing_plugin.dart"
+    },
+    "lib/core/models/workspace_entry.dart": {
+      "role": "domain",
+      "feature": "app-shell",
+      "library": "lib/core/models/workspace_entry.dart"
+    },
+    "lib/core/presentation/agent_task_presentation.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/agent_task_presentation.dart"
+    },
+    "lib/core/presentation/attachment_preview_image.dart": {
+      "role": "presentation",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/presentation/attachment_preview_image.dart"
+    },
+    "lib/core/presentation/chat_model_labels.dart": {
+      "role": "presentation",
+      "feature": "model-selection",
+      "library": "lib/core/presentation/chat_model_labels.dart"
+    },
+    "lib/core/presentation/desktop_tool_labels.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/desktop_tool_labels.dart"
+    },
+    "lib/core/presentation/health_alert_presentation.dart": {
+      "role": "presentation",
+      "feature": "administration-health",
+      "library": "lib/core/presentation/health_alert_presentation.dart"
+    },
+    "lib/core/presentation/resource_identity.dart": {
+      "role": "presentation",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/presentation/resource_identity.dart"
+    },
+    "lib/core/presentation/saved_activity.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/saved_activity.dart"
+    },
+    "lib/core/presentation/skill_document.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/skill_document.dart"
+    },
+    "lib/core/presentation/source_highlighting.dart": {
+      "role": "presentation",
+      "feature": "markdown",
+      "library": "lib/core/presentation/source_highlighting.dart"
+    },
+    "lib/core/presentation/source_language.dart": {
+      "role": "presentation",
+      "feature": "markdown",
+      "library": "lib/core/presentation/source_language.dart"
+    },
+    "lib/core/presentation/tool_activities/browser_web.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_activities/discovery.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_activities/execution_media.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_activities/files.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_activities/state.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_activity_details.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_activity_details.dart"
+    },
+    "lib/core/presentation/tool_call_presentation.dart": {
+      "role": "presentation",
+      "feature": "chat-activity",
+      "library": "lib/core/presentation/tool_call_presentation.dart"
+    },
+    "lib/core/screens/administration/admin_connector_routes.dart": {
+      "role": "composition",
+      "feature": "administration-connectors",
+      "library": "lib/core/screens/administration/admin_connector_routes.dart"
+    },
+    "lib/core/screens/administration/admin_connectors_page.dart": {
+      "role": "view",
+      "feature": "administration-connectors",
+      "library": "lib/core/screens/administration/admin_connectors_page.dart"
+    },
+    "lib/core/screens/administration/admin_defaults_page.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/screens/administration/admin_defaults_page.dart"
+    },
+    "lib/core/screens/administration/admin_delegation_model_page.dart": {
+      "role": "view",
+      "feature": "administration-behavior",
+      "library": "lib/core/screens/administration/admin_delegation_model_page.dart"
+    },
+    "lib/core/screens/administration/admin_doctor_diagnosis.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_doctor_diagnosis.dart"
+    },
+    "lib/core/screens/administration/admin_fallback_page.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/screens/administration/admin_fallback_page.dart"
+    },
+    "lib/core/screens/administration/admin_health_alerts.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_health_alerts.dart"
+    },
+    "lib/core/screens/administration/admin_health_page.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_health_page.dart"
+    },
+    "lib/core/screens/administration/admin_health_section.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_health_section.dart"
+    },
+    "lib/core/screens/administration/admin_host_health.dart": {
+      "role": "view",
+      "feature": "host-resources",
+      "library": "lib/core/screens/administration/admin_host_health.dart"
+    },
+    "lib/core/screens/administration/admin_hosted_connector_accounts_page.dart": {
+      "role": "view",
+      "feature": "administration-connectors",
+      "library": "lib/core/screens/administration/admin_hosted_connector_accounts_page.dart"
+    },
+    "lib/core/screens/administration/admin_identity_page.dart": {
+      "role": "view",
+      "feature": "profiles",
+      "library": "lib/core/screens/administration/admin_identity_page.dart"
+    },
+    "lib/core/screens/administration/admin_logs_page.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_logs_page.dart"
+    },
+    "lib/core/screens/administration/admin_mcp_setup_page.dart": {
+      "role": "view",
+      "feature": "administration-connectors",
+      "library": "lib/core/screens/administration/admin_mcp_setup_page.dart"
+    },
+    "lib/core/screens/administration/admin_memory_page.dart": {
+      "role": "view",
+      "feature": "administration-memory",
+      "library": "lib/core/screens/administration/admin_memory_page.dart"
+    },
+    "lib/core/screens/administration/admin_navigation.dart": {
+      "role": "view",
+      "feature": "administration",
+      "library": "lib/core/screens/administration/admin_navigation.dart"
+    },
+    "lib/core/screens/administration/admin_operations_page.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_operations_page.dart"
+    },
+    "lib/core/screens/administration/admin_plugins_page.dart": {
+      "role": "view",
+      "feature": "administration-connectors",
+      "library": "lib/core/screens/administration/admin_plugins_page.dart"
+    },
+    "lib/core/screens/administration/admin_profile_overview.dart": {
+      "role": "view",
+      "feature": "administration",
+      "library": "lib/core/screens/administration/admin_profile_overview.dart"
+    },
+    "lib/core/screens/administration/admin_profiles_page.dart": {
+      "role": "view",
+      "feature": "profiles",
+      "library": "lib/core/screens/administration/admin_profiles_page.dart"
+    },
+    "lib/core/screens/administration/admin_provider_credentials.dart": {
+      "role": "view",
+      "feature": "administration-providers",
+      "library": "lib/core/screens/administration/admin_provider_credentials.dart"
+    },
+    "lib/core/screens/administration/admin_provider_detail.dart": {
+      "role": "view",
+      "feature": "administration-providers",
+      "library": "lib/core/screens/administration/admin_provider_detail.dart"
+    },
+    "lib/core/screens/administration/admin_providers_page.dart": {
+      "role": "view",
+      "feature": "administration-providers",
+      "library": "lib/core/screens/administration/admin_providers_page.dart"
+    },
+    "lib/core/screens/administration/admin_runtime_health.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_runtime_health.dart"
+    },
+    "lib/core/screens/administration/admin_scheduled_task_detail_page.dart": {
+      "role": "view",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/screens/administration/admin_scheduled_task_detail_page.dart"
+    },
+    "lib/core/screens/administration/admin_scheduled_task_editor_page.dart": {
+      "role": "view",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/screens/administration/admin_scheduled_task_editor_page.dart"
+    },
+    "lib/core/screens/administration/admin_scheduled_tasks_page.dart": {
+      "role": "view",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/screens/administration/admin_scheduled_tasks_page.dart"
+    },
+    "lib/core/screens/administration/admin_security_diagnosis.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/administration/admin_security_diagnosis.dart"
+    },
+    "lib/core/screens/administration/admin_settings_page.dart": {
+      "role": "view",
+      "feature": "administration-behavior",
+      "library": "lib/core/screens/administration/admin_settings_page.dart"
+    },
+    "lib/core/screens/administration/admin_skills_page.dart": {
+      "role": "view",
+      "feature": "administration-skills-tools",
+      "library": "lib/core/screens/administration/admin_skills_page.dart"
+    },
+    "lib/core/screens/administration/admin_speech_synthesis_page.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/screens/administration/admin_speech_synthesis_page.dart"
+    },
+    "lib/core/screens/administration/admin_tool_setup_page.dart": {
+      "role": "view",
+      "feature": "administration-skills-tools",
+      "library": "lib/core/screens/administration/admin_tool_setup_page.dart"
+    },
+    "lib/core/screens/administration/admin_usage_dashboard.dart": {
+      "role": "view",
+      "feature": "usage-analytics",
+      "library": "lib/core/screens/administration/admin_usage_dashboard.dart"
+    },
+    "lib/core/screens/administration/admin_voice_page.dart": {
+      "role": "view",
+      "feature": "administration-skills-tools",
+      "library": "lib/core/screens/administration/admin_voice_page.dart"
+    },
+    "lib/core/screens/administration/admin_voice_routes.dart": {
+      "role": "composition",
+      "feature": "voice",
+      "library": "lib/core/screens/administration/admin_voice_routes.dart"
+    },
+    "lib/core/screens/administration/admin_widgets.dart": {
+      "role": "view",
+      "feature": "administration",
+      "library": "lib/core/screens/administration/admin_widgets.dart"
+    },
+    "lib/core/screens/administration/administration_content.dart": {
+      "role": "view",
+      "feature": "administration",
+      "library": "lib/core/screens/administration/administration_content.dart"
+    },
+    "lib/core/screens/administration/provider_access_navigation.dart": {
+      "role": "view",
+      "feature": "administration-providers",
+      "library": "lib/core/screens/administration/provider_access_navigation.dart"
+    },
+    "lib/core/screens/administration/provider_recovery_routes.dart": {
+      "role": "composition",
+      "feature": "administration-providers",
+      "library": "lib/core/screens/administration/provider_recovery_routes.dart"
+    },
+    "lib/core/screens/administration/scheduled_task_widgets.dart": {
+      "role": "view",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/screens/administration/scheduled_task_widgets.dart"
+    },
+    "lib/core/screens/administration/usage_charts.dart": {
+      "role": "view",
+      "feature": "usage-analytics",
+      "library": "lib/core/screens/administration/usage_charts.dart"
+    },
+    "lib/core/screens/administration/voice_settings_navigation.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/screens/administration/voice_settings_navigation.dart"
+    },
+    "lib/core/screens/analytics_content.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/screens/analytics_content.dart"
+    },
+    "lib/core/screens/app_settings_content.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/screens/app_settings_content.dart"
+    },
+    "lib/core/screens/backend_update_changes_screen.dart": {
+      "role": "view",
+      "feature": "versions-updates",
+      "library": "lib/core/screens/backend_update_changes_screen.dart"
+    },
+    "lib/core/screens/bots/bot_group_context_sheet.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_group_context_sheet.dart"
+    },
+    "lib/core/screens/bots/bot_group_screen.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_group_screen.dart"
+    },
+    "lib/core/screens/bots/bot_profile_editor.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_profile_editor.dart"
+    },
+    "lib/core/screens/bots/bot_screen_view.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_screen_view.dart"
+    },
+    "lib/core/screens/bots/bot_settings_screen.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bot_settings_screen.dart"
+    },
+    "lib/core/screens/bots/bots_content.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bots_content.dart"
+    },
+    "lib/core/screens/bots/bots_create_screen.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/screens/bots/bots_create_screen.dart"
+    },
+    "lib/core/screens/chat_outputs_screen.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/screens/chat_outputs_screen.dart"
+    },
+    "lib/core/screens/connection_guide_screen.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/screens/connection_guide_screen.dart"
+    },
+    "lib/core/screens/connection_setup_screen.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/screens/connection_setup_screen.dart"
+    },
+    "lib/core/screens/git_review_screen.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/screens/git_review_screen.dart"
+    },
+    "lib/core/screens/health_alert_health_screen.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/health_alert_health_screen.dart"
+    },
+    "lib/core/screens/health_alert_settings_screen.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/screens/health_alert_settings_screen.dart"
+    },
+    "lib/core/screens/html_preview_screen.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/screens/html_preview_screen.dart"
+    },
+    "lib/core/screens/pdf_preview_screen.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/screens/pdf_preview_screen.dart"
+    },
+    "lib/core/screens/privacy_policy_screen.dart": {
+      "role": "view",
+      "feature": "privacy",
+      "library": "lib/core/screens/privacy_policy_screen.dart"
+    },
+    "lib/core/screens/profile_capabilities_screen.dart": {
+      "role": "view",
+      "feature": "administration",
+      "library": "lib/core/screens/profile_capabilities_screen.dart"
+    },
+    "lib/core/screens/profile_project_actions.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/screens/profile_project_actions.dart"
+    },
+    "lib/core/screens/profile_row_actions.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/screens/profile_row_actions.dart"
+    },
+    "lib/core/screens/profile_transcript.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/screens/profile_transcript.dart"
+    },
+    "lib/core/screens/profile_workspace_browser.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/screens/profile_workspace_browser.dart"
+    },
+    "lib/core/screens/profile_workspace_screen.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/screens/profile_workspace_screen.dart"
+    },
+    "lib/core/screens/shared_draft_review.dart": {
+      "role": "view",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/screens/shared_draft_review.dart"
+    },
+    "lib/core/screens/versions_updates_screen.dart": {
+      "role": "view",
+      "feature": "versions-updates",
+      "library": "lib/core/screens/versions_updates_screen.dart"
+    },
+    "lib/core/screens/workspace_overview_content.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/screens/workspace_overview_content.dart"
+    },
+    "lib/core/services/accessibility_timeout.dart": {
+      "role": "platform",
+      "feature": "ui-foundations",
+      "library": "lib/core/services/accessibility_timeout.dart"
+    },
+    "lib/core/services/administration_health.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/administration_health.dart"
+    },
+    "lib/core/services/administration_health_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/administration_health_session.dart"
+    },
+    "lib/core/services/administration_logs_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/administration_logs_session.dart"
+    },
+    "lib/core/services/administration_operation_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/administration_operation_session.dart"
+    },
+    "lib/core/services/administration_overview.dart": {
+      "role": "application",
+      "feature": "administration",
+      "library": "lib/core/services/administration_overview.dart"
+    },
+    "lib/core/services/administration_repository.dart": {
+      "role": "data",
+      "feature": "administration",
+      "library": "lib/core/services/administration_repository.dart"
+    },
+    "lib/core/services/android_file_delivery_service.dart": {
+      "role": "platform",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/android_file_delivery_service.dart"
+    },
+    "lib/core/services/android_launch_intent_service.dart": {
+      "role": "platform",
+      "feature": "notifications",
+      "library": "lib/core/services/android_launch_intent_service.dart"
+    },
+    "lib/core/services/android_share_intent_service.dart": {
+      "role": "platform",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/android_share_intent_service.dart"
+    },
+    "lib/core/services/android_voice.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/core/services/android_voice.dart"
+    },
+    "lib/core/services/app_preferences.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/app_preferences.dart"
+    },
+    "lib/core/services/app_preferences_browser_preferences.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/app_preferences.dart"
+    },
+    "lib/core/services/app_preferences_profile_colors.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/app_preferences.dart"
+    },
+    "lib/core/services/app_preferences_profile_selection.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/app_preferences.dart"
+    },
+    "lib/core/services/app_preferences_workspace_entry.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/app_preferences.dart"
+    },
+    "lib/core/services/application_startup.dart": {
+      "role": "composition",
+      "feature": "application-startup",
+      "library": "lib/core/services/application_startup.dart"
+    },
+    "lib/core/services/attachment_draft_service.dart": {
+      "role": "application",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_draft_service.dart"
+    },
+    "lib/core/services/attachment_image_alpha.dart": {
+      "role": "data",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_image_worker.dart"
+    },
+    "lib/core/services/attachment_image_preflight.dart": {
+      "role": "data",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_image_preflight.dart"
+    },
+    "lib/core/services/attachment_image_vp8l.dart": {
+      "role": "data",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_image_worker.dart"
+    },
+    "lib/core/services/attachment_image_webp.dart": {
+      "role": "data",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_image_worker.dart"
+    },
+    "lib/core/services/attachment_image_worker.dart": {
+      "role": "data",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/attachment_image_worker.dart"
+    },
+    "lib/core/services/authenticated_web_socket.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/authenticated_web_socket.dart"
+    },
+    "lib/core/services/backend_update_channels.dart": {
+      "role": "data",
+      "feature": "versions-updates",
+      "library": "lib/core/services/backend_update_channels.dart"
+    },
+    "lib/core/services/backend_update_controller.dart": {
+      "role": "application",
+      "feature": "versions-updates",
+      "library": "lib/core/services/backend_update_controller.dart"
+    },
+    "lib/core/services/backend_update_store.dart": {
+      "role": "data",
+      "feature": "versions-updates",
+      "library": "lib/core/services/backend_update_store.dart"
+    },
+    "lib/core/services/background_monitoring_service.dart": {
+      "role": "platform",
+      "feature": "notifications",
+      "library": "lib/core/services/background_monitoring_service.dart"
+    },
+    "lib/core/services/backup_session.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/backup_session.dart"
+    },
+    "lib/core/services/bot_avatar_cache.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bots_session.dart"
+    },
+    "lib/core/services/bot_avatar_io.dart": {
+      "role": "platform",
+      "feature": "bots",
+      "library": "lib/core/services/bot_avatar_io.dart"
+    },
+    "lib/core/services/bot_display_client.dart": {
+      "role": "data",
+      "feature": "bots",
+      "library": "lib/core/services/bot_display_client.dart"
+    },
+    "lib/core/services/bot_group_draft_session.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bot_group_draft_session.dart"
+    },
+    "lib/core/services/bot_group_read_state.dart": {
+      "role": "data",
+      "feature": "bots",
+      "library": "lib/core/services/bot_group_read_state.dart"
+    },
+    "lib/core/services/bot_group_session.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bot_group_session.dart"
+    },
+    "lib/core/services/bot_profile_edit_session.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bot_profile_edit_session.dart"
+    },
+    "lib/core/services/bot_screen_session.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bot_screen_session.dart"
+    },
+    "lib/core/services/bot_screen_window.dart": {
+      "role": "data",
+      "feature": "bots",
+      "library": "lib/core/services/bot_screen_window.dart"
+    },
+    "lib/core/services/bots_connection_source.dart": {
+      "role": "composition",
+      "feature": "bots",
+      "library": "lib/core/services/bots_connection_source.dart"
+    },
+    "lib/core/services/bots_preferences.dart": {
+      "role": "data",
+      "feature": "bots",
+      "library": "lib/core/services/bots_preferences.dart"
+    },
+    "lib/core/services/bots_repository.dart": {
+      "role": "data",
+      "feature": "bots",
+      "library": "lib/core/services/bots_repository.dart"
+    },
+    "lib/core/services/bots_session.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/bots_session.dart"
+    },
+    "lib/core/services/canonical_session_protocol.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/canonical_session_protocol.dart"
+    },
+    "lib/core/services/chat_browser_data.dart": {
+      "role": "application",
+      "feature": "chat-browser",
+      "library": "lib/core/services/chat_browser_data.dart"
+    },
+    "lib/core/services/chat_notification_application.dart": {
+      "role": "application",
+      "feature": "notifications",
+      "library": "lib/core/services/chat_notification_coordinator.dart"
+    },
+    "lib/core/services/chat_notification_coordinator.dart": {
+      "role": "application",
+      "feature": "notifications",
+      "library": "lib/core/services/chat_notification_coordinator.dart"
+    },
+    "lib/core/services/chat_outputs_session.dart": {
+      "role": "application",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/chat_outputs_session.dart"
+    },
+    "lib/core/services/chat_reading_session.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/chat_reading_session.dart"
+    },
+    "lib/core/services/chat_runtime.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/chat_runtime.dart"
+    },
+    "lib/core/services/chat_runtime_questions.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/chat_runtime.dart"
+    },
+    "lib/core/services/chat_transcript_events.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/chat_transcript_events.dart"
+    },
+    "lib/core/services/completion_diagnostics.dart": {
+      "role": "utility",
+      "feature": "performance-tooling",
+      "library": "lib/core/services/completion_diagnostics.dart"
+    },
+    "lib/core/services/composer_draft_store.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/composer_draft_store.dart"
+    },
+    "lib/core/services/composer_reference_preparation.dart": {
+      "role": "application",
+      "feature": "composer-references",
+      "library": "lib/core/services/composer_reference_preparation.dart"
+    },
+    "lib/core/services/composer_reference_repository.dart": {
+      "role": "data",
+      "feature": "composer-references",
+      "library": "lib/core/services/composer_reference_repository.dart"
+    },
+    "lib/core/services/composer_session.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/composer_session.dart"
+    },
+    "lib/core/services/config_backup.dart": {
+      "role": "domain",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/config_backup.dart"
+    },
+    "lib/core/services/config_backup_io.dart": {
+      "role": "platform",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/config_backup_io.dart"
+    },
+    "lib/core/services/config_backup_service.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/config_backup_service.dart"
+    },
+    "lib/core/services/connection_access.dart": {
+      "role": "application",
+      "feature": "connection-authentication",
+      "library": "lib/core/services/connection_access.dart"
+    },
+    "lib/core/services/connection_diagnostics.dart": {
+      "role": "platform",
+      "feature": "connections",
+      "library": "lib/core/services/connection_diagnostics.dart"
+    },
+    "lib/core/services/connection_manager.dart": {
+      "role": "application",
+      "feature": "connections",
+      "library": "lib/core/services/connection_manager.dart"
+    },
+    "lib/core/services/connection_setup_probe.dart": {
+      "role": "application",
+      "feature": "connections",
+      "library": "lib/core/services/connection_setup_probe.dart"
+    },
+    "lib/core/services/connection_setup_session.dart": {
+      "role": "application",
+      "feature": "connections",
+      "library": "lib/core/services/connection_setup_session.dart"
+    },
+    "lib/core/services/connector_inventory.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/connector_inventory.dart"
+    },
+    "lib/core/services/conversation_reading_memory.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/conversation_reading_memory.dart"
+    },
+    "lib/core/services/dashboard_authentication.dart": {
+      "role": "application",
+      "feature": "connection-authentication",
+      "library": "lib/core/services/dashboard_authentication.dart"
+    },
+    "lib/core/services/dashboard_oauth_session.dart": {
+      "role": "application",
+      "feature": "connection-authentication",
+      "library": "lib/core/services/dashboard_oauth_session.dart"
+    },
+    "lib/core/services/dashboard_read_transport.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/dashboard_read_transport.dart"
+    },
+    "lib/core/services/delegation_model_session.dart": {
+      "role": "application",
+      "feature": "administration-behavior",
+      "library": "lib/core/services/delegation_model_session.dart"
+    },
+    "lib/core/services/deleted_draft_cleanup_store.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/deleted_draft_cleanup_store.dart"
+    },
+    "lib/core/services/device_preference.dart": {
+      "role": "data",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/device_preference.dart"
+    },
+    "lib/core/services/doctor_diagnostic.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/services/doctor_diagnostic.dart"
+    },
+    "lib/core/services/doctor_finding_draft_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/doctor_finding_draft_session.dart"
+    },
+    "lib/core/services/email_composer.dart": {
+      "role": "platform",
+      "feature": "markdown",
+      "library": "lib/core/services/email_composer.dart"
+    },
+    "lib/core/services/file_open_error_message.dart": {
+      "role": "utility",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/file_open_error_message.dart"
+    },
+    "lib/core/services/gateway_endpoint.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/core/services/gateway_endpoint.dart"
+    },
+    "lib/core/services/git_review_session.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/git_review_session.dart"
+    },
+    "lib/core/services/group_notification_session.dart": {
+      "role": "application",
+      "feature": "notifications",
+      "library": "lib/core/services/group_notification_session.dart"
+    },
+    "lib/core/services/group_observations.dart": {
+      "role": "application",
+      "feature": "bots",
+      "library": "lib/core/services/group_observations.dart"
+    },
+    "lib/core/services/health_alert_incident_store.dart": {
+      "role": "data",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_alert_incident_store.dart"
+    },
+    "lib/core/services/health_alert_settings_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_alert_settings_session.dart"
+    },
+    "lib/core/services/health_alert_settings_store.dart": {
+      "role": "data",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_alert_settings_store.dart"
+    },
+    "lib/core/services/health_alerts_coordinator.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_alerts_coordinator.dart"
+    },
+    "lib/core/services/health_alerts_session.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_alerts_session.dart"
+    },
+    "lib/core/services/health_snapshot.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/services/health_snapshot.dart"
+    },
+    "lib/core/services/hermes_cloud.dart": {
+      "role": "application",
+      "feature": "cloud-access",
+      "library": "lib/core/services/hermes_cloud.dart"
+    },
+    "lib/core/services/hermes_question_history.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/hermes_question_history.dart"
+    },
+    "lib/core/services/hermes_voice.dart": {
+      "role": "data",
+      "feature": "voice",
+      "library": "lib/core/services/hermes_voice.dart"
+    },
+    "lib/core/services/host_resources_session.dart": {
+      "role": "application",
+      "feature": "host-resources",
+      "library": "lib/core/services/host_resources_session.dart"
+    },
+    "lib/core/services/hosted_connector_accounts_session.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/hosted_connector_accounts_session.dart"
+    },
+    "lib/core/services/image_clipboard.dart": {
+      "role": "platform",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/image_clipboard.dart"
+    },
+    "lib/core/services/live_voice_protocol.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_protocol.dart"
+    },
+    "lib/core/services/live_voice_session.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_session.dart"
+    },
+    "lib/core/services/live_voice_transport.dart": {
+      "role": "data",
+      "feature": "voice",
+      "library": "lib/core/services/live_voice_transport.dart"
+    },
+    "lib/core/services/markdown_inline_parser.dart": {
+      "role": "utility",
+      "feature": "markdown",
+      "library": "lib/core/services/markdown_inline_parser.dart"
+    },
+    "lib/core/services/markdown_parse_worker.dart": {
+      "role": "utility",
+      "feature": "markdown",
+      "library": "lib/core/services/markdown_parse_worker.dart"
+    },
+    "lib/core/services/markdown_qa_variant.dart": {
+      "role": "utility",
+      "feature": "performance-tooling",
+      "library": "lib/core/services/markdown_qa_variant.dart"
+    },
+    "lib/core/services/markdown_segments.dart": {
+      "role": "utility",
+      "feature": "markdown",
+      "library": "lib/core/services/markdown_segments.dart"
+    },
+    "lib/core/services/mcp_error.dart": {
+      "role": "domain",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/mcp_error.dart"
+    },
+    "lib/core/services/mcp_oauth.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/mcp_oauth.dart"
+    },
+    "lib/core/services/mcp_setup.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/mcp_setup.dart"
+    },
+    "lib/core/services/media_preview_service.dart": {
+      "role": "platform",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/media_preview_service.dart"
+    },
+    "lib/core/services/microphone_permission.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/services/microphone_permission.dart"
+    },
+    "lib/core/services/models_dev_pricing.dart": {
+      "role": "application",
+      "feature": "model-selection",
+      "library": "lib/core/services/models_dev_pricing.dart"
+    },
+    "lib/core/services/native_notification_sink.dart": {
+      "role": "platform",
+      "feature": "notifications",
+      "library": "lib/core/services/native_notification_sink.dart"
+    },
+    "lib/core/services/network_availability.dart": {
+      "role": "platform",
+      "feature": "platform-lifecycle",
+      "library": "lib/core/services/network_availability.dart"
+    },
+    "lib/core/services/notification_delivery_ledger.dart": {
+      "role": "data",
+      "feature": "notifications",
+      "library": "lib/core/services/notification_delivery_ledger.dart"
+    },
+    "lib/core/services/owned_remote_files.dart": {
+      "role": "application",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/owned_remote_files.dart"
+    },
+    "lib/core/services/pdf_preview_service.dart": {
+      "role": "platform",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/pdf_preview_service.dart"
+    },
+    "lib/core/services/performance_instrumentation.dart": {
+      "role": "utility",
+      "feature": "performance-tooling",
+      "library": "lib/core/services/performance_instrumentation.dart"
+    },
+    "lib/core/services/platform_share.dart": {
+      "role": "platform",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/services/platform_share.dart"
+    },
+    "lib/core/services/profile_capabilities_session.dart": {
+      "role": "application",
+      "feature": "capabilities",
+      "library": "lib/core/services/profile_capabilities_session.dart"
+    },
+    "lib/core/services/profile_colors_session.dart": {
+      "role": "application",
+      "feature": "profile-colours",
+      "library": "lib/core/services/profile_colors_session.dart"
+    },
+    "lib/core/services/profile_connection_identity.dart": {
+      "role": "application",
+      "feature": "connections",
+      "library": "lib/core/services/profile_connection_identity.dart"
+    },
+    "lib/core/services/profile_connectors_session.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/profile_connectors_session.dart"
+    },
+    "lib/core/services/profile_diagnostics_controller.dart": {
+      "role": "application",
+      "feature": "administration-health",
+      "library": "lib/core/services/profile_diagnostics_controller.dart"
+    },
+    "lib/core/services/profile_fallback_edit_session.dart": {
+      "role": "application",
+      "feature": "model-selection",
+      "library": "lib/core/services/profile_fallback_edit_session.dart"
+    },
+    "lib/core/services/profile_gateway.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_gateway.dart"
+    },
+    "lib/core/services/profile_identity_edit_session.dart": {
+      "role": "application",
+      "feature": "profile-identity",
+      "library": "lib/core/services/profile_identity_edit_session.dart"
+    },
+    "lib/core/services/profile_identity_repository.dart": {
+      "role": "data",
+      "feature": "profile-identity",
+      "library": "lib/core/services/profile_identity_repository.dart"
+    },
+    "lib/core/services/profile_model_catalog.dart": {
+      "role": "application",
+      "feature": "model-selection",
+      "library": "lib/core/services/profile_model_catalog.dart"
+    },
+    "lib/core/services/profile_model_defaults_session.dart": {
+      "role": "application",
+      "feature": "model-selection",
+      "library": "lib/core/services/profile_model_defaults_session.dart"
+    },
+    "lib/core/services/profile_model_edit_session.dart": {
+      "role": "application",
+      "feature": "model-selection",
+      "library": "lib/core/services/profile_model_edit_session.dart"
+    },
+    "lib/core/services/profile_overview_session.dart": {
+      "role": "application",
+      "feature": "administration",
+      "library": "lib/core/services/profile_overview_session.dart"
+    },
+    "lib/core/services/profile_plugins_session.dart": {
+      "role": "application",
+      "feature": "administration-connectors",
+      "library": "lib/core/services/profile_plugins_session.dart"
+    },
+    "lib/core/services/profile_skills_session.dart": {
+      "role": "application",
+      "feature": "administration-skills",
+      "library": "lib/core/services/profile_skills_session.dart"
+    },
+    "lib/core/services/profile_supervision_session.dart": {
+      "role": "application",
+      "feature": "profile-supervision",
+      "library": "lib/core/services/profile_supervision_session.dart"
+    },
+    "lib/core/services/profile_tool_setup_session.dart": {
+      "role": "application",
+      "feature": "administration-tools",
+      "library": "lib/core/services/profile_tool_setup_session.dart"
+    },
+    "lib/core/services/profile_voice_repository.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/services/profile_voice_repository.dart"
+    },
+    "lib/core/services/profile_workspace_controller.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_deleted_drafts.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_live_voice.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_notifications.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_recents.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_references.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_controller.dart"
+    },
+    "lib/core/services/profile_workspace_registry.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_workspace_registry.dart"
+    },
+    "lib/core/services/profiles_management_session.dart": {
+      "role": "application",
+      "feature": "profiles-management",
+      "library": "lib/core/services/profiles_management_session.dart"
+    },
+    "lib/core/services/profiles_repository.dart": {
+      "role": "data",
+      "feature": "profiles",
+      "library": "lib/core/services/profiles_repository.dart"
+    },
+    "lib/core/services/provider_console.dart": {
+      "role": "data",
+      "feature": "administration-providers",
+      "library": "lib/core/services/provider_console.dart"
+    },
+    "lib/core/services/provider_credential_edit_session.dart": {
+      "role": "application",
+      "feature": "administration-providers",
+      "library": "lib/core/services/provider_credential_edit_session.dart"
+    },
+    "lib/core/services/provider_device_sign_in_session.dart": {
+      "role": "application",
+      "feature": "administration-providers",
+      "library": "lib/core/services/provider_device_sign_in_session.dart"
+    },
+    "lib/core/services/provider_inventory_session.dart": {
+      "role": "application",
+      "feature": "administration-providers",
+      "library": "lib/core/services/provider_inventory_session.dart"
+    },
+    "lib/core/services/provider_recovery.dart": {
+      "role": "application",
+      "feature": "administration-providers",
+      "library": "lib/core/services/provider_recovery.dart"
+    },
+    "lib/core/services/recent_conversation_session.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/recent_conversation_session.dart"
+    },
+    "lib/core/services/recent_conversation_snapshots.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/recent_conversation_snapshots.dart"
+    },
+    "lib/core/services/remote_file_saver.dart": {
+      "role": "platform",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/remote_file_saver.dart"
+    },
+    "lib/core/services/remote_files_client.dart": {
+      "role": "data",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/remote_files_client.dart"
+    },
+    "lib/core/services/retained_memory_session.dart": {
+      "role": "application",
+      "feature": "administration-memory",
+      "library": "lib/core/services/retained_memory_session.dart"
+    },
+    "lib/core/services/scheduled_task_detail_session.dart": {
+      "role": "application",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/services/scheduled_task_detail_session.dart"
+    },
+    "lib/core/services/scheduled_task_edit_session.dart": {
+      "role": "application",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/services/scheduled_task_edit_session.dart"
+    },
+    "lib/core/services/scheduled_tasks_controller.dart": {
+      "role": "application",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/services/scheduled_tasks_controller.dart"
+    },
+    "lib/core/services/scheduled_tasks_repository.dart": {
+      "role": "data",
+      "feature": "scheduled-tasks",
+      "library": "lib/core/services/scheduled_tasks_repository.dart"
+    },
+    "lib/core/services/scroll_capture_bridge.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/scroll_capture_bridge.dart"
+    },
+    "lib/core/services/security_audit_report.dart": {
+      "role": "domain",
+      "feature": "administration-health",
+      "library": "lib/core/services/security_audit_report.dart"
+    },
+    "lib/core/services/server_connection_status.dart": {
+      "role": "application",
+      "feature": "connections",
+      "library": "lib/core/services/server_connection_status.dart"
+    },
+    "lib/core/services/server_files_browser.dart": {
+      "role": "application",
+      "feature": "server-files",
+      "library": "lib/core/services/server_files_browser.dart"
+    },
+    "lib/core/services/server_files_repository.dart": {
+      "role": "data",
+      "feature": "server-files",
+      "library": "lib/core/services/server_files_repository.dart"
+    },
+    "lib/core/services/settings_edit_session.dart": {
+      "role": "application",
+      "feature": "settings-and-forms",
+      "library": "lib/core/services/settings_edit_session.dart"
+    },
+    "lib/core/services/shared_draft_session.dart": {
+      "role": "application",
+      "feature": "attachments-sharing",
+      "library": "lib/core/services/shared_draft_session.dart"
+    },
+    "lib/core/services/skill_reader_session.dart": {
+      "role": "application",
+      "feature": "administration-skills-tools",
+      "library": "lib/core/services/skill_reader_session.dart"
+    },
+    "lib/core/services/subagent_timeline_session.dart": {
+      "role": "application",
+      "feature": "chat-activity",
+      "library": "lib/core/services/subagent_timeline_session.dart"
+    },
+    "lib/core/services/transcript_reading.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/transcript_reading.dart"
+    },
+    "lib/core/services/transcript_resource_session.dart": {
+      "role": "application",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/transcript_resource_session.dart"
+    },
+    "lib/core/services/turn_notification_service.dart": {
+      "role": "application",
+      "feature": "notifications",
+      "library": "lib/core/services/turn_notification_service.dart"
+    },
+    "lib/core/services/usage_analytics.dart": {
+      "role": "application",
+      "feature": "usage-analytics",
+      "library": "lib/core/services/usage_analytics.dart"
+    },
+    "lib/core/services/usage_analytics_session.dart": {
+      "role": "application",
+      "feature": "usage-analytics",
+      "library": "lib/core/services/usage_analytics_session.dart"
+    },
+    "lib/core/services/vad_endpoint.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/core/services/vad_endpoint.dart"
+    },
+    "lib/core/services/versions_controller.dart": {
+      "role": "application",
+      "feature": "versions-updates",
+      "library": "lib/core/services/versions_controller.dart"
+    },
+    "lib/core/services/voice_preferences_session.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/core/services/voice_preferences_session.dart"
+    },
+    "lib/core/services/voice_sample.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/core/services/voice_sample.dart"
+    },
+    "lib/core/services/web_preview.dart": {
+      "role": "platform",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/services/web_preview.dart"
+    },
+    "lib/core/services/wing_plugin_releases.dart": {
+      "role": "data",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/wing_plugin_releases.dart"
+    },
+    "lib/core/services/wing_plugin_session.dart": {
+      "role": "application",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/services/wing_plugin_session.dart"
+    },
+    "lib/core/services/wing_session_source.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/profile_gateway.dart"
+    },
+    "lib/core/services/workspace_connection_failure.dart": {
+      "role": "utility",
+      "feature": "connections",
+      "library": "lib/core/services/workspace_connection_failure.dart"
+    },
+    "lib/core/services/workspace_entry_session.dart": {
+      "role": "application",
+      "feature": "app-shell",
+      "library": "lib/core/services/workspace_entry_session.dart"
+    },
+    "lib/core/services/workspace_recents_cache.dart": {
+      "role": "application",
+      "feature": "conversation",
+      "library": "lib/core/services/workspace_recents_cache.dart"
+    },
+    "lib/core/services/workspace_recents_session.dart": {
+      "role": "application",
+      "feature": "app-shell",
+      "library": "lib/core/services/workspace_recents_session.dart"
+    },
+    "lib/core/services/workspace_snapshot_store.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/workspace_snapshot_store.dart"
+    },
+    "lib/core/services/ws_client.dart": {
+      "role": "data",
+      "feature": "conversation",
+      "library": "lib/core/services/ws_client.dart"
+    },
+    "lib/core/theme/app_preferences_rendering.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/theme/app_preferences_rendering.dart"
+    },
+    "lib/core/theme/bot_bubble_colors.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/theme/bot_bubble_colors.dart"
+    },
+    "lib/core/theme/oklch_color.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/theme/oklch_color.dart"
+    },
+    "lib/core/theme/profile_colors.dart": {
+      "role": "view",
+      "feature": "profiles",
+      "library": "lib/core/theme/profile_colors.dart"
+    },
+    "lib/core/theme/profile_markdown_style.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/theme/profile_markdown_style.dart"
+    },
+    "lib/core/theme/profile_workspace_theme.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/theme/profile_workspace_theme.dart"
+    },
+    "lib/core/theme/project_icon_glyphs.dart": {
+      "role": "utility",
+      "feature": "chat-browser",
+      "library": "lib/core/theme/project_icon_glyphs.dart"
+    },
+    "lib/core/theme/usage_selection_color.dart": {
+      "role": "view",
+      "feature": "usage-analytics",
+      "library": "lib/core/theme/usage_selection_color.dart"
+    },
+    "lib/core/theme/wing_icons.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/theme/wing_icons.dart"
+    },
+    "lib/core/theme/wing_theme.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/theme/wing_theme.dart"
+    },
+    "lib/core/utils/expansion_scroll_controller.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/utils/expansion_scroll_controller.dart"
+    },
+    "lib/core/utils/relative_time.dart": {
+      "role": "utility",
+      "feature": "ui-foundations",
+      "library": "lib/core/utils/relative_time.dart"
+    },
+    "lib/core/utils/tool_activity_clock.dart": {
+      "role": "utility",
+      "feature": "chat-activity",
+      "library": "lib/core/utils/tool_activity_clock.dart"
+    },
+    "lib/core/widgets/activity/activity_detail_actions.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/activity/activity_detail_actions.dart"
+    },
+    "lib/core/widgets/activity/skill_document_viewer.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/activity/skill_document_viewer.dart"
+    },
+    "lib/core/widgets/activity/skill_reader_activity.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/activity/skill_document_viewer.dart"
+    },
+    "lib/core/widgets/activity/skill_reader_navigation.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/activity/skill_document_viewer.dart"
+    },
+    "lib/core/widgets/activity_time.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/activity_time.dart"
+    },
+    "lib/core/widgets/adaptive_conversation_composer.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/adaptive_conversation_composer.dart"
+    },
+    "lib/core/widgets/adaptive_markdown_table.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/adaptive_markdown_table.dart"
+    },
+    "lib/core/widgets/admin_model_picker.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/admin_model_picker.dart"
+    },
+    "lib/core/widgets/anchored_expansion_tile.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/anchored_expansion_tile.dart"
+    },
+    "lib/core/widgets/answer_actions.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/answer_actions.dart"
+    },
+    "lib/core/widgets/app_drawer.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/app_drawer.dart"
+    },
+    "lib/core/widgets/backend_version_card.dart": {
+      "role": "view",
+      "feature": "versions-updates",
+      "library": "lib/core/widgets/backend_version_card.dart"
+    },
+    "lib/core/widgets/background_markdown_content.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/background_markdown_content.dart"
+    },
+    "lib/core/widgets/block_reusing_markdown_body.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/block_reusing_markdown_body.dart"
+    },
+    "lib/core/widgets/bot_avatar.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_avatar.dart"
+    },
+    "lib/core/widgets/bot_display_surface.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_display_surface.dart"
+    },
+    "lib/core/widgets/bot_display_viewport.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_display_viewport.dart"
+    },
+    "lib/core/widgets/bot_group_conversation.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_group_conversation.dart"
+    },
+    "lib/core/widgets/bot_group_identity.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_group_identity.dart"
+    },
+    "lib/core/widgets/bot_group_picture.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_group_picture.dart"
+    },
+    "lib/core/widgets/bot_mention_scope.dart": {
+      "role": "view",
+      "feature": "bots",
+      "library": "lib/core/widgets/bot_mention_scope.dart"
+    },
+    "lib/core/widgets/chat_find_sheet.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/chat_find_sheet.dart"
+    },
+    "lib/core/widgets/chat_image_preview.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/chat_image_preview.dart"
+    },
+    "lib/core/widgets/chat_inline_image.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/chat_inline_image.dart"
+    },
+    "lib/core/widgets/chat_intelligence_picker.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/chat_intelligence_picker.dart"
+    },
+    "lib/core/widgets/chat_list_menu.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/widgets/chat_list_menu.dart"
+    },
+    "lib/core/widgets/chat_model_confirmation.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/chat_model_confirmation.dart"
+    },
+    "lib/core/widgets/chat_model_controls.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/chat_model_controls.dart"
+    },
+    "lib/core/widgets/chat_notice_activity_scope.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/chat_notice_activity_scope.dart"
+    },
+    "lib/core/widgets/chat_profile_bar.dart": {
+      "role": "view",
+      "feature": "profiles",
+      "library": "lib/core/widgets/chat_profile_bar.dart"
+    },
+    "lib/core/widgets/chat_status_dot.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/chat_status_dot.dart"
+    },
+    "lib/core/widgets/chat_working_border.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/chat_working_border.dart"
+    },
+    "lib/core/widgets/compact_activity_row.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/compact_activity_row.dart"
+    },
+    "lib/core/widgets/compact_switch.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/compact_switch.dart"
+    },
+    "lib/core/widgets/composer_action_button.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/composer_action_button.dart"
+    },
+    "lib/core/widgets/composer_action_settings.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/composer_action_settings.dart"
+    },
+    "lib/core/widgets/composer_attachment_tile.dart": {
+      "role": "view",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/widgets/composer_attachment_tile.dart"
+    },
+    "lib/core/widgets/composer_icon_button.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/composer_icon_button.dart"
+    },
+    "lib/core/widgets/config_backup_actions.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/config_backup_actions.dart"
+    },
+    "lib/core/widgets/config_backup_card.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/config_backup_card.dart"
+    },
+    "lib/core/widgets/connection_icon_picker.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/widgets/connection_icon_picker.dart"
+    },
+    "lib/core/widgets/context_ring.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/context_ring.dart"
+    },
+    "lib/core/widgets/conversation_activity.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/conversation_activity.dart"
+    },
+    "lib/core/widgets/conversation_activity_status.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/conversation_activity_status.dart"
+    },
+    "lib/core/widgets/conversation_composer.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/conversation_composer.dart"
+    },
+    "lib/core/widgets/conversation_page.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/conversation_page.dart"
+    },
+    "lib/core/widgets/conversation_reading_scope.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/conversation_reading_scope.dart"
+    },
+    "lib/core/widgets/deleted_chat_recovery_notice.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/deleted_chat_recovery_notice.dart"
+    },
+    "lib/core/widgets/deliverable_attachment.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/deliverable_attachment.dart"
+    },
+    "lib/core/widgets/dirty_editor_guard.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/dirty_editor_guard.dart"
+    },
+    "lib/core/widgets/drawer_versions.dart": {
+      "role": "view",
+      "feature": "versions-updates",
+      "library": "lib/core/widgets/drawer_versions.dart"
+    },
+    "lib/core/widgets/email_draft_card.dart": {
+      "role": "presentation",
+      "feature": "conversation",
+      "library": "lib/core/widgets/email_draft_card.dart"
+    },
+    "lib/core/widgets/gateway_approval_panel.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/gateway_approval_panel.dart"
+    },
+    "lib/core/widgets/gateway_clarify_dialog.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/gateway_clarify_dialog.dart"
+    },
+    "lib/core/widgets/gateway_headers_editor.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/widgets/gateway_headers_editor.dart"
+    },
+    "lib/core/widgets/gateway_sensitive_prompt_panel.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/gateway_sensitive_prompt_panel.dart"
+    },
+    "lib/core/widgets/health_alerts/health_alert_bell.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/widgets/health_alerts/health_alert_bell.dart"
+    },
+    "lib/core/widgets/health_alerts/health_alert_dialog.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/widgets/health_alerts/health_alert_dialog.dart"
+    },
+    "lib/core/widgets/health_alerts/health_alert_notice.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/widgets/health_alerts/health_alert_notice.dart"
+    },
+    "lib/core/widgets/health_alerts/health_alerts_scope.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/widgets/health_alerts/health_alerts_scope.dart"
+    },
+    "lib/core/widgets/hosted_connection_request_panel.dart": {
+      "role": "view",
+      "feature": "administration-connectors",
+      "library": "lib/core/widgets/hosted_connection_request_panel.dart"
+    },
+    "lib/core/widgets/image_paste_menu.dart": {
+      "role": "view",
+      "feature": "attachments-and-sharing",
+      "library": "lib/core/widgets/image_paste_menu.dart"
+    },
+    "lib/core/widgets/installed_app_version_card.dart": {
+      "role": "view",
+      "feature": "versions-updates",
+      "library": "lib/core/widgets/installed_app_version_card.dart"
+    },
+    "lib/core/widgets/live_voice_scope.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/live_voice_scope.dart"
+    },
+    "lib/core/widgets/markdown_code_block.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/markdown_code_block.dart"
+    },
+    "lib/core/widgets/markdown_message_content.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/markdown_message_content.dart"
+    },
+    "lib/core/widgets/mention_suggestions.dart": {
+      "role": "view",
+      "feature": "composer-references",
+      "library": "lib/core/widgets/mention_suggestions.dart"
+    },
+    "lib/core/widgets/model_card.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/model_card.dart"
+    },
+    "lib/core/widgets/model_chooser.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/model_chooser.dart"
+    },
+    "lib/core/widgets/notification_approval_review.dart": {
+      "role": "view",
+      "feature": "chat-inputs",
+      "library": "lib/core/widgets/notification_approval_review.dart"
+    },
+    "lib/core/widgets/notification_channel_diagnostics.dart": {
+      "role": "view",
+      "feature": "notifications",
+      "library": "lib/core/widgets/notification_channel_diagnostics.dart"
+    },
+    "lib/core/widgets/playful_portrait.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/playful_portrait.dart"
+    },
+    "lib/core/widgets/profile_activity_status.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_activity_status.dart"
+    },
+    "lib/core/widgets/profile_activity_tabs.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_activity_tabs.dart"
+    },
+    "lib/core/widgets/profile_background_work_panel.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_background_work_panel.dart"
+    },
+    "lib/core/widgets/profile_chat_indicator.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_chat_indicator.dart"
+    },
+    "lib/core/widgets/profile_default_model_sheet.dart": {
+      "role": "view",
+      "feature": "model-selection",
+      "library": "lib/core/widgets/profile_default_model_sheet.dart"
+    },
+    "lib/core/widgets/profile_diagnostics_panel.dart": {
+      "role": "view",
+      "feature": "administration-health",
+      "library": "lib/core/widgets/profile_diagnostics_panel.dart"
+    },
+    "lib/core/widgets/profile_execution_activity.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_execution_activity.dart"
+    },
+    "lib/core/widgets/profile_goal_panel.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_goal_panel.dart"
+    },
+    "lib/core/widgets/profile_live_execution.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_live_execution.dart"
+    },
+    "lib/core/widgets/profile_live_work_dock.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_live_work_dock.dart"
+    },
+    "lib/core/widgets/profile_message.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/profile_message.dart"
+    },
+    "lib/core/widgets/profile_queued_messages.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/profile_queued_messages.dart"
+    },
+    "lib/core/widgets/profile_review_notice_card.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/profile_review_notice_card.dart"
+    },
+    "lib/core/widgets/profile_saved_agents.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_saved_agents.dart"
+    },
+    "lib/core/widgets/profile_selector.dart": {
+      "role": "view",
+      "feature": "profiles",
+      "library": "lib/core/widgets/profile_selector.dart"
+    },
+    "lib/core/widgets/profile_subagent_panel.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_subagent_panel.dart"
+    },
+    "lib/core/widgets/profile_tool_activity.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_tool_activity.dart"
+    },
+    "lib/core/widgets/profile_tool_call.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/profile_tool_call.dart"
+    },
+    "lib/core/widgets/profile_transcript_disclosure.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/profile_transcript_disclosure.dart"
+    },
+    "lib/core/widgets/project_folder_picker.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/widgets/project_folder_picker.dart"
+    },
+    "lib/core/widgets/project_icon_picker.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/widgets/project_icon_picker.dart"
+    },
+    "lib/core/widgets/read_recovery.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/read_recovery.dart"
+    },
+    "lib/core/widgets/recent_conversations/conversation_card_motion.dart": {
+      "role": "presentation",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/conversation_card_motion.dart"
+    },
+    "lib/core/widgets/recent_conversations/conversation_card_snapshots.dart": {
+      "role": "presentation",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/conversation_card_snapshots.dart"
+    },
+    "lib/core/widgets/recent_conversations/conversation_gestures.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/conversation_gestures.dart"
+    },
+    "lib/core/widgets/recent_conversations/conversation_preview.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/conversation_preview.dart"
+    },
+    "lib/core/widgets/recent_conversations/conversation_route_scope.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/conversation_route_scope.dart"
+    },
+    "lib/core/widgets/recent_conversations/group_conversation_switcher.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/group_conversation_switcher.dart"
+    },
+    "lib/core/widgets/recent_conversations/recent_conversation_switcher.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/recent_conversations/recent_conversation_switcher.dart"
+    },
+    "lib/core/widgets/recent_identity_card.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/recent_identity_card.dart"
+    },
+    "lib/core/widgets/resource_filename.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/resource_filename.dart"
+    },
+    "lib/core/widgets/retained_markdown_paragraph.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/retained_markdown_paragraph.dart"
+    },
+    "lib/core/widgets/scroll_capture_viewport.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/scroll_capture_viewport.dart"
+    },
+    "lib/core/widgets/selection_viewport.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/selection_viewport.dart"
+    },
+    "lib/core/widgets/server_connection_label.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/widgets/server_connection_label.dart"
+    },
+    "lib/core/widgets/side_question_delivery_card.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/side_question_delivery_card.dart"
+    },
+    "lib/core/widgets/slash_command_suggestions.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/slash_command_suggestions.dart"
+    },
+    "lib/core/widgets/source_code_block.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/source_code_block.dart"
+    },
+    "lib/core/widgets/source_code_text.dart": {
+      "role": "view",
+      "feature": "markdown",
+      "library": "lib/core/widgets/source_code_text.dart"
+    },
+    "lib/core/widgets/status_transition.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/status_transition.dart"
+    },
+    "lib/core/widgets/studio_action_label.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_action_label.dart"
+    },
+    "lib/core/widgets/studio_capacity_meter.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_capacity_meter.dart"
+    },
+    "lib/core/widgets/studio_error.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_error.dart"
+    },
+    "lib/core/widgets/studio_form_actions.dart": {
+      "role": "presentation",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_form_actions.dart"
+    },
+    "lib/core/widgets/studio_loading.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_loading.dart"
+    },
+    "lib/core/widgets/studio_select.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_select.dart"
+    },
+    "lib/core/widgets/studio_selection_tile.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_selection_tile.dart"
+    },
+    "lib/core/widgets/studio_task_marker.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_task_marker.dart"
+    },
+    "lib/core/widgets/studio_transient_error.dart": {
+      "role": "view",
+      "feature": "ui-foundations",
+      "library": "lib/core/widgets/studio_error.dart"
+    },
+    "lib/core/widgets/subagent_timeline.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/subagent_timeline.dart"
+    },
+    "lib/core/widgets/support_wing_section.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/support_wing_section.dart"
+    },
+    "lib/core/widgets/text_size_settings_card.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/text_size_settings_card.dart"
+    },
+    "lib/core/widgets/tool_activity_details.dart": {
+      "role": "view",
+      "feature": "chat-activity",
+      "library": "lib/core/widgets/tool_activity_details.dart"
+    },
+    "lib/core/widgets/transcript_latest_button.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/transcript_latest_button.dart"
+    },
+    "lib/core/widgets/turn_failure_view.dart": {
+      "role": "view",
+      "feature": "conversation",
+      "library": "lib/core/widgets/turn_failure_view.dart"
+    },
+    "lib/core/widgets/user_message_attachment.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/user_message_attachment.dart"
+    },
+    "lib/core/widgets/vad_settings_section.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/vad_settings_section.dart"
+    },
+    "lib/core/widgets/voice_input_activity.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/voice_input_activity.dart"
+    },
+    "lib/core/widgets/voice_preferences_card.dart": {
+      "role": "view",
+      "feature": "voice",
+      "library": "lib/core/widgets/voice_preferences_card.dart"
+    },
+    "lib/core/widgets/web_link_scope.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/web_link_scope.dart"
+    },
+    "lib/core/widgets/web_output_preview.dart": {
+      "role": "view",
+      "feature": "outputs-and-viewers",
+      "library": "lib/core/widgets/web_output_preview.dart"
+    },
+    "lib/core/widgets/wing_app_bar.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/wing_app_bar.dart"
+    },
+    "lib/core/widgets/wing_plugin_page.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/wing_plugin_page.dart"
+    },
+    "lib/core/widgets/wing_plugin_settings_card.dart": {
+      "role": "view",
+      "feature": "app-preferences-backup",
+      "library": "lib/core/widgets/wing_plugin_settings_card.dart"
+    },
+    "lib/core/widgets/wing_welcome.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/wing_welcome.dart"
+    },
+    "lib/core/widgets/wing_wordmark.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/wing_wordmark.dart"
+    },
+    "lib/core/widgets/workspace_action_menu.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/widgets/workspace_action_menu.dart"
+    },
+    "lib/core/widgets/workspace_connection_status.dart": {
+      "role": "view",
+      "feature": "connections",
+      "library": "lib/core/widgets/workspace_connection_status.dart"
+    },
+    "lib/core/widgets/workspace_options_menu.dart": {
+      "role": "view",
+      "feature": "chat-browser",
+      "library": "lib/core/widgets/workspace_options_menu.dart"
+    },
+    "lib/core/widgets/workspace_picker.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/workspace_picker.dart"
+    },
+    "lib/core/widgets/workspace_profile_navigation.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/core/widgets/workspace_profile_navigation.dart"
+    },
+    "lib/fork/network_gate.dart": {
+      "role": "domain",
+      "feature": "connections",
+      "library": "lib/fork/network_gate.dart"
+    },
+    "lib/fork/transient_send.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/fork/transient_send.dart"
+    },
+    "lib/main.dart": {
+      "role": "view",
+      "feature": "app-shell",
+      "library": "lib/main.dart"
+    },
+    "lib/voice_offline/background_voice.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/background_voice.dart"
+    },
+    "lib/voice_offline/barge_in_coordinator.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_coordinator.dart"
+    },
+    "lib/voice_offline/barge_in_policy.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_policy.dart"
+    },
+    "lib/voice_offline/barge_in_settings.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/barge_in_settings.dart"
+    },
+    "lib/voice_offline/car_mic_session.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/car_mic_session.dart"
+    },
+    "lib/voice_offline/chat_voice_view.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/chat_voice_view.dart"
+    },
+    "lib/voice_offline/completed_replies.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/completed_replies.dart"
+    },
+    "lib/voice_offline/headphone_route.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/headphone_route.dart"
+    },
+    "lib/voice_offline/language_guess.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/language_guess.dart"
+    },
+    "lib/voice_offline/sentence_splitter.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/sentence_splitter.dart"
+    },
+    "lib/voice_offline/speech_queue.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/speech_queue.dart"
+    },
+    "lib/voice_offline/speech_segments.dart": {
+      "role": "domain",
+      "feature": "voice",
+      "library": "lib/voice_offline/speech_segments.dart"
+    },
+    "lib/voice_offline/turn_listener.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/turn_listener.dart"
+    },
+    "lib/voice_offline/vad_input_round.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/vad_input_round.dart"
+    },
+    "lib/voice_offline/vad_voice_device.dart": {
+      "role": "platform",
+      "feature": "voice",
+      "library": "lib/voice_offline/vad_voice_device.dart"
+    },
+    "lib/voice_offline/voice_input_settings_for.dart": {
+      "role": "application",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_input_settings_for.dart"
+    },
+    "lib/voice_offline/voice_offline_prefs.dart": {
+      "role": "data",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_offline_prefs.dart"
+    },
+    "lib/voice_offline/voice_offline_settings.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/voice_offline_settings.dart"
+    },
+    "lib/voice_offline/workspace_voice_driver.dart": {
+      "role": "presentation",
+      "feature": "voice",
+      "library": "lib/voice_offline/workspace_voice_driver.dart"
+    }
+  }
+}

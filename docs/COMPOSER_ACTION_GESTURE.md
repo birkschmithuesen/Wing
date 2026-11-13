@@ -1,63 +1,33 @@
-# Composer action gesture
+# Composer actions
 
-Owner direction, 2026-09-14. This replaces the earlier W02 proposal that kept
-Stop as the busy composer's primary action and opened a sheet on long press.
+When a chat is idle, the composer sends your message. While a turn is working and the composer is empty, its button shows **Stop**; tap it to interrupt that turn.
 
-- A tap uses Steer while a turn is working. App settings offers Steer,
-  Queue, or Stop as the default for this device. Idle chats and slash commands
-  use Send.
-- The resting button always shows the up arrow. Holding animates it into the
-  configured action, and sliding updates it to the highlighted choice. It
-  returns to the arrow on release or cancellation. Reduced-motion settings
-  switch icons immediately.
-- Use the outlined compass (`Icons.explore_outlined`) for every steering icon,
-  including composer actions, settings, queue controls and transcript feedback.
-- Hold the button to open a vertical icon selector above it. Keep the finger
-  down, slide to a choice, and release to run that action once. Holding in
-  place keeps the primary action selected. Slide outside to cancel.
-- The default sits at the bottom of the stack, closest to the button. With
-  Steer as the default, sliding upward visits Steer, Queue, Fork, then Stop.
-  Send replaces Steer while idle. Selecting an alternative never changes the
-  saved default.
-- Unavailable choices stay visible and dimmed. Moving onto one shows why it
-  cannot run. Releasing there does nothing. Empty text and attachments cannot
-  be steered; Stop remains reachable through the gesture.
-- Queue waits for the current send to finish submitting before moving the draft
-  or attachments. The unavailable reason explains the wait; typing remains possible.
-- Fork requires text and a completed saved answer. It branches at that answer
-  and submits the draft in the child chat. It is unavailable during a turn.
-- Pointer cancellation, navigation, app backgrounding, geometry changes, and
-  changed action availability dismiss the selector without acting.
-- Screen readers have named actions on the button, so dragging is optional.
-  Queued-message rows still open queue management and support editing.
+Typing or adding an attachment restores the arrow button. For a working chat, its default action is **Steer**. Choose Steer, Queue or Stop as your device default in App settings. Idle chats and slash commands use Send. When the preferred action cannot handle your draft, the arrow uses Send if it is available. Images and their captions enter the outbox together while Hermes is working, regardless of whether you paste or type first.
 
-Tests cover held movement and release, cancellation, disabled choices, default
-preference persistence, keyboard and large text layouts, screen reader actions,
-accepted and rejected steering, queue attachment preservation, and fork delivery.
+## Choose another action
 
-## Feedback
+Hold the arrow button, slide to a choice in the vertical selector, then release to act. The default is nearest the button. Slide outside to cancel. Choosing another action does not change your saved default.
 
+Unavailable choices are dimmed and explain why they cannot run. A draft containing attachments cannot be steered. Queue waits for an in-flight send to finish before moving the draft. You can keep typing while it waits.
 
-Queued prompts stay outside the scrolling transcript, directly above the
-composer. Each entry shows a return arrow and small italic text, including
-attachment names. The list has a bounded height and scrolls when needed. Tapping
-an entry opens the existing queue actions. Saving and paused states are visible.
-Entries disappear when sent or removed; a failed save restores the draft.
+With an empty composer during a working turn, the button offers only Stop. Navigation, backgrounding and changed action availability dismiss an open selector without acting.
 
-Accepted steering appears immediately in the transcript as a compact compass
-row: `steered · <message>`. Rejection or connection failure keeps the draft and
-shows the existing error. Typing another draft while acceptance is pending does
-not clear the new text.
+Screen readers provide named actions on the button. With a hardware keyboard, Tab reaches it; Enter or Space runs the available primary action. Down arrow, Menu or Shift+F10 opens its menu. Arrow keys select, Enter runs and Escape closes it.
 
-Saved `display_kind: steer` rows use the same presentation. Complete standalone
-user steering envelopes lose their `OUT-OF-BAND USER MESSAGE` wrapper only in
-display. Raw history remains intact. Quoted, incomplete and assistant markers
-remain visible.
+## Steer and queue
 
-The local Hermes Desktop reference uses the compact compass row in
-`apps/desktop/src/components/assistant-ui/thread/system-message.tsx` for tool
-steering. Its newer `redirectPrompt` action uses a different RPC and normal user
-messages. This change retains Android's existing `session.steer` behavior.
+Accepted steering appears as a compact steering row until Hermes adds it to saved conversation history. It then becomes a normal user bubble with formatted text and Copy. Saved steering also opens as a normal bubble when you return to a chat. Rejected steering or a connection failure keeps the draft. Text typed while a request is pending remains separate.
 
-Regression checks cover delayed acceptance, rejection, transport failure, newer
-drafts, history hydration, queued attachments and large text sizes.
+The queue appears above the composer as a compact count, whether connected or
+offline. Expand it to see message previews and attachment names. Entries with
+unknown outcomes, unconfirmed delivery or steering failures stay visible when
+collapsed. Tap or hold an entry to open the same full-text detail sheet with
+selection, exact Copy and supported actions. Temporarily unavailable actions
+explain their restriction. Actions apply to the selected message and preserve
+your separate draft. The queue disappears when empty. Connected queues send
+after the current turn; a failed save restores the draft, and uncertain delivery
+pauses the queue for review. See
+[Queues and pending input](SUPERVISION_AND_QUEUES.md) and
+[Drafts and outgoing messages](DRAFTS_OUTBOX.md).
+
+Branch/Fork is an action on a saved answer, rather than a composer action. See [Conversation actions](CONVERSATION_ACTIONS_AND_READING.md).

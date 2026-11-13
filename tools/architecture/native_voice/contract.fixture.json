@@ -1,0 +1,13 @@
+{"cases":[
+{"name":"original synchronous playback","source":"import java.io.File\nclass VoicePlayback { fun play(bytes: ByteArray) { File.createTempFile(\"play\", \"audio\").writeBytes(bytes) } }","exit":1,"line":1},
+{"name":"import alias","source":"import java.io.File as CacheFile\nclass VoiceCapture { fun stop() = CacheFile(\"audio\").readBytes() }","exit":1,"line":1},
+{"name":"fully qualified constructor","source":"class VoiceCapture { fun stop() = java.io.File(\"audio\").readBytes() }","exit":1,"line":1},
+{"name":"qualified type alias","source":"typealias Audio = java.io.File\nclass VoiceCapture { var file: Audio? = null }","exit":1,"line":1},
+{"name":"wildcard filesystem import","source":"import java.io.*\nclass VoiceChannel {}","exit":1,"line":1},
+{"name":"explicit file extension","source":"import kotlin.io.readBytes\nclass VoiceCapture {}","exit":1,"line":1},
+{"name":"unrelated same spelling","source":"class Blob { fun readBytes() = byteArrayOf(1) }\nclass VoiceCapture { fun stop() = Blob().readBytes() }","exit":0},
+{"name":"owned lease seam","source":"class VoicePlayback { fun play(work: VoiceFileWork) = work.create() }","exit":0},
+{"name":"legitimate filesystem owner","source":"import java.io.File\nclass VoiceFileWork { fun read(file: File) = file.readBytes() }","exit":0},
+{"name":"unrelated non-file java import","source":"import java.io.Serializable\nclass VoiceCapture : Serializable","exit":0},
+{"name":"malformed source","source":"class VoiceCapture { fun stop( }","exit":2}
+]}

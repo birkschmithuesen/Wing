@@ -1,7 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!-- The portrait appears only while Android starts Flutter; no added delay. -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <item android:drawable="@color/ic_launcher_background" />
-    <item android:width="208dp" android:height="208dp"
-        android:gravity="center" android:drawable="@drawable/ic_launcher_foreground" />
-</layer-list>

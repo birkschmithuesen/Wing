@@ -1,3 +1,6 @@
+import 'package:wing/core/services/profile_supervision_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -62,11 +65,18 @@ void main() {
         dashboardPortOverride: port,
         apiKey: '',
       );
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
+        appPreferences: appPreferences,
         connectionIdentity: 'goal-unwait-live-qa',
-        connection: connection,
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
         preferences: preferences,
       );
+      addTearDown(() async {
+        await tester.pumpWidget(const SizedBox.shrink());
+        controller.dispose();
+      });
       await controller.initialize();
       await controller.switchProfile('android-qa-a');
       await tester.pumpWidget(
@@ -80,18 +90,19 @@ void main() {
         final deadline = DateTime.now().add(timeout);
         while (!condition() && DateTime.now().isBefore(deadline)) {
           await tester.pump(const Duration(milliseconds: 200));
+          expect(tester.takeException(), isNull);
         }
         expect(condition(), isTrue);
       }
 
       expect(controller.error, isNull);
       expect(controller.current!.scope.profileName, 'android-qa-a');
-      final chat = await controller.createChat();
+      final chat = await controller.createChat(canDispatch: () => true);
       ({String processId, int pid})? ownedProcess;
       ({String processId, int pid})? liveProcess;
       Object? cleanupFailure;
       void observeOwnedProcess() {
-        for (final activity in chat.toolActivities) {
+        for (final activity in chat.runtime.toolActivities) {
           final process = _backgroundProcess(activity.result);
           if (process != null) {
             liveProcess = process;
@@ -103,17 +114,21 @@ void main() {
       controller.addListener(observeOwnedProcess);
 
       try {
-        chat.draft =
-            'Use the terminal tool with background=true to run this exact '
-            'PowerShell command: Start-Sleep -Seconds 180. Report the returned '
-            'session_id and numeric pid exactly. Do not use other tools or do '
-            'other work.';
+        chat.composer.editText(
+          'Use the terminal tool with background=true to run this exact '
+          'PowerShell command: Start-Sleep -Seconds 180. Report the returned '
+          'session_id and numeric pid exactly. Do not use other tools or do '
+          'other work.',
+        );
         await controller.send(chat);
-        expect(chat.error, isNull);
-        await until(() => !chat.busy, timeout: const Duration(minutes: 3));
-        expect(chat.error, isNull);
+        expect(chat.runtime.error, isNull);
+        await until(
+          () => !chat.runtime.blocksTurnAdmission,
+          timeout: const Duration(minutes: 3),
+        );
+        expect(chat.runtime.error, isNull);
         await controller.refreshHistory(chat);
-        final persistedProcess = _backgroundProcess(chat.messages);
+        final persistedProcess = _backgroundProcess(chat.reading.messages);
         ownedProcess ??= persistedProcess;
         expect(
           liveProcess,
@@ -133,12 +148,12 @@ void main() {
 
         final gateway = controller.current!.gateway;
         await gateway.call('command.dispatch', {
-          'session_id': chat.runtimeId,
+          'session_id': chat.runtime.runtimeId,
           'name': 'goal',
           'arg': 'Await Android goal Unwait QA verification',
         });
         await gateway.call('command.dispatch', {
-          'session_id': chat.runtimeId,
+          'session_id': chat.runtime.runtimeId,
           'name': 'goal',
           'arg': 'wait ${startedProcess.pid} Android owned QA process',
         });
@@ -149,12 +164,16 @@ void main() {
           startedProcess.pid,
         );
 
+        final supervision = ProfileSupervisionSession(
+          controller: controller,
+          chat: chat,
+        );
+        addTearDown(supervision.dispose);
         await tester.pumpWidget(
           MaterialApp(
             home: Scaffold(
               body: ProfileGoalPanel(
-                controller: controller,
-                chat: chat,
+                session: supervision,
                 initiallyExpanded: true,
               ),
             ),
@@ -162,11 +181,14 @@ void main() {
         );
         await until(
           () => find
-              .widgetWithText(TextButton, 'Resume now')
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Resume now' &&
+                    widget.onPressed != null,
+              )
               .evaluate()
-              .any(
-                (element) => (element.widget as TextButton).onPressed != null,
-              ),
+              .isNotEmpty,
         );
         expect(
           find.byWidgetPredicate(
@@ -178,8 +200,8 @@ void main() {
           ),
           findsOneWidget,
         );
-        await tester.ensureVisible(find.text('Resume now'));
-        await tester.tap(find.text('Resume now'));
+        await tester.ensureVisible(find.byTooltip('Resume now'));
+        await tester.tap(find.byTooltip('Resume now'));
         await until(
           () =>
               !chat.sessionControlWorking &&
@@ -190,7 +212,7 @@ void main() {
         expect(chat.sessionControl?.goal?.waitBarrier, isNull);
       } finally {
         controller.removeListener(observeOwnedProcess);
-        if (chat.busy) {
+        if (chat.runtime.blocksTurnAdmission) {
           try {
             await controller.stop(chat);
           } catch (error) {
@@ -201,11 +223,15 @@ void main() {
           final cleared = await controller.controlSession(
             chat,
             SessionControlAction.goalClear,
+            canDispatch: () => true,
           );
           if (!cleared) {
             throw StateError(chat.sessionControlError ?? 'Goal clear failed');
           }
           await controller.refreshSessionControl(chat);
+          if (chat.sessionControlError != null) {
+            throw StateError(chat.sessionControlError!);
+          }
           if (chat.sessionControl?.goal != null) {
             throw StateError('Goal remained after cleanup');
           }
@@ -216,6 +242,9 @@ void main() {
         if (cleanupProcess != null) {
           try {
             await controller.refreshProcesses(chat);
+            if (chat.processesError != null) {
+              throw StateError(chat.processesError!);
+            }
             final process = chat.processes
                 .where((item) => item.id == cleanupProcess.processId)
                 .firstOrNull;
@@ -223,6 +252,7 @@ void main() {
               final stopped = await controller.stopProcess(
                 chat,
                 cleanupProcess.processId,
+                canDispatch: () => true,
               );
               if (!stopped) {
                 throw StateError(
@@ -230,6 +260,9 @@ void main() {
                 );
               }
               await controller.refreshProcesses(chat);
+              if (chat.processesError != null) {
+                throw StateError(chat.processesError!);
+              }
               if (chat.processes.any(
                 (item) => item.id == cleanupProcess.processId && item.isRunning,
               )) {
@@ -242,7 +275,6 @@ void main() {
             cleanupFailure ??= error;
           }
         }
-        controller.dispose();
         if (cleanupFailure != null) {
           fail('Live QA cleanup failed: $cleanupFailure');
         }

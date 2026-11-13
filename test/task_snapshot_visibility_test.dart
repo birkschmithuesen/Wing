@@ -1,3 +1,4 @@
+import 'package:wing/core/models/transcript_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/answer_versions.dart';
@@ -51,7 +52,9 @@ void main() {
     final row = {'id': 3, 'role': 'user', 'content': snapshot};
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(body: ProfileMessage(message: row)),
+        home: Scaffold(
+          body: ProfileMessage(message: TranscriptMessage.fromRow(row)),
+        ),
       ),
     );
     expect(find.textContaining(snapshotHeader), findsNothing);

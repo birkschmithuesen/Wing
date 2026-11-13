@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:wing/core/models/models_dev_prices.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/services/profile_gateway.dart';
-import 'package:wing/core/services/provider_console.dart';
 
 class AdministrationFixture {
   final String id;
+  ModelsDevPrices apiPrices = subscriptionApiPrices();
+  final pricingRefreshes = <bool>[];
+  Completer<ModelsDevPrices>? pricingGate;
+  bool failPricing = false;
   final rpcRequests = <(String, String)>[];
   final requests =
       <(String, String, Map<String, String>, Map<String, dynamic>?)>[];
@@ -51,38 +55,95 @@ class AdministrationFixture {
   bool failReads = false;
   Completer<void>? writeGate;
   AdministrationRequest? override;
+  AdministrationMutation? mutationOverride;
+  int settingsDispatches = 0;
   ScopedRpc? rpcOverride;
-  ProviderConsoleCommand? consoleOverride;
+  Future<String> Function(String profile, String command, {bool confirm})?
+  consoleOverride;
   final consoleRequests = <(String, String, bool)>[];
   late final AdministrationRepository server = AdministrationRepository(
+    apiPricing: ({refresh = false}) async {
+      pricingRefreshes.add(refresh);
+      if (failPricing) throw TimeoutException('API pricing unavailable');
+      return pricingGate == null ? apiPrices : await pricingGate!.future;
+    },
+    ownedMutation:
+        (method, path, query, body, canDispatch, onDispatched) async {
+          if (mutationOverride case final mutation?) {
+            return mutation(
+              method,
+              path,
+              query,
+              body,
+              canDispatch,
+              onDispatched,
+            );
+          }
+          if (!canDispatch()) throw StateError('Owned fixture command retired');
+          onDispatched();
+          return send(method, path, query, body);
+        },
+    settingsWrite: (name, patch, canDispatch, onDispatched) async {
+      if (!canDispatch()) throw const SettingsEditRetired();
+      settingsDispatches++;
+      onDispatched();
+      return send(
+        'PUT',
+        'config',
+        {'profile': name},
+        {'profile': name, 'config': patch},
+      );
+    },
     connectionId: id,
     connectionIdentity: '$id-endpoint',
     connectionLabel: id,
     request: send,
-    providerCommand: (profile, command, {confirm = false}) async {
-      consoleRequests.add((profile, command, confirm));
-      if (consoleOverride == null) {
-        throw StateError('Unexpected console command');
-      }
-      return consoleOverride!(profile, command, confirm: confirm);
-    },
+    providerCommand:
+        (
+          profile,
+          command, {
+          confirm = false,
+          required canDispatch,
+          required onDispatched,
+        }) async {
+          if (!canDispatch()) {
+            throw StateError('Recovery fixture command retired');
+          }
+          if (confirm) {
+            onDispatched();
+          }
+          consoleRequests.add((profile, command, confirm));
+          if (consoleOverride == null) {
+            throw StateError('Unexpected console command');
+          }
+          return consoleOverride!(profile, command, confirm: confirm);
+        },
     gateway: (name) => ProfileGateway(
       scope: WorkspaceScope(connectionId: id, profileName: name),
       get: (path, query) => send('GET', path, query, null),
-      put: (path, body) => send(
+      ownedPut: (path, body, canDispatch, onDispatched) => server.ownedMutation(
         'PUT',
         Uri.parse(path).path,
         Uri.parse(path).queryParameters,
         body,
+        canDispatch,
+        onDispatched,
       ),
       rpc: (method, params) async {
         rpcRequests.add((name, method));
         if (rpcOverride != null) return rpcOverride!(method, params);
-        return {
-          'plugins': [],
-          'servers': [],
-          if (method == 'reload.mcp') 'status': 'reloaded',
-        };
+        if (method == 'plugins.manage' && params['action'] == 'list') {
+          return {'plugins': []};
+        }
+        if (method == 'reload.mcp') return {'status': 'reloaded'};
+        if (method == 'mcp.servers.status' && override == null) {
+          // This fixture's unoverridden configuration has no MCP servers.
+          return {
+            'servers': [],
+            'checked_at': DateTime.now().millisecondsSinceEpoch,
+          };
+        }
+        throw StateError('Unexpected fixture RPC $method $params');
       },
       discover: () => server.discover(),
     ),
@@ -96,6 +157,9 @@ class AdministrationFixture {
   ) async {
     requests.add((method, path, {...query}, body == null ? null : {...body}));
     if (override != null) return override!(method, path, query, body);
+    if (method != 'GET' && !(method == 'PUT' && path == 'config')) {
+      throw StateError('Unexpected fixture request $method $path');
+    }
     if (method == 'GET' && failReads) throw StateError('Offline');
     if (path == 'health') {
       return {'ok': true, 'version': updateCheck['current_version']};
@@ -168,3 +232,35 @@ class AdministrationFixture {
     }
   }
 }
+
+/// Stock Codex model/options has no API prices.
+Map<String, dynamic> subscriptionModelOptions() => {
+  'providers': [
+    {
+      'slug': 'openai-codex',
+      'name': 'Subscription',
+      'models': ['gpt-6-astra', 'gpt-5.6-sol'],
+    },
+  ],
+};
+
+ModelsDevPrices subscriptionApiPrices({double input = 10}) =>
+    ModelsDevPrices.fromJson({
+      'openai': {
+        'models': {
+          'gpt-6-astra': {
+            'cost': {'input': input, 'cache_read': 1, 'output': 50},
+          },
+          'gpt-5.6-sol': {
+            'cost': {'input': 4, 'cache_read': 0.4, 'output': 20},
+          },
+        },
+      },
+    });
+
+AdministrationRequest withSubscriptionModelOptions(
+  AdministrationRequest request,
+) =>
+    (method, path, query, body) => method == 'GET' && path == 'model/options'
+    ? Future.value(subscriptionModelOptions())
+    : request(method, path, query, body);

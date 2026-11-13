@@ -3,15 +3,17 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../car_mode/car_mode_bridge.dart';
+import '../car_mode/car_mode_screen.dart';
 import '../car_mode/car_mode_session.dart';
 import '../car_mode/car_mode_state.dart';
 import '../core/controllers/voice_input_controller.dart';
 import '../core/controllers/voice_output_controller.dart';
 import '../core/models/composer_action.dart';
+import '../core/models/profile_session_key.dart';
+import '../core/models/voice_processing_settings.dart';
 import '../core/services/android_voice.dart';
 import '../core/services/hermes_voice.dart';
 import '../core/services/profile_workspace_controller.dart';
-import '../core/services/voice_preferences.dart';
 import 'background_voice.dart';
 import 'barge_in_coordinator.dart';
 import 'barge_in_policy.dart';
@@ -21,6 +23,7 @@ import 'headphone_route.dart';
 import 'speech_queue.dart';
 import 'turn_listener.dart';
 import 'vad_voice_device.dart';
+import 'voice_input_settings_for.dart';
 import 'voice_offline_prefs.dart';
 
 /// What the workspace screen offers the fork voice driver. Implemented by
@@ -56,6 +59,10 @@ abstract interface class WorkspaceVoiceHost {
 
   Map<ComposerAction, String?> composerActions(ProfileChat chat);
   TextEditingController get composer;
+
+  /// A live call owns the microphone and the speaker, so the hands-free
+  /// conversation loop, media keys and car mode stand down (spec §9.2).
+  bool get liveVoiceActive;
   Future<T?> runValue<T>(Future<T> Function() action);
   set voiceOwner(ProfileSessionKey? key);
 }
@@ -91,6 +98,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   late final CarModeSession car = CarModeSession(
     device: device,
+    screenBuilder: (session) => CarModeScreen(session: session),
     bridge: CarModeBridge(
       changes: Listenable.merge([
         _controller,
@@ -106,7 +114,9 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
         bargeIn: bargeIn,
       ),
       preferences: _controller.preferences,
+      appPreferences: _controller.appPreferences,
       talk: () async {
+        if (host.liveVoiceActive) return;
         final chat = _controller.notificationChat ?? _controller.current?.chat;
         if (chat != null) await host.run(() => host.dictate(chat));
       },
@@ -128,7 +138,10 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   bool get carActive => car.active;
 
-  Future<void> enterCarMode(BuildContext context) => car.enter(context);
+  Future<void> enterCarMode(BuildContext context) async {
+    if (host.liveVoiceActive) return;
+    await car.enter(context);
+  }
 
   /// Car mode entry/exit changes the screen's chat focus without a dependency
   /// change the route system would notify on its own; resync here instead.
@@ -173,7 +186,13 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   void attach() {
     bargeIn.addListener(_bargeInChanged);
     _liveWorkspaces++;
-    _autoSpeak = _controller.completedReplies.listen(_speakCompletedReply);
+    _autoSpeak = _controller.completedReplies.listen(
+      (event) => _speakCompletedReply((
+        chat: event.chat as ProfileChat,
+        text: event.text,
+      )),
+    );
+    _controller.appPreferences.state.addListener(_voiceRouteChanged);
     _voiceInput.addListener(_voiceInputChanged);
     _voiceDeviceEvents = device.events.listen(_voiceDeviceEvent);
   }
@@ -200,6 +219,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     if (_conversationKey != null) {
       VoiceSwitchHolders.screenOn(device).set(host, false);
     }
+    _controller.appPreferences.state.removeListener(_voiceRouteChanged);
     _voiceInput.removeListener(_voiceInputChanged);
     unawaited(_voiceDeviceEvents?.cancel());
     _voiceInput.dispose();
@@ -245,17 +265,44 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   void syncVadRoute() {
     final vad = vadRoute();
     if (vad == null) return;
+    _vadSeen = vad;
     syncMediaKeys();
     if (vad) unawaited(VadVoiceDevice.of(device).prepareVad().catchError((Object _) {}));
   }
 
+  /// Whether the last verdict of [vadRoute] named the Parakeet route.
+  bool _vadSeen = false;
+
+  /// The app-wide input route changed (Hermes <-> Local in the voice
+  /// settings): prepare the Parakeet model the moment its route becomes
+  /// active, so the first dictation does not stall, and release it when the
+  /// route leaves. The engine switch inside Local does this in the settings.
+  void _voiceRouteChanged() {
+    final vad = vadRoute();
+    if (vad == null || vad == _vadSeen) return;
+    _vadSeen = vad;
+    syncMediaKeys();
+    unawaited(
+      (vad
+              ? VadVoiceDevice.of(device).prepareVad()
+              : VadVoiceDevice.of(device).releaseVad())
+          .catchError((Object _) {}),
+    );
+  }
+
+  /// True when Local input runs on the fork's Parakeet route; null while
+  /// upstream flags the input preference for repair.
   bool? vadRoute() {
-    final settings = tryReadVoicePreferences(_controller.preferences);
-    return settings == null ? null : settings.input == VoiceInputRoute.vad;
+    final settings = voiceInputSettingsFor(
+      _controller.appPreferences,
+      _controller.preferences,
+    );
+    return settings == null ? null : settings is VadVoiceInputSettings;
   }
 
   void syncMediaKeys() {
-    final want = (vadRoute() ?? false) && host.hasChatFocus;
+    final want =
+        (vadRoute() ?? false) && host.hasChatFocus && !host.liveVoiceActive;
     if (want == _mediaKeysOn) return;
     _mediaKeysOn = want;
     VoiceSwitchHolders.mediaKeys(device).set(host, want);
@@ -264,6 +311,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   void _voiceDeviceEvent(Map<String, dynamic> event) {
     if (event['mediaKey'] != 'playPause' ||
         !host.mounted ||
+        host.liveVoiceActive ||
         !host.hasChatFocus) {
       return;
     }
@@ -309,7 +357,11 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     _conversationKey = value;
     background.sync(
-      want: value != null && vadRoute() == true && !car.active,
+      want:
+          value != null &&
+          vadRoute() == true &&
+          !car.active &&
+          !host.liveVoiceActive,
     );
   }
 
@@ -318,16 +370,43 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   bool awaitingReply = false;
 
   void _voiceInputChanged() {
-    // Silence, no speech or a recognizer error ends the conversation.
-    if (!_voiceInput.active && _voiceInput.error != null) conversation = null;
+    // Silence, no speech, a recognizer error or notice ends the conversation.
+    // A dictation that went active -> idle without a result is the user's
+    // Cancel in the voice input activity: it discards only that recording and
+    // the loop stays active, the microphone reopens for the next turn
+    // (Birk 2026-11-13, ledger L26). A result the recognizer ended itself, or
+    // a car-mode send, keeps the loop; a Stop result already ended it in the
+    // screen's applyDraft.
+    final wasActive = _voiceWasActive;
+    _voiceWasActive = _voiceInput.active;
+    if (_voiceInput.active) return;
+    if (_voiceInput.error != null || _voiceInput.notice != null) {
+      conversation = null;
+      return;
+    }
+    if (wasActive && !_voiceInput.finishedOnItsOwn && !carSend) {
+      _reopenAfterCancel();
+    }
   }
+
+  /// Cancel keeps the conversation loop: a fresh listen round for the loop's
+  /// chat, one per Cancel (never a retry of its own).
+  void _reopenAfterCancel() {
+    final key = conversation;
+    if (key == null || !host.mounted) return;
+    final chat = _controller.notificationChat ?? _controller.current?.chat;
+    if (chat == null || chat.key != key) return;
+    unawaited(host.run(() => host.dictate(chat, resume: true)));
+  }
+
+  bool _voiceWasActive = false;
 
   void _bargeInChanged() {
     background.listening(bargeIn.listening);
     if (!bargeIn.listening) _flushQueuedReplies();
   }
 
-  StreamSubscription<({ProfileChat chat, String text})>? _autoSpeak;
+  StreamSubscription<({Object chat, String text})>? _autoSpeak;
 
   /// Serializes auto-spoken replies: a newer one waits for the one already
   /// playing instead of cutting it off (spec 2026-10-15 queue). Explicit
@@ -348,11 +427,10 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
   /// is dictating. Replies queue behind each other in arrival order; the
   /// microphone only reopens once the queue drained after the last one.
   void _speakCompletedReply(({ProfileChat chat, String text}) reply) {
-    if (!host.mounted || !loopFocus) {
+    if (!host.mounted || !loopFocus || host.liveVoiceActive) {
       conversation = null;
       return;
     }
-    final settings = VoicePreferences.read(_controller.preferences);
     final offline = VoiceOfflinePrefs.read(_controller.preferences);
     // Car mode's own loop switch overrides the saved setting while active.
     final conversationLoopOn = car.active ? car.loopOn : offline.conversation;
@@ -362,6 +440,13 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     }
     final chat = reply.chat;
     if (host.currentChat != chat) {
+      return;
+    }
+    // Upstream flags a broken output preference for repair; nothing is read
+    // aloud then, so the loop cannot wait for a reply that never plays.
+    final settings = _controller.appPreferences.current.voiceOutputSettings;
+    if (settings == null) {
+      conversation = null;
       return;
     }
     // An unsolicited reply (e.g. a background job's own turn) must never end
@@ -390,14 +475,14 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       unawaited(bargeIn.close('turnEnd').catchError((Object _) {}));
     }
     host.voiceOwner = chat.key;
-    final connection = _controller.connection;
+    final access = _controller.access;
     final profile = chat.key.workspace.profileName;
     autoSpeakQueue.add(
       () => _voiceOutput.speak(
         (chat.key, 'auto-reply'),
         reply.text,
         settings,
-        () => HermesVoice.forConnection(connection, profile),
+        () => HermesVoice.forConnection(access, profile),
       ),
       (finished) {
         if (!finished) {
@@ -460,11 +545,12 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
         host.currentChat == chat &&
         !_controller.switching &&
         !chat.voiceBusy &&
-        !chat.opening &&
-        !chat.commandRunning &&
-        !chat.changingAnswer &&
-        chat.editingQueuedPrompt == null &&
+        !chat.voiceOpening &&
+        !chat.voiceCommandRunning &&
+        !chat.voiceChangingAnswer &&
+        !chat.voiceEditingQueue &&
         !chat.needsUserInput &&
+        !host.liveVoiceActive &&
         !_voiceInput.active &&
         _voiceOutput.owner == null &&
         autoSpeakQueue.isEmpty &&
@@ -521,7 +607,11 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       conversation = null;
       return;
     }
-    if (_controller.recovering || chat.opening || chat.offlineSnapshot) {
+    if (_controller.recovering ||
+        chat.voiceOpening ||
+        chat.voiceOffline ||
+        (_controller.current?.offlineSnapshot ?? false) ||
+        !_controller.connectionStatus.networkAvailable) {
       awaitingReply = true;
       await _controller.queuePrompt(chat, text);
       return;
@@ -534,9 +624,6 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       }
       awaitingReply = true;
       final accepted = await _controller.steer(chat, text);
-      if (accepted && chat.voiceDraft.trim() == text) {
-        await _controller.updateDraft(chat, '');
-      }
       // Listen while Hermes works (spec 2026-10-14 barge-in): keep
       // listening for a follow-up turn the gateway may start after a steer.
       if (accepted) openListen(chat);
@@ -566,13 +653,28 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     readState: () => chat.listenState,
     onSteer: (text) async =>
         await host.runValue(
-          () => _controller.steer(chat, text, preserveComposer: true),
+          () => _controller.steer(chat, text),
         ) ==
         true,
     onQueue: (text) => host.run(() => _controller.queuePrompt(chat, text)),
     onSend: (text) async {
       if (!host.mounted || conversation != chat.key) return;
-      final value = insertVoiceTranscript(host.composer.value, text);
+      final c = host.composer.value;
+      final r = insertVoiceTranscript(
+        VoiceDraft(
+          text: c.text,
+          selectionStart: c.selection.start,
+          selectionEnd: c.selection.end,
+        ),
+        text,
+      );
+      final value = TextEditingValue(
+        text: r.text,
+        selection: TextSelection(
+          baseOffset: r.selectionStart,
+          extentOffset: r.selectionEnd,
+        ),
+      );
       host.composer.value = value;
       await host.run(() async {
         await _controller.updateDraft(chat, value.text);
@@ -583,12 +685,10 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
 
   /// Opens a listen round for the conversation's chat (vad route only).
   void openListen(ProfileChat chat, {bool playback = false}) {
-    final settings = tryReadVoicePreferences(_controller.preferences);
-    if (settings == null) return;
+    if (host.liveVoiceActive || vadRoute() != true) return;
     final offline = VoiceOfflinePrefs.read(_controller.preferences);
     if (!host.mounted ||
         conversation != chat.key ||
-        settings.input != VoiceInputRoute.vad ||
         !offline.conversation ||
         !(offline.listenTurn || playback)) {
       return;
@@ -644,7 +744,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       }
       return;
     }
-    if (tryReadVoicePreferences(_controller.preferences) == null) return;
+    if (vadRoute() == null) return;
     final offline = VoiceOfflinePrefs.read(_controller.preferences);
     if (!bargeIn.listening && playbackBargeIn(chat, offline)) {
       openListen(chat, playback: true);

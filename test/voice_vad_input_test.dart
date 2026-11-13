@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
 import 'package:wing/core/services/vad_endpoint.dart';
-import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/core/models/voice_processing_settings.dart';
 import 'package:wing/voice_offline/vad_input_round.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
 import 'support/voice_fixture.dart';
@@ -14,8 +14,8 @@ void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late VoiceDeviceFixture device;
   late VoiceInputController recorder;
-  TextEditingValue? result;
-  const settings = VoicePreferences(input: VoiceInputRoute.vad);
+  VoiceDraft? result;
+  const settings = VadVoiceInputSettings();
   const offline = VoiceOfflinePrefs(
     cues: false,
     debugRecordings: true,
@@ -26,13 +26,17 @@ void main() {
     ),
   );
 
+  const emptyDraft = VoiceDraft(text: '', selectionStart: -1, selectionEnd: -1);
+
+  VoiceInputController recorderFor(VoiceOfflinePrefs round) =>
+      VoiceInputController(
+        device: device,
+        vadRound: VadInputRound(device: device, roundSettings: () => round),
+      );
+
   setUp(() {
     device = VoiceDeviceFixture();
-    recorder = VoiceInputController(
-      device: device,
-      createRemote: () => throw StateError('vad never uses Hermes'),
-      vadRound: VadInputRound(device: device),
-    );
+    recorder = recorderFor(offline);
     result = null;
   });
   tearDown(() async {
@@ -42,9 +46,9 @@ void main() {
 
   Future<void> start() => recorder.start(
     settings,
-    offline,
-    const TextEditingValue(text: ''),
+    emptyDraft,
     (value) => result = value,
+    createRemote: RemoteVoiceFixture.new,
   );
 
   test('starts the own capture with the saved vad options', () async {
@@ -63,32 +67,24 @@ void main() {
   test('the saved microphone preference reaches the native capture call, not just auto', () async {
     for (final route in VoiceMicRoute.values) {
       device = VoiceDeviceFixture();
-      recorder = VoiceInputController(
-        device: device,
-        createRemote: () => throw StateError('vad never uses Hermes'),
-        vadRound: VadInputRound(device: device),
-      );
-      await recorder.start(
-        settings,
+      recorder = recorderFor(
         VoiceOfflinePrefs(micRoute: route, vad: offline.vad),
-        const TextEditingValue(text: ''),
-        (value) => result = value,
       );
+      await start();
       expect(device.vadOptions!.mic, route, reason: route.name);
     }
   });
 
   test('a chosen device that is not connected falls back to automatic and hints once', () async {
     device.micFallback = true;
-    await recorder.start(
-      settings,
+    recorder.dispose();
+    recorder = recorderFor(
       const VoiceOfflinePrefs(
         micRoute: VoiceMicRoute.bluetooth,
         vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
       ),
-      const TextEditingValue(text: ''),
-      (value) => result = value,
     );
+    await start();
     expect(device.vadOptions!.mic, VoiceMicRoute.bluetooth);
     expect(recorder.vadRound!.takeMicFallbackHint(), isNotNull);
     expect(recorder.error, isNull, reason: 'a fallback is not a failure');
@@ -97,15 +93,14 @@ void main() {
 
   test('the hint is a one-shot: a later round without a fallback clears it', () async {
     device.micFallback = true;
-    await recorder.start(
-      settings,
+    recorder.dispose();
+    recorder = recorderFor(
       const VoiceOfflinePrefs(
         micRoute: VoiceMicRoute.wired,
         vad: VadEndpointConfig(maxDuration: Duration(seconds: 60)),
       ),
-      const TextEditingValue(text: ''),
-      (value) => result = value,
     );
+    await start();
     expect(recorder.vadRound!.takeMicFallbackHint(), isNotNull);
     device.emitWindows(_p(0.9, 20));
     await recorder.stop();
@@ -172,7 +167,8 @@ void main() {
     // The phone only learns the reason (for the debug JSON); Kotlin skips recognition.
     expect(device.finishes.single.reason, VadEndReason.noSpeech);
     expect(device.finishes.single.atWindow, 374);
-    expect(recorder.error, 'No speech detected. Try again.');
+    expect(recorder.notice?.result, VoiceInputEmptyResult.noSpeech);
+    expect(recorder.error, isNull);
     expect(device.cancelled, isNotEmpty);
     expect(result, isNull);
   });
@@ -183,7 +179,8 @@ void main() {
     device.emitWindows(_p(0.9, 20));
     device.emitWindows(_p(0.1, 60));
     await pumpEventQueue();
-    expect(recorder.error, 'No speech detected. Try again.');
+    expect(recorder.notice?.result, VoiceInputEmptyResult.noSpeech);
+    expect(recorder.error, isNull);
   });
 
   test('a missing model is reported from start', () async {
@@ -216,11 +213,7 @@ void main() {
     // test zone so the recognition budget timer follows tester.pump.
     recorder.dispose();
     device = VoiceDeviceFixture();
-    recorder = VoiceInputController(
-      device: device,
-      createRemote: () => throw StateError('vad never uses Hermes'),
-      vadRound: VadInputRound(device: device),
-    );
+    recorder = recorderFor(offline);
     device.finishDelay = Completer<String>();
     await start();
     // 2 s of speech + tail: budget = 10 s + half the segment (≈ 11.3 s).
@@ -236,12 +229,11 @@ void main() {
   });
 
   test('a long round sends the chunk plan with the finish call', () async {
-    await recorder.start(
-      settings,
+    recorder.dispose();
+    recorder = recorderFor(
       const VoiceOfflinePrefs(cues: false, vad: VadEndpointConfig()),
-      const TextEditingValue(text: ''),
-      (value) => result = value,
     );
+    await start();
     device.emitWindows(_p(0.05, 40));
     device.emitWindows(_p(0.9, 1000));
     device.emitWindows(_p(0.1, 30));

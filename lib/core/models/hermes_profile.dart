@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
-import 'package:flutter/foundation.dart';
+import 'package:meta/meta.dart';
 
 /// A profile exposed by a modern Hermes server.
 ///

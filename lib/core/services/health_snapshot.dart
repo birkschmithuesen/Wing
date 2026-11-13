@@ -1,5 +1,4 @@
-import 'administration_health.dart';
-import 'administration_overview.dart';
+import '../models/health_finding.dart';
 
 DateTime? healthSnapshotTime(Object? value) =>
     value is String ? DateTime.tryParse(value)?.toLocal() : null;
@@ -28,20 +27,4 @@ AdministrationHealthFinding? restoreHealthFinding(Object? data) {
     destination: value['destination'] as String?,
     checkedAt: healthSnapshotTime(value['checkedAt']),
   );
-}
-
-Map<String, dynamic> healthObservationSnapshot(
-  AdministrationObservation value,
-) => {
-  'data': value.data,
-  'checkedAt': value.checkedAt?.toUtc().toIso8601String(),
-  'error': value.error,
-};
-
-void restoreHealthObservation(AdministrationObservation target, Map value) {
-  target.data = value['data'] == null
-      ? null
-      : Map<String, dynamic>.from(value['data'] as Map);
-  target.checkedAt = healthSnapshotTime(value['checkedAt']);
-  target.error = value['error'] as String?;
 }

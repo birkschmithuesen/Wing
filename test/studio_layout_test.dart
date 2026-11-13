@@ -1,23 +1,40 @@
+import 'package:wing/core/models/chat_intelligence.dart';
+import 'support/color_contrast.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/shared_draft_session.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'home_config_restore_test.dart' show homeEntryFactory, profileController;
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/backup_session.dart';
+import 'package:wing/core/services/config_backup_service.dart';
+import 'package:wing/core/services/config_backup_io.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
+import 'package:wing/core/models/model_choice.dart';
 import 'support/chat_browser_interactions.dart';
 import 'package:wing/core/widgets/studio_selection_tile.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
+import 'helpers/pump_markdown_widget.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:wing/core/models/context_occupancy.dart';
+import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
+import 'package:wing/core/screens/administration/administration_content.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/theme/wing_icons.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/widgets/chat_intelligence_picker.dart';
-import 'package:wing/core/widgets/model_chooser.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:wing/core/widgets/playful_portrait.dart';
 import 'package:wing/main.dart';
@@ -25,6 +42,117 @@ import 'support/profile_browser_fixture.dart';
 
 const _export = bool.fromEnvironment('STUDIO_REVIEW');
 const _frame = ValueKey('studio-review-frame');
+
+void _viewport(WidgetTester tester, Size size) {
+  tester.view.devicePixelRatio = 1;
+  tester.view.physicalSize = size;
+}
+
+class _StudioConversationFixture extends ProfileBrowserFixture {
+  @override
+  List<Map<String, dynamic>> projects(String profile) => [
+    for (final project in super.projects(profile))
+      {
+        ...project,
+        'sessionIds': project['isNoProject'] == true
+            ? [
+                'new-chat',
+                for (final session in sessions(profile))
+                  if (!{'newest', 'project-only'}.contains(session['id']))
+                    session['id'],
+              ]
+            : project['id'] == 'p2' || project['id'] == 'work-project'
+            ? ['newest', if (profile != 'work') 'project-only']
+            : <String>[],
+      },
+  ];
+
+  @override
+  List<Map<String, dynamic>> sessions(String profile) => [
+    for (final row in super.sessions(profile))
+      {...row, if (row['id'] == 'newest') 'title': 'A quieter workspace'},
+  ];
+
+  @override
+  List<Map<String, dynamic>> historyRows(String profile, String id) =>
+      id != 'newest'
+      ? []
+      : [
+          {
+            'id': 1,
+            'role': 'user',
+            'content': 'Keep the workspace compact and easy to read.',
+          },
+          {
+            'id': 2,
+            'role': 'tool',
+            'tool_name': 'Read project',
+            'content': 'Inspect the existing screen and controls.',
+          },
+          {
+            'id': 3,
+            'role': 'assistant',
+            'content':
+                '## A little more room\n\nSearch is at the top. **New chat** stays within reach.\n\nThe activity details keep their familiar layout.\n\n```dart\nfinal profile = selectedProfile;\n```',
+          },
+        ];
+
+  @override
+  ProfileGateway gateway(WorkspaceScope scope) {
+    final base = super.gateway(scope);
+    return ProfileGateway(
+      scope: scope,
+      discover: base.discover,
+      get: (path, query) async {
+        if (path == 'model/info') {
+          return {
+            'provider': 'provider',
+            'model': 'provider/a-very-long-model-route-for-small-screens',
+          };
+        }
+        if (path == 'model/options') {
+          return {
+            'providers': [
+              {
+                'slug': 'provider',
+                'name': 'Example provider',
+                'models': [
+                  'provider/a-very-long-model-route-for-small-screens',
+                ],
+              },
+            ],
+          };
+        }
+        return base.read(path, query);
+      },
+      ownedPatch: (path, body, canDispatch, onDispatched) async {
+        if (!canDispatch()) {
+          throw DashboardRequestNotSentException(StateError('Menu retired'));
+        }
+        onDispatched();
+        calls.add((scope.profileName, 'PATCH $path', body));
+        return {'ok': true};
+      },
+      rpc: (method, params) async {
+        final result = await base.call(method, params);
+        if (method == 'session.resume') {
+          return {
+            ...result,
+            'session_id': 'runtime-${params['session_id']}',
+            'stored_session_id': params['session_id'],
+            'info': {
+              'profile_name': scope.profileName,
+              'provider': 'provider',
+              'model': 'provider/a-very-long-model-route-for-small-screens',
+              'reasoning_effort': 'high',
+            },
+          };
+        }
+        return result;
+      },
+    );
+  }
+}
 
 class _StudioReviewBinding extends AutomatedTestWidgetsFlutterBinding {
   @override
@@ -93,13 +221,15 @@ void main() {
     testWidgets('${brightness.name} first connection keeps setup reachable', (
       tester,
     ) async {
+      FlutterSecureStorage.setMockInitialValues({});
       SharedPreferences.setMockInitialValues({});
-      final manager = await ConnectionManager.create(
-        await SharedPreferences.getInstance(),
-      );
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final manager = await ConnectionManager.create(preferences);
+      addTearDown(tester.view.reset);
       for (final viewport in [(360.0, 1.0), (320.0, 2.0)]) {
-        await tester.binding.setSurfaceSize(Size(viewport.$1, 800));
+        _viewport(tester, Size(viewport.$1, 800));
         await tester.pumpWidget(
           RepaintBoundary(
             key: _frame,
@@ -112,11 +242,37 @@ void main() {
                 ).copyWith(textScaler: TextScaler.linear(viewport.$2)),
                 child: child!,
               ),
-              home: HomeScreen(connManager: manager),
+              home: HomeScreen(
+                createSharedDraftSession: (entry) => SharedDraftSession(
+                  connectionManager: manager,
+                  entrySession: entry,
+                  shareIntents: null,
+                ),
+                createEntrySession: homeEntryFactory(
+                  tester,
+                  manager,
+                  appPreferences,
+                  create: (connection) => profileController(
+                    connection,
+                    manager.prefs,
+                    appPreferences,
+                  ),
+                  launchIntents: null,
+                ),
+                connManager: manager,
+                appPreferences: appPreferences,
+                createBackupSession: () => BackupSession(
+                  configuration: ConfigBackupService(
+                    connectionManager: manager,
+                    appPreferences: appPreferences,
+                  ),
+                  io: ConfigBackupIo(),
+                ),
+              ),
             ),
           ),
         );
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(const Duration(milliseconds: 250));
         expect(find.byType(PlayfulPortrait), findsOneWidget);
         expect(find.text('Your agent, with you'), findsOneWidget);
         await _capture(
@@ -133,7 +289,7 @@ void main() {
               )
               .first,
         );
-        await tester.pumpAndSettle();
+        await tester.pumpAndSettle(const Duration(milliseconds: 250));
         expect(
           find.text('Restore configuration').hitTestable(),
           findsOneWidget,
@@ -181,10 +337,10 @@ void main() {
         testWidgets(
           '${brightness.name} ${accent.name} at width $width and text scale $scale preserves composer targets and scope',
           (tester) async {
-            await tester.binding.setSurfaceSize(Size(width, 800));
-            addTearDown(() => tester.binding.setSurfaceSize(null));
+            _viewport(tester, Size(width, 800));
+            addTearDown(tester.view.reset);
             SharedPreferences.setMockInitialValues({
-              WorkspaceAccent.preferenceKey: accent.name,
+              AppPreferenceField.accent.storageKey: accent.name,
             });
             PackageInfo.setMockInitialValues(
               appName: 'Wing',
@@ -193,17 +349,24 @@ void main() {
               buildNumber: '1',
               buildSignature: '',
             );
-            final fixture = ProfileBrowserFixture();
+            final fixture = _StudioConversationFixture();
+            final preferences = await SharedPreferences.getInstance();
+            final appPreferences = AppPreferences(preferences);
+            addTearDown(appPreferences.dispose);
             final controller = ProfileWorkspaceController(
-              connection: SavedConnection(
-                id: 'studio',
-                label: 'Studio preview',
-                host: 'unused',
-                port: 1,
-                apiKey: '',
+              access: ConnectionAccess(
+                connection: SavedConnection(
+                  id: 'studio',
+                  label: 'Studio preview',
+                  host: 'unused',
+                  port: 1,
+                  apiKey: '',
+                ),
+                dashboardOAuth: null,
               ),
               connectionIdentity: 'studio-layout',
-              preferences: await SharedPreferences.getInstance(),
+              preferences: preferences,
+              appPreferences: appPreferences,
               gatewayFactory: fixture.gateway,
             );
             addTearDown(controller.dispose);
@@ -223,25 +386,60 @@ void main() {
                     ).copyWith(textScaler: TextScaler.linear(scale)),
                     child: child!,
                   ),
-                  home: ProfileWorkspaceScreen(controller: controller),
+                  home: ProfileWorkspaceScreen(
+                    controller: controller,
+                    createBotsSession: () => BotsSession((_) async => []),
+                  ),
                 ),
               ),
             );
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
+            expect(
+              MediaQuery.sizeOf(
+                tester.element(find.byType(ProfileWorkspaceScreen)),
+              ).width,
+              width,
+            );
             final search = tester.getRect(
               find.byKey(const ValueKey('workspace-search')),
             );
             final create = tester.getRect(
               find.byKey(const ValueKey('workspace-new-chat')),
             );
-            expect(search.bottom, lessThan(400));
-            expect(create.top, greaterThan(650));
+            final viewport =
+                Offset.zero &
+                MediaQuery.sizeOf(
+                  tester.element(find.byType(ProfileWorkspaceScreen)),
+                );
+            expect(viewport.intersect(search), search);
+            expect(viewport.intersect(create), create);
+            expect(search.bottom, lessThanOrEqualTo(create.top));
+            expect(
+              find.byKey(const ValueKey('workspace-search')).hitTestable(),
+              findsOneWidget,
+            );
+            expect(
+              find.byKey(const ValueKey('workspace-new-chat')).hitTestable(),
+              findsOneWidget,
+            );
             expect(create.height, greaterThanOrEqualTo(48));
-            final export = accent == WorkspaceAccent.mint && width <= 360;
+            final export = accent == WorkspaceAccent.teal && width <= 360;
             if (export) {
               await _capture(tester, '${brightness.name}-chats-$scale');
             }
 
+            await filterChatsToProfile(tester, 'personal');
+            final clearFilters = find.byKey(
+              const ValueKey('workspace-clear-filters'),
+            );
+            final clearRect = tester.getRect(clearFilters);
+            expect(clearRect.width, greaterThanOrEqualTo(48));
+            expect(clearRect.height, greaterThanOrEqualTo(48));
+            await tester.tapAt(
+              Offset(clearRect.right - 2, clearRect.center.dy),
+            );
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
+            expect(tester.widget<IconButton>(clearFilters).onPressed, isNull);
             await filterChatsToProfile(tester, 'personal');
             await revealChatProject(tester, 'personal', 'p2');
             final projectActions = find.descendant(
@@ -249,7 +447,8 @@ void main() {
               matching: find.byTooltip('Project actions'),
             );
             final anchor = tester.getRect(projectActions);
-            expect(anchor.size, const Size(48, 48));
+            expect(anchor.width, greaterThanOrEqualTo(48));
+            expect(anchor.height, greaterThanOrEqualTo(48));
             expect(
               find.descendant(
                 of: find.byKey(const ValueKey('project-personal-p2')),
@@ -258,7 +457,7 @@ void main() {
               findsNothing,
             );
             await tester.tap(projectActions);
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             final menu = find
                 .ancestor(
                   of: find.byKey(const ValueKey('project-action-new')),
@@ -266,19 +465,22 @@ void main() {
                 )
                 .first;
             final menuRect = tester.getRect(menu);
-            expect(menuRect.width, lessThan(width - 16));
-            expect(menuRect.right, closeTo(anchor.right, 1));
+            final viewportHeight =
+                tester.view.physicalSize.height / tester.view.devicePixelRatio;
+            expect(menuRect.left, greaterThanOrEqualTo(0));
+            expect(menuRect.top, greaterThanOrEqualTo(0));
+            expect(menuRect.right, lessThanOrEqualTo(width));
+            expect(menuRect.bottom, lessThanOrEqualTo(viewportHeight));
             expect(
-              menuRect.top,
-              closeTo((anchor.bottom + 4).clamp(8, 792 - menuRect.height), 1),
+              find.byKey(const ValueKey('project-action-new')).hitTestable(),
+              findsOneWidget,
             );
-            expect(menuRect.bottom, lessThanOrEqualTo(792));
             expect(find.byType(BottomSheet), findsNothing);
             if (export) {
               await _capture(tester, '${brightness.name}-project-menu-$scale');
             }
             await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             expect(
               find.byKey(const ValueKey('project-action-new')),
               findsNothing,
@@ -286,67 +488,71 @@ void main() {
             await tester.longPress(
               find.byKey(const ValueKey('project-personal-p2')),
             );
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             expect(
-              find.byKey(const ValueKey('project-action-rename')),
+              find.byKey(const ValueKey('project-action-editProject')),
               findsOneWidget,
             );
             await tester.tapAt(const Offset(8, 8));
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             expect(
               find.byKey(const ValueKey('project-action-new')),
               findsNothing,
             );
 
-            final chat = await controller.createChat();
-            await tester.pumpAndSettle();
+            await controller.createChat(canDispatch: () => true);
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             if (export) {
               await _capture(tester, '${brightness.name}-empty-chat-$scale');
             }
-            chat.title = 'A quieter workspace';
-            chat.model = 'provider/a-very-long-model-route-for-small-screens';
-            chat.reasoningEffort = 'high';
-            chat.context = const ContextOccupancy(
-              used: 42000,
-              max: 128000,
-              percent: 32.8,
-              estimated: true,
+            final chat = (await controller.openSession(
+              ProfileSessionKey(controller.current!.scope, 'newest'),
+            ))!;
+            controller.current!.gateway.onEvent!(
+              StreamEvent(
+                type: 'session.usage',
+                sessionId: chat.runtime.runtimeId,
+                data: {
+                  'usage': {
+                    'context_used': 42000,
+                    'context_max': 128000,
+                    'context_percent': 32.8,
+                    'context_estimated': true,
+                  },
+                },
+              ),
             );
-            chat.messages.addAll([
-              {
-                'id': 1,
-                'role': 'user',
-                'content': 'Keep the workspace compact and easy to read.',
-              },
-              {
-                'id': 2,
-                'role': 'tool',
-                'tool_name': 'Read project',
-                'content': 'Inspect the existing screen and controls.',
-              },
-              {
-                'id': 3,
-                'role': 'assistant',
-                'content':
-                    '## A little more room\n\nSearch is at the top. **New chat** stays within reach.\n\nThe activity details keep their familiar layout.\n\n```dart\nfinal profile = selectedProfile;\n```',
-              },
-            ]);
-            await tester.pumpAndSettle();
-            chat.context = const ContextOccupancy(
-              used: 42000,
-              max: 128000,
-              percent: 32.8,
-              estimated: true,
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
+            await tester.settleMarkdown();
+            expect(chat.context?.used, 42000);
+            expect(controller.modelObservation(chat), isNotNull);
+            expect(controller.modelObservation(chat)!.model, chat.model);
+            expect(chat.markReadFailed, isFalse);
+            expect(chat.projectLookupFailed, isFalse);
+            expect(controller.chatProjectLabel(chat), 'Mobile app');
+            expect(find.text('Project unavailable'), findsNothing);
+            expect(
+              find.textContaining(
+                'This chat opened, but it could not be marked',
+              ),
+              findsNothing,
             );
-            await tester.enterText(
-              find.byKey(const Key('profile-message-composer')),
-              ' ',
+            expect(find.text('A quieter workspace'), findsOneWidget);
+            expect(
+              find.textContaining('A little more room', findRichText: true),
+              findsWidgets,
             );
-            await tester.enterText(
-              find.byKey(const Key('profile-message-composer')),
-              '',
+            expect(find.text('Start a conversation'), findsNothing);
+            expect(
+              find.byKey(
+                ValueKey(
+                  scale > 1.5 && width < 480
+                      ? 'chat-scope-stacked'
+                      : 'chat-scope-inline',
+                ),
+              ),
+              findsOneWidget,
             );
-            await tester.pumpAndSettle();
             final ring = tester.getRect(
               find.byKey(const ValueKey('context-ring-details')),
             );
@@ -373,10 +579,10 @@ void main() {
             tester.view.viewInsets = FakeViewPadding(
               bottom: 280 * tester.view.devicePixelRatio,
             );
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
             expect(tester.takeException(), isNull);
             expect(controller.current!.chat, same(chat));
-            expect(chat.draft, contains('An unsent draft'));
+            expect(chat.composer.observation.text, contains('An unsent draft'));
             if (export) {
               await _capture(tester, '${brightness.name}-keyboard-$scale');
               final heldAction = await tester.startGesture(
@@ -396,16 +602,19 @@ void main() {
               await tester.pump(const Duration(milliseconds: 220));
               await _capture(tester, '${brightness.name}-held-action-$scale');
               await heldAction.cancel();
-              await tester.pumpAndSettle();
-              expect(chat.draft, contains('An unsent draft'));
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
+              expect(
+                chat.composer.observation.text,
+                contains('An unsent draft'),
+              );
             }
             tester.view.resetViewInsets();
-            await tester.pumpAndSettle();
+            await tester.pumpAndSettle(const Duration(milliseconds: 250));
 
             if (export) {
               final adminSuffix = scale == 1 ? '' : '-large-text';
               await tester.tap(find.byTooltip('Open navigation menu'));
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               await _capture(tester, '${brightness.name}-drawer$adminSuffix');
               await tester.scrollUntilVisible(
                 find.byKey(const ValueKey('nav-administration')),
@@ -421,26 +630,42 @@ void main() {
                 ),
                 alignment: .5,
               );
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               await tester.tap(
                 find.byKey(const ValueKey('nav-administration')),
               );
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               await _capture(
                 tester,
                 '${brightness.name}-administration-profile$adminSuffix',
               );
               expect(find.byType(TabBar), findsNothing);
               await tester.tap(find.byTooltip('Open navigation menu'));
-              await tester.pumpAndSettle();
-              await tester.tap(find.byKey(const ValueKey('nav-health')));
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
+              final health = find.byKey(const ValueKey('nav-health'));
+              await tester.scrollUntilVisible(
+                health,
+                200,
+                scrollable: find.descendant(
+                  of: find.byType(Drawer),
+                  matching: find.byType(Scrollable),
+                ),
+              );
+              await Scrollable.ensureVisible(
+                tester.element(health),
+                alignment: .5,
+              );
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
+              expect(health.hitTestable(), findsOneWidget);
+              await tester.tap(health);
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
+              expect(find.byType(HermesHealthContent), findsOneWidget);
               await _capture(
                 tester,
                 '${brightness.name}-administration-health$adminSuffix',
               );
               await tester.binding.handlePopRoute();
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               expect(controller.current!.chat, same(chat));
               await tester.scrollUntilVisible(
                 find.byKey(const ValueKey('nav-settings')),
@@ -451,14 +676,14 @@ void main() {
                 ),
               );
               await tester.tap(find.byKey(const ValueKey('nav-settings')));
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               await _capture(tester, '${brightness.name}-settings$adminSuffix');
               await tester.scrollUntilVisible(
                 find.text('While your agent is working'),
                 200,
                 scrollable: find.byType(Scrollable).last,
               );
-              await tester.pumpAndSettle();
+              await tester.pumpAndSettle(const Duration(milliseconds: 250));
               await _capture(
                 tester,
                 '${brightness.name}-settings-actions$adminSuffix',
@@ -473,8 +698,8 @@ void main() {
     testWidgets('${brightness.name} control and intelligence specimens', (
       tester,
     ) async {
-      await tester.binding.setSurfaceSize(const Size(420, 1000));
-      addTearDown(() => tester.binding.setSurfaceSize(null));
+      _viewport(tester, const Size(420, 1000));
+      addTearDown(tester.view.reset);
       final theme = wingTheme(brightness);
       await tester.pumpWidget(
         RepaintBoundary(
@@ -589,7 +814,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       await _capture(tester, '${brightness.name}-controls');
       const choice = ModelChoice(provider: 'openai', model: 'gpt-6-astra');
       await tester.pumpWidget(
@@ -600,11 +825,13 @@ void main() {
             theme: theme,
             home: Scaffold(
               body: ChatIntelligenceSheet(
+                onCommit: (_) async => true,
                 choices: const [
                   choice,
                   ModelChoice(provider: 'anthropic', model: 'claude-opus'),
                 ],
                 initialChoice: choice,
+                initialFastMode: ChatFastMode.normal,
                 initialReasoningEffort: 'high',
                 defaultModel: choice.model,
                 profileName: 'personal',
@@ -617,7 +844,7 @@ void main() {
           ),
         ),
       );
-      await tester.pumpAndSettle();
+      await tester.pumpAndSettle(const Duration(milliseconds: 250));
       await _capture(tester, '${brightness.name}-intelligence');
     });
   }

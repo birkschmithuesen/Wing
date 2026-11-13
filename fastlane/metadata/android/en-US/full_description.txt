@@ -12,7 +12,7 @@ USE YOUR PHONE
 Attach photos and files, share content from another app, dictate into an editable draft, and read replies aloud. Preview images, PDFs, Markdown, diagrams and supported media; save useful outputs through Android.
 
 RUN YOUR HERMES SETUP
-Manage profiles, models, MCP connectors and server-run scheduled tasks. Check health and diagnostics, explore usage and model trends, and choose a theme, accent color and text size that feel right.
+Give bot groups shared instructions, choose who responds and follow their progress. Manage profiles, model defaults, protected skills and MCP connectors. Schedule server-run work with a timezone and missed-run policy, deliver results to groups, or stop a run without disabling its schedule. Check health and diagnostics, explore usage and model trends, and choose a theme, accent color and text size that feel right.
 
 Wing connects to a compatible Hermes dashboard and Desktop Gateway that you operate or have permission to use. It does not run a model on your phone. Android 7.0 or newer is required; local on-device dictation needs Android 12 or newer and a supported speech service. Your server and model provider may have their own costs.
 

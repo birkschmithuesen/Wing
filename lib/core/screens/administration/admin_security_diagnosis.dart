@@ -1,3 +1,4 @@
+import '../../widgets/selection_viewport.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/security_audit_report.dart';
@@ -104,29 +105,37 @@ class AdminSecurityDiagnosis extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              SelectableText(
-                                '${findings[i].package} ${findings[i].version}',
-                                style: theme.textTheme.titleMedium,
+                              viewportSelection(
+                                SelectableText(
+                                  '${findings[i].package} ${findings[i].version}',
+                                  style: theme.textTheme.titleMedium,
+                                ),
                               ),
                               const SizedBox(height: WingSpacing.xs),
-                              SelectableText(
-                                '${findings[i].component} · ${findings[i].advisory}',
-                                style: theme.textTheme.bodySmall,
+                              viewportSelection(
+                                SelectableText(
+                                  '${findings[i].component} · ${findings[i].advisory}',
+                                  style: theme.textTheme.bodySmall,
+                                ),
                               ),
                               if (findings[i].description
                                   case final description?) ...[
                                 const SizedBox(height: WingSpacing.sm),
-                                SelectableText(
-                                  description,
-                                  style: theme.textTheme.bodyMedium,
+                                viewportSelection(
+                                  SelectableText(
+                                    description,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
                                 ),
                               ],
                               if (findings[i].fixedIn case final fixedIn?) ...[
                                 const SizedBox(height: WingSpacing.sm),
-                                SelectableText(
-                                  'Fixed in: $fixedIn',
-                                  style: theme.textTheme.bodyMedium?.copyWith(
-                                    color: tokens.muted,
+                                viewportSelection(
+                                  SelectableText(
+                                    'Fixed in: $fixedIn',
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: tokens.muted,
+                                    ),
                                   ),
                                 ),
                               ],
@@ -157,7 +166,7 @@ class AdminSecurityDiagnosis extends StatelessWidget {
                 children: [
                   Align(
                     alignment: Alignment.centerLeft,
-                    child: SelectableText(report.notices),
+                    child: viewportSelection(SelectableText(report.notices)),
                   ),
                 ],
               ),

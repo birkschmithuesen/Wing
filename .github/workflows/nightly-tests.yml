@@ -1,0 +1,248 @@
+name: Nightly Exhaustive Tests
+
+on:
+  schedule:
+    - cron: '0 19 * * *' # 03:00 Singapore time.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-tests-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  exhaustive:
+    name: Host, tooling and architecture proofs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.47.9'
+          channel: 'stable'
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Test release and runner tooling
+        run: python3 -m unittest discover -s scripts/tests -v
+
+      - name: Test offline QA tooling
+        run: python3 -m unittest discover -s tools/qa -p 'test_*.py' -v
+
+      - name: Install transport fixture dependencies
+        run: python3 -m pip install -r tools/fake_gateway/requirements.txt
+
+      - name: Test transport fixture boundaries
+        run: python3 -m unittest tools.fake_gateway.test_fixture_boundaries -v
+
+      - name: Static analysis
+        run: flutter analyze --no-pub --fatal-infos
+
+      - name: Check current Dart source
+        run: python3 scripts/check_commit_linters.py --dart-only
+
+      - name: Complete exhaustive test suite
+        run: python3 scripts/test.py --full --skip-linters
+
+      - name: Check workspace search owner fixtures
+        run: dart run tools/architecture/tests/workspace_search_owner_test.dart
+      - name: Canonical profile discovery writer fixtures
+        run: dart run tools/architecture/tests/profile_discovery_writer_test.dart
+      - name: Saved-prompt journal admission fixtures
+        run: dart run tools/architecture/tests/saved_prompt_journal_admission_test.dart
+      - name: Retired answer versions namespace fixtures
+        run: dart run tools/architecture/tests/retired_answer_versions_namespace_test.dart
+      - name: Compact activity density fixtures
+        run: dart run tools/architecture/tests/activity_density_test.dart
+      - name: Current stock tool event fixtures
+        run: dart run tools/architecture/tests/current_tool_events_test.dart
+
+      - name: Test opt-in instrumentation
+        run: flutter test --no-pub --dart-define=WING_PERF_INSTRUMENTATION=true test/performance_instrumentation_test.dart test/markdown_inline_parser_test.dart test/markdown_parse_worker_test.dart test/background_markdown_content_test.dart test/background_markdown_message_test.dart
+
+      - name: Verify release disables instrumentation
+        run: |
+          mkdir -p build
+          dart compile exe -DWING_PERF_INSTRUMENTATION=true -DWING_QA_MARKDOWN_VARIANT=baseline tools/qa/check_release_instrumentation.dart -o build/release-instrumentation-probe
+          build/release-instrumentation-probe
+
+      - name: Preserve full host verdicts and explicit skips
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
+        with:
+          name: nightly-host-results
+          path: |
+            /tmp/wing-host-tests-*/summary.json
+            /tmp/wing-host-tests-*/source-before.json
+            /tmp/wing-host-tests-*/source-after.json
+            /tmp/wing-host-tests-*/plan.json
+          if-no-files-found: warn
+          retention-days: 7
+
+  catalog:
+    name: Enroll every native test family
+    runs-on: ubuntu-24.04
+    outputs:
+      families: ${{ steps.catalog.outputs.families }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - id: catalog
+        run: python3 scripts/test_nightly_native.py --matrix
+
+  native:
+    name: Android — ${{ matrix.family }}
+    needs: catalog
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        family: ${{ fromJSON(needs.catalog.outputs.families) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Prepare Android runner storage
+        uses: ./.github/actions/prepare-native-runner
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Android SDK
+        timeout-minutes: 15
+        run: python3 scripts/install_android_sdk.py "platform-tools" "platforms;android-36" "build-tools;36.0.0" "emulator" "system-images;android-36;google_apis;x86_64"
+      - name: Enable emulator acceleration
+        run: sudo chmod a+rw /dev/kvm
+      - name: Expose Android tools to native drivers
+        run: echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          cache-read-only: true
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.3'
+          package-manager-cache: false
+      - run: flutter pub get
+      - name: Set up supported stock Hermes Python
+        if: matrix.family == 'stock-hermes'
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.14'
+      - name: Prepare current unmodified Hermes
+        if: matrix.family == 'stock-hermes'
+        run: |
+          git -c credential.helper= clone --depth 1 --branch main https://github.com/NousResearch/hermes-agent.git "$RUNNER_TEMP/hermes"
+          cd "$RUNNER_TEMP/hermes"
+          HERMES_HOME="$RUNNER_TEMP/hermes-home" HERMES_RUNTIME_DIR="$RUNNER_TEMP/hermes-runtime" \
+            python3 -m pm.build_env --source . --out .venv --extra web
+      - name: Run the complete selected native family
+        env:
+          NIGHTLY_FAMILY: ${{ matrix.family }}
+        run: python3 scripts/test_nightly_native.py "$NIGHTLY_FAMILY" --hermes-source "$RUNNER_TEMP/hermes"
+      - name: Preserve verdicts and diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.0
+        with:
+          name: nightly-native-${{ matrix.family }}
+          path: |
+            build/sdk-install/
+            build/nightly-native/
+            build/large-html-review/
+          if-no-files-found: error
+          retention-days: 7
+
+  platform:
+    name: Android JVM and native source proofs
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install pinned Android SDK
+        timeout-minutes: 15
+        run: python3 scripts/install_android_sdk.py "platforms;android-36" "build-tools;36.0.0"
+      - name: Preserve SDK install diagnostics
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sdk-install-platform
+          path: build/sdk-install/
+          if-no-files-found: warn
+          retention-days: 7
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+        with:
+          cache-provider: basic
+          cache-read-only: true
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.47.9'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Compile Android and prepare Gradle dependencies
+        run: flutter build apk --debug --no-pub
+      - name: Native JVM boundaries
+        run: ./android/gradlew -p android :app:testDebugUnitTest --no-daemon
+      - name: Every current source guard including native proofs
+        run: python3 scripts/check_commit_linters.py
+      - name: Prove native share guard
+        run: python3 tools/architecture/native_share/prove_boundary.py
+      - name: Prove native notification guard
+        run: python3 tools/architecture/native_notification/prove_boundary.py
+      - name: Prove native retired declarations
+        run: python3 tools/architecture/native_notification/prove_declarations.py
+      - name: Prove native voice guard
+        run: python3 tools/architecture/native_voice/prove_boundary.py
+
+  renderer:
+    name: Browser renderer isolation
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/test-diagram-preview
+
+  complete:
+    name: Nightly catalog result
+    if: always()
+    needs: [exhaustive, catalog, native, platform, renderer]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require every family to finish successfully
+        env:
+          NIGHTLY_RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PYTHON'
+          import json, os
+          results = json.loads(os.environ['NIGHTLY_RESULTS'])
+          failed = [name for name, value in results.items() if value['result'] != 'success']
+          if failed:
+              raise SystemExit('Nightly incomplete or failed: ' + ', '.join(failed))
+          print('Every enrolled host, tooling, native and renderer job passed.')
+          PYTHON

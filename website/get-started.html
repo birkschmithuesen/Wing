@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Install the Android app, connect your Hermes server or Cloud instance, and choose a profile. Wing is free, with every feature included.">
+<title>Connect Wing to Hermes · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html">Recents</a>
+<a href="live-work.html">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html" aria-current="page">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<div>
+<h1 id="guide-title">Your first chat<br> with Hermes</h1>
+<p>Connect Wing to your Hermes, then pick up the conversation on your phone.</p>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing for Android</a>
+</div>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside>
+<nav class="guide-toc" aria-label="On this page">
+<a href="#need">1. Install Wing</a>
+<a href="#connect">2. Connect Hermes</a>
+<a href="#navigator">3. Start a chat</a>
+<a href="#wing-plugin">Optional: live voice and email drafts</a>
+<a href="#connection-help">Need a hand?</a>
+</nav>
+</aside>
+<div class="guide-copy">
+<section id="need" aria-labelledby="need-title">
+<h2 id="need-title">1. Install Wing</h2>
+<p>You need an Android 7.0+ phone and a working Hermes Cloud instance or your own Hermes server.</p>
+<p><a href="https://github.com/tarkilhk/Wing/releases/latest">Download the latest APK</a> and open it on your phone. Choose <strong>arm64-v8a</strong> for most phones. Allow installation when Android asks.</p>
+<p>Need a Hermes server first? Start with the <a href="https://github.com/tarkilhk/Wing/blob/main/docs/SELF_HOSTING.md">self-hosting guide</a>.</p>
+</section>
+<section id="connect" aria-labelledby="connect-title">
+<h2 id="connect-title">2. Connect Hermes</h2>
+<p>Open Wing and tap <strong>Connect your agent</strong>. Choose <strong>Hermes Cloud</strong> to sign in with Nous Portal and select your instance, or <strong>Use an address</strong> for your own server.</p>
+<div class="setup-gallery">
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-choose-dark.png" aria-label="Enlarge screenshot: Wing connection screen offering Hermes Cloud or Use an address"><img src="assets/screenshots/connection-choose-dark.png" width="780" height="1688" alt="Wing connection screen offering Hermes Cloud or Use an address" loading="lazy"></a>
+</div>
+<figcaption>Choose how to reach your Hermes.</figcaption>
+</figure>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-address-dark.png" aria-label="Enlarge screenshot: Wing setup asking for the Hermes gateway Webapp address"><img src="assets/screenshots/connection-address-dark.png" width="780" height="1688" alt="Wing setup asking for the Hermes gateway Webapp address" loading="lazy"></a>
+</div>
+<figcaption>Using your own server? Enter its gateway Webapp address, then your login if required.</figcaption>
+</figure>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-check-dark.png" aria-label="Enlarge screenshot: Wing showing successful profile, live chat and history checks"><img src="assets/screenshots/connection-check-dark.png" width="780" height="1688" alt="Wing showing successful profile, live chat and history checks" loading="lazy"></a>
+</div>
+<figcaption>Check connection shows each result. Completed results stay valid for five minutes as you move between cards, unless connection details change.</figcaption>
+</figure>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/connection-verified-dark.png" aria-label="Enlarge screenshot: Wing verified connection ready to name and save"><img src="assets/screenshots/connection-verified-dark.png" width="780" height="1688" alt="Wing verified connection ready to name and save" loading="lazy"></a>
+</div>
+<figcaption>After the checks pass, use Next or swipe to the final card. Name the instance, then tap the checkmark to save and open it.</figcaption>
+</figure>
+</div>
+<p>Use an address that opens in your phone’s browser. Most setups can leave <strong>Custom setup</strong> alone.</p>
+</section>
+<section id="navigator" aria-labelledby="navigator-title">
+<h2 id="navigator-title">3. Start a chat</h2>
+<p>Choose a profile in Chats, create a conversation and send your first message. Try “Give me three ideas for a quick lunch.”</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/conversation-dark.png" aria-label="Enlarge screenshot: A Wing conversation with an agent reply and message composer"><img src="assets/screenshots/conversation-dark.png" width="780" height="1688" alt="A Wing conversation with an agent reply and message composer" loading="lazy"></a>
+</div>
+<figcaption>You’re connected. Keep chatting, or come back to the conversation later.</figcaption>
+</figure>
+<p>Next, explore <a href="bots.html">bots and group discussions</a> or <a href="recents.html">switch between conversations with Recents</a>.</p>
+</section>
+<section id="wing-plugin" aria-labelledby="wing-plugin-title">
+<h2 id="wing-plugin-title">Optional: live voice and email drafts</h2>
+<p>Once connected, open <strong>App settings → Hermes → Wing plugin</strong> to install and enable the <a href="wing-plugin.html">Wing plugin for Hermes</a> on your server in the profiles you use. It adds <a href="voice.html">live voice conversations</a> and <a href="results.html#email">email draft cards</a>. The Android update alone does not install it, and ordinary text chats do not require it.</p>
+<p>For voice, choose ChatGPT subscription or separately billed OpenAI API access in App settings. Email drafts need neither a voice subscription nor an email account connection to Hermes. <a href="https://github.com/tarkilhk/Wing/blob/main/docs/WING_PLUGIN.md">Follow the plugin setup guide</a>.</p>
+</section>
+<section id="connection-help" aria-labelledby="connection-help-title">
+<h2 id="connection-help-title">Need a hand?</h2>
+<details>
+<summary>The connection check failed</summary>
+<p>Open the dashboard address in your phone’s browser and check your network or VPN. Use your Hermes dashboard login, not a model-provider API key.</p>
+<p>If profiles load but chat or history fails, use the current Hermes gateway Webapp address. A standalone dashboard can load profiles without supporting Wing's chat and history contract. The <a href="https://github.com/tarkilhk/Wing/blob/main/docs/SELF_HOSTING.md">server setup guide</a> covers the details.</p>
+</details>
+<details id="good-to-know">
+<summary>Notifications, offline use and backups</summary>
+<p>Allow background battery use for screen-off notifications, and reopen Wing after restarting your phone. Android restrictions or network loss can interrupt delivery.</p>
+<p>Hermes can continue accepted work while you’re offline. New messages need a connection; some recently loaded chats remain readable.</p>
+<p>Configuration backups include connections and preferences, with optional encryption. Chats stay on Hermes; drafts and queues are excluded. Read the <a href="https://github.com/tarkilhk/Wing/blob/main/CHANGELOG.md">upgrade notes</a> before updating.</p>
+</details>
+<details id="privacy">
+<summary>Where does my data go?</summary>
+<p>Your chosen Hermes server and model providers process your content. Live voice sends audio directly to OpenAI, along with relevant chat context and task results. The Wing maintainer does not relay your conversations. Connection details and preferences stay on your device.</p>
+<a class="text-link" href="https://github.com/tarkilhk/Wing/blob/main/PRIVACY.md">Privacy policy</a>
+</details>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="workspaces.html">Profiles and projects</a>
+<a class="text-link" href="recents.html">Multitask with Recents</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>

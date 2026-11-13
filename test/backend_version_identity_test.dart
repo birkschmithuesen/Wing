@@ -1,3 +1,5 @@
+import 'package:shared_preferences/shared_preferences.dart';
+import 'support/backend_update_channel_fixture.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -6,6 +8,7 @@ import 'package:wing/core/services/backend_update_controller.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   BackendUpdateController controller(ScopedGet read) {
     final result = BackendUpdateController(
       ProfileGateway(
@@ -14,6 +17,7 @@ void main() {
         rpc: (_, _) async => {},
         discover: () => throw UnimplementedError(),
       ),
+      store: backendUpdateStoreFixture(),
     );
     addTearDown(result.dispose);
     return result;
@@ -57,10 +61,27 @@ void main() {
     'failed refresh retains identity but clears update eligibility',
     () async {
       var offline = false;
-      final version = controller((endpoint, _) async {
+      final source = BackendUpdateChannelFixture();
+      final version = controller((endpoint, query) async {
         if (offline) throw StateError('offline');
+        if (endpoint == 'hermes/update/check') source.fetchedAt++;
+        final metadata = source.read(endpoint, query);
+        if (metadata != null) {
+          if (endpoint == 'profiles') {
+            return {
+              'profiles': [
+                {'name': 'default', 'path': BackendUpdateChannelFixture.home},
+              ],
+            };
+          }
+          return metadata;
+        }
         return endpoint == 'health'
-            ? {'ok': true, 'version': '1.2.3'}
+            ? {
+                'ok': true,
+                'version': '1.2.3',
+                'commit': BackendUpdateChannelFixture.currentSha,
+              }
             : {
                 'current_version': '1.2.3',
                 'update_available': true,

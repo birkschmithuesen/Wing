@@ -1,0 +1,11 @@
+{
+  "name": "wing-diagram-preview-tests",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "test": "node ../test-diagram-preview.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "1.58.2"
+  }
+}

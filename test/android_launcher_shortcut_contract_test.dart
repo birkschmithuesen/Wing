@@ -61,7 +61,7 @@ void main() {
   });
 
   test(
-    'Wing release and development builds have distinct application IDs',
+    'Wing release, development and performance QA use distinct application IDs',
     () async {
       final gradle = await File('android/app/build.gradle.kts').readAsString();
       expect(
@@ -69,7 +69,12 @@ void main() {
         contains('variant.applicationId.set("com.tarkilhk.wing")'),
       );
       expect(gradle, contains('manifestPlaceholders["appLabel"] = "Wing"'));
-      expect(gradle, contains('applicationIdSuffix = ".dev"'));
+      expect(gradle, contains('else ".dev"'));
+      expect(gradle, contains('applicationIdSuffix = ".perfqa"'));
+      expect(
+        gradle,
+        contains('manifestPlaceholders["appLabel"] = "Wing Perf QA"'),
+      );
       expect(gradle, contains('applicationId.set(variant.applicationId)'));
       expect(gradle, contains('addGeneratedSourceDirectory'));
       expect(gradle, isNot(contains('wing_application_id')));

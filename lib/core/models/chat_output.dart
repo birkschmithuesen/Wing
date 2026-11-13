@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:markdown/markdown.dart' as md;
+
 import 'media_reference.dart';
 
 enum ChatOutputKind { image, file, link }
@@ -147,8 +149,6 @@ bool _looksLikeExplicitFileTarget(String value) {
       !leaf.startsWith('#');
 }
 
-final _markdownImage = RegExp(r'!\[([^\]]*)\]\(([^)\s]+)\)');
-final _markdownLink = RegExp(r'\[([^\]]+)\]\(([^)\s]+)\)');
 final _media = RegExp(mediaReferencePattern, caseSensitive: false);
 final _url = RegExp(r'''https?://[^\s<>"')]+''');
 final _unixPath = RegExp(
@@ -227,15 +227,34 @@ void _collectText(String text, _AddOutput add) {
   for (final match in _media.allMatches(text)) {
     add(mediaReferenceTarget(match.group(1) ?? ''), explicit: true);
   }
-  for (final match in _markdownImage.allMatches(text)) {
-    add(match.group(2) ?? '', explicit: true);
-  }
-  for (final match in _markdownLink.allMatches(text)) {
-    final start = match.start;
-    if (start == 0 || text[start - 1] != '!') {
-      add(match.group(2) ?? '', explicit: true);
+  // Code can describe API routes, commands or examples. Only explicit MEDIA
+  // above is delivery intent inside code; never scan code as implicit files.
+  final prose = StringBuffer();
+  void visit(md.Node node) {
+    if (node is md.Text) {
+      prose.writeln(node.text);
+      return;
+    }
+    if (node is! md.Element || node.tag == 'code' || node.tag == 'pre') return;
+    final target = switch (node.tag) {
+      'a' => node.attributes['href'],
+      'img' => node.attributes['src'],
+      _ => null,
+    };
+    if (target != null) add(target, explicit: true);
+    for (final child in node.children ?? const <md.Node>[]) {
+      visit(child);
     }
   }
+
+  final document = md.Document(
+    extensionSet: md.ExtensionSet.gitHubFlavored,
+    encodeHtml: false,
+  );
+  for (final node in document.parse(text)) {
+    visit(node);
+  }
+  text = prose.toString();
   for (final match in _url.allMatches(text)) {
     add(match.group(0) ?? '');
   }

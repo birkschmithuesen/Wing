@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/utils/message_content.dart';
+import '../integration_test/support/message_content.dart';
 
 void main() {
   group('messageContentToText', () {
@@ -30,8 +30,11 @@ void main() {
       );
     });
 
-    test('handles null and unknown structured content safely', () {
+    test('missing content renders no text', () {
       expect(messageContentToText(null), '');
+    });
+
+    test('unknown structured content identifies its unsupported type', () {
       expect(
         messageContentToText([
           {'type': 'custom_part', 'payload': 42},
@@ -41,13 +44,10 @@ void main() {
     });
 
     test('normalises JSON-escaped newlines in string content', () {
-      expect(
-        messageContentToText(r'first\nsecond'),
-        'first\nsecond'.replaceAll(r'\n', '\n'),
-      );
+      expect(messageContentToText(r'first\nsecond'), 'first\nsecond');
     });
 
-    test('detects and strips raw Hermes tool result wrappers', () {
+    test('detects an assistant row containing a raw tool wrapper', () {
       final toolMessage = {
         'role': 'assistant',
         'content':
@@ -55,7 +55,18 @@ void main() {
       };
 
       expect(isToolResultMessage(toolMessage), isTrue);
-      expect(stripToolResultText(toolMessage['content']!), '');
+    });
+
+    test('removes a tool-only wrapper from answer text', () {
+      expect(
+        stripToolResultText(
+          '<untrusted_tool_result source="web_extract">raw</untrusted_tool_result>',
+        ),
+        '',
+      );
+    });
+
+    test('retains surrounding answer text when removing a tool wrapper', () {
       expect(
         stripToolResultText(
           'Here is the answer.\n<untrusted_tool_result>raw</untrusted_tool_result>\nDone.',

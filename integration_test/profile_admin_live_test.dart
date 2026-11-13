@@ -1,13 +1,22 @@
+import 'dart:convert';
+
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/hermes_profile.dart';
+import 'package:wing/core/models/profile_identity_edit.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/profile_identity_edit_session.dart';
+import 'package:wing/core/services/administration_repository.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 import 'package:wing/core/screens/administration/admin_identity_page.dart';
+import 'package:wing/core/widgets/studio_form_actions.dart';
 
 /// Opt-in UI acceptance against the disposable android-qa-a profile.
 ///
@@ -27,6 +36,8 @@ void main() {
     port: port,
     dashboardPortOverride: port,
     apiKey: '',
+    dashboardUsername: const String.fromEnvironment('HERMES_TEST_USERNAME'),
+    dashboardPassword: const String.fromEnvironment('HERMES_TEST_PASSWORD'),
   );
 
   WorkspaceScope scope(String identity) => WorkspaceScope(
@@ -35,12 +46,17 @@ void main() {
     profileName: 'android-qa-a',
   );
 
-  Future<ProfileWorkspaceController> controller() async {
+  Future<ProfileWorkspaceController> controller(
+    SharedPreferences preferences,
+    AppPreferences appPreferences,
+  ) async {
     final result = ProfileWorkspaceController(
       connectionIdentity: 'profile-admin-controller',
-      connection: connection(),
-      preferences: await SharedPreferences.getInstance(),
+      access: ConnectionAccess(connection: connection(), dashboardOAuth: null),
+      preferences: preferences,
+      appPreferences: appPreferences,
     );
+    addTearDown(result.dispose);
     await result.initialize();
     await result.switchProfile('android-qa-a');
     expect(result.error, isNull);
@@ -57,35 +73,52 @@ void main() {
     final deadline = DateTime.now().add(Duration(seconds: seconds));
     while (!condition() && DateTime.now().isBefore(deadline)) {
       await tester.pump(const Duration(milliseconds: 200));
+      expect(tester.takeException(), isNull);
     }
     expect(condition(), isTrue, reason: diagnostic?.call());
   }
 
-  Future<Map<String, dynamic>> describe(ProfileGateway gateway) async {
-    final result = await gateway.call('profiles.describe', {
-      'name': 'android-qa-a',
-    });
-    expect(result['name'], 'android-qa-a');
-    expect(result['description'], isA<String>());
-    expect(result['soul'], isA<String>());
+  Future<ProfileIdentityObservation> describe(
+    ProfileAdministration profile,
+  ) async {
+    final result = await profile.loadIdentity();
+    expect(result.issues, isEmpty);
+    expect(result.values.keys, containsAll(ProfileIdentityField.values));
     return result;
   }
 
   Future<void> configure(
-    ProfileGateway gateway, {
+    ProfileAdministration profile, {
     required String description,
     required String soul,
   }) async {
-    await gateway.requireProfile();
-    final result = await gateway.call('profiles.configure', {
-      'name': 'android-qa-a',
-      'description': description,
-      'soul': soul,
-    });
-    expect(result['ok'], true);
-    expect(result['applied'], isA<Map>());
-    expect(result['applied']['description'], true);
-    expect(result['applied']['soul'], true);
+    final opening = await describe(profile);
+    final result = await profile.saveIdentity(
+      ProfileIdentityEditIntent(
+        baseline: opening.values,
+        wanted: {
+          ProfileIdentityField.description: description,
+          ProfileIdentityField.soul: soul,
+        },
+      ),
+      canDispatch: () => true,
+      onDispatched: (_) {},
+    );
+    expect(
+      result.fields.keys,
+      containsAll([
+        ProfileIdentityField.description,
+        ProfileIdentityField.soul,
+      ]),
+    );
+    expect(
+      result.fields.values.every(
+        (field) =>
+            field.disposition == ProfileIdentityWriteDisposition.confirmed ||
+            field.disposition == ProfileIdentityWriteDisposition.converged,
+      ),
+      isTrue,
+    );
   }
 
   testWidgets(
@@ -93,9 +126,12 @@ void main() {
     (tester) async {
       expect(port, greaterThan(0), reason: 'Supply HERMES_TEST_PORT');
       SharedPreferences.setMockInitialValues({});
-      final workspace = await controller();
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final workspace = await controller(preferences, appPreferences);
       final verifier = ProfileGateway.forConnection(
-        connection(),
+        ConnectionAccess(connection: connection(), dashboardOAuth: null),
         scope('profile-admin-project-verifier'),
       );
       final nonce = DateTime.now().microsecondsSinceEpoch;
@@ -105,44 +141,46 @@ void main() {
       Object? cleanupFailure;
       try {
         await verifier.connect();
-        final folders = await workspace.current!.gateway
-            .discoverProjectFolders();
-        expect(
-          folders,
-          isNotEmpty,
-          reason: 'Hermes must expose one disposable repository root',
-        );
+        final folder = await verifier.files.directory(null);
+        expect(folder.path, isNotEmpty);
         await tester.pumpWidget(
           MaterialApp(home: ProfileWorkspaceScreen(controller: workspace)),
         );
         await tester.pumpAndSettle();
 
-        await tester.tap(find.byTooltip('Workspace options'));
+        await tester.tap(find.byTooltip('Chat list options'));
         await tester.pumpAndSettle();
         await tester.tap(find.text('New project'));
         await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('chat-menu-android-qa-a')));
+        await until(
+          tester,
+          () => find
+              .byKey(const ValueKey('project-name-field'))
+              .hitTestable()
+              .evaluate()
+              .isNotEmpty,
+        );
         await tester.enterText(
-          find.descendant(
-            of: find.byType(AlertDialog),
-            matching: find.byType(TextField),
-          ),
+          find.byKey(const ValueKey('project-name-field')),
           initialName,
         );
-        await tester.pump();
-        final nameContinue = find.widgetWithText(TextButton, 'Continue');
-        expect(tester.widget<TextButton>(nameContinue).onPressed, isNotNull);
-        await tester.tap(nameContinue);
+        await tester.tap(find.byKey(const ValueKey('project-choose-folder')));
+        await until(
+          tester,
+          () => find
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is IconButton &&
+                    widget.tooltip == 'Use this folder' &&
+                    widget.onPressed != null,
+              )
+              .evaluate()
+              .isNotEmpty,
+        );
+        await tester.tap(find.byKey(const ValueKey('project-folder-continue')));
         await tester.pumpAndSettle();
-        await tester.enterText(
-          find.byKey(const ValueKey('project-folder-path')),
-          folders.first.path,
-        );
-        await tester.pump();
-        final folderContinue = find.byKey(
-          const ValueKey('project-folder-continue'),
-        );
-        expect(tester.widget<TextButton>(folderContinue).onPressed, isNotNull);
-        await tester.tap(folderContinue);
+        await tester.tap(find.byKey(const ValueKey('project-create-confirm')));
         await until(
           tester,
           () =>
@@ -184,66 +222,108 @@ void main() {
         createdId = created['id'] as String;
         expect(
           created['primary_path'].toString().replaceAll('\\', '/'),
-          folders.first.path.replaceAll('\\', '/'),
+          folder.path.replaceAll('\\', '/'),
         );
 
         Finder actions() => find.descendant(
-          of: find.byKey(ValueKey('project-$createdId')),
+          of: find.byKey(ValueKey('project-android-qa-a-$createdId')),
           matching: find.byTooltip('Project actions'),
         );
         await tester.tap(actions());
         await tester.pumpAndSettle();
-        await tester.tap(find.byKey(const ValueKey('project-action-rename')));
+        await tester.tap(
+          find.byKey(const ValueKey('project-action-editProject')),
+        );
         await tester.pumpAndSettle();
         await tester.enterText(
           find.byKey(const ValueKey('project-name-field')),
           renamed,
         );
-        await tester.tap(find.byKey(const ValueKey('project-rename-save')));
-        await until(
-          tester,
-          () =>
-              find
-                  .byKey(const ValueKey('project-rename-save'))
-                  .evaluate()
-                  .isEmpty &&
-              workspace.current!.projects.any(
-                (row) => row['id'] == createdId && row['name'] == renamed,
-              ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(actions());
-        await tester.pumpAndSettle();
-        await tester.tap(
-          find.byKey(const ValueKey('project-action-appearance')),
-        );
-        await tester.pumpAndSettle();
         await tester.ensureVisible(
           find.byKey(const ValueKey('project-color-9')),
         );
         await tester.tap(find.byKey(const ValueKey('project-color-9')));
+        await tester.tap(find.byKey(const ValueKey('project-choose-icon')));
+        await tester.pumpAndSettle();
         await tester.ensureVisible(
           find.byKey(const ValueKey('project-icon-rocket')),
         );
         await tester.tap(find.byKey(const ValueKey('project-icon-rocket')));
+        await tester.tap(find.byTooltip('Use selected icon'));
+        await tester.pumpAndSettle();
         await tester.ensureVisible(
-          find.byKey(const ValueKey('project-appearance-save')),
+          find.byKey(const ValueKey('project-edit-confirm')),
         );
-        await tester.tap(find.byKey(const ValueKey('project-appearance-save')));
+        await tester.tap(find.byKey(const ValueKey('project-edit-confirm')));
         await until(
           tester,
           () =>
               find
-                  .byKey(const ValueKey('project-appearance-save'))
+                  .byKey(const ValueKey('project-edit-confirm'))
                   .evaluate()
                   .isEmpty &&
               workspace.current!.projects.any(
                 (row) =>
                     row['id'] == createdId &&
+                    row['name'] == renamed &&
                     row['color'] == 'hsl(270 68% 58%)' &&
                     row['icon'] == 'rocket',
               ),
+          diagnostic: () {
+            final confirm = find.byKey(const ValueKey('project-edit-confirm'));
+            final projects = workspace.current!.projects
+                .where((row) => row['id'] == createdId)
+                .map(
+                  (row) => {
+                    'id': row['id'],
+                    'name': row['name'],
+                    'color': row['color'],
+                    'icon': row['icon'],
+                  },
+                )
+                .toList();
+            final state = {
+              'editorPresent': confirm.evaluate().isNotEmpty,
+              'confirmHitTestable': confirm.hitTestable().evaluate().isNotEmpty,
+              'formActions': tester
+                  .widgetList<StudioFormActions>(
+                    find.ancestor(
+                      of: confirm,
+                      matching: find.byType(StudioFormActions),
+                    ),
+                  )
+                  .map(
+                    (actions) => {
+                      'pending': actions.busy,
+                      'confirmEnabled': actions.onConfirm != null,
+                    },
+                  )
+                  .toList(),
+              'formFields': {
+                for (final key in [
+                  'project-name-field',
+                  'project-folder-field',
+                ])
+                  key: tester
+                      .widgetList<TextField>(find.byKey(ValueKey(key)))
+                      .map((field) => field.controller?.text)
+                      .toList(),
+              },
+              'localFailure': tester
+                  .widgetList<Text>(
+                    find.descendant(
+                      of: find.byKey(const ValueKey('project-save-error')),
+                      matching: find.byType(Text),
+                    ),
+                  )
+                  .map((text) => text.data)
+                  .toList(),
+              'workspaceError': workspace.error?.toString(),
+              'projectsError': workspace.current?.projectsError?.toString(),
+              'projects': projects,
+            };
+            return 'Project save state: ${jsonEncode(state)}';
+          },
         );
         await tester.pumpAndSettle();
 
@@ -254,7 +334,7 @@ void main() {
         expect(reloaded['icon'], 'rocket');
         expect(
           reloaded['primary_path'].toString().replaceAll('\\', '/'),
-          folders.first.path.replaceAll('\\', '/'),
+          folder.path.replaceAll('\\', '/'),
         );
 
         await tester.tap(actions());
@@ -285,14 +365,21 @@ void main() {
           for (final row in owned) {
             final id = row['id'];
             if (id is String && id.isNotEmpty) {
-              await verifier.deleteProject(id);
+              await verifier.deleteProject(id, canDispatch: () => true);
             }
           }
+          expect(
+            (await verifier.projects()).where(
+              (row) => row['name'] == initialName || row['name'] == renamed,
+            ),
+            isEmpty,
+            reason: 'Nonce-owned projects must be removed after cleanup',
+          );
         } catch (error) {
           cleanupFailure = error;
         } finally {
+          await tester.pumpWidget(const SizedBox.shrink());
           verifier.close();
-          workspace.dispose();
         }
         if (cleanupFailure != null) {
           fail('Project live cleanup failed: $cleanupFailure');
@@ -308,21 +395,25 @@ void main() {
     (tester) async {
       expect(port, greaterThan(0), reason: 'Supply HERMES_TEST_PORT');
       SharedPreferences.setMockInitialValues({});
-      final editorGateway = ProfileGateway.forConnection(
-        connection(),
-        scope('profile-admin-editor'),
+      final editorStatus = ServerConnectionStatus(connection().label);
+      final verifierStatus = ServerConnectionStatus(connection().label);
+      final editorServer = AdministrationRepository.forConnection(
+        ConnectionAccess(connection: connection(), dashboardOAuth: null),
+        'profile-admin-editor',
+        connectionStatus: editorStatus,
       );
-      final verifier = ProfileGateway.forConnection(
-        connection(),
-        scope('profile-admin-editor-verifier'),
+      final verifierServer = AdministrationRepository.forConnection(
+        ConnectionAccess(connection: connection(), dashboardOAuth: null),
+        'profile-admin-editor-verifier',
+        connectionStatus: verifierStatus,
       );
+      final editorProfile = editorServer.profile('android-qa-a');
+      final verifierProfile = verifierServer.profile('android-qa-a');
       final nonce = DateTime.now().microsecondsSinceEpoch;
-      Map<String, dynamic>? original;
+      ProfileIdentityObservation? original;
       Object? cleanupFailure;
       try {
-        await editorGateway.connect();
-        await verifier.connect();
-        original = await describe(verifier);
+        original = await describe(verifierProfile);
         final description = 'Android live description $nonce';
         final soul = 'Android live SOUL $nonce\nPreserve this newline.\n';
         await tester.pumpWidget(
@@ -333,8 +424,8 @@ void main() {
                   child: FilledButton(
                     onPressed: () => showAdminIdentityEditor(
                       context,
-                      gateway: editorGateway,
-                      connectionLabel: connection().label,
+                      createSession: () =>
+                          ProfileIdentityEditSession(editorProfile),
                     ),
                     child: const Text('Edit profile'),
                   ),
@@ -359,8 +450,8 @@ void main() {
           find.byKey(const ValueKey('profile-soul-field')),
           soul,
         );
-        await tester.ensureVisible(find.text('Save'));
-        await tester.tap(find.text('Save'));
+        await tester.ensureVisible(find.byTooltip('Save changes'));
+        await tester.tap(find.byTooltip('Save changes'));
         await until(
           tester,
           () => find
@@ -369,26 +460,35 @@ void main() {
               .isEmpty,
         );
 
-        final reloaded = await describe(verifier);
-        expect(reloaded['description'], description);
-        expect(reloaded['soul'], soul);
+        final reloaded = await describe(verifierProfile);
+        expect(reloaded.values[ProfileIdentityField.description], description);
+        expect(reloaded.values[ProfileIdentityField.soul], soul);
       } finally {
         try {
           if (original != null) {
             await configure(
-              verifier,
-              description: original['description'] as String,
-              soul: original['soul'] as String,
+              verifierProfile,
+              description: original.values[ProfileIdentityField.description]!,
+              soul: original.values[ProfileIdentityField.soul]!,
             );
-            final restored = await describe(editorGateway);
-            expect(restored['description'], original['description']);
-            expect(restored['soul'], original['soul']);
+            final restored = await describe(editorProfile);
+            expect(
+              restored.values[ProfileIdentityField.description],
+              original.values[ProfileIdentityField.description],
+            );
+            expect(
+              restored.values[ProfileIdentityField.soul],
+              original.values[ProfileIdentityField.soul],
+            );
           }
         } catch (error) {
           cleanupFailure = error;
         } finally {
-          verifier.close();
-          editorGateway.close();
+          await tester.pumpWidget(const SizedBox.shrink());
+          verifierServer.close();
+          editorServer.close();
+          verifierStatus.dispose();
+          editorStatus.dispose();
         }
         if (cleanupFailure != null) {
           fail('Profile editor live cleanup failed: $cleanupFailure');

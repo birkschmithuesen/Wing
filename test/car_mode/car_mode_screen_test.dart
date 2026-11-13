@@ -11,6 +11,7 @@ import 'package:wing/car_mode/car_mode_screen.dart';
 import 'package:wing/car_mode/car_mode_session.dart';
 import 'package:wing/car_mode/car_mode_state.dart';
 import 'package:wing/core/controllers/voice_input_controller.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/voice_offline/headphone_route.dart';
 import '../support/voice_fixture.dart';
@@ -46,19 +47,23 @@ void main() {
   late _World world;
   late List<String> logs;
   late CarModeSession session;
+  late AppPreferences appPreferences;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(prefs);
     device = VoiceDeviceFixture();
     world = _World();
     logs = [];
     session = CarModeSession(
       device: device,
+      screenBuilder: (session) => CarModeScreen(session: session),
       log: logs.add,
       bridge: CarModeBridge(
         changes: world,
         read: () => world.snapshot,
         preferences: prefs,
+        appPreferences: appPreferences,
         talk: () async => world.calls.add('talk'),
         sendNow: () async => world.calls.add('sendNow'),
         stopSpeech: () async => world.calls.add('stopSpeech'),
@@ -70,6 +75,7 @@ void main() {
   });
   tearDown(() async {
     session.dispose();
+    appPreferences.dispose();
     await device.stream.close();
   });
 

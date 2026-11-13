@@ -1,0 +1,138 @@
+{
+  "cases": [
+    {
+      "name": "canonical media pause and stopped foreground retirement",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "original direct permission cancellation inside pause",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { permissions.cancel(); capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 1,
+      "line": 5
+    },
+    {
+      "name": "permission retirement moved behind new helper invoked by pause",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { retirePermission(); capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 1,
+      "line": 5
+    },
+    {
+      "name": "retirement forwarded by onPause",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.leaveForeground() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 1,
+      "line": 4
+    },
+    {
+      "name": "onStop dispatch missing as original activity",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 1,
+      "line": 2
+    },
+    {
+      "name": "conditional onStop dispatch is not unconditional owner forwarding",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { if (ready) voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 1,
+      "line": 5
+    },
+    {
+      "name": "explicit current-instance receivers",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { this.voiceChannel?.pause() }\n fun onStop() { this.voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { this.capture.pause(); this.playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "unrelated same names and receivers",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { other.pause(); voiceChannel?.pause() }\n fun onStop() { other.leaveForeground(); voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n",
+        "Other.kt": "package elsewhere\nclass VoiceChannel { fun pause() { permissions.cancel() } }"
+      },
+      "exit": 0
+    },
+    {
+      "name": "comments and literal strings are not calls",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { /* permissions.cancel() */ val text = \"permissions.cancel()\"; capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 0
+    },
+    {
+      "name": "local media receiver shadow fails closed",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { val capture = other; capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "canonical namespace missing fails closed",
+      "sources": {
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "canonical namespace ambiguous fails closed",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n",
+        "Duplicate.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "malformed Kotlin input",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "class VoiceChannel { fun pause( }"
+      },
+      "exit": 2
+    },
+    {
+      "name": "foreign import aliases cannot impersonate canonical channel field",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nimport other.Channel as VoiceChannel\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "media field spellings cannot impersonate captured media owners",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n private val capture = OtherCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    },
+    {
+      "name": "nested type cannot impersonate captured media owner",
+      "sources": {
+        "MainActivity.kt": "package com.tarkilhk.wing\nclass MainActivity {\n private var voiceChannel: VoiceChannel? = null\n fun onPause() { voiceChannel?.pause() }\n fun onStop() { voiceChannel?.leaveForeground() }\n}\n",
+        "VoiceChannel.kt": "package com.tarkilhk.wing\nclass VoiceChannel {\n class VoiceCapture {}\n private val capture = VoiceCapture()\n private val playback = VoicePlayback()\n fun pause() { capture.pause(); playback.stop() }\n fun leaveForeground() { permissions.cancel(); pause() }\n}\n"
+      },
+      "exit": 2
+    }
+  ]
+}

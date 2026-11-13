@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/hermes_profile.dart';
-import 'package:wing/core/services/profile_color_store.dart';
+import 'package:wing/core/models/profile_colors.dart';
+import 'package:wing/core/services/profile_colors_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/theme/profile_colors.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/profile_selector.dart';
@@ -13,7 +15,13 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
-    final colors = ProfileColorStore(preferences, 'connection-a');
+    final owner = AppPreferences(preferences);
+    addTearDown(owner.dispose);
+    final colors = ProfileColorsSession(
+      preferences: owner,
+      connectionIdentity: 'connection-a',
+    )..updateProfiles(['work', 'default']);
+    addTearDown(colors.dispose);
     String? selected;
     await tester.pumpWidget(
       MaterialApp(
@@ -26,7 +34,10 @@ void main() {
             ],
             selectedProfile: 'default',
             onSelected: (name) => selected = name,
-            colors: colors,
+            createColors: () => ProfileColorsSession(
+              preferences: owner,
+              connectionIdentity: 'connection-a',
+            ),
           ),
         ),
       ),
@@ -39,7 +50,10 @@ void main() {
     expect(find.byKey(const ValueKey('profile-color-11')), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('profile-color-8')));
     await tester.pumpAndSettle();
-    expect(colors.read('work'), 8);
+    expect(
+      colors.state.value.profiles['work']!.selected,
+      ProfileColorChoice.blue,
+    );
     expect(selected, isNull);
     expect(desktopProfileSwatches.length, 12);
 
@@ -47,7 +61,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('profile-color-automatic')));
     await tester.pumpAndSettle();
-    expect(colors.read('work'), isNull);
+    expect(
+      colors.state.value.profiles['work']!.selected,
+      ProfileColorChoice.automatic,
+    );
     await tester.tap(find.byKey(const ValueKey('profile-work')));
     expect(selected, 'work');
   });
@@ -57,18 +74,39 @@ void main() {
     () async {
       SharedPreferences.setMockInitialValues({});
       final preferences = await SharedPreferences.getInstance();
-      final first = ProfileColorStore(preferences, 'connection-a');
-      expect(await first.write('work', 3), isTrue);
-      expect(ProfileColorStore(preferences, 'connection-a').read('work'), 3);
+      final owner = AppPreferences(preferences);
+      addTearDown(owner.dispose);
+      ProfileColorsSession reopen(String identity) {
+        final session = ProfileColorsSession(
+          preferences: owner,
+          connectionIdentity: identity,
+        )..updateProfiles(['work', 'default']);
+        addTearDown(session.dispose);
+        return session;
+      }
+
+      final first = reopen('connection-a');
+      final choice = first.beginChoice('work')!;
+      expect(await choice.choose(ProfileColorChoice.lime), isNull);
+      choice.dispose();
       expect(
-        ProfileColorStore(preferences, 'connection-b').read('work'),
-        isNull,
+        reopen('connection-a').state.value.profiles['work']!.selected,
+        ProfileColorChoice.lime,
       );
-      expect(first.read('default'), isNull);
-      expect(await first.write('work', null), isTrue);
       expect(
-        ProfileColorStore(preferences, 'connection-a').read('work'),
-        isNull,
+        reopen('connection-b').state.value.profiles['work']!.selected,
+        ProfileColorChoice.automatic,
+      );
+      expect(
+        first.state.value.profiles['default']!.selected,
+        ProfileColorChoice.automatic,
+      );
+      final automatic = first.beginChoice('work')!;
+      expect(await automatic.choose(ProfileColorChoice.automatic), isNull);
+      automatic.dispose();
+      expect(
+        reopen('connection-a').state.value.profiles['work']!.selected,
+        ProfileColorChoice.automatic,
       );
     },
   );
@@ -79,6 +117,13 @@ void main() {
     tester.view.physicalSize = const Size(320, 640);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
+    SharedPreferences.setMockInitialValues({});
+    final owner = AppPreferences(await SharedPreferences.getInstance());
+    addTearDown(owner.dispose);
+    ProfileColorsSession createColors() => ProfileColorsSession(
+      preferences: owner,
+      connectionIdentity: 'connection-a',
+    );
     final page = ScrollController(initialScrollOffset: 100);
     addTearDown(page.dispose);
     final profiles = List.generate(
@@ -101,6 +146,7 @@ void main() {
                     const SizedBox(height: 200),
                     ProfileSelector(
                       profiles: profiles,
+                      createColors: createColors,
                       selectedProfile: selected,
                       onSelected: (_) {},
                     ),

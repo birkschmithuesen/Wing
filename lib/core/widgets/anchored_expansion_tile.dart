@@ -3,9 +3,20 @@ import 'package:flutter/rendering.dart';
 
 /// Lets a reversed transcript hold the disclosure header in place during layout.
 class ExpansionAnchorNotification extends Notification {
-  ExpansionAnchorNotification(this.anchor);
+  ExpansionAnchorNotification(
+    this.anchor, {
+    required this.allowBottomGap,
+    this.preserveHeader = true,
+  });
 
   final BuildContext anchor;
+
+  /// Live outer activity reveals its growing body in the reversed transcript.
+  final bool preserveHeader;
+
+  /// Expansion/tab selection can hold a control above the natural bottom.
+  /// Collapse must remove that reserved space once the content shrinks.
+  final bool allowBottomGap;
 }
 
 class AnchoredExpansionTile extends StatelessWidget {
@@ -15,9 +26,11 @@ class AnchoredExpansionTile extends StatelessWidget {
     this.subtitle,
     this.leading,
     this.trailing,
+    this.showTrailingIcon = true,
     this.children = const [],
     this.initiallyExpanded = false,
     this.maintainState = false,
+    this.anchorExpansion = true,
     this.minTileHeight,
     this.tilePadding,
     this.childrenPadding,
@@ -31,9 +44,11 @@ class AnchoredExpansionTile extends StatelessWidget {
   final Widget? subtitle;
   final Widget? leading;
   final Widget? trailing;
+  final bool showTrailingIcon;
   final List<Widget> children;
   final bool initiallyExpanded;
   final bool maintainState;
+  final bool anchorExpansion;
   final double? minTileHeight;
   final EdgeInsetsGeometry? tilePadding;
   final EdgeInsetsGeometry? childrenPadding;
@@ -49,6 +64,7 @@ class AnchoredExpansionTile extends StatelessWidget {
       subtitle: subtitle,
       leading: leading,
       trailing: trailing,
+      showTrailingIcon: showTrailingIcon,
       initiallyExpanded: initiallyExpanded,
       maintainState: maintainState,
       minTileHeight: minTileHeight,
@@ -58,7 +74,11 @@ class AnchoredExpansionTile extends StatelessWidget {
       collapsedShape: collapsedShape,
       expandedCrossAxisAlignment: expandedCrossAxisAlignment,
       onExpansionChanged: (expanded) {
-        ExpansionAnchorNotification(context).dispatch(context);
+        ExpansionAnchorNotification(
+          context,
+          allowBottomGap: expanded,
+          preserveHeader: anchorExpansion,
+        ).dispatch(context);
         onExpansionChanged?.call(expanded);
       },
       children: children,

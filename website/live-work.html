@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Watch tool calls and delegated agents while a reply streams. Send a correction during a run, queue a follow-up, or stop the run.">
+<title>Live chat and activity · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html">Recents</a>
+<a href="live-work.html" aria-current="page">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<div>
+<h1 id="guide-title">Follow and steer<br> live work</h1>
+</div>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside>
+<nav class="guide-toc" aria-label="On this page">
+<a href="#activity">Watch tools and delegated agents</a>
+<a href="#steer">Steer, queue, stop or fork</a>
+<a href="#details">Inspect tool requests and results</a>
+<a href="#voice">Talk while your agent works</a>
+<a href="#input">Compose with files, voice and skills</a>
+<a href="#context">Context, questions and code review</a>
+<a href="#draft">Return to your draft</a>
+<a href="#connection">Reconnect to ongoing work</a>
+</nav>
+</aside>
+<div class="guide-copy">
+<section id="activity" aria-labelledby="activity-title">
+<h2 id="activity-title">Watch tools and delegated agents</h2>
+<p>As an answer streams, readable reasoning separates collapsed <strong>Activity</strong> runs. Open a run to inspect its tools. Its elapsed timer counts upward until the next reasoning block arrives, then stays fixed.</p>
+<p>The <strong>Tasks / Subagents</strong> bar above your draft opens current work. Swipe up once to open compactly, up again to expand, and down to close. Swipe sideways between the drawers; the summary stays visible while rows scroll.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/activity-dark.png" aria-label="Enlarge screenshot: Wing Activity with Timeline selected beside Tasks and Agents tabs"><img src="assets/screenshots/activity-dark.png" width="780" height="1688" alt="Wing Activity with Timeline selected beside Tasks and Agents tabs" loading="lazy"></a>
+</div>
+</figure>
+<p>Open a subagent to read its task, conversation and available live output. Where supported, steer it or request interruption from the same view; your parent chat and draft stay selected.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/agents-light.png" aria-label="Enlarge screenshot: Wing delegated agent detail with task and live output"><img src="assets/screenshots/agents-light.png" width="780" height="1688" alt="Wing delegated agent detail with task and live output" loading="lazy"></a>
+</div>
+</figure>
+<p>Completed children move into the parent answer's saved Activity when its turn ends; unfinished background agents remain in the current drawer. Past answers retain received tools, reasoning and agent results. Historical agents have no live controls.</p>
+</section>
+<section id="steer" aria-labelledby="steer-title">
+<h2 id="steer-title">Steer, queue, stop or fork</h2>
+<p>To change direction while the agent is working, type an instruction and hold the send control. Slide to <strong>Steer</strong> to send it now, or <strong>Queue</strong> to save it for later. Hermes runs accepted queued messages even after Wing disconnects. Edit a still-queued message to replace it at the tail, or use its supported steer and cancel controls.</p>
+<p><strong>Stop</strong> interrupts the active run. It appears in an empty composer; typing brings back Send and the held actions. You can also edit saved messages or regenerate answers. <strong>Restore</strong> in a saved user message's footer asks for confirmation, then removes later history and reruns that prompt. Your separate draft stays intact and queued follow-ups pause for review.</p>
+<figure class="guide-shot guide-inline-shot ">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/steer-dark.png" aria-label="Enlarge screenshot: Wing held composer menu with Steer selected during live work"><img src="assets/screenshots/steer-dark.png" width="780" height="1688" alt="Wing held composer menu with Steer selected during live work" loading="lazy"></a>
+</div>
+</figure>
+<p>To explore another direction, choose <strong>Fork</strong> from a selected saved answer's footer. Wing creates a separate chat through that answer, keeping the original conversation available. Fork is available once the source chat is idle. The new chat opens immediately with loading feedback; later replies in the original are not included.</p>
+</section>
+<section id="details" aria-labelledby="details-title">
+<h2 id="details-title">Inspect tool requests and results</h2>
+<p>Expand a tool call to see what was requested and what it returned. Code execution shows code and output. Other calls can show file contents, changes, search matches or structured data.</p>
+<p>Copy the code or output separately, wrap long lines, or open a full view. File and image results have preview and share actions. Raw details shows the supplied inputs and output.</p>
+<p>Completed questions and approvals stay in Activity with their supplied answers and outcomes. A request answered on another client no longer remains open in Wing. Secret response values are not saved in that history.</p>
+<p>Timeline includes supplied reasoning. A saved reply's collapsed Activity header can show the time from its prompt to the final answer, including thinking and tool work. Individual tools show measured durations when available.</p>
+<figure class="guide-shot guide-inline-shot receipt-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/tool-dark.png" aria-label="Enlarge screenshot: Wing expanded tool receipt with Python code, output and copy controls"><img src="assets/screenshots/tool-dark.png" width="780" height="800" alt="Wing expanded tool receipt with Python code, output and copy controls" loading="lazy"></a>
+</div>
+</figure>
+</section>
+<section id="voice" aria-labelledby="voice-title">
+<h2 id="voice-title">Talk while your agent works</h2>
+<p>Use <strong>GPT Live with your ChatGPT subscription</strong>, or choose separately billed OpenAI API access. Start a conversation with the waveform icon beside the microphone in a connected ordinary chat or Bot Chat. Group discussions do not offer live voice. Speak with the selected profile's identity and saved context, ask Hermes to do work, and hear the result. Approvals and questions stay in the originating chat. The call remains attached to that conversation when you browse elsewhere.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/live-voice-dark.png" aria-label="Enlarge screenshot: Sample GPT Live conversation in Wing with its compact floating call card"><img src="assets/screenshots/live-voice-dark.png" width="780" height="1688" alt="Sample GPT Live conversation in Wing with spoken messages and the compact floating call card" loading="lazy"></a>
+</div>
+</figure>
+<p>Choose <strong>ChatGPT subscription</strong> or <strong>OpenAI API</strong> in <strong>App settings → Voice → Live conversation</strong>. Subscription mode uses that profile's ChatGPT sign-in and voice allowance; API mode has separate API billing. Both need the <a href="wing-plugin.html">Wing plugin for Hermes</a> installed and enabled on your server for the same profile.</p>
+<p>The compact floating call card shows the original chat title, duration, mute, audio routing and End voice. Enter another conversation to reveal its caption toggle and <strong>Return to voice chat</strong>. Returning hides those extra controls and resets captions off; the call stays connected.</p>
+<p>Choose a GPT-Live voice for each billing mode in App settings. Subscription voices have offline previews; API previews are not available yet. <a href="voice.html#voices">Choose and preview a voice</a>.</p>
+<p>Calls can continue while switching apps or locking the phone. Allow microphone and notification access, plus Bluetooth access for a headset. The Android notification also offers Mute and End voice.</p>
+<p>Ending voice or talking over a reply leaves Hermes work running. Say “stop the task” or use the chat's Stop control to cancel work. Incoming calls or loss of audio focus end the voice session.</p>
+<p>Spoken entries marked <strong>Not saved to Hermes</strong> stay available while Wing runs and disappear on app restart. Full spoken history awaits a supported Hermes recording operation; <a href="voice.html#history">see the limitation and upstream proposals</a>. Hermes task results are saved normally, under expandable <strong>Hermes task details</strong>. Audio goes directly to OpenAI, along with relevant context and results; credentials stay on Hermes.</p>
+<a class="text-link" href="https://github.com/tarkilhk/Wing/blob/main/docs/VOICE.md">Voice setup, controls and data handling</a>
+</section>
+<section id="input" aria-labelledby="input-title">
+<h2 id="input-title">Compose with files, voice and skills</h2>
+<p>Use <strong>Attach file</strong> to choose Camera, Photos or Files. Chats, Bot Chats and groups share the picker and image preview. You can also send content to Wing from another Android app. Review attachments before sending.</p>
+<p>Dictation writes into an editable draft, so you can check and change the words first.</p>
+<p>Type <strong>/</strong> after a space or on a new line to choose a skill while writing. Wing highlights the inserted skill name and loads its instructions when you send the message.</p>
+<p>Preview a skill from the suggestions or open it in chat to read its instructions and reference documents. Type <strong>@</strong> to browse server files and folders; selected files are read when the message sends, and unavailable references pause it for correction.</p>
+</section>
+<section id="context" aria-labelledby="context-title">
+<h2 id="context-title">Make room in a long conversation</h2>
+<p>In an idle chat, send <code>/compress --preview</code> to inspect the plan, then <code>/compress</code> or <code>/compact</code> to apply it. Wing refreshes the conversation and shows what changed. The context popup identifies a configured maximum when Hermes supplies it.</p>
+<p>When the agent asks several questions, review and answer them together before confirming. Eligible cut-off replies offer <strong>Continue</strong>, so you decide when to ask for the next part.</p>
+<p>For code work in a supported local workspace, open <strong>Chat actions → Git review</strong> to inspect changed files and staged changes, then copy a line or hunk reference. Review is read-only.</p>
+</section>
+
+<section id="draft" aria-labelledby="draft-title">
+<h2 id="draft-title">Return to your draft</h2>
+<p>Unsent text and attachments stay with their conversation when you switch chats, open another screen or restart Wing.</p>
+</section>
+<section id="connection" aria-labelledby="connection-title">
+<h2 id="connection-title">Reconnect to ongoing work</h2>
+<p>Work accepted by Hermes can continue while your phone is disconnected. Reconnect to follow it or send another instruction. New messages and live controls need a connection.</p>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="recents.html">Find running chats</a>
+<a class="text-link" href="results.html">Read and export results</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html">Get connected</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>

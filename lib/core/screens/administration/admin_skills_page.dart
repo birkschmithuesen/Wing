@@ -1,86 +1,124 @@
-import '../../widgets/studio_action_label.dart';
+import '../../widgets/selection_viewport.dart';
+import '../../widgets/studio_form_actions.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../../widgets/activity/activity_detail_actions.dart';
+import '../../widgets/activity/skill_document_viewer.dart';
 import 'package:flutter/material.dart';
+import '../../models/profile_skills.dart';
+import '../../presentation/skill_document.dart';
+import '../../theme/wing_theme.dart';
+import '../../services/profile_skills_session.dart';
+import '../../services/administration_operation_session.dart';
 import '../../widgets/compact_switch.dart';
-import '../../services/administration_repository.dart';
+import '../../widgets/read_recovery.dart';
 import 'admin_widgets.dart';
 import 'admin_operations_page.dart';
 
+Future<void> _showResult(
+  BuildContext context,
+  ProfileSkillsSession session,
+  AdministrationOperationSession operation,
+  String title,
+) => adminPush(
+  context,
+  (context) => AdminActionPage(
+    operation: operation,
+    title: title,
+    scope: session.scopeLabel,
+  ),
+);
+
 class AdminSkillLibraryPage extends StatefulWidget {
-  final ProfileAdministration profile;
-  const AdminSkillLibraryPage({super.key, required this.profile});
+  const AdminSkillLibraryPage({super.key, required this.createSession});
+  final ProfileSkillsSession Function() createSession;
   @override
   State<AdminSkillLibraryPage> createState() => _AdminSkillLibraryPageState();
 }
 
 class _AdminSkillLibraryPageState extends State<AdminSkillLibraryPage> {
+  late final _session = widget.createSession();
   final _search = TextEditingController();
+  String _query = '';
+  bool _usageOrder = false;
+  @override
+  void initState() {
+    super.initState();
+    _session.refresh();
+  }
+
   @override
   void dispose() {
+    _session.dispose();
     _search.dispose();
     super.dispose();
   }
 
-  String _query = '';
-  bool _usageOrder = false;
+  Future<void> _open(InstalledSkill skill) async {
+    final route = _session.openSkill(skill);
+    try {
+      await adminPush(
+        context,
+        (_) => AdminSkillDetail(session: _session, route: route),
+      );
+    } finally {
+      _session.releaseDetail(route);
+    }
+    await _session.refresh();
+  }
+
   @override
   Widget build(BuildContext context) => AdminPage(
     title: 'Skill library',
-    scope: widget.profile.label,
-    child: AdminLoad(
-      load: () => widget.profile.read('skills'),
-      builder: (context, data, refresh) {
-        final rows = administrationRows(data['data']);
-        if (_usageOrder) rows.sort((a, b) => _usage(b).compareTo(_usage(a)));
-        final matches = rows
-            .where(
-              (r) => '${r['name']} ${r['description']}'.toLowerCase().contains(
-                _query,
-              ),
-            )
-            .toList();
+    scope: _session.scopeLabel,
+    child: _SkillsRead(
+      session: _session,
+      retry: _session.refresh,
+      builder: (state) {
+        final rows = [...state.installed];
+        if (_usageOrder) rows.sort((a, b) => b.usage.compareTo(a.usage));
+        final matches = rows.where((s) => s.matches(_query)).toList();
         return ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            TextField(
-              controller: _search,
-              decoration: const InputDecoration(
-                labelText: 'Search installed skills',
+            viewportSelection(
+              TextField(
+                controller: _search,
+                decoration: const InputDecoration(
+                  labelText: 'Search installed skills',
+                ),
+                onChanged: (value) =>
+                    setState(() => _query = value.toLowerCase()),
               ),
-              onChanged: (v) => setState(() => _query = v.toLowerCase()),
             ),
             CompactSwitchListTile(
               contentPadding: EdgeInsets.zero,
               title: const Text('Order by recorded usage'),
               value: _usageOrder,
-              onChanged: (v) => setState(() => _usageOrder = v),
+              onChanged: (value) => setState(() => _usageOrder = value),
             ),
-            for (final row in matches)
-              ListTile(
-                title: Text('${row['name']}'),
-                subtitle: Text(
-                  '${row['provenance'] ?? 'Unknown origin'} · ${_usage(row)} recorded uses',
+            for (final skill in matches)
+              StudioButtonPress(
+                child: ListTile(
+                  title: Text(skill.name),
+                  subtitle: Text(
+                    '${skill.provenance} · ${skill.usage} recorded uses${skill.locked ? ' · Locked against agent edits' : ''}',
+                  ),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: state.canMutate ? () => _open(skill) : null,
                 ),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  await adminPushProfile(
-                    context,
-                    widget.profile,
-                    (context, profile) =>
-                        AdminSkillDetail(profile: profile, row: row),
-                  );
-                  refresh();
-                },
               ),
             if (rows.isEmpty)
               const AdminNotice('No skills reported for this profile.')
             else if (matches.isEmpty) ...[
               const AdminNotice('No installed skills match this search.'),
-              TextButton(
-                onPressed: () {
-                  _search.clear();
-                  setState(() => _query = '');
-                },
-                child: const Text('Clear search'),
+              StudioButtonPress(
+                child: TextButton(
+                  onPressed: () {
+                    _search.clear();
+                    setState(() => _query = '');
+                  },
+                  child: const Text('Clear search'),
+                ),
               ),
             ],
           ],
@@ -88,410 +126,409 @@ class _AdminSkillLibraryPageState extends State<AdminSkillLibraryPage> {
       },
     ),
   );
-  int _usage(Map<String, dynamic> row) {
-    final usage = row['usage'];
-    return usage is num
-        ? usage.toInt()
-        : usage is Map
-        ? (usage['count'] as num? ?? 0).toInt()
-        : 0;
-  }
 }
 
 class AdminSkillDetail extends StatefulWidget {
-  final ProfileAdministration profile;
-  final Map<String, dynamic> row;
-  const AdminSkillDetail({super.key, required this.profile, required this.row});
+  const AdminSkillDetail({
+    super.key,
+    required this.session,
+    required this.route,
+  });
+  final ProfileSkillsSession session;
+  final SkillDetailRoute route;
   @override
   State<AdminSkillDetail> createState() => _AdminSkillDetailState();
 }
 
 class _AdminSkillDetailState extends State<AdminSkillDetail> {
-  late final _name = widget.row['name'] as String;
-  bool _busy = false;
-  Future<void> _archive() async {
-    if (!await adminConfirm(
-      context,
-      'Archive $_name?',
-      'Move this local or learned skill out of the active skill library for ${widget.profile.name}.',
-      action: 'Archive',
-    )) {
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      await widget.profile.write('DELETE', 'learning/node', {'id': _name});
-      final rows = administrationRows(
-        (await widget.profile.read('skills'))['data'],
-      );
-      if (rows.any((r) => r['name'] == _name)) {
-        throw const AdministrationFailure('Archive could not be confirmed.');
-      }
-      if (mounted) Navigator.pop(context);
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
-    }
-    if (mounted) setState(() => _busy = false);
-  }
-
-  Future<void> _uninstall() async {
-    if (!await adminConfirm(
-      context,
-      'Uninstall $_name?',
-      'Remove this Hub skill from ${widget.profile.name}.',
-      action: 'Uninstall',
-    )) {
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final result = await widget.profile.write(
-        'POST',
-        'skills/hub/uninstall',
-        {'name': _name},
-      );
-      if (mounted) {
-        await adminPush(
-          context,
-          (context) => AdminActionPage(
-            server: widget.profile.server,
-            action: AdministrationAction.fromJson(result),
-            title: 'Uninstall skill',
-            scope: widget.profile.label,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
-    }
-    if (mounted) setState(() => _busy = false);
+  late final _session = widget.session;
+  late final _route = widget.route;
+  bool _initialReadPending = true;
+  @override
+  void initState() {
+    super.initState();
+    // The library still listens to this borrowed owner while Navigator builds
+    // the detail. Notify it only after that frame, keeping loading visible now.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _initialReadPending = false;
+      _session.loadDetail(_route);
+    });
   }
 
   @override
-  Widget build(BuildContext context) => AdminPage(
-    title: _name,
-    scope: widget.profile.label,
-    child: AdminLoad(
-      load: () => widget.profile.read('skills/content', {'name': _name}),
-      builder: (context, data, refresh) => ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          AdminNotice('Origin: ${widget.row['provenance'] ?? 'Unknown'}'),
-          SelectableText(data['content'] as String? ?? ''),
-          const SizedBox(height: 16),
-          if (widget.row['provenance'] == 'agent')
-            Wrap(
-              spacing: 8,
-              children: [
-                OutlinedButton(
-                  onPressed: _busy
-                      ? null
-                      : () async {
-                          await adminPushProfile(
-                            context,
-                            widget.profile,
-                            (context, profile) => AdminSkillEditor(
-                              profile: profile,
-                              name: _name,
-                              initial: data['content'] as String? ?? '',
-                            ),
-                          );
-                          refresh();
-                        },
-                  child: const Text('Edit instructions'),
-                ),
-                TextButton(
-                  onPressed: _busy ? null : _archive,
-                  child: const Text('Archive skill'),
-                ),
-              ],
+  void dispose() {
+    _session.releaseDetail(_route);
+    super.dispose();
+  }
+
+  Future<void> _edit() async {
+    final editor = _session.openEditor(_route);
+    try {
+      await adminPush(
+        context,
+        (_) =>
+            AdminSkillEditor(session: _session, route: editor, detail: _route),
+      );
+    } finally {
+      _session.releaseEditor(editor);
+    }
+    await _session.loadDetail(_route);
+  }
+
+  Future<void> _archive() async {
+    final removed = await _session.archive(
+      _route,
+      () => adminConfirm(
+        context,
+        'Archive ${_route.skill.name}?',
+        'Move this local or learned skill out of the active skill library for ${_session.profileName}.',
+        action: 'Archive',
+        actionIcon: Icons.archive_outlined,
+        destructive: true,
+      ),
+    );
+    if (!mounted) return;
+    if (removed) {
+      Navigator.pop(context);
+    } else if (_session.state.error case final error?) {
+      adminMessage(context, error, isError: true);
+    }
+  }
+
+  Future<void> _uninstall() => _session.uninstall(
+    _route,
+    confirm: () => adminConfirm(
+      context,
+      'Uninstall ${_route.skill.name}?',
+      'Remove this Hub skill from ${_session.profileName}.',
+      action: 'Uninstall',
+      actionIcon: Icons.delete_outline,
+      destructive: true,
+    ),
+    showResult: (operation) async {
+      if (mounted) {
+        await _showResult(context, _session, operation, 'Uninstall skill');
+      }
+    },
+  );
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _session,
+    builder: (context, _) {
+      final state = _session.state;
+      final instructions = state.instructions;
+      if (instructions == null) {
+        return AdminPage(
+          title: _route.skill.name,
+          scope: _session.scopeLabel,
+          child: _SkillsRead(
+            session: _session,
+            initialReadPending: _initialReadPending,
+            retry: () => _session.loadDetail(_route),
+            builder: (_) => const SizedBox.shrink(),
+          ),
+        );
+      }
+      final current = _session.currentSkill(_route) ?? _route.skill;
+      final document = SkillDocument.fromReceived(
+        name: instructions.name,
+        content: instructions.content,
+        sourcePath: instructions.sourcePath,
+        description: current.description,
+      );
+      return SkillDocumentViewer(
+        document: document,
+        createReader: () => _session.reader(document.readerTarget),
+        actions: [
+          ActivityDetailAction(
+            label: current.locked
+                ? 'Unlock agent edits'
+                : 'Lock against agent edits',
+            icon: current.locked
+                ? Icons.lock_outline
+                : Icons.lock_open_outlined,
+            onPressed: _session.canSetLocked(_route)
+                ? () async {
+                    await _session.setLocked(_route, !current.locked);
+                  }
+                : null,
+          ),
+          if (current.editable) ...[
+            ActivityDetailAction(
+              label: 'Edit instructions',
+              icon: Icons.edit_outlined,
+              onPressed: _session.canEdit(_route) ? _edit : null,
             ),
-          if (widget.row['provenance'] == 'hub')
-            TextButton(
-              onPressed: _busy ? null : _uninstall,
-              child: const Text('Uninstall Hub skill'),
+            ActivityDetailAction(
+              label: 'Archive skill',
+              icon: Icons.archive_outlined,
+              onPressed: _session.canEdit(_route) ? _archive : null,
             ),
-          TextButton(
-            onPressed: _busy ? null : refresh,
-            child: const Text('Refresh'),
+          ],
+          if (current.uninstallable)
+            ActivityDetailAction(
+              label: 'Uninstall Hub skill',
+              icon: Icons.delete_outline,
+              onPressed: _session.canUninstall(_route) ? _uninstall : null,
+            ),
+          ActivityDetailAction(
+            label: 'Refresh skill',
+            icon: Icons.refresh,
+            onPressed: state.busy ? null : () => _session.loadDetail(_route),
           ),
         ],
-      ),
-    ),
+        bodyBuilder: (context, body) => StudioPageLoading(
+          active: state.saving || state.phase == SkillsPhase.reading,
+          label: state.saving ? 'Saving skill' : 'Refreshing skill',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: WingSpacing.md,
+                  vertical: WingSpacing.xs,
+                ),
+                child: Text(
+                  current.locked
+                      ? 'Locked against agent edits'
+                      : 'Agent edits are not locked',
+                ),
+              ),
+              Expanded(
+                child: _SkillsRead(
+                  session: _session,
+                  initialReadPending: _initialReadPending,
+                  retry: () => _session.loadDetail(_route),
+                  builder: (_) => body,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    },
   );
 }
 
 class AdminSkillEditor extends StatefulWidget {
-  final ProfileAdministration profile;
-  final String name, initial;
   const AdminSkillEditor({
     super.key,
-    required this.profile,
-    required this.name,
-    required this.initial,
+    required this.session,
+    required this.route,
+    required this.detail,
   });
+  final ProfileSkillsSession session;
+  final SkillEditorRoute route;
+  final SkillDetailRoute detail;
   @override
   State<AdminSkillEditor> createState() => _AdminSkillEditorState();
 }
 
 class _AdminSkillEditorState extends State<AdminSkillEditor> {
-  late final _input = TextEditingController(text: widget.initial);
-  late String _saved = widget.initial;
-  bool _busy = false;
-  bool _leave = false;
-  String? _error;
+  late final _session = widget.session;
+  late final _route = widget.route;
+  late final _detail = widget.detail;
+  late final _input = TextEditingController(text: _route.initial);
   @override
   void dispose() {
+    _session.releaseEditor(_route);
     _input.dispose();
     super.dispose();
   }
 
   Future<void> _close() async {
-    if (_busy) return;
-    if (_input.text != _saved &&
-        !await adminConfirm(
-          context,
-          'Discard instruction edits?',
-          'The unsaved instructions will be discarded.',
-          action: 'Discard',
-        )) {
-      return;
-    }
-    if (mounted) {
-      setState(() => _leave = true);
+    if (await _session.requestClose(
+          _route,
+          () => adminConfirm(
+            context,
+            'Discard instruction edits?',
+            'The unsaved instructions will be discarded.',
+            action: 'Discard',
+
+            actionIcon: Icons.delete_outline,
+            destructive: true,
+          ),
+        ) &&
+        mounted) {
       Navigator.pop(context);
     }
   }
 
   Future<void> _save() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final current = await widget.profile.read('skills/content', {
-        'name': widget.name,
-      });
-      if (current['content'] != _saved) {
-        throw const AdministrationFailure(
-          'Instructions changed on the server. Keep your draft and reopen the skill to review the changes.',
-        );
-      }
-      final result = await widget.profile.write('PUT', 'skills/content', {
-        'name': widget.name,
-        'content': _input.text,
-      });
-      if (result['success'] != true) {
-        throw const AdministrationFailure(
-          'Instruction save was not acknowledged.',
-        );
-      }
-      final after = await widget.profile.read('skills/content', {
-        'name': widget.name,
-      });
-      if (after['content'] != _input.text) {
-        throw const AdministrationFailure(
-          'Instruction save could not be confirmed. Your draft is kept.',
-        );
-      }
-      if (mounted) setState(() => _saved = _input.text);
-      if (mounted) {
-        adminMessage(context, 'Instructions saved for new sessions.');
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() => _error = administrationError(e, writing: true));
+    await _session.save(_route);
+    if (mounted) {
+      if (_session.state.notice case final notice?) {
+        adminMessage(context, notice);
       }
     }
-    if (mounted) setState(() => _busy = false);
   }
 
   @override
-  Widget build(BuildContext context) => PopScope(
-    canPop: _leave || (!_busy && _input.text == _saved),
-    onPopInvokedWithResult: (didPop, _) {
-      if (!didPop) _close();
-    },
-    child: AdminPage(
-      title: 'Edit ${widget.name}',
-      scope: widget.profile.label,
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: OverflowBar(
-            alignment: MainAxisAlignment.spaceBetween,
-            overflowAlignment: OverflowBarAlignment.end,
-            spacing: 8,
-            overflowSpacing: 8,
-            children: [
-              TextButton(
-                onPressed: _busy ? null : _close,
-                child: const Text('Close'),
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _session,
+    builder: (context, _) {
+      final state = _session.state;
+      return PopScope(
+        canPop: state.canPopEditor,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) _close();
+        },
+        child: AdminPage(
+          title: 'Edit ${_route.name}',
+          scope: _session.scopeLabel,
+          bottomNavigationBar: SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: StudioFormActions(
+                onCancel: state.busy ? null : _close,
+                onConfirm: state.canSave ? _save : null,
+                confirmLabel: 'Save skill',
+                busy: state.saving,
+                progressLabel: 'Saving skill',
               ),
-              FilledButton(
-                onPressed:
-                    _busy || _input.text == _saved || _input.text.trim().isEmpty
-                    ? null
-                    : _save,
-                child: StudioActionLabel('Save', busy: _busy),
+            ),
+          ),
+          child: Column(
+            children: [
+              if (state.error ?? state.edit?.validationError case final error?)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: AdminNotice.error(
+                      error,
+                      retry: state.busy
+                          ? null
+                          : () => _session.loadDetail(_detail),
+                    ),
+                  ),
+                ),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: viewportSelection(
+                    TextField(
+                      controller: _input,
+                      enabled: !state.busy,
+                      expands: true,
+                      minLines: null,
+                      maxLines: null,
+                      textAlignVertical: TextAlignVertical.top,
+                      decoration: const InputDecoration(
+                        labelText: 'Instructions',
+                      ),
+                      onChanged: (value) => _session.edit(_route, value),
+                    ),
+                  ),
+                ),
               ),
             ],
           ),
         ),
-      ),
-      child: Column(
-        children: [
-          if (_error != null)
-            Flexible(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: AdminNotice.error(_error!),
-              ),
-            ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: TextField(
-                controller: _input,
-                enabled: !_busy,
-                expands: true,
-                minLines: null,
-                maxLines: null,
-                textAlignVertical: TextAlignVertical.top,
-                decoration: const InputDecoration(labelText: 'Instructions'),
-                onChanged: (_) => setState(() {}),
-              ),
-            ),
-          ),
-        ],
-      ),
-    ),
+      );
+    },
   );
 }
 
 class AdminSkillHubPage extends StatefulWidget {
-  final ProfileAdministration profile;
-  const AdminSkillHubPage({super.key, required this.profile});
+  const AdminSkillHubPage({super.key, required this.createSession});
+  final ProfileSkillsSession Function() createSession;
   @override
   State<AdminSkillHubPage> createState() => _AdminSkillHubPageState();
 }
 
 class _AdminSkillHubPageState extends State<AdminSkillHubPage> {
-  String _query = '';
-  bool _busy = false;
-  Future<void> _update(VoidCallback refresh) async {
-    if (!await adminConfirm(
-      context,
-      'Update installed Hub skills?',
-      'Hermes will update installed Hub skills in ${widget.profile.name} as a group.',
-      action: 'Update skills',
-    )) {
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final result = await widget.profile.write('POST', 'skills/hub/update');
-      if (mounted) {
-        await adminPush(
-          context,
-          (context) => AdminActionPage(
-            server: widget.profile.server,
-            action: AdministrationAction.fromJson(result),
-            title: 'Update skills',
-            scope: widget.profile.label,
-          ),
-        );
-      }
-      refresh();
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
-    }
-    if (mounted) setState(() => _busy = false);
+  late final _session = widget.createSession();
+  @override
+  void initState() {
+    super.initState();
+    _session.refresh();
   }
 
   @override
+  void dispose() {
+    _session.dispose();
+    super.dispose();
+  }
+
+  Future<void> _open(HubSkill skill) async {
+    final route = _session.openPreview(skill);
+    try {
+      await adminPush(
+        context,
+        (_) => AdminSkillPreview(session: _session, route: route),
+      );
+    } finally {
+      _session.releasePreview(route);
+    }
+    await _session.refresh();
+  }
+
+  Future<void> _update() => _session.update(
+    confirm: () => adminConfirm(
+      context,
+      'Update installed Hub skills?',
+      'Hermes will update installed Hub skills in ${_session.profileName} as a group.',
+      action: 'Update skills',
+      actionIcon: Icons.system_update_alt,
+      destructive: false,
+    ),
+    showResult: (operation) async {
+      if (mounted) {
+        await _showResult(context, _session, operation, 'Update skills');
+      }
+    },
+  );
+  @override
   Widget build(BuildContext context) => AdminPage(
     title: 'Skill Hub',
-    scope: widget.profile.label,
+    scope: _session.scopeLabel,
     child: Column(
       children: [
         Padding(
           padding: const EdgeInsets.all(16),
-          child: TextField(
-            decoration: const InputDecoration(
-              labelText: 'Search catalogs',
-              helperMaxLines: 4,
-              helperText: 'Submit to search configured sources.',
+          child: viewportSelection(
+            TextField(
+              decoration: const InputDecoration(
+                labelText: 'Search catalogs',
+                helperMaxLines: 4,
+                helperText: 'Submit to search configured sources.',
+              ),
+              onSubmitted: (value) => _session.refresh(query: value),
             ),
-            onSubmitted: (v) => setState(() => _query = v.trim()),
           ),
         ),
         Expanded(
-          child: AdminLoad(
-            key: ValueKey(_query),
-            load: () => _query.isEmpty
-                ? widget.profile.read('skills/hub/official')
-                : widget.profile.read('skills/hub/search', {
-                    'q': _query,
-                    'limit': '30',
-                  }),
-            builder: (context, data, refresh) {
-              final rows = administrationRows(
-                _query.isEmpty ? data['skills'] : data['results'],
-              );
-              return ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  TextButton(
-                    onPressed: _busy ? null : () => _update(refresh),
+          child: _SkillsRead(
+            session: _session,
+            retry: _session.refresh,
+            builder: (state) => ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+                StudioButtonPress(
+                  child: TextButton(
+                    onPressed: state.canMutate ? _update : null,
                     child: const Text('Update installed Hub skills'),
                   ),
-                  if ((data['timed_out'] as List? ?? []).isNotEmpty)
-                    const AdminNotice(
-                      'Some sources did not respond. Showing partial results.',
-                    ),
-                  if (rows.isEmpty) const AdminNotice('No skills found.'),
-                  for (final row in rows)
-                    ListTile(
-                      title: Text('${row['name']}'),
-                      subtitle: Text(
-                        '${row['source'] ?? 'Official'} · ${row['description'] ?? ''}',
-                      ),
+                ),
+                if (state.partial)
+                  const AdminNotice(
+                    'Some sources did not respond. Showing partial results.',
+                  ),
+                if (state.catalog.isEmpty)
+                  const AdminNotice('No skills found.'),
+                for (final skill in state.catalog)
+                  StudioButtonPress(
+                    child: ListTile(
+                      title: Text(skill.name),
+                      subtitle: Text('${skill.source} · ${skill.description}'),
                       trailing: const Icon(Icons.chevron_right),
-                      onTap: () async {
-                        await adminPushProfile(
-                          context,
-                          widget.profile,
-                          (context, profile) => AdminSkillPreview(
-                            profile: profile,
-                            identifier: row['identifier'] as String,
-                          ),
-                        );
-                        refresh();
-                      },
+                      onTap: state.canMutate ? () => _open(skill) : null,
                     ),
-                ],
-              );
-            },
+                  ),
+              ],
+            ),
           ),
         ),
       ],
@@ -500,89 +537,165 @@ class _AdminSkillHubPageState extends State<AdminSkillHubPage> {
 }
 
 class AdminSkillPreview extends StatefulWidget {
-  final ProfileAdministration profile;
-  final String identifier;
   const AdminSkillPreview({
     super.key,
-    required this.profile,
-    required this.identifier,
+    required this.session,
+    required this.route,
   });
+  final ProfileSkillsSession session;
+  final SkillPreviewRoute route;
   @override
   State<AdminSkillPreview> createState() => _AdminSkillPreviewState();
 }
 
 class _AdminSkillPreviewState extends State<AdminSkillPreview> {
-  bool _busy = false;
-  Future<void> _install() async {
-    if (!await adminConfirm(
-      context,
-      'Install this skill?',
-      'Install ${widget.identifier} into ${widget.profile.name}. Review its source and instructions first.',
-      action: 'Install',
-    )) {
-      return;
-    }
-    setState(() => _busy = true);
-    try {
-      final result = await widget.profile.write('POST', 'skills/hub/install', {
-        'identifier': widget.identifier,
-      });
-      if (mounted) {
-        await adminPush(
-          context,
-          (context) => AdminActionPage(
-            server: widget.profile.server,
-            action: AdministrationAction.fromJson(result),
-            title: 'Install skill',
-            scope: widget.profile.label,
-          ),
-        );
-      }
-      final rows = administrationRows(
-        (await widget.profile.read('skills'))['data'],
-      );
-      if (mounted) {
-        adminMessage(
-          context,
-          'Inventory refreshed: ${rows.length} installed skills. Check the operation result above.',
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        adminMessage(
-          context,
-          administrationError(e, writing: true),
-          isError: true,
-        );
-      }
-    }
-    if (mounted) setState(() => _busy = false);
+  late final _session = widget.session;
+  late final _route = widget.route;
+  bool _initialReadPending = true;
+  @override
+  void initState() {
+    super.initState();
+    // Hub and preview share the owner, just like library and installed detail.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _initialReadPending = false;
+      _session.loadPreview(_route);
+    });
   }
 
   @override
-  Widget build(BuildContext context) => AdminPage(
-    title: 'Skill preview',
-    scope: widget.profile.label,
-    child: AdminLoad(
-      load: () => widget.profile.read('skills/hub/preview', {
-        'identifier': widget.identifier,
-      }),
-      builder: (context, data, refresh) => ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          Text(
-            '${data['name']}',
-            style: Theme.of(context).textTheme.titleLarge,
+  void dispose() {
+    _session.releasePreview(_route);
+    super.dispose();
+  }
+
+  Future<void> _install() => _session.install(
+    _route,
+    confirm: () => adminConfirm(
+      context,
+      'Install this skill?',
+      'Install ${_route.skill.identifier} into ${_session.profileName}. Review its source and instructions first.',
+      action: 'Install',
+      actionIcon: Icons.download_outlined,
+      destructive: false,
+    ),
+    showResult: (operation) async {
+      if (mounted) {
+        await _showResult(context, _session, operation, 'Install skill');
+      }
+    },
+  );
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: _session,
+    builder: (context, _) {
+      final state = _session.state;
+      final preview = state.preview;
+      if (preview == null) {
+        return AdminPage(
+          title: 'Skill preview',
+          scope: _session.scopeLabel,
+          child: _SkillsRead(
+            session: _session,
+            initialReadPending: _initialReadPending,
+            retry: () => _session.loadPreview(_route),
+            builder: (_) => const SizedBox.shrink(),
           ),
-          AdminNotice('${data['source']} · ${data['trust_level']}'),
-          SelectableText('${data['skill_md'] ?? ''}'),
-          const SizedBox(height: 16),
-          FilledButton(
-            onPressed: _busy ? null : _install,
-            child: StudioActionLabel('Install', busy: _busy),
+        );
+      }
+      final document = SkillDocument.fromReceived(
+        name: preview.name,
+        content: preview.content,
+        description: _route.skill.description,
+      );
+      return SkillDocumentViewer(
+        document: document,
+        actions: [
+          ActivityDetailAction(
+            label: 'Install skill',
+            icon: Icons.download_outlined,
+            busy: state.saving,
+            onPressed: state.canMutate ? _install : null,
           ),
         ],
-      ),
+        bodyBuilder: (context, body) => Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(WingSpacing.sm),
+              child: Text(
+                '${_session.scopeLabel} · ${preview.source} · ${preview.trust}',
+                style: WingTokens.of(context).typography.label.copyWith(
+                  color: WingTokens.of(context).muted,
+                ),
+              ),
+            ),
+            Expanded(
+              child: _SkillsRead(
+                session: _session,
+                initialReadPending: _initialReadPending,
+                retry: () => _session.loadPreview(_route),
+                builder: (_) => body,
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+  );
+}
+
+/// Read progress/recovery are presentation; the session decides retry eligibility.
+class _SkillsRead extends StatelessWidget {
+  const _SkillsRead({
+    required this.session,
+    required this.retry,
+    required this.builder,
+    this.initialReadPending = false,
+  });
+  final ProfileSkillsSession session;
+  final Future<void> Function() retry;
+  final Widget Function(ProfileSkillsState) builder;
+  final bool initialReadPending;
+  @override
+  Widget build(BuildContext context) => ReadRecovery(
+    shouldRetry: () => session.canRecoverRead,
+    retry: retry,
+    child: ListenableBuilder(
+      listenable: session,
+      builder: (context, _) {
+        final state = session.state;
+        return StudioLoadingRegion(
+          available: state.hasObservation,
+          busy:
+              initialReadPending ||
+              state.phase == SkillsPhase.reading ||
+              state.saving,
+          label: 'Loading skills',
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (state.error case final error?)
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: AdminNotice.error(
+                      error,
+                      retry: state.busy ? null : retry,
+                    ),
+                  ),
+                ),
+              if (state.notice case final notice?)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: AdminNotice(notice),
+                ),
+              if (state.hasObservation)
+                Expanded(key: const ValueKey('content'), child: builder(state)),
+            ],
+          ),
+        );
+      },
     ),
   );
 }

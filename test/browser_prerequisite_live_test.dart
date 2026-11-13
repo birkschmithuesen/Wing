@@ -1,3 +1,6 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,17 +18,24 @@ void main() {
       final overrides = HttpOverrides.current;
       HttpOverrides.global = null;
       SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final client = ProfileWorkspaceController(
         connectionIdentity: 'browser-prerequisite-qa',
-        connection: SavedConnection(
-          id: 'browser-prerequisite-qa',
-          label: 'Browser QA',
-          host: '127.0.0.1',
-          port: port,
-          dashboardPortOverride: port,
-          apiKey: '',
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'browser-prerequisite-qa',
+            label: 'Browser QA',
+            host: '127.0.0.1',
+            port: port,
+            dashboardPortOverride: port,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
-        preferences: await SharedPreferences.getInstance(),
+        preferences: preferences,
+        appPreferences: appPreferences,
       );
       ProfileChat? chat;
       var observedBrowser = false;
@@ -34,10 +44,10 @@ void main() {
         await client.initialize();
         expect(await client.switchProfile('android-qa-b'), isTrue);
         expect(client.error, isNull);
-        final owned = await client.createChat();
+        final owned = await client.createChat(canDispatch: () => true);
         chat = owned;
         client.addListener(() {
-          for (final tool in owned.toolActivities.where(
+          for (final tool in owned.runtime.toolActivities.where(
             (tool) => tool.name == 'browser_exec',
           )) {
             observedBrowser = true;
@@ -53,13 +63,14 @@ void main() {
         );
         await client.send(owned);
         final deadline = DateTime.now().add(const Duration(seconds: 55));
-        while (owned.busy && DateTime.now().isBefore(deadline)) {
+        while (owned.runtime.blocksTurnAdmission &&
+            DateTime.now().isBefore(deadline)) {
           await Future<void>.delayed(const Duration(milliseconds: 150));
         }
         // An unavailable runtime is a recorded prerequisite failure, not a UI pass.
         // ignore: avoid_print
         print(
-          'BROWSER_PREREQUISITE ${jsonEncode({'session': owned.key.sessionId, 'tool_observed': observedBrowser, 'turn_status': owned.status.name, 'tool_result': browserResult, 'turn_error': owned.error})}',
+          'BROWSER_PREREQUISITE ${jsonEncode({'session': owned.key.sessionId, 'tool_observed': observedBrowser, 'turn_status': owned.runtime.execution.name, 'tool_result': browserResult, 'turn_error': owned.runtime.error})}',
         );
         expect(
           observedBrowser,
@@ -74,11 +85,13 @@ void main() {
         final result = jsonDecode(browserResult!) as Map;
         expect(result['success'], isTrue);
         expect(result['exit_code'], 0);
-        expect(owned.status, ProfileTurnStatus.completed);
-        expect(owned.error, isNull);
+        expect(owned.runtime.execution, ChatExecution.completed);
+        expect(owned.runtime.error, isNull);
       } finally {
         try {
-          if (chat?.busy == true) await client.stop(chat!);
+          if (chat?.runtime.blocksTurnAdmission == true) {
+            await client.stop(chat!);
+          }
         } finally {
           client.dispose();
           HttpOverrides.global = overrides;

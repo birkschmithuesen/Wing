@@ -1,0 +1,10 @@
+#!/bin/sh
+set -eu
+
+root=$(git rev-parse --show-toplevel)
+toolchain_env=$(git config --local --get wing.toolchainEnv || true)
+if [ -n "$toolchain_env" ]; then
+    exec bash -c '. "$1"; exec python3 "$2" --staged' wing-hook \
+        "$toolchain_env" "$root/scripts/check_commit_linters.py"
+fi
+exec python3 "$root/scripts/check_commit_linters.py" --staged

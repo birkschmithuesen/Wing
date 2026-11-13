@@ -1,3 +1,4 @@
+import 'package:wing/core/models/transcript_message.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -6,6 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/theme/profile_markdown_style.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/widgets/profile_message.dart';
+
+import 'helpers/pump_markdown_widget.dart';
 
 const sample =
     '## Keep the review focused\n\n'
@@ -95,7 +98,7 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         final theme = profileWorkspaceTheme(ThemeData(brightness: brightness));
-        await tester.pumpWidget(
+        await tester.pumpMarkdownWidget(
           MaterialApp(
             debugShowCheckedModeBanner: false,
             theme: theme,
@@ -105,12 +108,15 @@ void main() {
               ).copyWith(textScaler: TextScaler.linear(scale)),
               child: child!,
             ),
-            home: const Scaffold(
+            home: Scaffold(
               body: SafeArea(
                 child: SingleChildScrollView(
                   padding: EdgeInsets.all(16),
                   child: ProfileMessage(
-                    message: {'role': 'assistant', 'content': sample},
+                    message: TranscriptMessage.fromRow({
+                      'role': 'assistant',
+                      'content': sample,
+                    }),
                   ),
                 ),
               ),
@@ -133,7 +139,12 @@ void main() {
         }
         expect(
           (tester
-                      .widget<MarkdownBody>(find.byType(MarkdownBody))
+                      .widget<MarkdownBody>(
+                        find.byWidgetPredicate(
+                          (widget) =>
+                              widget is MarkdownBody && widget.data == sample,
+                        ),
+                      )
                       .styleSheet!
                       .blockquoteDecoration!
                   as BoxDecoration)

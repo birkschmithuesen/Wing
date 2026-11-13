@@ -1,3 +1,5 @@
+import 'package:wing/core/services/ws_client.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -17,6 +19,7 @@ void main() {
     () async {
       final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
       final sockets = <WebSocket>[];
+      var authority = false;
       final subscription = server.listen((request) async {
         if (request.uri.path == '/api/ws') {
           final socket = await WebSocketTransformer.upgrade(request);
@@ -27,7 +30,9 @@ void main() {
               jsonEncode({
                 'jsonrpc': '2.0',
                 'id': rpc['id'],
-                'result': {'ok': true},
+                'result': rpc['method'] == 'session.list'
+                    ? {'sessions': []}
+                    : {'ok': true},
               }),
             );
           });
@@ -35,7 +40,10 @@ void main() {
             jsonEncode({
               'jsonrpc': '2.0',
               'method': 'event',
-              'params': {'type': 'gateway.ready', 'payload': {}},
+              'params': {
+                'type': 'gateway.ready',
+                'payload': {'session_authority': authority},
+              },
             }),
           );
           return;
@@ -55,7 +63,7 @@ void main() {
       );
       final status = ServerConnectionStatus('Claw');
       final chat = ProfileGateway.forConnection(
-        connection,
+        ConnectionAccess(connection: connection, dashboardOAuth: null),
         WorkspaceScope(
           connectionId: 'test',
           connectionIdentity: 'test',
@@ -63,7 +71,7 @@ void main() {
         ),
       )..connectionStatus = status;
       final administration = AdministrationRepository.forConnection(
-        connection,
+        ConnectionAccess(connection: connection, dashboardOAuth: null),
         'test',
         connectionStatus: status,
       );
@@ -78,7 +86,13 @@ void main() {
         await server.close(force: true);
       });
 
+      await expectLater(chat.connect(), throwsA(isA<JsonRpcError>()));
+      status.accessAvailable();
+      expect(status.phase, ServerConnectionPhase.disconnected);
+      expect(status.problem, contains('Webapp address'));
+      authority = true;
       await chat.connect();
+      expect(status.chatEndpointUnsupported, isFalse);
       final auxiliary = administration.gateway('work');
       await auxiliary.connect();
       expect(status.phase, ServerConnectionPhase.connected);
@@ -88,7 +102,7 @@ void main() {
       };
       await sockets.last.close();
       await interrupted.future.timeout(const Duration(seconds: 5));
-      expect(await chat.call('session.list'), {'ok': true});
+      expect(await chat.call('session.list'), {'sessions': []});
       expect(status.live, ConnectionAvailability.available);
       expect(status.phase, ServerConnectionPhase.connected);
 
@@ -100,7 +114,7 @@ void main() {
           chatInterrupted.complete();
         }
       };
-      await sockets.first.close();
+      await sockets[1].close();
       await chatInterrupted.future.timeout(const Duration(seconds: 5));
       expect(await auxiliary.call('tools.list'), {'ok': true});
       expect(status.live, ConnectionAvailability.unavailable);

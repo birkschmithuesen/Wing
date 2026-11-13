@@ -5,8 +5,41 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import zipfile
 
 from release import ROOT, current_version
+
+
+PERFORMANCE_MARKERS = (
+    b"wing.markdown.prepare",
+    b"wing.markdown.fence.scan",
+    b"markdown.background.",
+    b"markdown.message.",
+    b"markdown.code.",
+    b"markdown.blocks.",
+    b"markdown.ast.copy",
+    b"ext.wingLive.",
+    b"ext.wingReplay.",
+    b"ext.wingPerf.",
+    b"ext.wingNavigationSoak.",
+)
+
+
+def verify_no_performance_instrumentation(apk):
+    """Check compiled app snapshots, not compressed archive byte strings.
+
+    This corroborates source gating; marker absence alone cannot prove that all
+    possible overhead is absent. The product-mode probe verifies the real paths.
+    """
+    with zipfile.ZipFile(apk) as archive:
+        snapshots = [name for name in archive.namelist()
+                     if re.fullmatch(r"lib/[^/]+/libapp\.so", name)]
+        if not snapshots:
+            raise ValueError(f"{apk.name}: missing compiled app snapshot")
+        for name in snapshots:
+            data = archive.read(name)
+            if any(marker in data for marker in PERFORMANCE_MARKERS):
+                raise ValueError(f"{apk.name}: performance instrumentation in {name}")
 
 
 def verify():
@@ -29,6 +62,7 @@ def verify():
         raise ValueError("Invalid pinned signing certificate")
     for abi, code in abi_codes.items():
         apk = apk_dir / f"app-{abi}-release.apk"
+        verify_no_performance_instrumentation(apk)
         badging = subprocess.check_output([str(build_tools / "aapt"), "dump", "badging", str(apk)], text=True)
         package = re.search(r"^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'", badging, re.M)
         expected_package = ("com.tarkilhk.wing", str(build * 10 + code), version_name)

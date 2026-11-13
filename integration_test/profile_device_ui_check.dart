@@ -3,6 +3,14 @@
 /// and restore lib/main.dart afterward. Never install this in Wing.
 library;
 
+import '../test/support/composer_fixture.dart';
+
+import 'package:wing/core/models/profile_session_key.dart';
+
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/bots_session.dart';
+
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/hermes_profile.dart';
@@ -72,21 +80,35 @@ class DeviceFixture extends ProfileBrowserFixture {
   }
 }
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // No disk credentials or production configuration are read or written.
   SharedPreferences.setMockInitialValues({});
-  runApp(const DeviceCheck());
+  final preferences = await SharedPreferences.getInstance();
+  runApp(
+    DeviceCheck(
+      preferences: preferences,
+      appPreferences: AppPreferences(preferences),
+    ),
+  );
 }
 
 class DeviceCheck extends StatefulWidget {
-  const DeviceCheck({super.key});
+  const DeviceCheck({
+    required this.preferences,
+    required this.appPreferences,
+    super.key,
+  });
+  final SharedPreferences preferences;
+  final AppPreferences appPreferences;
   @override
   State<DeviceCheck> createState() => _DeviceCheckState();
 }
 
 class _DeviceCheckState extends State<DeviceCheck> {
   ProfileWorkspaceController? controller;
+  final _ownedControllers = <ProfileWorkspaceController>{};
+  bool _opening = false;
   Brightness brightness = Brightness.dark;
   double scale = 1;
   Future<void> open({
@@ -94,60 +116,101 @@ class _DeviceCheckState extends State<DeviceCheck> {
     bool light = false,
     bool large = false,
   }) async {
-    final fixture = DeviceFixture();
-    final next = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'device-check',
-        label: 'Device QA',
-        host: 'unused',
-        port: 1,
-        apiKey: '',
-      ),
-      connectionIdentity: 'isolated-device-check',
-      preferences: await SharedPreferences.getInstance(),
-      gatewayFactory: fixture.gateway,
-    );
-    await next.initialize();
-    await next.openSession(
-      ProfileSessionKey(next.current!.scope, 'device-check'),
-    );
-    final chat = next.current!.chat!;
-    chat.title = question ? 'Question device check' : 'Markdown device check';
-    if (question) {
-      fixture.active!.onEvent!(
-        StreamEvent(
-          type: 'clarify',
-          sessionId: chat.runtimeId,
-          data: {
-            'request_id': 'device-question',
-            'questions': [
-              {
-                'qid': 'q1',
-                'question':
-                    'The landing page is ready for a design and copy review. The other routes still belong to an earlier prototype and are outside the current scope. Which type of review should I run before we continue?',
-                'choices': [
-                  'Detailed review of layout and copy (Recommended)',
-                  'Quick review of the main issues',
-                  'Wait until the other routes are ready',
-                ],
-              },
-              {
-                'qid': 'q2',
-                'question': 'Which areas should I focus on?',
-                'choices': ['Layout', 'Copy', 'Accessibility'],
-                'multi_select': true,
-              },
-            ],
-          },
+    if (_opening) return;
+    _opening = true;
+    ProfileWorkspaceController? candidate;
+    try {
+      final fixture = DeviceFixture();
+      final next = ProfileWorkspaceController(
+        access: ConnectionAccess(
+          connection: SavedConnection(
+            id: 'device-check',
+            label: 'Device QA',
+            host: 'unused',
+            port: 1,
+            apiKey: '',
+          ),
+          dashboardOAuth: null,
         ),
+        connectionIdentity: 'isolated-device-check',
+        preferences: widget.preferences,
+        appPreferences: widget.appPreferences,
+        gatewayFactory: fixture.gateway,
       );
+      candidate = next;
+      _ownedControllers.add(next);
+      await next.initialize();
+      if (!mounted) return;
+      await next.openSession(
+        ProfileSessionKey(next.current!.scope, 'device-check'),
+      );
+      if (!mounted) return;
+      final chat = next.current!.chat!;
+      emitChatEvent(next, chat, 'session.title', {
+        'session_id': chat.key.sessionId,
+        'title': question ? 'Question device check' : 'Markdown device check',
+      });
+      if (question) {
+        fixture.active!.onEvent!(
+          StreamEvent(
+            type: 'clarify',
+            sessionId: chat.runtime.runtimeId,
+            data: {
+              'request_id': 'device-question',
+              'questions': [
+                {
+                  'qid': 'q1',
+                  'question':
+                      'The landing page is ready for a design and copy review. The other routes still belong to an earlier prototype and are outside the current scope. Which type of review should I run before we continue?',
+                  'choices': [
+                    'Detailed review of layout and copy (Recommended)',
+                    'Quick review of the main issues',
+                    'Wait until the other routes are ready',
+                  ],
+                },
+                {
+                  'qid': 'q2',
+                  'question': 'Which areas should I focus on?',
+                  'choices': ['Layout', 'Copy', 'Accessibility'],
+                  'multi_select': true,
+                },
+              ],
+            },
+          ),
+        );
+      }
+      final previous = controller;
+      setState(() {
+        controller = next;
+        brightness = light ? Brightness.light : Brightness.dark;
+        scale = large ? 2 : 1;
+      });
+      if (previous != null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_ownedControllers.remove(previous)) previous.dispose();
+        });
+      }
+      debugPrint(
+        'DEVICE_QA ready question=$question light=$light large=$large',
+      );
+    } finally {
+      if (candidate != null &&
+          candidate != controller &&
+          _ownedControllers.remove(candidate)) {
+        candidate.dispose();
+      }
+      _opening = false;
     }
-    setState(() {
-      controller = next;
-      brightness = light ? Brightness.light : Brightness.dark;
-      scale = large ? 2 : 1;
-    });
-    debugPrint('DEVICE_QA ready question=$question light=$light large=$large');
+  }
+
+  @override
+  void dispose() {
+    for (final owned in _ownedControllers) {
+      owned.dispose();
+    }
+    _ownedControllers.clear();
+    widget.appPreferences.dispose();
+    super.dispose();
   }
 
   @override
@@ -189,6 +252,9 @@ class _DeviceCheckState extends State<DeviceCheck> {
               ),
             ),
           )
-        : ProfileWorkspaceScreen(controller: controller!),
+        : ProfileWorkspaceScreen(
+            controller: controller!,
+            createBotsSession: () => BotsSession((_) async => const []),
+          ),
   );
 }

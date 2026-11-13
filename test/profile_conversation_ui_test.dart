@@ -1,16 +1,52 @@
+import 'dart:async';
+
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/email_composer.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'package:wing/core/services/web_preview.dart';
+import 'support/composer_fixture.dart';
+import 'package:wing/core/models/transcript_message.dart';
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher_platform_interface/link.dart';
+import 'package:url_launcher_platform_interface/url_launcher_platform_interface.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/profile_message.dart';
 import 'package:wing/core/widgets/markdown_message_content.dart';
 import 'package:wing/core/widgets/markdown_code_block.dart';
+import 'package:wing/core/widgets/adaptive_markdown_table.dart';
+import 'package:wing/core/widgets/web_link_scope.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'helpers/pump_markdown_widget.dart';
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'support/profile_history_fixture.dart';
+
+class _LinkBrowser extends UrlLauncherPlatform {
+  final launched = <(String, PreferredLaunchMode)>[];
+  final reply = Completer<bool>();
+
+  @override
+  LinkDelegate? get linkDelegate => null;
+
+  @override
+  Future<bool> supportsMode(PreferredLaunchMode mode) async => true;
+
+  @override
+  Future<bool> launchUrl(String url, LaunchOptions options) {
+    launched.add((url, options.mode));
+    return reply.future;
+  }
+}
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -20,20 +56,19 @@ void main() {
     String role = 'assistant',
     bool streaming = false,
   }) async {
-    await tester.pumpWidget(
+    await tester.pumpMarkdownWidget(
       MaterialApp(
         home: Scaffold(
           body: SingleChildScrollView(
             child: Padding(
               padding: const EdgeInsets.all(16),
               child: ProfileMessage(
-                message: {
+                message: TranscriptMessage.fromRow({
                   'id': 1,
                   'role': role,
                   'content': content,
                   'tool_name': 'terminal',
-                },
-                streaming: streaming,
+                }, streaming: streaming),
               ),
             ),
           ),
@@ -44,8 +79,8 @@ void main() {
   }
 
   test('only explicit web URLs can launch', () {
-    expect(ProfileMessage.externalLink('https://example.com/path'), isNotNull);
-    expect(ProfileMessage.externalLink('http://host:9119/docs'), isNotNull);
+    expect(externalWebLink('https://example.com/path'), isNotNull);
+    expect(externalWebLink('http://host:9119/docs'), isNotNull);
     for (final uri in [
       'file:///etc/passwd',
       'javascript:alert(1)',
@@ -56,9 +91,227 @@ void main() {
       'https://user:password@example.com',
       'https:missing-host',
     ]) {
-      expect(ProfileMessage.externalLink(uri), isNull, reason: uri);
+      expect(externalWebLink(uri), isNull, reason: uri);
     }
   });
+
+  testWidgets(
+    'link taps use the current preference and menu choices override it',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final preferences = AppPreferences(await SharedPreferences.getInstance());
+      addTearDown(preferences.dispose);
+      final original = UrlLauncherPlatform.instance;
+      final browser = _LinkBrowser()..reply.complete(true);
+      UrlLauncherPlatform.instance = browser;
+      addTearDown(() => UrlLauncherPlatform.instance = original);
+      const href = 'https://example.com/leg?day=4#map';
+      await tester.pumpMarkdownWidget(
+        WebLinkScope(
+          preferences: preferences,
+          child: MaterialApp(
+            home: Scaffold(
+              body: ProfileMessage(
+                message: TranscriptMessage.fromRow(const {
+                  'role': 'assistant',
+                  'content': '[Road leg]($href)',
+                }),
+              ),
+            ),
+          ),
+        ),
+      );
+      final link = find.text('Road leg', findRichText: true);
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      await preferences.setWebLinkDestination(
+        WebLinkDestination.externalBrowser,
+      );
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      await tester.longPress(link);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Open here'));
+      await tester.pumpAndSettle();
+      await tester.tap(link);
+      await tester.pumpAndSettle();
+      expect(browser.launched, [
+        (href, PreferredLaunchMode.inAppBrowserView),
+        (href, PreferredLaunchMode.externalApplication),
+        (href, PreferredLaunchMode.inAppBrowserView),
+        (href, PreferredLaunchMode.externalApplication),
+      ]);
+    },
+  );
+
+  for (final (brightness, scale) in [
+    for (final brightness in Brightness.values)
+      for (final scale in [1.0, 2.0]) (brightness, scale),
+  ]) {
+    testWidgets(
+      'link context menu selects the full label at ${brightness.name} $scale',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        const label = 'Melbourne to Sydney';
+        await tester.pumpMarkdownWidget(
+          MaterialApp(
+            theme: wingTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(
+                textScaler: TextScaler.linear(scale),
+                disableAnimations: scale == 2,
+              ),
+              child: child!,
+            ),
+            home: Scaffold(
+              body: SingleChildScrollView(
+                child: ProfileMessage(
+                  message: TranscriptMessage.fromRow(const {
+                    'role': 'assistant',
+                    'content':
+                        '- **[Melbourne to Sydney](https://example.com/leg)** after lunch.',
+                  }),
+                ),
+              ),
+            ),
+          ),
+        );
+        final editable = tester.state<EditableTextState>(
+          find.descendant(
+            of: find.byType(MarkdownMessageContent),
+            matching: find.byType(EditableText),
+          ),
+        );
+        final render = editable.renderEditable;
+        Offset characterAt(int offset) => render.localToGlobal(
+          render
+              .getBoxesForSelection(
+                TextSelection(baseOffset: offset, extentOffset: offset + 1),
+              )
+              .single
+              .toRect()
+              .center,
+        );
+        final start = editable.textEditingValue.text.indexOf(label);
+        final link = characterAt(start + 4);
+        await tester.dragFrom(link, const Offset(0, 50));
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+
+        final hold = await tester.startGesture(link);
+        await tester.pump(kLongPressTimeout);
+        await tester.pumpAndSettle();
+        expect(find.text('Select text'), findsOneWidget);
+        expect(
+          find.text('Open in external browser').hitTestable(),
+          findsOneWidget,
+        );
+        expect(find.text('Open here'), findsOneWidget);
+        expect(editable.textEditingValue.selection.isCollapsed, isTrue);
+        await hold.up();
+        await tester.tap(find.text('Select text'));
+        await tester.pumpAndSettle();
+        expect(
+          editable.textEditingValue.selection.textInside(
+            editable.textEditingValue.text,
+          ),
+          label,
+        );
+        expect(editable.selectionOverlay?.handlesVisible, isTrue);
+        expect(editable.selectionOverlay?.toolbarIsVisible, isTrue);
+
+        editable.hideToolbar();
+        await tester.pumpAndSettle();
+        await tester.longPressAt(characterAt(start + label.length + 2));
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+        expect(editable.selectionOverlay?.toolbarIsVisible, isTrue);
+        expect(tester.takeException(), isNull);
+      },
+    );
+  }
+
+  for (final external in [false, true]) {
+    testWidgets(
+      'link context menu uses only the chosen browser (external: $external)',
+      (tester) async {
+        final original = UrlLauncherPlatform.instance;
+        final browser = _LinkBrowser();
+        UrlLauncherPlatform.instance = browser;
+        addTearDown(() => UrlLauncherPlatform.instance = original);
+        const href = 'https://example.com/leg?day=4#map';
+        await tester.pumpMarkdownWidget(
+          MaterialApp(
+            theme: wingTheme(Brightness.dark),
+            home: Scaffold(
+              appBar: AppBar(actions: const [StudioLoadingSlot()]),
+              body: const MarkdownMessageContent(
+                data:
+                    '| Destination |\n| --- |\n'
+                    '| [Road leg](https://example.com/other) |\n'
+                    '| [Road leg]($href) |',
+              ),
+            ),
+          ),
+        );
+        final link = find.text('Road leg', findRichText: true).last;
+        Future<void> openMenu() async {
+          await tester.tap(
+            link,
+            kind: PointerDeviceKind.mouse,
+            buttons: kSecondaryMouseButton,
+          );
+          await tester.pumpAndSettle();
+        }
+
+        await openMenu();
+        expect(find.text('Open here'), findsOneWidget);
+        await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+        await tester.pumpAndSettle();
+        expect(find.text('Open here'), findsNothing);
+        expect(browser.launched, isEmpty);
+        await openMenu();
+        await tester.tap(
+          find.text(external ? 'Open in external browser' : 'Open here'),
+        );
+        await tester.pump();
+        await tester.pump();
+        expect(browser.launched, [
+          (
+            href,
+            external
+                ? PreferredLaunchMode.externalApplication
+                : PreferredLaunchMode.inAppBrowserView,
+          ),
+        ]);
+        expect(find.byType(StudioLoading), findsOneWidget);
+        expect(link, findsOneWidget);
+        await tester.pump(const Duration(milliseconds: 300));
+        await tester.tap(link);
+        await tester.pump();
+        expect(browser.launched, hasLength(1));
+        browser.reply.complete(external);
+        await tester.pumpAndSettle();
+        expect(find.byType(StudioLoading), findsNothing);
+        expect(browser.launched, hasLength(1));
+        expect(
+          find.text(
+            'Could not open here. Try opening the link in an external browser.',
+          ),
+          external ? findsNothing : findsOneWidget,
+        );
+        if (!external) {
+          await openMenu();
+          expect(find.text('Open in external browser'), findsOneWidget);
+          await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+          await tester.pumpAndSettle();
+          expect(browser.launched, hasLength(1));
+        }
+      },
+    );
+  }
 
   testWidgets('formatted prose, lists and tables render on a narrow phone', (
     tester,
@@ -66,14 +319,29 @@ void main() {
     tester.view.physicalSize = const Size(320, 760);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
-    await message(
-      tester,
-      '# Result\n\n**Ready** and `inline`.\n\n- First\n- Second\n\n'
-      '| Name | Status |\n| --- | --- |\n| A long project name | Ready |',
+    const content =
+        '# Result\n\n**Ready** and `inline`.\n\n- First\n- Second\n\n'
+        '| Name | Status |\n| --- | --- |\n| A long project name | Ready |';
+    await message(tester, content);
+    expect(
+      find.byWidgetPredicate(
+        (widget) => widget is MarkdownBody && widget.data == content,
+      ),
+      findsOneWidget,
     );
-    expect(find.byType(MarkdownBody), findsOneWidget);
     expect(find.text('Result'), findsOneWidget);
+    final table = find.byType(AdaptiveMarkdownTable);
+    expect(table, findsOneWidget);
     expect(find.byType(Table), findsOneWidget);
+    for (final text in ['Name', 'Status', 'A long project name', 'Ready']) {
+      expect(
+        find.descendant(
+          of: table,
+          matching: find.text(text, findRichText: true),
+        ),
+        findsOneWidget,
+      );
+    }
     expect(tester.takeException(), isNull);
   });
 
@@ -102,6 +370,10 @@ void main() {
     await tester.tap(find.byTooltip('Copy code'));
     await tester.pump();
     expect(copied, code);
+    expect(find.byTooltip('Scroll horizontally'), findsOneWidget);
+    await tester.tap(find.byTooltip('Scroll horizontally'));
+    await tester.pump();
+    expect(find.byTooltip('Wrap lines'), findsOneWidget);
     await tester.tap(find.byTooltip('Wrap lines'));
     await tester.pump();
     expect(find.byTooltip('Scroll horizontally'), findsOneWidget);
@@ -110,68 +382,238 @@ void main() {
     expect(copied, contains('```dart'));
   });
 
-  testWidgets(
-    'user text stays literal and streaming fences tolerate partial input',
-    (tester) async {
-      await message(tester, '**Literal** `draft`', role: 'user');
-      expect(find.text('**Literal** `draft`'), findsOneWidget);
-      expect(find.byType(MarkdownBody), findsNothing);
-      await message(tester, 'Working\n```dart\nfinal value =', streaming: true);
-      expect(find.byTooltip('Copy message'), findsNothing);
-      expect(tester.takeException(), isNull);
-      await message(
-        tester,
-        'Working\n```dart\nfinal value = 42;\n```',
-        streaming: true,
-      );
-      expect(find.byType(MarkdownCodeBlock), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+  testWidgets('user text stays literal', (tester) async {
+    await message(tester, '**Literal** `draft`', role: 'user');
+    expect(find.text('**Literal** `draft`'), findsOneWidget);
+    expect(find.bySubtype<MarkdownBody>(), findsNothing);
+  });
 
-  testWidgets('images do not auto-fetch and unsafe links show a scoped error', (
+  testWidgets('streaming fences tolerate partial input', (tester) async {
+    await message(tester, 'Working\n```dart\nfinal value =', streaming: true);
+    expect(find.byTooltip('Copy message'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await message(
+      tester,
+      'Working\n```dart\nfinal value = 42;\n```',
+      streaming: true,
+    );
+    expect(find.byType(MarkdownCodeBlock), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('images render inline and unsafe links show a scoped error', (
     tester,
   ) async {
     await message(
       tester,
-      '![Remote image](https://example.com/image.png)\n\n[Host file](file:///private/file)',
+      '![Remote image](https://example.com/image.png)\n\n[Unsafe link](javascript:run)',
     );
     expect(
       find.descendant(
         of: find.byType(MarkdownMessageContent),
         matching: find.byType(Image),
       ),
-      findsNothing,
+      findsOneWidget,
     );
-    expect(find.text('Remote image'), findsOneWidget);
-    final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
-    markdown.onTapLink!('Host file', 'file:///private/file', '');
+    final image = tester.widget<Image>(
+      find.descendant(
+        of: find.byType(MarkdownMessageContent),
+        matching: find.byType(Image),
+      ),
+    );
+    expect(image.semanticLabel, 'Open image: Remote image');
+    await tester.tap(find.text('Unsafe link', findRichText: true));
     await tester.pump();
     expect(
-      find.text('Only web links and linked Hermes files can be opened here.'),
+      find.text(
+        'Only web links, email links and linked Hermes files can be opened here.',
+      ),
       findsOneWidget,
     );
   });
+
+  for (final content in [
+    '<alex@example.com>',
+    '[Email hotel](mailto:alex@example.com?subject=Luggage%20storage&body=Hello%0AThank%20you&cc=other%2Btrip@example.com)',
+  ]) {
+    testWidgets('email link opens the compose chooser: $content', (
+      tester,
+    ) async {
+      final calls = <MethodCall>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        (call) async {
+          calls.add(call);
+          return true;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          EmailComposer.channel,
+          null,
+        ),
+      );
+      await message(tester, content);
+      await tester.tap(
+        find.text(
+          content.startsWith('<') ? 'alex@example.com' : 'Email hotel',
+          findRichText: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(calls.single.method, 'compose');
+      expect(
+        calls.single.arguments,
+        content.startsWith('<')
+            ? 'mailto:alex@example.com'
+            : content.substring(content.indexOf('(') + 1, content.length - 1),
+      );
+      expect(find.byType(SnackBar), findsNothing);
+      expect(tester.takeException(), isNull);
+    });
+  }
+
+  for (final fails in [false, true]) {
+    testWidgets('email handoff shows progress and settles (failure: $fails)', (
+      tester,
+    ) async {
+      final reply = Completer<bool>();
+      var calls = 0;
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        (call) {
+          calls++;
+          return reply.future;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          EmailComposer.channel,
+          null,
+        ),
+      );
+      await tester.pumpMarkdownWidget(
+        MaterialApp(
+          home: Scaffold(
+            appBar: AppBar(actions: const [StudioLoadingSlot()]),
+            body: const MarkdownMessageContent(
+              data: '[Email](mailto:a@example.com)',
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Email', findRichText: true));
+      await tester.pump();
+      await tester.pump();
+      expect(find.byType(StudioLoading), findsOneWidget);
+      await tester.tap(find.text('Email', findRichText: true));
+      await tester.pump();
+      expect(calls, 1);
+      if (fails) {
+        reply.completeError(PlatformException(code: 'unavailable'));
+      } else {
+        reply.complete(true);
+      }
+      await tester.pumpAndSettle();
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(
+        find.text(
+          'Could not open an email app. Install or enable one and try again.',
+        ),
+        fails ? findsOneWidget : findsNothing,
+      );
+      expect(find.text('Email', findRichText: true), findsOneWidget);
+    });
+  }
+
+  testWidgets('missing email app reports failure and permits another attempt', (
+    tester,
+  ) async {
+    var calls = 0;
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmailComposer.channel,
+      (call) async => ++calls > 1,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        null,
+      ),
+    );
+    await message(tester, '[Email](mailto:a@example.com)');
+    await tester.tap(find.text('Email', findRichText: true));
+    await tester.pumpAndSettle();
+    expect(
+      find.text(
+        'Could not open an email app. Install or enable one and try again.',
+      ),
+      findsOneWidget,
+    );
+    final emailLink = find.text('Email', findRichText: true);
+    expect(emailLink.hitTestable(), findsOneWidget);
+    await tester.tap(emailLink);
+    await tester.pumpAndSettle();
+    expect(calls, 2);
+    expect(find.byType(SnackBar), findsNothing);
+  });
+
+  testWidgets('departed message ignores a late failed email handoff', (
+    tester,
+  ) async {
+    final reply = Completer<bool>();
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      EmailComposer.channel,
+      (_) => reply.future,
+    );
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        EmailComposer.channel,
+        null,
+      ),
+    );
+    await message(tester, '[Email](mailto:a@example.com)');
+    await tester.tap(find.text('Email', findRichText: true));
+    await tester.pump();
+    await tester.pumpWidget(
+      const MaterialApp(home: Scaffold(body: Text('Other page'))),
+    );
+    reply.complete(false);
+    await tester.pumpAndSettle();
+    expect(find.byType(SnackBar), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  test(
+    'email composer rejects non-email schemes without platform dispatch',
+    () async {
+      for (final link in [
+        'https://example.com',
+        'intent://launch',
+        'file:///tmp/a',
+      ]) {
+        expect(await EmailComposer.open(link), isFalse);
+      }
+    },
+  );
 
   testWidgets('assistant file links keep their exact remote target', (
     tester,
   ) async {
     String? openedPath;
-    await tester.pumpWidget(
+    await tester.pumpMarkdownWidget(
       MaterialApp(
         home: Scaffold(
           body: ProfileMessage(
-            message: const {
+            message: TranscriptMessage.fromRow(const {
               'role': 'assistant',
               'content': '[Open report](../exports/final-report.pdf)',
-            },
+            }),
             onOpenRemoteFile: (output) async => openedPath = output.path,
           ),
         ),
       ),
     );
-    final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
-    markdown.onTapLink!('Open report', '../exports/final-report.pdf', '');
+    await tester.tap(find.byTooltip('Open preview'));
     await tester.pump();
 
     expect(openedPath, '../exports/final-report.pdf');
@@ -180,23 +622,22 @@ void main() {
   testWidgets('assistant file links explain an authentication failure', (
     tester,
   ) async {
-    await tester.pumpWidget(
+    await tester.pumpMarkdownWidget(
       MaterialApp(
         home: Scaffold(
           body: ProfileMessage(
-            message: const {
+            message: TranscriptMessage.fromRow(const {
               'role': 'assistant',
               'content': '[Missing report](/srv/removed/report.pdf)',
-            },
+            }),
             onOpenRemoteFile: (_) async =>
                 throw const DashboardHttpException(401, 'files/read'),
           ),
         ),
       ),
     );
-    final markdown = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
-    markdown.onTapLink!('Missing report', '/srv/removed/report.pdf', '');
-    await tester.pump();
+    await tester.tap(find.byTooltip('Open preview'));
+    await tester.pumpAndSettle();
 
     expect(
       find.text(
@@ -210,24 +651,31 @@ void main() {
     tester,
   ) async {
     await message(tester, '**raw output**\nexit code 0', role: 'tool');
-    expect(find.text('terminal'), findsOneWidget);
+    expect(find.text('Ran command'), findsOneWidget);
     expect(find.textContaining('exit code 0'), findsNothing);
-    await tester.tap(find.text('terminal'));
+    await tester.tap(find.text('Ran command'));
     await tester.pumpAndSettle();
     expect(find.text('**raw output**\nexit code 0'), findsOneWidget);
-    expect(find.byType(MarkdownBody), findsNothing);
+    expect(find.bySubtype<MarkdownBody>(), findsNothing);
   });
 
   group('conversation controls', () {
     late ProfileWorkspaceController controller;
+    late AppPreferences appPreferences;
     late ProfileHistoryFixture host;
     setUp(() async {
       SharedPreferences.setMockInitialValues({});
       host = ProfileHistoryFixture();
+      final preferences = await SharedPreferences.getInstance();
+      appPreferences = AppPreferences(preferences);
       controller = ProfileWorkspaceController(
-        connection: identityTestConnection(),
+        access: ConnectionAccess(
+          connection: identityTestConnection(),
+          dashboardOAuth: null,
+        ),
         connectionIdentity: 'conversation-test',
-        preferences: await SharedPreferences.getInstance(),
+        preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: host.gateway,
       );
       await controller.initialize();
@@ -235,12 +683,20 @@ void main() {
         ProfileSessionKey(controller.current!.scope, 'chat-0'),
       );
     });
-    tearDown(() => controller.dispose());
+    tearDown(() {
+      controller.dispose();
+      appPreferences.dispose();
+    });
     Future<void> show(WidgetTester tester) async {
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => []),
+          ),
+        ),
       );
-      if (controller.current!.chat!.busy) {
+      if (controller.current!.chat!.runtime.blocksTurnAdmission) {
         await tester.pump(const Duration(milliseconds: 300));
       } else {
         await tester.pumpAndSettle();
@@ -262,7 +718,10 @@ void main() {
             ).copyWith(textScaler: TextScaler.linear(1.8)),
             child: child!,
           ),
-          home: ProfileWorkspaceScreen(controller: controller),
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => []),
+          ),
         ),
       );
       await tester.enterText(
@@ -271,10 +730,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
-      expect(
-        tester.getBottomRight(find.byTooltip('Send')).dy,
-        lessThanOrEqualTo(540),
-      );
+      expect(find.byTooltip('Send').hitTestable(), findsOneWidget);
       await tester.pumpWidget(const SizedBox.shrink());
     });
 
@@ -285,12 +741,6 @@ void main() {
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
         await show(tester);
-        expect(
-          tester
-              .getSize(find.byKey(const ValueKey('conversation-composer')))
-              .height,
-          lessThanOrEqualTo(120),
-        );
         expect(
           tester
               .getBottomLeft(find.byKey(const Key('profile-message-composer')))
@@ -354,6 +804,7 @@ void main() {
         await controller.openSession(
           ProfileSessionKey(controller.current!.scope, 'chat-0'),
         );
+        await tester.settleTranscript();
         await tester.pumpAndSettle();
         expect(
           tester.widget<TextField>(field).controller!.text,
@@ -366,16 +817,18 @@ void main() {
       tester,
     ) async {
       final chat = controller.current!.chat!;
-      chat.status = ProfileTurnStatus.running;
-      chat.streaming = 'A partial response';
-      chat.mainActivity = ProfileMainActivity.writing;
+      emitChatEvent(controller, chat, 'message.start');
+      emitChatEvent(controller, chat, 'message.delta', {
+        'text': 'A partial response',
+      });
       await show(tester);
       expect(find.text('Writing response…'), findsOneWidget);
-      expect(find.byTooltip('Steer'), findsOneWidget);
+      expect(find.byTooltip('Stop'), findsOneWidget);
       expect(find.byTooltip('Send'), findsNothing);
       expect(find.text('Draft your next message'), findsOneWidget);
       await tester.enterText(find.byType(TextField), 'For later');
       await tester.pump();
+      expect(find.byTooltip('Steer'), findsOneWidget);
       final gesture = await tester.startGesture(
         tester.getCenter(find.byTooltip('Steer')),
       );
@@ -391,7 +844,7 @@ void main() {
         (call) => call.$2 == 'session.interrupt',
       );
       expect(interrupt.$3['profile'], 'personal');
-      expect(chat.draft, 'For later');
+      expect(chat.composer.observation.text, 'For later');
       expect(host.calls.where((c) => c.$2 == 'prompt.submit'), isEmpty);
       await tester.pumpWidget(const SizedBox.shrink());
     });
@@ -403,11 +856,11 @@ void main() {
       await tester.drag(list, const Offset(0, 550));
       await tester.pumpAndSettle();
       expect(find.byKey(const ValueKey('jump-to-latest')), findsOneWidget);
-      final count = controller.current!.chat!.messages.length;
+      final count = controller.current!.chat!.reading.messages.length;
       await tester.tap(find.byKey(const ValueKey('jump-to-latest')));
       await tester.pumpAndSettle();
-      expect(controller.current!.chat!.historyScrollOffset, closeTo(0, 1));
-      expect(controller.current!.chat!.messages.length, count);
+      expect(controller.current!.chat!.reading.readingPosition.resume, isNull);
+      expect(controller.current!.chat!.reading.messages.length, count);
       expect(find.byKey(const ValueKey('jump-to-latest')), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });

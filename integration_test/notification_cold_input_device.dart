@@ -2,6 +2,9 @@
 /// uses stock response shapes, including approval.pending's empty list.
 library;
 
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
+
 import 'dart:convert';
 import 'dart:io';
 
@@ -11,7 +14,6 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_connection_identity.dart';
 import 'package:wing/core/services/workspace_snapshot_store.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
-import 'package:wing/core/services/turn_notification_service.dart';
 import 'package:wing/main.dart';
 
 import '../test/profile_connection_identity_test.dart' show MemoryIdentityStore;
@@ -32,11 +34,15 @@ Future<void> main() async {
     port: 1,
     apiKey: '',
   );
-  await manager.importConnections([connection], replaceExisting: true);
+  await manager.importConnections(
+    [connection],
+    replaceExisting: true,
+    canCommit: () => true,
+  );
   for (final key in [
-    completionNotificationsKey,
-    attentionNotificationsKey,
-    notificationPreviewsKey,
+    AppPreferenceField.completedNotifications.storageKey,
+    AppPreferenceField.attentionNotifications.storageKey,
+    AppPreferenceField.notificationPreviews.storageKey,
     'notification_permission_requested',
     'microphone_permission_requested',
   ]) {
@@ -44,6 +50,9 @@ Future<void> main() async {
   }
   // The real phone has a saved reading copy after using this chat previously.
   // A new process must reconnect it without requiring the user to open it.
+  final savedMessages = [
+    {'id': 1, 'role': 'assistant', 'content': 'Earlier cached answer'},
+  ];
   final identity = await ProfileConnectionIdentity().resolve(connection);
   await WorkspaceSnapshotStore(prefs, identity).write({
     'selected': 'a',
@@ -58,22 +67,19 @@ Future<void> main() async {
             'id': 'outside',
             'title': 'Outside task',
             'history_session': 'outside',
-            'messages': [
-              {
-                'id': 1,
-                'role': 'assistant',
-                'content': 'Earlier cached answer',
-              },
-            ],
+            'messages': savedMessages,
           },
         ],
       },
     ],
   });
-  final host = NotificationCoverageHost();
+  // A fresh authoritative history read must describe the same saved chat,
+  // rather than falsely reporting that its earlier answer was deleted.
+  final host = NotificationCoverageHost()..history = savedMessages;
   final app = GlobalKey<WingAppState>();
   runApp(
     WingApp(
+      appPreferences: AppPreferences(prefs),
       key: app,
       connManager: manager,
       gatewayFactory: (_, scope) => host.gateway(scope),
@@ -82,8 +88,8 @@ Future<void> main() async {
   await WidgetsBinding.instance.endOfFrame;
   final controller = await app.currentState!.profileController(connection);
   final cached = controller.notificationChats.single;
-  final restoredOffline = cached.offlineSnapshot;
-  final restoredRuntime = cached.runtimeId;
+  final restoredOffline = cached.runtime.offline;
+  final restoredRuntime = cached.runtime.runtimeId;
   await controller.initialize();
   final server = await HttpServer.bind(InternetAddress.loopbackIPv4, 18766);
   await for (final request in server) {
@@ -122,7 +128,7 @@ Future<void> main() async {
         'restoredOffline': restoredOffline,
         'restoredRuntime': restoredRuntime,
         'retainedCache': identical(controller.notificationChats.single, cached),
-        'cachedHistoryPresent': cached.messages.any(
+        'cachedHistoryPresent': cached.reading.messages.any(
           (message) => message['content'] == 'Earlier cached answer',
         ),
         'openedChat': controller.current?.chat?.key.sessionId,
@@ -130,10 +136,10 @@ Future<void> main() async {
             .map(
               (chat) => {
                 'session': chat.key.sessionId,
-                'status': chat.status.name,
-                'runtime': chat.runtimeId,
-                'offline': chat.offlineSnapshot,
-                'pendingQuestion': chat.pendingQuestion != null,
+                'status': chat.runtime.execution.name,
+                'runtime': chat.runtime.runtimeId,
+                'offline': chat.runtime.offline,
+                'pendingQuestion': chat.runtime.pendingQuestion != null,
               },
             )
             .toList(),

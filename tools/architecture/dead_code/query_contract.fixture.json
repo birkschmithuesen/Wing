@@ -1,0 +1,129 @@
+{
+  "schema": 1,
+  "files": {
+    "lib/transport.dart": "library;\npart 'transport_part.dart';\nclass Transport {\n  void retired() {}\n  void active() {}\n}\nclass Other { void retired() {} }\nextension TransportCalls on Transport { void forward() => retired(); }\n",
+    "lib/transport_part.dart": "part of 'transport.dart';\nvoid throughPart(Transport transport) => transport.retired();\n",
+    "lib/barrel.dart": "export 'transport.dart';\n",
+    "lib/selected.dart": "export 'barrel.dart';\n",
+    "lib/alternate.dart": "export 'barrel.dart';\n",
+    "lib/main.dart": "import 'selected.dart' if (dart.library.io) 'alternate.dart' as p;\ntypedef Alias = p.Transport;\nvoid main() {\n  final t = Alias();\n  t..retired()..active();\n  final callback = t.retired;\n  callback();\n  t.forward();\n  p.Other().retired();\n}\n",
+    "lib/dynamic.dart": "void indirect(dynamic receiver) { receiver.retired(); }\n",
+    "lib/constructors.dart": "library;\npart 'constructors_part.dart';\nclass Value {\n  Value();\n  Value.fromMap(Map<String, Object?> data);\n  Value.redirect() : this.fromMap({});\n}\nclass Sub extends Value { Sub() : super.fromMap({}); }\nclass Other {\n  Other();\n  Other.fromMap(Map<String, Object?> data);\n}\n",
+    "lib/constructors_part.dart": "part of 'constructors.dart';\nValue fromPart() => Value.fromMap({});\n",
+    "lib/constructor_barrel.dart": "export 'constructors.dart';\n",
+    "lib/constructor_alternate.dart": "export 'constructor_barrel.dart';\n",
+    "lib/constructor_calls.dart": "import 'constructor_barrel.dart' if (dart.library.io) 'constructor_alternate.dart' as p;\ntypedef Alias = p.Value;\nvoid constructorCalls() {\n  p.Value();\n  p.Value.fromMap({});\n  Alias();\n  Alias.fromMap({});\n  final unnamed = p.Value.new;\n  final named = p.Value.fromMap;\n  final aliased = Alias.fromMap;\n  unnamed();\n  named({});\n  aliased({});\n  p.Other();\n  p.Other.fromMap({});\n  final unrelated = p.Other.fromMap;\n  unrelated({});\n}\n"
+  },
+  "targets": {
+    "schema": 1,
+    "targets": [
+      {
+        "id": "RETIRED",
+        "file": "lib/transport.dart",
+        "symbol": "Transport.retired",
+        "include_members": false
+      },
+      {
+        "id": "VALUE_NAMED",
+        "file": "lib/constructors.dart",
+        "symbol": "Value.fromMap",
+        "include_members": false
+      },
+      {
+        "id": "VALUE_UNNAMED",
+        "file": "lib/constructors.dart",
+        "symbol": "Value.new",
+        "include_members": false
+      }
+    ],
+    "analyzer_feature_flags": [
+      "private-named-parameters"
+    ]
+  },
+  "expected_resolved_callers": [
+    "TransportCalls.forward",
+    "throughPart",
+    "main",
+    "main.callback"
+  ],
+  "expected_unresolved_callers": [
+    "indirect"
+  ],
+  "unrelated_owner_must_not_match": "Other",
+  "expected_constructor_references": [
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructors.dart",
+      "line": 6,
+      "caller": "Value.redirect"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructors.dart",
+      "line": 8,
+      "caller": "Sub.new"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructors_part.dart",
+      "line": 2,
+      "caller": "fromPart"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 5,
+      "caller": "constructorCalls"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 7,
+      "caller": "constructorCalls"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 9,
+      "caller": "constructorCalls.named"
+    },
+    {
+      "target": "VALUE_NAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 10,
+      "caller": "constructorCalls.aliased"
+    },
+    {
+      "target": "VALUE_UNNAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 4,
+      "caller": "constructorCalls"
+    },
+    {
+      "target": "VALUE_UNNAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 6,
+      "caller": "constructorCalls"
+    },
+    {
+      "target": "VALUE_UNNAMED",
+      "file": "lib/constructor_calls.dart",
+      "line": 8,
+      "caller": "constructorCalls.unnamed"
+    }
+  ],
+  "expected_constructor_declarations": {
+    "VALUE_NAMED": {
+      "symbol": "Value.fromMap",
+      "declaring_file": "lib/constructors.dart",
+      "declaring_line": 5,
+      "declaring_offset": 73
+    },
+    "VALUE_UNNAMED": {
+      "symbol": "Value.new",
+      "declaring_file": "lib/constructors.dart",
+      "declaring_line": 4,
+      "declaring_offset": 56
+    }
+  }
+}

@@ -1,3 +1,7 @@
+import 'package:wing/core/widgets/studio_error.dart';
+import 'support/host_resources_fixture.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -41,9 +45,12 @@ class _Fixture {
   };
   final base = AdministrationFixture('Claw');
   late ProfileWorkspaceController workspace;
+  late AppPreferences appPreferences;
   late AdministrationRepository repository;
   Future<void> initialize() async {
     SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     final discovery = ProfileDiscovery(
       profiles: _profiles,
       currentName: 'reminder-inbox',
@@ -51,16 +58,20 @@ class _Fixture {
     );
     final browser = ProfileBrowserFixture();
     workspace = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'Claw',
-        label: 'Claw',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
-        icon: ConnectionIcon.home,
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'Claw',
+          label: 'Claw',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+          icon: ConnectionIcon.home,
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'Claw-endpoint',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: (scope) {
         final source = browser.gateway(scope);
         return ProfileGateway(
@@ -81,8 +92,8 @@ class _Fixture {
                 });
               }
               return Future.value({
+                // The native authority validates profile before this result.
                 'ok': true,
-                'profile': scope.profileName,
                 ...modelInfo(scope.profileName),
               });
             }
@@ -106,10 +117,11 @@ class _Fixture {
       scopedRequests.add((method, path, Map.of(query)));
       if (method == 'POST' &&
           {'ops/doctor', 'ops/security-audit'}.contains(path)) {
-        return {'name': path.substring(4), 'pid': 7};
+        return {'ok': true, 'name': path.substring(4), 'pid': 7};
       }
       if (method == 'GET' && path.startsWith('actions/')) {
         return {
+          'name': path.split('/')[1],
           'pid': 7,
           'running': false,
           'exit_code': 0,
@@ -121,10 +133,13 @@ class _Fixture {
         return {'ok': status != 'problems'};
       }
       if (method != 'GET') throw StateError('Unexpected write: $path');
-      if (status == 'unknown' && path == 'tools/toolsets') {
+      if (status == 'unknown' &&
+          {'tools/toolsets', 'cron/jobs'}.contains(path)) {
         throw StateError('Unavailable');
       }
       return switch (path) {
+        'system/stats' => hostStatsPayload(),
+        'status' => hostPressurePayload(),
         'profiles' => {
           'profiles': [
             for (final p in _profiles)
@@ -171,7 +186,14 @@ class _Fixture {
         },
         'mcp/servers' => {
           'servers': [
-            {'name': 'example', 'enabled': true},
+            {
+              'name': 'example',
+              'enabled': true,
+              'transport': 'http',
+              'auth': null,
+              'source': 'config',
+              'plugin': null,
+            },
           ],
         },
         'cron/jobs' => {
@@ -179,6 +201,8 @@ class _Fixture {
             if (status == 'problems')
               {
                 'id': 'failed-task',
+                'profile': query['profile']!,
+                'profile_name': query['profile']!,
                 'enabled': true,
                 'schedule': {'kind': 'interval', 'minutes': 60},
                 'state': 'error',
@@ -191,6 +215,18 @@ class _Fixture {
     }
 
     repository = AdministrationRepository(
+      ownedMutation:
+          (method, path, query, body, canDispatch, onDispatched) async {
+            if (method != 'POST' ||
+                !{'ops/doctor', 'ops/security-audit'}.contains(path)) {
+              throw StateError('Unexpected owned mutation: $method $path');
+            }
+            if (!canDispatch()) throw StateError('Diagnostic retired');
+            onDispatched();
+            return read(method, path, query, body);
+          },
+      settingsWrite: (_, _, _, _) async =>
+          throw StateError('Unexpected settings write'),
       connectionId: 'Claw',
       connectionIdentity: 'Claw-endpoint',
       connectionLabel: 'Claw',
@@ -205,6 +241,24 @@ class _Fixture {
         discover: () async => discovery,
         rpc: (method, params) async {
           requests.add('RPC $method $name');
+          if (method == 'mcp.servers.status') {
+            return {
+              'checked_at': DateTime.now().millisecondsSinceEpoch,
+              'servers': [
+                {
+                  'name': 'example',
+                  'transport': 'http',
+                  'source': 'config',
+                  'plugin': null,
+                  'tools': 0,
+                  'connected': false,
+                  'disabled': false,
+                  'status': 'configured',
+                  'needs_auth': false,
+                },
+              ],
+            };
+          }
           if (method != 'setup.status') {
             throw StateError('Unexpected RPC: $method');
           }
@@ -217,6 +271,7 @@ class _Fixture {
   void dispose() {
     workspace.dispose();
     repository.close();
+    appPreferences.dispose();
   }
 }
 
@@ -282,6 +337,7 @@ void main({
     await tester.pumpAndSettle();
     expect(find.text('Credentials missing'), findsOneWidget);
     await tester.ensureVisible(find.text('Fix access'));
+    await tester.pumpAndSettle();
     await tester.tap(find.text('Fix access'));
     await tester.pumpAndSettle();
     expect(find.text('Profile access'), findsOneWidget);
@@ -295,6 +351,116 @@ void main({
       fixture.explicitCalls.where((v) => v.startsWith('setup.runtime_check')),
       hasLength(2),
     );
+  });
+
+  testWidgets(
+    'Fix access rechecks the captured profile after selection changes',
+    (tester) async {
+      final fixture = _Fixture('missing');
+      await fixture.initialize();
+      addTearDown(fixture.dispose);
+      await fixture.workspace.switchProfile('client-work');
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: wingTheme(Brightness.dark),
+          home: Scaffold(
+            body: HermesHealthContent(
+              controller: fixture.workspace,
+              repository: fixture.repository,
+              onOpenMenu: () {},
+              onOpenSession: (_) async {},
+              onConnections: () {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Fix access'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Fix access'));
+      await tester.pumpAndSettle();
+      expect(find.text('Claw / client-work'), findsOneWidget);
+      await fixture.workspace.switchProfile('shared');
+      await tester.pumpAndSettle();
+      expect(fixture.workspace.current?.scope.profileName, 'shared');
+      fixture.explicitCalls.clear();
+
+      await tester.pageBack();
+      await tester.pumpAndSettle();
+
+      expect(
+        fixture.explicitCalls.where(
+          (call) => call.startsWith('setup.runtime_check'),
+        ),
+        ['setup.runtime_check client-work'],
+      );
+      expect(fixture.workspace.current?.scope.profileName, 'shared');
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('Fix access drains an older check before checking again', (
+    tester,
+  ) async {
+    final fixture = _Fixture('missing');
+    await fixture.initialize();
+    addTearDown(fixture.dispose);
+    await fixture.workspace.switchProfile('client-work');
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: wingTheme(Brightness.dark),
+        home: Scaffold(
+          body: HermesHealthContent(
+            controller: fixture.workspace,
+            repository: fixture.repository,
+            onOpenMenu: () {},
+            onOpenSession: (_) async {},
+            onConnections: () {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Fix access'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Fix access'));
+    await tester.pumpAndSettle();
+    final oldCheck = Completer<Map<String, dynamic>>();
+    addTearDown(() {
+      if (!oldCheck.isCompleted) {
+        oldCheck.complete({'ok': false, 'profile': 'client-work'});
+      }
+    });
+    var calls = 0;
+    fixture.checkAccess = (profile) {
+      calls++;
+      return calls == 1
+          ? oldCheck.future
+          : Future.value({
+              'ok': true,
+              'profile': profile,
+              ...fixture.modelInfo(profile),
+            });
+    };
+    final session = fixture.workspace.healthSession(
+      repository: fixture.repository,
+    );
+    unawaited(session.refresh(fixture.workspace.current!.gateway));
+    for (var step = 0; step < 20 && calls == 0; step++) {
+      await tester.pump(const Duration(milliseconds: 10));
+    }
+    expect(calls, 1);
+
+    await tester.pageBack();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(calls, 1);
+    oldCheck.complete({'ok': false, 'profile': 'client-work'});
+    await tester.pumpAndSettle();
+
+    expect(calls, 2);
+    expect(find.text('Access is set up'), findsOneWidget);
+    expect(fixture.workspace.current?.scope.profileName, 'client-work');
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets(
@@ -403,9 +569,8 @@ void main({
       expect(find.text('gpt-5.6-sol · openai-codex'), findsOneWidget);
       // Refresh checks the newly selected model after reading its configuration.
       fixture.models['client-work'] = 'gpt-6-astra';
-      await tester
-          .widget<RefreshIndicator>(find.byType(RefreshIndicator))
-          .onRefresh();
+      await tester.ensureVisible(find.byTooltip('Refresh profile status'));
+      await tester.tap(find.byTooltip('Refresh profile status'));
       await tester.pumpAndSettle();
       expect(find.text('Access is set up'), findsOneWidget);
       expect(find.text('gpt-6-astra · openai-codex'), findsOneWidget);
@@ -485,7 +650,18 @@ void main({
       ),
     );
     await tester.pump();
-    expect(find.text('Checking access…'), findsOneWidget);
+    final checking = find.text('Checking access…');
+    await tester.scrollUntilVisible(
+      checking,
+      150,
+      scrollable: find.byType(Scrollable).first,
+    );
+    await tester.pump();
+    expect(checking, findsOneWidget);
+    final viewport = tester.getRect(
+      find.byKey(const PageStorageKey('administration-health-findings')),
+    );
+    expect(viewport.contains(tester.getCenter(checking)), isTrue);
     expect(
       tester
           .widget<IconButton>(
@@ -573,10 +749,7 @@ void main({
       'missing',
       'problems',
     ]) {
-      for (final large in [
-        false,
-        if (['green', 'amber', 'missing', 'problems'].contains(status)) true,
-      ]) {
+      for (final large in [false, if (status != 'red') true]) {
         testWidgets(
           'health entry $status ${brightness.name} ${large ? 'large' : 'phone'}',
           (tester) async {
@@ -620,7 +793,7 @@ void main({
             );
             await tester.pumpAndSettle();
             expect(find.byType(HermesHealthContent), findsOneWidget);
-            expect(find.text('Server'), findsOneWidget);
+            expect(find.text('Host'), findsOneWidget);
             expect(
               fixture.requests,
               containsAll([
@@ -693,9 +866,11 @@ void main({
             await tester.drag(vertical, const Offset(0, -700));
             await tester.pumpAndSettle();
             await snapshot(tester, '$name-health-lower');
+            await tester.drag(vertical, const Offset(0, 5000));
+            await tester.pumpAndSettle();
             await tester.scrollUntilVisible(
               find.text('Model access'),
-              -250,
+              200,
               scrollable: vertical,
             );
             await tester.pumpAndSettle();
@@ -734,6 +909,8 @@ void main({
                   'problems',
                   'unknown',
                 ].contains(status),
+                'Scheduled tasks' =>
+                  status == 'problems' || status == 'unknown',
                 _ => status == 'problems',
               };
               if (!needsDetails) {
@@ -750,12 +927,28 @@ void main({
               }
               expect(tile.onTap, isNotNull);
               expect((tile.trailing! as Icon).icon, Icons.chevron_right);
-              expect(
-                (tile.leading! as Icon).color,
-                isNot(WingTokens.of(tester.element(row)).success),
+              final summary = find.descendant(
+                of: row,
+                matching: find.byType(StudioError),
               );
+              expect(summary, findsOneWidget);
+              expect(
+                tester.widget<StudioError>(summary).severity,
+                status == 'unknown'
+                    ? StudioErrorSeverity.error
+                    : StudioErrorSeverity.noResult,
+              );
+              await tester.ensureVisible(summary);
+              await tester.pumpAndSettle();
+              await snapshot(tester, '$name-summary-$title');
               await tester.tap(find.text(title));
               await tester.pumpAndSettle();
+              if (status == 'unknown') {
+                expect(
+                  tester.widget<StudioError>(find.byType(StudioError)).severity,
+                  StudioErrorSeverity.error,
+                );
+              }
               final recovery = find.text(switch (title) {
                 'Tool setup' => 'Skills and tools',
                 'Connectors' => 'Manage connectors',
@@ -792,12 +985,12 @@ void main({
             }
             if (status == 'green') {
               await tester.scrollUntilVisible(
-                find.text('What’s checked?'),
+                find.byTooltip('What’s checked?'),
                 200,
                 scrollable: vertical,
               );
-              await tester.ensureVisible(find.text('What’s checked?'));
-              await tester.tap(find.text('What’s checked?'));
+              await tester.ensureVisible(find.byTooltip('What’s checked?'));
+              await tester.tap(find.byTooltip('What’s checked?'));
               await tester.pumpAndSettle();
               expect(find.byType(AlertDialog), findsOneWidget);
               await snapshot(tester, '$name-explanation');
@@ -816,7 +1009,7 @@ void main({
               await tester.drag(explanationScroll, const Offset(0, -3000));
               await tester.pumpAndSettle();
               await snapshot(tester, '$name-explanation-lower');
-              await tester.tap(find.text('Close'));
+              await tester.tap(find.byTooltip('Close'));
               await tester.pumpAndSettle();
               expect(find.byType(AlertDialog), findsNothing);
             }

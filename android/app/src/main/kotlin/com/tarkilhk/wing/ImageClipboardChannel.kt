@@ -4,17 +4,18 @@ import android.app.Activity
 import android.content.ClipboardManager
 import android.content.Context
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
-import java.io.ByteArrayOutputStream
-import java.util.concurrent.Executors
+import java.util.concurrent.CancellationException
 
 /** Reads clipboard content only after an explicit Paste action. */
-class ImageClipboardChannel(messenger: BinaryMessenger, private val activity: Activity) {
+class ImageClipboardChannel(messenger: BinaryMessenger, activity: Activity) {
     private val channel = MethodChannel(messenger, "com.tarkilhk.wing/image_clipboard")
-    private val executor = Executors.newSingleThreadExecutor()
-    private val clipboard = activity.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-    private val maxBytes = 64 * 1024 * 1024
+    private val clipboard = activity.applicationContext.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+    private val resolver = activity.applicationContext.contentResolver
+    private val reader = ImageClipboardReader({ action -> Handler(Looper.getMainLooper()).post(action) })
 
     init {
         channel.setMethodCallHandler { call, result ->
@@ -49,41 +50,29 @@ class ImageClipboardChannel(messenger: BinaryMessenger, private val activity: Ac
     }
 
     private fun readImage(uri: Uri, result: MethodChannel.Result) {
-        executor.execute {
-            try {
-                // Some clipboard providers report application/octet-stream for
-                // valid images. The draft service validates and decodes the
-                // actual bytes before accepting an image attachment.
-                val bytes = activity.contentResolver.openInputStream(uri)?.use { input ->
-                    val output = ByteArrayOutputStream()
-                    val buffer = ByteArray(8192)
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        if (output.size().toLong() + count > maxBytes) {
-                            throw IllegalArgumentException("too_large")
-                        }
-                        output.write(buffer, 0, count)
-                    }
-                    output.toByteArray()
-                }
-                activity.runOnUiThread { result.success(bytes) }
-            } catch (error: Exception) {
+        val capturedResolver = resolver
+        val admitted = reader.read({ capturedResolver.openInputStream(uri) }) { bytes, error ->
+            if (error == null) {
+                result.success(bytes)
+            } else {
                 val message = when {
                     error is SecurityException ->
                         "This clipboard image is no longer accessible. Copy it again, or insert it from your keyboard."
+                    error is CancellationException ->
+                        "Clipboard reading was cancelled or took too long. Copy the image again."
                     error.message == "too_large" ->
-                        "The clipboard image exceeds the 64 MiB draft budget."
+                        "The clipboard image exceeds the 64 MiB image input limit."
                     else ->
                         "Unable to read the clipboard image. Copy a JPEG, PNG, or WebP image again."
                 }
-                activity.runOnUiThread { result.error("image_unavailable", message, null) }
+                result.error("image_unavailable", message, null)
             }
         }
+        if (!admitted) result.error("image_unavailable", "Clipboard reading is busy. Try again shortly.", null)
     }
 
     fun dispose() {
         channel.setMethodCallHandler(null)
-        executor.shutdown()
+        reader.dispose()
     }
 }

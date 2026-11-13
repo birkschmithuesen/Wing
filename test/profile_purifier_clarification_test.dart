@@ -1,3 +1,6 @@
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -11,6 +14,7 @@ import 'package:wing/core/services/ws_client.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
 import 'profile_workspace_controller_test.dart' show Host;
+import 'support/loopback_http_fixtures.dart';
 
 // Reported tool arguments. The gateway, rather than the tool caller, supplies
 // the JSON-RPC request ID and qid. This fixture tests that client boundary;
@@ -62,6 +66,8 @@ const questions = <Map<String, dynamic>>[
 ];
 
 void main() {
+  useRealHttpClientsForLoopbackFixtures();
+
   for (final count in [1, 5]) {
     testWidgets('submits the reported $count-question purifier form', (
       tester,
@@ -72,17 +78,29 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       SharedPreferences.setMockInitialValues({});
       final host = Host();
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final controller = ProfileWorkspaceController(
-        connection: identityTestConnection(),
+        access: ConnectionAccess(
+          connection: identityTestConnection(),
+          dashboardOAuth: null,
+        ),
         connectionIdentity: 'test-identity',
-        preferences: await SharedPreferences.getInstance(),
+        preferences: preferences,
+        appPreferences: appPreferences,
         gatewayFactory: host.gateway,
       );
       addTearDown(controller.dispose);
       await controller.initialize();
-      final chat = await controller.createChat();
+      final chat = await controller.createChat(canDispatch: () => true);
       await tester.pumpWidget(
-        MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            controller: controller,
+            createBotsSession: () => BotsSession((_) async => const []),
+          ),
+        ),
       );
       final batch = [
         for (var i = 0; i < count; i++) {...questions[i], 'qid': 'q$i'},
@@ -102,12 +120,27 @@ void main() {
         try {
           await client.connect();
           final socket = await connected.future;
+          socket.listen((raw) {
+            final capability = jsonDecode(raw as String) as Map;
+            expect(capability['method'], 'client.capabilities');
+            socket.add(
+              jsonEncode({
+                'jsonrpc': '2.0',
+                'id': capability['id'],
+                'result': {'canonical_clarify_batch': true},
+              }),
+            );
+          });
+          await client.capabilitiesReady;
           socket.add(
             jsonEncode({
               'jsonrpc': '2.0',
               'id': 'purifier-request',
               'method': 'clarify',
-              'params': {'session_id': chat.runtimeId, 'questions': batch},
+              'params': {
+                'session_id': chat.runtime.runtimeId,
+                'questions': batch,
+              },
             }),
           );
           await delivered.future.timeout(const Duration(seconds: 2));
@@ -122,45 +155,55 @@ void main() {
 
       for (var i = 0; i < count; i++) {
         expect(find.text(questions[i]['question'] as String), findsOneWidget);
-        final choices = questions[i]['choices'] as List<String>;
         final selected = i == 1 ? [1, 3] : [0];
         for (final choice in selected) {
-          final option = find.byKey(Key('clarify-choice-$choice'));
+          final option = find.byKey(
+            Key(
+              count == 1
+                  ? 'clarify-choice-$choice'
+                  : 'clarify-q$i-choice-$choice',
+            ),
+          );
           await tester.ensureVisible(option);
           await tester.pump();
+          expect(option.hitTestable(), findsOneWidget);
           await tester.tap(option);
           await tester.pump();
         }
-        expect(
-          host.calls.where((call) => call.$2 == 'clarify.lock'),
-          hasLength(i),
-        );
+        expect(host.calls.where((call) => call.$2 == 'clarify.lock'), isEmpty);
+      }
+      host.onClarifyResponse = () async {
+        final qid = host.calls.last.$3['question_id'] as String;
+        final index = int.parse(qid.substring(1));
         host.clarifyResult = {
           'status': 'ok',
-          'remaining': [for (var j = i + 1; j < count; j++) 'q$j'],
+          'remaining': [for (var j = index + 1; j < count; j++) 'q$j'],
         };
-        final submit = find.byKey(const Key('clarify-continue'));
-        await tester.ensureVisible(submit);
-        await tester.pump();
-        await tester.tap(submit);
-        await tester.pump();
-        await tester.pump();
-
-        expect(
-          find.text('Hermes could not accept the answer. Please try again.'),
-          findsNothing,
-        );
-        final replies = host.calls.where((call) => call.$2 == 'clarify.lock');
-        expect(replies, hasLength(i + 1));
-        expect(replies.last.$3, {
+      };
+      final submit = find.byKey(const Key('clarify-continue'));
+      await tester.ensureVisible(submit);
+      await tester.pump();
+      expect(submit.hitTestable(), findsOneWidget);
+      await tester.tap(submit);
+      await tester.pump();
+      await tester.pump();
+      expect(find.byKey(const Key('clarify-error')), findsNothing);
+      final replies = host.calls
+          .where((call) => call.$2 == 'clarify.lock')
+          .toList();
+      expect(replies, hasLength(count));
+      for (var i = 0; i < count; i++) {
+        final choices = questions[i]['choices'] as List<String>;
+        final selected = i == 1 ? [1, 3] : [0];
+        expect(replies[i].$3, {
           'profile': 'a',
           'request_id': 'purifier-request',
           'question_id': 'q$i',
           'answer': selected.map((index) => choices[index]).join(', '),
         });
-        expect(tester.takeException(), isNull);
       }
-      expect(chat.clarification, isNull);
+      expect(tester.takeException(), isNull);
+      expect(chat.runtime.questions, isNull);
       expect(find.byKey(const Key('clarify-continue')), findsNothing);
       await tester.pumpWidget(const SizedBox.shrink());
     });

@@ -1,3 +1,12 @@
+import 'package:flutter/rendering.dart'
+    show
+        RenderRepaintBoundary,
+        RenderObject,
+        Layer,
+        ContainerLayer,
+        PictureLayer;
+import 'package:wing/core/widgets/source_code_block.dart';
+import 'helpers/pump_markdown_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,11 +14,66 @@ import 'package:wing/core/widgets/deliverable_attachment.dart';
 import 'package:wing/core/widgets/markdown_message_content.dart';
 
 void main() {
+  testWidgets('growing prose does not repaint an unchanged code segment', (
+    tester,
+  ) async {
+    const prefix = '```dart\nfinal stable = 1;\n```\n\n';
+    final data = ValueNotifier('$prefix Growing prose');
+    addTearDown(data.dispose);
+    await tester.pumpMarkdownWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SingleChildScrollView(
+            child: ValueListenableBuilder<String>(
+              valueListenable: data,
+              builder: (_, source, _) =>
+                  MarkdownMessageContent(data: source, streaming: true),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.settleMarkdown();
+    await tester.pumpAndSettle();
+    final code = tester.renderObject(find.byType(SourceCodeBlock));
+    RenderObject? ancestor = code;
+    while (ancestor != null && ancestor is! RenderRepaintBoundary) {
+      ancestor = ancestor.parent;
+    }
+    final boundary = ancestor! as RenderRepaintBoundary;
+    List<PictureLayer> pictures(Layer layer) {
+      final result = <PictureLayer>[];
+      if (layer is PictureLayer) result.add(layer);
+      if (layer is ContainerLayer) {
+        for (
+          var child = layer.firstChild;
+          child != null;
+          child = child.nextSibling
+        ) {
+          result.addAll(pictures(child));
+        }
+      }
+      return result;
+    }
+
+    final before = pictures(boundary.debugLayer!);
+    expect(before, isNotEmpty);
+    data.value = '$prefix Growing prose with another received sentence.';
+    await tester.pump();
+    await tester.settleMarkdown();
+    expect(
+      pictures(boundary.debugLayer!),
+      orderedEquals(before),
+      reason: 'Static code paint stays isolated from changing prose.',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets(
     'missing document heading reports locally without reading a file',
     (tester) async {
       var reads = 0;
-      await tester.pumpWidget(
+      await tester.pumpMarkdownWidget(
         MaterialApp(
           home: Scaffold(
             body: SingleChildScrollView(
@@ -53,7 +117,7 @@ void main() {
           );
       final value = ValueNotifier(content('old'));
       addTearDown(value.dispose);
-      await tester.pumpWidget(
+      await tester.pumpMarkdownWidget(
         MaterialApp(
           home: Scaffold(
             body: ValueListenableBuilder<MarkdownMessageContent>(
@@ -63,28 +127,33 @@ void main() {
           ),
         ),
       );
-      final original = tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+      final original = tester.widget<MarkdownBody>(
+        find.bySubtype<MarkdownBody>(),
+      );
       value.value = content('new');
       await tester.pump();
+      await tester.settleMarkdown();
       expect(
-        tester.widget<MarkdownBody>(find.byType(MarkdownBody)),
+        tester.widget<MarkdownBody>(find.bySubtype<MarkdownBody>()),
         same(original),
       );
       if (deliverables) {
-        await tester.tap(find.text('Open preview'));
+        await tester.tap(find.byTooltip('Open preview'));
         await tester.pumpAndSettle();
-        await tester.tap(find.text('Download'));
+        await tester.tap(find.byTooltip('Download'));
         await tester.pumpAndSettle();
         expect(calls, ['new', 'new download']);
       } else {
-        original.onTapLink!('Report', '/srv/report.md', '');
+        await tester.tap(find.text('Report', findRichText: true));
         await tester.pump();
+        await tester.settleMarkdown();
         expect(calls, ['new']);
       }
       value.value = content('disabled', enabled: false);
       await tester.pump();
+      await tester.settleMarkdown();
       expect(
-        tester.widget<MarkdownBody>(find.byType(MarkdownBody)),
+        tester.widget<MarkdownBody>(find.bySubtype<MarkdownBody>()),
         isNot(same(original)),
       );
       if (deliverables) {
@@ -104,7 +173,7 @@ void main() {
       var dark = false;
       var width = 390.0;
       late StateSetter change;
-      await tester.pumpWidget(
+      await tester.pumpMarkdownWidget(
         MaterialApp(
           home: StatefulBuilder(
             builder: (context, setState) {
@@ -121,19 +190,22 @@ void main() {
         ),
       );
       MarkdownBody body() =>
-          tester.widget<MarkdownBody>(find.byType(MarkdownBody));
+          tester.widget<MarkdownBody>(find.bySubtype<MarkdownBody>());
       final first = body();
       change(() => text = 'Second **answer**');
       await tester.pump();
+      await tester.settleMarkdown();
       expect(body().data, text);
       expect(body(), isNot(same(first)));
       final light = body();
       change(() => dark = true);
       await tester.pump();
+      await tester.settleMarkdown();
       expect(body().styleSheet!.p!.color, isNot(light.styleSheet!.p!.color));
       final wide = body();
       change(() => width = 320);
       await tester.pump();
+      await tester.settleMarkdown();
       expect(body(), isNot(same(wide)));
       expect(tester.takeException(), isNull);
     },

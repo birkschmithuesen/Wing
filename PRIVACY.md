@@ -1,6 +1,6 @@
 # Wing privacy policy
 
-Effective date: 24 September 2026.
+Effective date: 10 October 2026.
 
 This policy covers Wing (`com.tarkilhk.wing`), maintained by [tarkilhk and the Wing contributors](https://github.com/tarkilhk/Wing). It is an independent Android client for a Hermes server you choose. The app does not require an account with Wing's maintainer. Hermes Cloud sign-in uses Nous Portal if you choose that route. Your Hermes host, model providers, and services used by your agent have their own data practices.
 
@@ -13,12 +13,16 @@ This policy covers Wing (`com.tarkilhk.wing`), maintained by [tarkilhk and the W
 - **Files, images, camera captures, clipboard images and Android shares you select.** Prepare attachments for review and upload to the selected chat when you send. Uploads include attachment names and file types. Removing image metadata does not remove personal information visible in the image or its filename. Incoming shares are retained until you choose what to do with them. The app does not automatically send them.
 - **Microphone input and recognized text.** You choose Local or Hermes voice input in App settings. Local uses Android's explicitly on-device recognizer; Wing does not upload the recording. Hermes sends your recording to the selected server profile, which processes it with its configured speech provider. Recordings are limited to two minutes. Temporary phone recordings are removed after capture, cancellation or a failure; files left by process termination are removed on the next activity creation. Transcribed text stays in your editable draft until you send it. Wing does not silently change processing engines.
 - **Spoken replies.** Read aloud uses the independently selected output engine. Local uses an installed offline Android voice. Hermes sends reply text to the selected profile's speech provider and downloads synthesized audio for playback on the phone. Temporary playback files are removed when playback ends, stops or fails, or on the next activity creation after process termination. Hermes and its providers control retention on their systems.
+- **Live conversations.** You explicitly choose ChatGPT subscription or OpenAI API billing in Voice settings. Live microphone audio streams directly to OpenAI over WebRTC; relevant current-chat context and Hermes results are also shared with that voice service. Authentication stays on your Hermes server. Live captions and the local spoken transcript remain in memory until Wing restarts; delegated requests and Hermes replies use normal chat history. Live calls continue in the background or while locked with a persistent notification until ended or interrupted by audio-focus loss. They do not silently change billing mode. Bluetooth permission enables headset routing.
 - **Settings and recent reading.** Remember appearance, notification preferences and selected connections/profiles. Wing also keeps a bounded local cache of recent chat summaries and message content so you can reopen recent work after an interruption. This cache is in private app storage, separated by connection credentials. It is not a complete offline archive and does not restore live approvals or unsent server operations.
 - **Provider credentials and sensitive responses you enter in administration or a server request.** Send the requested value to the selected Hermes host for the operation you choose. Sensitive request forms keep these values out of the app's ordinary drafts and transcript. The server controls subsequent use and retention.
 
 The maintainer does not operate a relay for these conversations. The app has no advertising or app analytics service configured in its standard build, and the maintainer does not receive your conversations through the app. If you send information to the maintainer through a support channel, that channel receives what you choose to send. The app does not sell your data.
 
 ## Notifications and other services
+
+Wing downloads the public model catalog from `models.dev` to show OpenAI API-equivalent prices for subscription usage and model choices. That service receives the network request and your IP address. The request contains no Hermes credentials, conversation content, usage history or selected model IDs. Wing caches only the OpenAI pricing fields privately on your device.
+
 
 Wing creates notifications locally from connected Hermes sessions. Alerts include the chat name and connection/profile. Message previews are on by default and can be disabled in App settings; disabling previews leaves the chat name and short status. Previews use reply/question text or the command awaiting approval. Approval controls require unlocking; disabling previews leaves only a Review action. Wing stores the latest notification excerpt, scoped target, pending request metadata, and dismissal state locally so replacement and dismissal survive restart. Secure-input values are never part of this state. Secure-input requests and failures use fixed text, without secret values or raw errors. Notifications use private lock-screen visibility; Android controls whether private content is shown or replaced with generic system text.
 
@@ -28,7 +32,7 @@ Remote images displayed in messages can contact the image host. Opening a web li
 
 ## Permissions and your choices
 
-Microphone access is requested on first launch, after notifications, and is used only when you start dictation. If declined, the microphone action can request it again. Camera capture opens your device's camera app. Photos, files, clipboard images and shared items are selected through the app or Android controls. Notification permission allows local alerts. You can decline or revoke Android permissions and continue using features that do not require them.
+Microphone access is requested on first launch, after notifications, and is used when you start dictation or a live voice conversation. If declined, the microphone action can request it again. Camera capture opens your device's camera app. Photos, files, clipboard images and shared items are selected through the app or Android controls. Notification permission allows local alerts. You can decline or revoke Android permissions and continue using features that do not require them.
 
 Use HTTPS or an encrypted private network when connecting remotely. A plain HTTP connection does not encrypt your credentials or content in transit. The server address and network protection are chosen by you or your server administrator.
 
@@ -40,7 +44,9 @@ Drafts and queues remain in app storage until sent, removed, or cleared. Staged 
 
 Clearing or uninstalling the Android app does not delete conversations, uploaded files, credentials, or records stored on your Hermes server or its providers. Use the app's server-backed conversation deletion controls where available, and contact the server administrator or provider for their retention and deletion options. There is no separate account with this app's maintainer to delete.
 
-Configuration exports contain saved connections, non-Cloud credentials and app preferences; they exclude recent reading snapshots, drafts, queues, Portal browser sessions and rotating Cloud instance tokens. A passphrase is optional: providing one encrypts the backup; leaving it blank creates a readable JSON file, including any saved API keys, dashboard passwords and custom access headers. The app writes a temporary copy of the export in its private cache before opening Android's share sheet. Dismissing the share sheet does not immediately delete that copy; you can remove it by clearing Wing's cache or app storage in Android Settings. Exported backups, files saved outside the app, and copies shared to other apps remain wherever you saved or sent them until you delete those copies. Keep the backup passphrase private.
+Configuration exports contain saved connections, non-Cloud credentials and app preferences; they exclude recent reading snapshots, drafts, queues, Portal browser sessions and rotating Cloud instance tokens. A passphrase is optional: providing one encrypts the backup; leaving it blank creates a readable JSON file, including any saved API keys, dashboard passwords and custom access headers.
+
+The app writes a temporary original in its private cache and keeps it while Android's share operation is pending. The share plugin creates a separate provider-cache copy before opening the chooser. After the operation succeeds, is dismissed or fails, Wing removes its original staging directory. The plugin-cache copy may remain until a later share replaces the cache or the cache is cleared. You can clear Wing's cache or app storage in Android Settings. Exported backups, files saved outside the app, and copies saved by other apps remain wherever you saved or sent them until you delete those copies. Keep the backup passphrase private.
 
 ## Contact and policy changes
 

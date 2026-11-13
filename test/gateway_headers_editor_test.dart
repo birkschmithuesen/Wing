@@ -4,21 +4,46 @@ import 'package:wing/core/models/connection.dart';
 import 'package:wing/core/widgets/gateway_headers_editor.dart';
 
 void main() {
-  test('shared validator rejects managed, duplicate and unsafe headers', () {
+  test('shared validator accepts a custom access header', () {
     expect(
       validateGatewayHeaders({'CF-Access-Client-Id': 'value'}),
       isNotEmpty,
     );
-    for (final headers in <Map<String, String>>[
-      {'Host': 'value'},
-      {'X-Test': 'one', 'x-test': 'two'},
-      {'X-Test': 'bad\r\nvalue'},
-      {'Bad Header': 'value'},
-      {'X-Blank': '   '},
-    ]) {
-      expect(() => validateGatewayHeaders(headers), throwsFormatException);
-    }
   });
+  for (final (reason, headers) in <(String, Map<String, String>)>[
+    ('managed header', {'Host': 'value'}),
+    ('case-insensitive duplicate', {'X-Test': 'one', 'x-test': 'two'}),
+    ('line break in value', {'X-Test': 'bad\r\nvalue'}),
+    ('invalid name', {'Bad Header': 'value'}),
+    ('blank value', {'X-Blank': '   '}),
+  ]) {
+    test('shared validator rejects $reason', () {
+      expect(() => validateGatewayHeaders(headers), throwsFormatException);
+    });
+  }
+
+  test(
+    'header edit retains hidden secrets without exposing or normalizing bytes',
+    () {
+      final rows = <GatewayHeaderDraft>[
+        const GatewayHeaderDraft(
+          savedName: 'X-Access',
+          name: ' x-access ',
+          value: '',
+        ),
+      ];
+      final edit = GatewayHeaderEdit(rows);
+      rows.clear();
+      expect(edit.update, {'x-access': null});
+      expect(edit.resolve({'X-Access': ' exact secret '}), {
+        'X-Access': ' exact secret ',
+      });
+      expect(edit.nameError(0), isNull);
+      expect(edit.valueError(0), isNull);
+      expect(() => edit.rows.clear(), throwsUnsupportedError);
+      expect(() => edit.update!.clear(), throwsUnsupportedError);
+    },
+  );
 
   testWidgets('emits saved keep, replacement and removal', (tester) async {
     final values = <Map<String, String?>>[];
@@ -27,7 +52,7 @@ void main() {
         home: Scaffold(
           body: GatewayHeadersEditor(
             savedNames: const {'CF-Access-Client-Id'},
-            onChanged: values.add,
+            onChanged: (edit) => values.add(edit.update!),
           ),
         ),
       ),
@@ -40,40 +65,47 @@ void main() {
     expect(values.last, isEmpty);
   });
 
-  testWidgets('rejects duplicates and a renamed saved header without a value', (
-    tester,
-  ) async {
-    final values = <Map<String, String?>>[];
-    final formKey = GlobalKey<FormState>();
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: Form(
-            key: formKey,
-            child: GatewayHeadersEditor(
-              savedNames: const {'X-Saved'},
-              onChanged: values.add,
+  for (final duplicate in [false, true]) {
+    testWidgets(
+      duplicate
+          ? 'rejects case-insensitive duplicate header names'
+          : 'renamed saved header requires a replacement value',
+      (tester) async {
+        final values = <Map<String, String?>>[];
+        final formKey = GlobalKey<FormState>();
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Form(
+                key: formKey,
+                child: GatewayHeadersEditor(
+                  savedNames: const {'X-Saved'},
+                  onChanged: (edit) => values.add(edit.update!),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
+        );
+        await tester.enterText(find.byType(TextFormField).first, 'X-Renamed');
+        if (duplicate) {
+          await tester.enterText(find.byType(TextFormField).at(1), 'secret');
+          await tester.tap(find.byTooltip('Add header'));
+          await tester.pump();
+          await tester.enterText(find.byType(TextFormField).at(2), 'x-renamed');
+          await tester.enterText(find.byType(TextFormField).at(3), 'another');
+        }
+        expect(formKey.currentState!.validate(), isFalse);
+        await tester.pump();
+        if (duplicate) {
+          expect(find.text('Header names must be unique.'), findsNWidgets(2));
+          expect(values.last, {'X-Renamed': 'secret'});
+        } else {
+          expect(find.text('Value is required'), findsOneWidget);
+          expect(values, isEmpty);
+        }
+      },
     );
-
-    await tester.enterText(find.byType(TextFormField).first, 'X-Renamed');
-    expect(formKey.currentState!.validate(), isFalse);
-    await tester.pump();
-    expect(find.text('Value is required'), findsOneWidget);
-
-    await tester.enterText(find.byType(TextFormField).at(1), 'secret');
-    await tester.tap(find.text('Add header'));
-    await tester.pump();
-    await tester.enterText(find.byType(TextFormField).at(2), 'x-renamed');
-    await tester.enterText(find.byType(TextFormField).at(3), 'another');
-    expect(formKey.currentState!.validate(), isFalse);
-    await tester.pump();
-    expect(find.text('Header names must be unique.'), findsNWidgets(2));
-    expect(values.last, {'X-Renamed': 'secret'});
-  });
+  }
 
   testWidgets('disabled and owner changes preserve safe controller ownership', (
     tester,
@@ -84,7 +116,7 @@ void main() {
         body: GatewayHeadersEditor(
           savedNames: names,
           enabled: enabled,
-          onChanged: values.add,
+          onChanged: (edit) => values.add(edit.update!),
         ),
       ),
     );
@@ -122,14 +154,14 @@ void main() {
               key: formKey,
               child: GatewayHeadersEditor(
                 savedNames: const {},
-                onChanged: values.add,
+                onChanged: (edit) => values.add(edit.update!),
               ),
             ),
           ),
         ),
       ),
     );
-    await tester.tap(find.text('Add header'));
+    await tester.tap(find.byTooltip('Add header'));
     await tester.pump();
     await tester.enterText(find.byType(TextFormField).first, 'X-Test');
     expect(formKey.currentState!.validate(), isFalse);

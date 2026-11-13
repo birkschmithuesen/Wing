@@ -1,0 +1,161 @@
+{
+  "schema": 1,
+  "cases": [
+    {
+      "name": "bounded-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0
+    },
+    {
+      "name": "old-serial-copy",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri() { contentResolver.getType(uri) }; fun import() { intakeExecutor.execute { copySharedUri() } } }",
+      "exit": 1
+    },
+    {
+      "name": "resolver-alias-local-actor",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { val resolver = this.contentResolver; intakeExecutor.execute { resolver.query(uri) }; providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1
+    },
+    {
+      "name": "getter-spelling",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { getContentResolver().getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0
+    },
+    {
+      "name": "callable-reference",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; val callback = ::copySharedUri }",
+      "exit": 1
+    },
+    {
+      "name": "nested-work-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { val resolver = contentResolver; resolver.query(uri) }; fun import() { providerWork.submit(work = { lease -> uris.forEach { copySharedUri(lease) } }) } }",
+      "exit": 0
+    },
+    {
+      "name": "unrelated-query-valid",
+      "code": "class Other { fun query() {}; fun contentResolver() {} }; class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun local() { Other().query() }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0
+    },
+    {
+      "name": "ordinary-comments-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { val label = \"contentResolver.query(); copySharedUri()\"; providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0
+    },
+    {
+      "name": "unbounded-owner",
+      "code": "class MainActivity { val providerWork = Executors.newCachedThreadPool(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1
+    },
+    {
+      "name": "malformed-input",
+      "code": "class MainActivity {",
+      "exit": 2
+    },
+    {
+      "name": "unbounded-local-actor",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = Executors.newSingleThreadExecutor(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "unbounded-executor-queue",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, LinkedBlockingQueue()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "fixed-queue-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32)); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "dynamic-capacity",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(capacity)); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "aliased-unbounded-factory",
+      "code": "import java.util.concurrent.Executors as Pools\nclass MainActivity { val providerWork = BoundedProviderWork(); val actor = Pools.newCachedThreadPool(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE",
+      "line": 2
+    },
+    {
+      "name": "static-import-unbounded-factory",
+      "code": "import java.util.concurrent.Executors.newFixedThreadPool as pool\nclass MainActivity { val providerWork = BoundedProviderWork(); val actor = pool(9); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE",
+      "line": 2
+    },
+    {
+      "name": "aliased-bounded-queue-valid",
+      "code": "import java.util.concurrent.ThreadPoolExecutor as Pool\nimport java.util.concurrent.ArrayBlockingQueue as Queue\nclass MainActivity { val providerWork = BoundedProviderWork(); val actor = Pool(1, 1, 0, TimeUnit.MILLISECONDS, Queue<Runnable>(32)); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "private-helper-dynamic-call",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); private fun pool(name:String, capacity:Int = 2) = ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(capacity)); val actor = pool(\"x\", count); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "caller-runs-rejected",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), factory, ThreadPoolExecutor.CallerRunsPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "local-owner-substitution",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val intakeExecutor = HiddenQueue(); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "caller-runs-six-argument",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), ThreadPoolExecutor.CallerRunsPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "discard-six-argument",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), ThreadPoolExecutor.DiscardPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "discard-oldest-six-argument",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), ThreadPoolExecutor.DiscardOldestPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "imported-six-argument-handler",
+      "code": "import java.util.concurrent.ThreadPoolExecutor.CallerRunsPolicy as OnCaller\nclass MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), OnCaller()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE",
+      "line": 2
+    },
+    {
+      "name": "aliased-six-argument-handler",
+      "code": "import java.util.concurrent.ThreadPoolExecutor as Pool\nclass MainActivity { val providerWork = BoundedProviderWork(); val actor = Pool(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), Pool.CallerRunsPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 1,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE",
+      "line": 2
+    },
+    {
+      "name": "six-argument-thread-factory-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), { task -> Thread(task) }); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    },
+    {
+      "name": "six-argument-unrelated-policy-name-valid",
+      "code": "class MainActivity { val providerWork = BoundedProviderWork(); val actor = ThreadPoolExecutor(1, 1, 0, TimeUnit.MILLISECONDS, ArrayBlockingQueue<Runnable>(32), Other.CallerRunsPolicy()); fun copySharedUri(lease: BoundedProviderWork.Lease) { contentResolver.getType(uri) }; fun import() { providerWork.submit(work = { lease -> copySharedUri(lease) }) } }",
+      "exit": 0,
+      "id": "NATIVE_SHARE_BOUNDED_QUEUE"
+    }
+  ]
+}

@@ -1,29 +1,58 @@
 # Sharing into a draft
 
-Share text, links, images or files into a reviewed draft. The composer also offers Camera, Photos, Files and supported clipboard-image intake.
+Share text, links, images, or files to Wing, or use Camera, Photos, Files, and
+supported clipboard-image paste in the composer. Incoming shares open a review.
+With multiple connections, choose the server first, then a profile and a new or
+existing conversation. Older chats can be loaded from the review.
 
-Incoming text, links, images and files open a review. With multiple connections, choose the destination server first. The review displays its connection, lets the user choose a discovered profile and either a new or existing conversation, and exposes pagination for older chats. Add to draft is the only write action; Send remains a separate action in the composer.
+**Add to draft** prepares the content and preserves existing text, attachments,
+and queued messages. Shared text is appended with a blank separator. Send remains
+a separate action. A failed preparation leaves the destination draft intact.
+Cancelling keeps the share available through Home's Review control; Discard
+explicitly removes it. A failed new-chat attempt reuses the created chat on retry.
 
-The controller prepares every incoming attachment against the existing draft's limits before changing the draft. It preserves existing text, attachments, queued messages and uncertain-delivery status. Shared text is appended with a blank separator. Preparation failures clean only newly staged files, and a changed destination draft is left intact. Successful staging uses the existing durable draft store.
+Pending shares survive app restart. The queue holds up to ten shares and 128 MiB
+of files; one share allows 40 files, 128 MiB of files, and 256 Ki characters of
+text. Unreadable or oversized input fails visibly as a whole. If saving the draft
+succeeds but clearing the pending share fails, open the saved draft and discard
+the duplicate pending item from Home.
 
-The exact pending share is acknowledged only after staging succeeds. Cancelling leaves the content available from the Home Review control; Discard explicitly removes it. A failed New chat staging attempt reuses the already-created conversation on retry. It does not delete a server chat or create another one on every retry.
+## Photos, camera, and clipboard
 
-Native intake keeps unsent text and attachment copies in private app storage before destination selection. A small persisted queue owns pending shares; Flutter displays the oldest and acknowledges its ID only after draft staging or explicit Discard. Copies are removed after that acknowledgement is saved. The queue survives app restart and holds at most ten shares and 128 MiB of files; each share allows ten files, 64 MiB of files and 256 Ki characters of text. Imports are serialized, and unreadable or oversized input fails as a whole with a visible error. It does not silently import only some selected files.
+Images are prepared for sending and private metadata is removed. Unsupported or
+oversized images show their rejection reason without sending anything. Malformed
+orientation metadata can leave an image in its stored orientation. Prepared
+images have a 25 MiB limit.
 
-If clearing an incoming share fails after its conversation draft was saved, the app opens the saved draft and explains that the pending share can be discarded from Home. A failed Discard leaves the review controls available. These are unsent drafts only; no conversation history or execution state is stored in the intake queue.
+Camera opens your phone's camera app. A completed photo returns to the original
+chat's draft and preserves existing text and attachments. It is not sent
+automatically. If that chat cannot be reopened or preparation fails, the photo
+stays pending for review or retry. Cancelling removes only that capture.
 
-Photos and Files feed the same attachment path. Images receive the existing sanitization and file limits.
-
-Camera opens the phone's camera application through Android's capture intent. It writes to a single granted URI in private pending-intake storage and adds no camera permission or Flutter dependency. The originating connection identity, profile and chat are captured before launch. On return, the photo is added directly to that chat's draft, including when it is outside the first history page. The chat opens with the photo attached, preserving existing draft text and attachments; Send is still separate. Native intake is acknowledged only after the draft is saved. If attachment preparation or saving fails, the photo stays pending. If ownership changed or the chat cannot be reopened, the photo remains available and review asks for a destination.
-
-The capture descriptor is saved before launch. Successful nonempty output, up to 64 MiB, enters the existing durable intake queue. Cancellation removes only that capture. Recovery checks the descriptor when Hermes resumes, retains completed output and deduplicates by intake ID. URI grants are revoked on return. An active camera reserves queue capacity so another incoming share cannot consume its space.
+Clipboard-image reading begins only when you choose Paste. A stalled read times
+out; cancelling preparation releases your wait. Existing draft content remains
+intact, and late results cannot appear in another chat. Copy the image again to
+retry. If the provider is still busy, wait before another paste.
 
 ## Interruption and recovery
 
-An interruption after saving the conversation draft but before acknowledging intake can offer the content again. External shares require review; camera captures with a verified originating chat attach directly to its draft. Nothing sends automatically. A copy interrupted before native intake commits may need to be shared again.
+After an interruption, content already added to a draft can also remain pending
+for review. Check the draft before adding it again. A copy interrupted before
+Wing saved the incoming share may need to be shared again.
 
-A locally created chat can expire while Camera is open. Same-process return joins any reconnect and preserves the draft/settings. If the original session is confirmed missing after process death, New chat with recovered draft moves the existing draft in one storage write, preserves uncertainty, pauses queues and resets upload references. Staging failure retains that recovered draft and retries reuse the new chat. Missing files remain visible for removal or reattachment. Send stays explicit.
+If the original chat has expired, **New chat with recovered draft** preserves
+its unsent content in a new chat. Recovery can leave two copies after an
+interruption, so review before sending. The queue remains paused and uncertain
+delivery stays marked. Missing files remain visible for removal or reattachment.
+See [Conversation actions and reading](CONVERSATION_ACTIONS_AND_READING.md).
 
-Empty abandoned capture output is cleared when Android returns. Keep it pending while Camera is foreground so a file still being written is not treated as complete. Chats also exposes saved drafts without a loaded chat row through the same verified missing-session recovery path.
+## Sharing from Wing
 
-Samsung checks covered picker/camera cancellation, successful capture, reviewed file/photo intake and restart recovery. File upload acceptance does not guarantee automatic workspace-reference expansion; see [conversation attachments](CONVERSATION_ACTIONS_AND_READING.md#attachments-in-history) and [Testing](TESTING.md).
+Configuration backups, output files, and skill text share one Android share
+operation at a time. If another sheet is open, finish or dismiss it before retrying.
+
+Shared files can remain in Android's provider cache until a later share clears
+it, Android removes it, or you clear Wing's cache in Android Settings. A receiving
+app can save its own independent copy. Closing the chooser does not guarantee
+that every copy was removed. Keep this in mind when sharing plaintext backups
+or other sensitive files.

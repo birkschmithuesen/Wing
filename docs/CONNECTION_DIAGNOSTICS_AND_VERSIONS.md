@@ -1,56 +1,74 @@
 # Connections, diagnostics and backend updates
 
-Use [Getting started](GETTING_STARTED.md) for the first connection and [self-hosted setup](SELF_HOSTING.md) for dashboard authentication and proxy details. Wing requires the modern dashboard and Desktop Gateway. Connection identity includes the configured endpoint and credentials; changing it invalidates the old transport and its pending results.
+Start with [Getting started](GETTING_STARTED.md) for your first connection and [Self-hosted setup](SELF_HOSTING.md) for dashboard authentication and proxy help. Wing needs the Webapp served by the Hermes gateway. A standalone Dashboard URL cannot open chats.
 
 ## Returning to Wing
 
-When Wing returns to the foreground, the visible workspace immediately attempts
-to restore its connection, including from Activity, App settings and administration
-destinations. Opening a disconnected workspace or returning to it also retries
-without waiting for the background retry timer. Failed temporary connections use
-a bounded retry burst; **Retry connection** remains available if recovery fails.
-Recovery retains drafts and does not submit them or mark a hidden chat as read.
-Connection-owned screens share this behavior through `ServerConnectionScope`
-and `ReadRecovery`; already connected screens do not reconnect on entry. If a
-notification opening is still in flight, recovery waits for it and makes a fresh
-attempt if it fails, instead of leaving the screen on Retry.
+Wing attempts to restore the visible workspace connection when you return to the app or open a disconnected workspace. Temporary failures trigger automatic retries; **Retry connection** remains available if recovery fails. Returning also retries a workspace that failed during its initial loading. Recovery preserves drafts and does not automatically resubmit a message whose delivery is uncertain.
 
-Stock Hermes can return `info.lazy: true` without `info.profile_name` when
-reattaching to a session whose agent is not initialized yet. Wing accepts this
-response to its explicitly profile-scoped request. An explicit conflicting
-profile, malformed owner metadata, or missing runtime identity is still rejected.
-This prevents a successful reattachment from appearing as a connection failure.
+A **Chat address needs changing** status means the server is reachable but its endpoint does not support Wing chats. HTTP health alone cannot make this LED green. Open the instance menu → **Edit instance**, enter the gateway Webapp base URL, then check and save. Reconnecting to the same standalone Dashboard cannot fix this mismatch.
 
-This uses the existing stock `session.resume` and `session.active_list` methods;
-no backend customization is required. Verified against upstream main on
-2026-09-27 at
-[`b4410b4baddbc83732241c655ff39ac72ffba865`](https://github.com/NousResearch/hermes-agent/blob/b4410b4baddbc83732241c655ff39ac72ffba865/tui_gateway/methods_session.py),
-including the [lazy live-session info](https://github.com/NousResearch/hermes-agent/blob/b4410b4baddbc83732241c655ff39ac72ffba865/tui_gateway/server.py#L2937).
+Changing a connection's address or credentials replaces its access configuration. Check that you are opening the intended saved instance before sending work.
+
+Moving between chats, Bots, administration and Versions reuses the dashboard
+sign-in for that saved connection. Closing a screen preserves the sign-in.
+
+The Wing pulses in the header during reconnection, without a status text row.
+If recovery fails, tap the connection status icon and choose **Retry connection**.
 
 ## Access headers
 
-Access headers support authenticated proxies through **Sign in → Custom setup → Access headers** in the connection journey. Most connections only need the dashboard URL and dashboard login. Keep a saved value by leaving its replacement blank, replace it explicitly, or remove it. Names are unique ignoring case; names and values must be single-line. Managed authentication headers cannot be overridden.
+Authenticated proxies can use **Sign in → Custom setup → Access headers**. Most connections need only the gateway Webapp URL and login. Leave a replacement blank to keep a saved value, enter a replacement explicitly, or remove it. Header names must be unique ignoring case; names and values must be single-line. Managed authentication headers cannot be overridden.
 
-Secrets use the same secure storage and transactional save/rollback path as connection credentials. They are included only in explicit configuration export (optionally encrypted with a passphrase), never in displayed URLs, errors or logs. Credential changes must not leave the visible connection and stored secret out of sync.
+Access secrets use secure device storage. They are included in explicit configuration exports, which can be encrypted with a passphrase. See [Configuration backups](CONFIGURATION_BACKUPS.md).
 
-Dashboard HTTP requests refuse redirects, including requests authenticated with the dashboard session token. Configure the final URL and path directly. WebSocket authentication retains its redirect checks. Some HTTP operations still lack a deadline; see [issue #4](https://github.com/tarkilhk/Wing/issues/4).
+Wing refuses dashboard redirects. Enter the final address and path directly. Reads and downloads time out when the server stops responding. Some operations that change server state can remain pending longer; a read timeout does not prove that a preceding action failed.
 
 ## Diagnostics and versions
 
-Diagnostics are manual authenticated checks of dashboard/session access, `setup.status` and `setup.runtime_check`. Results distinguish connection access, configured provider and resolved credentials. A resolved credential does not establish successful model inference.
+Connection diagnostics distinguish dashboard access, configured providers and resolved credentials. A credential result does not prove that a model request will succeed or that quota is available. [Hermes health](ADMINISTRATION.md#health-checks-and-diagnostics) offers profile checks, Doctor, security audit and logs.
 
-App settings reads the installed Android version/build through package metadata. Backend identity is reported separately. Releases and Changelog open Wing's pages; there is no automatic Android update polling or installation.
+App settings shows the installed Android version/build separately from the backend version. Releases and Changelog open Wing's release information. Android app updates are not downloaded or installed automatically.
 
-Health distinguishes the dashboard process's runtime profile from the selected profile. Use `profiles/active.current` for the runtime identity, not the sticky `active` selection. Missing runtime identity means unknown; unrelated server operations remain usable.
+## Update Hermes
 
-## Backend updates
+Versions & updates can check for a server update and request it explicitly. **Changes in this update** shows available commit summaries, with a partial-history notice when needed; the server returns at most 20 summaries.
 
-The update flow checks `/api/hermes/update/check`, explicitly requests `POST /api/hermes/update`, and reads `/api/actions/hermes-update/status`. Track the action name and accepted PID. Preserve both `receipt` and `summary` from the completed response; a summary alone or a generic process exit is not proof of a successful update.
+The screen checks automatically when opened. The header Wing pulses and the circular update icon rotates while the
+check runs, without a duplicate loading caption. The installed version appears
+as soon as it is available. Unknown availability is shown only
+after a completed check provides no answer; a failed check offers another check.
 
-A lost acknowledgement is uncertain. Do not automatically retry a potentially accepted update. Leaving the screen does not cancel work already running on the server. Report per-host failure, reconnect and verified version/result separately from request acceptance. A replacement process under the same action name cannot be credited to the original request.
+The server card shows its update channel. Use the tuning icon to choose **Stable
+releases** or **Main branch**, then the checkmark to save. This changes which
+updates the whole server follows; it does not install an update. Wing checks the
+saved channel immediately. A failed save keeps your selection open for retry.
+Named preview channels and custom branches are displayed when the server reports
+them; Wing does not provide a preview-channel catalog or change custom branches.
 
-For several hosts, require an explicit target list and recheck eligibility before each write. Deduplicate configured scheme, normalized host, port and path prefix; this does not establish physical-server identity across DNS aliases. Capture each target's credentials and retain independent outcomes.
+Stable follows published releases and may have no commit count or changelog.
+Main shows commits behind its branch when Hermes can count them. A build newer
+than stable is identified separately, and moving back to an older release has an
+explicit warning before updating. When Main reports an update without a commit
+count or change details, Wing explains that Hermes could not compare the
+installation with upstream. If the check fails, Wing shows the server's
+explanation and leaves the update action unavailable. Unverified channel metadata
+also blocks updating. Check again before proceeding.
 
-No authenticated remote TUI restart API has been verified. A messaging-gateway restart is a different operation and must not be presented as TUI restart.
+After confirmation, starting status and a collapsed **Update logs** viewer appear
+immediately. Wing follows progress automatically while this screen remains open.
+Expand the viewer to read output with the newest lines at the top. Long output
+scrolls inside a viewer sized for 16 text rows, scaling with your text size.
+Short logs use only the space they need. The single sync button stays at the
+right of the action row. During an outstanding update it offers **Check update
+progress**, including retry after a restart or disconnection; this does not
+repeat the update request. Before an update and after it finishes, the same
+button offers **Check for updates**.
 
-Profile description/SOUL, usage and provider configuration are covered in [Administration](ADMINISTRATION.md).
+Leaving the screen does not cancel an accepted server update. If acknowledgement is lost, the outcome stays uncertain; check its status and version before repeating the request. Request acceptance alone does not mean the update completed.
+
+When updating several configured hosts, review the targets and each host's result separately. Different addresses can refer to the same physical server. A messaging-gateway restart is separate from a TUI restart; Wing does not offer a verified remote TUI restart action.
+
+Hermes Cloud manages updates for its instances. Wing still shows the installed
+server version and lets you refresh it, while omitting host updater and channel
+controls. Self-hosted connections retain the exact-target update flow.

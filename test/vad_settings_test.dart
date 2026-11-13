@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/voice_offline/vad_voice_device.dart';
 import 'package:wing/voice_offline/voice_offline_prefs.dart';
-import 'package:wing/core/services/voice_preferences.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/voice_preferences_session.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/widgets/studio_select.dart';
 import 'package:wing/core/widgets/voice_preferences_card.dart';
@@ -48,7 +49,10 @@ void main() {
   late VoiceDeviceFixture device;
   late SharedPreferences prefs;
   setUp(() async {
-    SharedPreferences.setMockInitialValues({VoicePreferences.inputKey: 'vad'});
+    SharedPreferences.setMockInitialValues({
+      'voice.input': 'local',
+      VoiceOfflinePrefs.localEngineKey: 'parakeet',
+    });
     prefs = await SharedPreferences.getInstance();
     device = VoiceDeviceFixture();
   });
@@ -60,8 +64,10 @@ void main() {
     double scale = 1,
   }) async {
     tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(320, 900);
+    tester.view.physicalSize = const Size(320, 2600);
     addTearDown(tester.view.reset);
+    final app = AppPreferences(prefs);
+    addTearDown(app.dispose);
     await tester.pumpWidget(
       MaterialApp(
         theme: wingTheme(brightness),
@@ -70,12 +76,19 @@ void main() {
           child: Scaffold(
             body: MediaQuery(
               data: MediaQueryData(
-                size: const Size(320, 900),
+                size: const Size(320, 2600),
                 textScaler: TextScaler.linear(scale),
               ),
               child: SingleChildScrollView(
                 padding: const EdgeInsets.all(16),
-                child: VoicePreferencesCard(preferences: prefs, device: device),
+                child: VoicePreferencesCard(
+                  createSession: () => VoicePreferencesSession(
+                    preferences: app,
+                    device: device,
+                    hermesProfileLabel: null,
+                    openHermesSettings: null,
+                  ),
+                ),
               ),
             ),
           ),
@@ -89,11 +102,18 @@ void main() {
       .widgetList<StudioSelect<String>>(find.byType(StudioSelect<String>))
       .firstWhere((w) => w.label == label);
 
-  testWidgets('route vad offers the model download and hides the language', (tester) async {
+  StudioSelect<VoiceLocalEngine> engine(WidgetTester tester) => tester
+      .widgetList<StudioSelect<VoiceLocalEngine>>(
+        find.byType(StudioSelect<VoiceLocalEngine>),
+      )
+      .firstWhere((w) => w.label == 'Recognition engine');
+
+  testWidgets('the Parakeet engine offers the model download', (tester) async {
     device.modelStatus = const VadModelStatus(state: VadModelState.absent);
     await show(tester);
-    expect(select(tester, 'Voice input').value, 'vad');
+    expect(engine(tester).value, VoiceLocalEngine.parakeet);
     expect(find.text('Recognition language'), findsNothing);
+    expect(find.textContaining('On-device recognition is unavailable'), findsNothing);
     expect(find.text('Speech model · 487 MB download'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('vad-model-download')));
     await tester.pump();
@@ -194,15 +214,16 @@ void main() {
     await screenshot(tester, 'vad-pause-detection-open-light-100');
   });
 
-  testWidgets('switching the route prepares or releases the phone model', (tester) async {
+  testWidgets('switching the engine prepares or releases the phone model', (tester) async {
     SharedPreferences.setMockInitialValues({});
     prefs = await SharedPreferences.getInstance();
     await show(tester);
-    select(tester, 'Voice input').onChanged!('vad');
+    expect(engine(tester).value, VoiceLocalEngine.system);
+    engine(tester).onChanged!(VoiceLocalEngine.parakeet);
     await tester.pumpAndSettle();
     expect(device.prepares, 1);
     expect(device.mediaKeysCalls, isEmpty);
-    select(tester, 'Voice input').onChanged!('local');
+    engine(tester).onChanged!(VoiceLocalEngine.system);
     await tester.pumpAndSettle();
     expect(device.releases, 1);
     expect(device.mediaKeysCalls, isEmpty);
@@ -216,7 +237,8 @@ void main() {
         total: 487170055,
       );
       SharedPreferences.setMockInitialValues({
-        VoicePreferences.inputKey: 'vad',
+        'voice.input': 'local',
+        VoiceOfflinePrefs.localEngineKey: 'parakeet',
         VoiceOfflinePrefs.vadDebugKey: 'on',
       });
       prefs = await SharedPreferences.getInstance();

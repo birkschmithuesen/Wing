@@ -1,10 +1,42 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/answer_versions.dart';
 import 'package:wing/core/models/transcript_notice.dart';
+import 'package:wing/core/models/transcript_message.dart';
+import 'package:wing/core/models/reading_snapshot_message.dart';
 
 import 'support/process_batch_fixture.dart';
 
 void main() {
+  test(
+    'typed batch title uses metadata and its complete results survive restore',
+    () {
+      final source = {
+        'id': 10,
+        'role': 'user',
+        'content': processBatchEnvelope,
+        'display_kind': 'process_complete',
+        'display_metadata': {'display_text': 'Producer-owned batch outcome'},
+      };
+      for (final row in [
+        source,
+        projectReadingSnapshotMessage(captureReadingSnapshotMessage(source)),
+      ]) {
+        final display = TranscriptMessage.fromRow(row);
+        expect(display.kind, TranscriptMessageKind.notice);
+        expect(display.id, 10);
+        expect(display.text, 'Producer-owned batch outcome');
+        expect(display.noticeDisclosure, 'Output');
+        expect(display.noticeMonospace, isTrue);
+        expect(isHumanAnswerPrompt(row), isFalse);
+        for (final output in processBatchFixture['outputs'] as List) {
+          expect(display.noticeResult, contains(output));
+        }
+        expect(display.noticeResult, isNot(contains('Treat these results')));
+        expect(row['content'], processBatchEnvelope);
+      }
+    },
+  );
+
   test('producer-generated batch uses Desktop process notice presentation', () {
     final row = {'role': 'user', 'content': processBatchEnvelope};
     expect(transcriptNoticeKind(row), 'process_notification');

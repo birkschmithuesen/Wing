@@ -1,9 +1,12 @@
+import 'package:wing/core/models/transcript_message.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/widgets/web_output_preview.dart';
 import 'package:wing/core/widgets/markdown_code_block.dart';
+import 'package:wing/core/widgets/source_code_block.dart';
 import 'package:wing/core/widgets/profile_message.dart';
+import 'helpers/pump_markdown_widget.dart';
 
 void main() {
   test('only complete non-streaming Mermaid blocks offer rendering', () {
@@ -71,7 +74,7 @@ void main() {
           );
         });
         const source = 'graph TD\nA[Plan] --> B[Deliver]\n';
-        await tester.pumpWidget(
+        await tester.pumpMarkdownWidget(
           MaterialApp(
             theme: ThemeData.dark(),
             builder: (context, child) => MediaQuery(
@@ -80,13 +83,13 @@ void main() {
               ).copyWith(textScaler: TextScaler.linear(scale)),
               child: child!,
             ),
-            home: const Scaffold(
+            home: Scaffold(
               body: SingleChildScrollView(
                 child: ProfileMessage(
-                  message: {
+                  message: TranscriptMessage.fromRow({
                     'role': 'assistant',
                     'content': 'A plan\n```mermaid\n$source```',
-                  },
+                  }),
                 ),
               ),
             ),
@@ -129,6 +132,7 @@ void main() {
               'error': Theme.of(
                 tester.element(find.byType(AndroidView)),
               ).colorScheme.error.toARGB32(),
+              'error-surface': const Color(0xFF352422).toARGB32(),
               'accent': Theme.of(
                 tester.element(find.byType(AndroidView)),
               ).colorScheme.primary.toARGB32(),
@@ -213,6 +217,7 @@ void main() {
           'error': Theme.of(
             tester.element(find.byType(AndroidView)),
           ).colorScheme.error.toARGB32(),
+          'error-surface': const Color(0xFFFFF1EF).toARGB32(),
           'accent': Theme.of(
             tester.element(find.byType(AndroidView)),
           ).colorScheme.primary.toARGB32(),
@@ -222,7 +227,7 @@ void main() {
     await tester.tap(find.byTooltip('Show source'));
     await tester.pumpAndSettle();
     expect(
-      tester.widget<MarkdownCodeBlock>(find.byType(MarkdownCodeBlock)).code,
+      tester.widget<SourceCodeBlock>(find.byType(SourceCodeBlock)).code,
       source,
     );
     expect(find.byTooltip('Show SVG'), findsOneWidget);

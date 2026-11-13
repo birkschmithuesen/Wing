@@ -1,0 +1,219 @@
+{
+  "cases": [
+    {
+      "name": "domain follows relative barrel package and conditional dependencies",
+      "rule": "ARCH_DOMAIN_DEPENDENCY",
+      "expect": true,
+      "files": {
+        "lib/value.dart": {
+          "role": "domain",
+          "source": "import 'shared/barrel.dart';\nimport 'package:wing/views/page.dart' if (dart.library.io) 'value_io.dart';\nclass Value {}"
+        },
+        "lib/value_io.dart": {
+          "role": "domain",
+          "source": "import 'dart:io'; class ValueIo {}"
+        },
+        "lib/shared/barrel.dart": {
+          "role": "utility",
+          "source": "export '../data/adapter.dart';"
+        },
+        "lib/data/adapter.dart": {
+          "role": "data",
+          "source": "import 'dart:io'; class Adapter {}"
+        },
+        "lib/views/page.dart": {
+          "role": "view",
+          "source": "class Page {}"
+        }
+      }
+    },
+    {
+      "name": "domain allows pure values and Unicode framework helpers",
+      "rule": "ARCH_DOMAIN_DEPENDENCY",
+      "expect": false,
+      "files": {
+        "lib/value.dart": {
+          "role": "domain",
+          "source": "import 'package:flutter/widgets.dart' show StringCharacters;\nimport 'package:wing/identity.dart'; class Value {}"
+        },
+        "lib/identity.dart": {
+          "role": "domain",
+          "source": "class Identity {}"
+        }
+      }
+    },
+    {
+      "name": "domain rejects rendering widgets despite prefixes and mixed show lists",
+      "rule": "ARCH_DOMAIN_DEPENDENCY",
+      "expect": true,
+      "files": {
+        "lib/value.dart": {
+          "role": "domain",
+          "source": "import 'package:flutter/widgets.dart' as fw show Widget, StringCharacters; class Value { fw.Widget? view; }"
+        }
+      }
+    },
+    {
+      "name": "business follows exported view dependency",
+      "rule": "ARCH_BUSINESS_VIEW_DEPENDENCY",
+      "expect": true,
+      "files": {
+        "lib/owner.dart": {
+          "role": "application",
+          "source": "import 'barrel.dart'; class Owner {}"
+        },
+        "lib/barrel.dart": {
+          "role": "utility",
+          "source": "export 'package:wing/page.dart';"
+        },
+        "lib/page.dart": {
+          "role": "view",
+          "source": "class Page {}"
+        }
+      }
+    },
+    {
+      "name": "business allows injectable data and lifecycle glue",
+      "rule": "ARCH_BUSINESS_VIEW_DEPENDENCY",
+      "expect": false,
+      "files": {
+        "lib/owner.dart": {
+          "role": "application",
+          "source": "import 'adapter.dart'; import 'package:flutter/foundation.dart'; class Owner {}"
+        },
+        "lib/adapter.dart": {
+          "role": "data",
+          "source": "import 'platform.dart'; class Adapter {}"
+        },
+        "lib/platform.dart": {
+          "role": "platform",
+          "source": "import 'package:flutter/widgets.dart' show WidgetsBindingObserver; class PlatformAdapter {}"
+        }
+      }
+    },
+    {
+      "name": "rendering detects prefixes aliases and real parts",
+      "rule": "ARCH_BUSINESS_RENDERING_TYPE",
+      "expect": true,
+      "files": {
+        "lib/owner.dart": {
+          "role": "application",
+          "source": "import 'package:flutter/widgets.dart' as fw;\npart 'owner_part.dart';\ntypedef Editor = fw.TextEditingController;\nclass Owner { fw.BuildContext? context; }"
+        },
+        "lib/owner_part.dart": {
+          "role": "application",
+          "library": "lib/owner.dart",
+          "source": "part of 'owner.dart';\nfw.ScrollController? scrolling;"
+        }
+      }
+    },
+    {
+      "name": "rendering permits same named local types hide and lifecycle observers",
+      "rule": "ARCH_BUSINESS_RENDERING_TYPE",
+      "expect": false,
+      "files": {
+        "lib/owner.dart": {
+          "role": "application",
+          "source": "import 'package:flutter/widgets.dart' hide TextEditingController;\nclass BuildContext {}\nclass TextEditingController {}\nclass Owner { BuildContext? context; TextEditingController? editor; WidgetsBindingObserver? observer; }\nclass Generic<ScrollController> { ScrollController? value; }"
+        }
+      }
+    },
+    {
+      "name": "cycles include export and package edges",
+      "rule": "ARCH_LIBRARY_CYCLE",
+      "expect": true,
+      "files": {
+        "lib/a.dart": {
+          "role": "utility",
+          "source": "import 'b.dart'; class A {}"
+        },
+        "lib/b.dart": {
+          "role": "utility",
+          "source": "export 'package:wing/a.dart';"
+        }
+      }
+    },
+    {
+      "name": "parts are one library without an invented self cycle",
+      "rule": "ARCH_LIBRARY_CYCLE",
+      "expect": false,
+      "files": {
+        "lib/a.dart": {
+          "role": "utility",
+          "source": "part 'b.dart'; class A {}"
+        },
+        "lib/b.dart": {
+          "role": "utility",
+          "library": "lib/a.dart",
+          "source": "part of 'a.dart'; class B {}"
+        }
+      }
+    },
+    {
+      "name": "inventory rejects missing stale and invented library groups",
+      "rule": "ARCH_ROLE_INVENTORY",
+      "expect": true,
+      "files": {
+        "lib/a.dart": {
+          "role": "utility",
+          "library": "lib/b.dart",
+          "source": "class A {}"
+        },
+        "lib/b.dart": {
+          "role": "utility",
+          "classified": false,
+          "source": "class B {}"
+        }
+      },
+      "extraRoles": {
+        "lib/gone.dart": {
+          "role": "utility",
+          "feature": "fixture",
+          "library": "lib/gone.dart"
+        }
+      }
+    },
+    {
+      "name": "inventory accepts matching actual part ownership",
+      "rule": "ARCH_ROLE_INVENTORY",
+      "expect": false,
+      "files": {
+        "lib/a.dart": {
+          "role": "application",
+          "source": "part 'b.dart'; class A {}"
+        },
+        "lib/b.dart": {
+          "role": "application",
+          "library": "lib/a.dart",
+          "source": "part of 'a.dart'; class B {}"
+        }
+      }
+    },
+    {
+      "name": "view rejects prefixed low level transport import",
+      "rule": "ARCH_VIEW_LOWLEVEL_DEPENDENCY",
+      "expect": true,
+      "files": {
+        "lib/page.dart": {
+          "role": "view",
+          "source": "import 'package:http/http.dart' as api; class Page {}"
+        }
+      }
+    },
+    {
+      "name": "view allows feature controller and UI platform utilities",
+      "rule": "ARCH_VIEW_LOWLEVEL_DEPENDENCY",
+      "expect": false,
+      "files": {
+        "lib/page.dart": {
+          "role": "view",
+          "source": "import 'owner.dart'; import 'package:flutter/services.dart' show HapticFeedback; class Page {}"
+        },
+        "lib/owner.dart": {
+          "role": "application",
+          "source": "import 'package:http/http.dart'; class Owner {}"
+        }
+      }
+    }
+  ]
+}

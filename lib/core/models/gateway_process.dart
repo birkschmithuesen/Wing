@@ -4,10 +4,10 @@ class GatewayProcessActivity {
   static const _maxIdLength = 256;
   static const _maxCommandLength = 200;
   static const _maxCwdLength = 1000;
-  static const _maxOutputLength = 4000;
 
   final String id;
   final String command;
+  final String? commandSource;
   final String? cwd;
   final String? outputTail;
   final GatewayProcessStatus status;
@@ -21,6 +21,7 @@ class GatewayProcessActivity {
     required this.id,
     required this.command,
     required this.status,
+    this.commandSource,
     this.cwd,
     this.outputTail,
     this.exitCode,
@@ -29,6 +30,21 @@ class GatewayProcessActivity {
     this.detached = false,
     this.notifyOnComplete = false,
   });
+
+  /// Value identity for quiet registry refreshes; unchanged rows keep readers.
+  Object get observation => (
+    id,
+    command,
+    commandSource,
+    cwd,
+    outputTail,
+    status,
+    exitCode,
+    uptimeSeconds,
+    pid,
+    detached,
+    notifyOnComplete,
+  );
 
   bool get isRunning => status == GatewayProcessStatus.running;
 
@@ -55,8 +71,11 @@ class GatewayProcessActivity {
     return GatewayProcessActivity(
       id: rawId,
       command: command ?? 'Background process',
+      commandSource: rawCommand is String ? rawCommand : null,
       cwd: _displayText(value['cwd'], _maxCwdLength),
-      outputTail: _output(value['output_tail']),
+      outputTail: value['output_tail'] is String
+          ? value['output_tail'] as String
+          : null,
       status: status,
       exitCode: _integer(value['exit_code']),
       uptimeSeconds: _nonNegativeInteger(value['uptime_seconds']),
@@ -80,19 +99,6 @@ class GatewayProcessActivity {
     return safe.length <= maxLength
         ? safe
         : '${safe.substring(0, maxLength - 1)}…';
-  }
-
-  static String? _output(dynamic value) {
-    if (value is! String) {
-      return null;
-    }
-    final safe = value.replaceAll('\u0000', '');
-    if (safe.trim().isEmpty) {
-      return null;
-    }
-    return safe.length <= _maxOutputLength
-        ? safe
-        : safe.substring(safe.length - _maxOutputLength);
   }
 
   static int? _integer(dynamic value) =>

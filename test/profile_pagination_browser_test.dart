@@ -1,3 +1,6 @@
+import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -9,27 +12,42 @@ import 'support/profile_paging_fixture.dart';
 void main() {
   late ProfilePagingFixture fixture;
   late ProfileWorkspaceController controller;
+  late AppPreferences appPreferences;
   setUp(() async {
     SharedPreferences.setMockInitialValues({});
     fixture = ProfilePagingFixture();
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: 'host',
-        label: 'Paging QA',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: 'host',
+          label: 'Paging QA',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: 'paging',
-      preferences: await SharedPreferences.getInstance(),
+      preferences: preferences,
+      appPreferences: appPreferences,
       gatewayFactory: fixture.gateway,
     );
     await controller.initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
   Future<void> show(WidgetTester tester) async {
     await tester.pumpWidget(
-      MaterialApp(home: ProfileWorkspaceScreen(controller: controller)),
+      MaterialApp(
+        home: ProfileWorkspaceScreen(
+          createBotsSession: () => BotsSession((_) async => const []),
+          controller: controller,
+        ),
+      ),
     );
   }
 
@@ -41,8 +59,12 @@ void main() {
     final reads = fixture.reads
         .where((r) => r.$1 == 'sessions' && r.$2['limit'] == '100')
         .toList();
-    expect(reads.length, 4);
-    expect(reads.where((r) => r.$2['offset'] == '100').length, 2);
+    final browserReads = reads.where((r) => r.$2['archived'] != 'include');
+    final recentsReads = reads.where((r) => r.$2['archived'] == 'include');
+    expect(browserReads, hasLength(4));
+    expect(browserReads.where((r) => r.$2['offset'] == '100'), hasLength(2));
+    expect(recentsReads, hasLength(4));
+    expect(recentsReads.where((r) => r.$2['offset'] == '100'), hasLength(2));
     expect(
       find.byKey(const ValueKey('chat-personal-chat-120')),
       findsOneWidget,
@@ -75,7 +97,7 @@ void main() {
     await tester.pumpAndSettle();
     final list = find.byKey(const ValueKey('chat-list-false'));
     final more = find.byKey(
-      const ValueKey('chat-show-more-project/personal/home'),
+      const ValueKey('chat-show-more-project/personal/shared-project'),
     );
     Future<void> reachMore() async {
       await tester.scrollUntilVisible(

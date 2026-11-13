@@ -1,400 +1,135 @@
 # Administration
 
-Wing puts everyday profile settings, server checks and usage in three clear places:
+Open **Hermes administration**, **Hermes health** or **Hermes analytics** from Wing's navigation drawer.
 
-| Go to | Use it for |
+| Destination | Use it for |
 | --- | --- |
-| **Administration** | Models, identity, skills, provider access, MCP connectors and scheduled tasks for the selected profile. |
-| **Hermes health** | Server diagnostics and checks for the selected profile. |
-| **Hermes analytics** | Activity, token usage and estimated costs. |
+| Hermes administration | Models, identity, skills, provider access, MCP connectors and scheduled tasks for the selected profile. |
+| Hermes health | Host resources, server diagnostics and profile checks. |
+| Hermes analytics | Activity, token usage and estimated costs. |
 
-Open these destinations from Wing's navigation drawer. The connection name and status open connection details; the server version opens Versions & updates. The rest of this guide records the exact controls and server boundaries for contributors.
+[Bot settings](BOTS.md#profile-options) opens these editors for the chosen bot. Changing settings there does not switch the selected chat's profile or model.
 
-Read the [ownership handoff](design/2026-09-14-administration-handoff.md) before changing these flows.
+## Profile settings
 
-Target correction, 17 September 2026: Wing follows the latest upstream Hermes as
-specified in [AGENTS.md](../AGENTS.md). Provider credentials belong to profiles;
-upstream removed automatic root `auth.json` inheritance. The Providers entry has
-been removed from the Server tab and administration search routes provider queries
-to Profile. Provider recovery now keeps this scope and removes the obsolete
-shared-account links and root-inheritance wording.
+Select the profile before opening an editor. Administration search takes you to the matching setting. Refresh updates the displayed configuration; it does not run diagnostics or test tools.
 
-## Overview and navigation
+You can manage model defaults and supported reasoning options, identity and instructions, fallback models, memory settings, approval policy, compression, voice and scheduled tasks. Model defaults apply to new conversations; use the model selector inside a chat to change that conversation's model. [Profile voice](PROFILE_VOICE.md) explains speech synthesis settings.
 
-The header contains the single visible Refresh administration action. It updates
-workspace/profile discovery, overview observations, scoped provider configuration
-and scoped readiness. It preserves diagnostic results and does not run operational checks.
-Pull-to-refresh remains available on the Profile list.
+**Models and reasoning → Subagent model** chooses the default route for new
+subagents, or lets them inherit the parent model. Existing agents keep their
+current route. **Behavior → Compression → Prepare compression ahead** can reduce
+compression pauses, but preparing a summary can consume tokens even if it is
+never used. Manual chat compression is described in [Slash commands](SLASH_COMMAND_SUPPORT.md).
 
-Overview reads are independent observations for a captured profile. A failed read
-retains its last confirmed value and freshness; missing configuration stays
-unavailable. Entry performs no inference, installations, connector tests or Doctor.
-The profile brief groups the shared Chats profile chips with a one-line description
-and direct Identity edit, or Describe this agent when absent. Selected profiles are
-kept in view. Setup needs, expired sign-ins and schedule issues use separate semantic
-attention labels; task names stay on one line with run time/outcome beneath.
-Long-press an Administration profile pill to choose one of Desktop's twelve profile
-hues or Automatic color. The choice is saved on this device for that connection and
-also colors the profile square in Chats. Automatic uses Desktop's name-derived hue;
-the default profile is neutral. Color edits do not switch profiles or call Hermes.
-The picker follows Studio light/dark tokens and remains reachable at 320 dp with
-200% text. Verified with `profile_selector_test.dart`, `chat_profile_bar_test.dart`
-and `administration_navigation_test.dart`, plus rendered Administration captures
-in both themes at normal and enlarged text. Desktop reference: [profile color
-picker](https://github.com/NousResearch/hermes-agent/blob/main/apps/desktop/src/app/chat/sidebar/profile-switcher.tsx)
-and [local color storage](https://github.com/NousResearch/hermes-agent/blob/main/apps/desktop/src/store/profile.ts).
-Returning from an editor refreshes only the affected observations and briefly emphasizes changed values;
-reduced motion suppresses the emphasis. Health visits and search preserve profile
-observations and scroll context. Search shows the full owner/editor/field path and opens the exact field without
-focusing its keyboard.
+Long-press a profile pill to choose its color. This device preference also colors the profile in Chats; it does not change settings on Hermes.
 
-Skills and tools opens Capabilities first, grouped into Needs setup, Enabled
-capabilities and Not enabled. Installed skills is the adjacent view; the selector
-stacks at narrow widths or enlarged text. Tool details combine
-separate enablement/setup/platform facts with the owning setup route. Skill library,
-Discover skills and Agent plugins remain distinct secondary destinations in the
-Browse and manage skills menu.
-Provider inventories use compact status/source/expiry rows and an explicit Add
-service key catalog. Account details offer renewal, sign-in, status checks and
-removal according to the observed credential source. Memory leads with retained entries and a
-short read-only disclosure; source metadata is shown only when reported.
+Settings and Identity show unsaved changes and offer Save and Close. If another client changed a field, compare **Current server value** with **Your value**, choose which to keep, then save. A failed or incomplete save keeps the form available for review. Refresh failures retain the last confirmed observation with its check time.
 
-## Health observations
+An explicit server refusal keeps the draft editable and shows its explanation,
+including administrator restrictions when supplied. A timeout or failed readback
+leaves the result uncertain; refresh and review before saving again. A conversation
+model change can succeed while a separate Fast change is refused; Wing reports
+both parts.
 
-The owner-approved clear-result wording uses `Access is set up`, enabled tool-group
-counts with setup gaps, passed/failed/unavailable connector counts, and scheduled
-task counts with recorded errors. Empty inventories say so explicitly. The
-What’s checked? dialog explains that configuration checks do not execute tools,
-connector checks do not exercise their actions, and task checks do not run jobs.
-Reverified stock Hermes at
-[`1af1db281e7274581cb61fdd03c64f822fbebb83`](https://github.com/NousResearch/hermes-agent/commit/1af1db281e7274581cb61fdd03c64f822fbebb83):
-`tui_gateway/methods_config.py`, `hermes_cli/web_routers/tools.py`,
-`hermes_cli/tools_config.py`, and `hermes_cli/web_routers/mcp.py`. No new API calls.
+## Skills, tools and provider access
 
-Server and Profile each display one check time in the heading. The profile time
-is the end of its most recent refresh attempt, qualified as incomplete if any of
-the four visible checks lacks a result; reported problems still count as completed
-checks. The Server completion time advances only when both diagnostics in a
-section refresh finish. Individual reruns retain that shared time. If diagnostics
-were first run separately, their oldest result establishes initial section coverage.
-Diagnostic generation IDs keep retained output from satisfying a newer refresh,
-including after restarting the app. Detailed result pages retain their own times.
-The health-result cache uses the v2 schema for these section records and count-based
-summaries; older cached Health snapshots are not restored. Other app data is unchanged.
+**Skills and tools** groups capabilities into Needs setup, Enabled capabilities and Not enabled. Enabling a capability may start setup on Hermes; enablement alone does not prove it is ready.
 
-Health has two groups. Server owns Doctor, security audit and Logs. Its refresh icon
-starts Doctor and security audit together, without opening their details or a
-confirmation dialog. It is disabled while either diagnostic is starting, running
-or has an uncertain completion. Each operation retains its own result; a failed
-start does not prevent the other operation from running. The icon shows a spinner
-while diagnostics start or run, matching Profile refresh.
-Doctor and security audit details rerun from their top-bar play action, with no
-bottom rerun button; result polling remains automatic. There is no runtime-profile
-label. Diagnostic confirmations and results identify the server. Profile uses
-selection from the shared header,
-a refresh icon beside its heading, four stable rows (Model access, Tool setup, Connectors,
-Scheduled tasks). There is no global health verdict. Server diagnostics run on first entry and retain their separate progress and results.
+Installed skills offers instruction reading, recorded usage and available edit, archive or uninstall actions. Use the skill reader’s action menu to lock or unlock agent edits. A lock preserves
+your existing manual editing rights and does not change the skill’s origin.
+Bundled instructions are read-only. The instruction reader supports raw/formatted views, copying, sharing and Contents. Hold or drag its grip to browse sections and release to jump. Skill discovery, the library and agent plugins have separate destinations.
 
-Health owns its profile observations, so opening Administration first is unnecessary.
-Opening Health or selecting a profile reuses that profile’s saved results for 24 hours.
-A profile with no saved refresh, or one at least 24 hours old, automatically checks all four rows:
-model credential resolution, enabled-tool configuration, enabled connector connection
-probes, and scheduled-task errors or uncertain actions. The Profile refresh icon and
-pull-to-refresh repeat the same checks. Returning from provider recovery also checks
-again. Pending refreshes are shared per profile; another profile can refresh immediately,
-and late results remain attached to their captured scope. No model prompt is sent.
-Model access is a passive row directly in Health. It shows credential status,
-and model/provider. There is no model/provider detail destination,
-Change model control, routine account-management shortcut, or row navigation.
-The Profile refresh icon repeats the checks. A reported provider failure
-reveals Fix access, which opens the profile's existing account editor; an
-unconfirmed alternate route offers Review access. An incomplete check offers Retry,
-and server authentication rejection offers Review connection. Healthy and unchecked
-states have no recovery actions. What’s checked? explains the checks and their limits.
-The headings own section times; these describe check completion, not a healthy verdict.
+In Agent plugins, **Update installed plugins** checks and updates eligible installed
+plugins in the selected profile. The receipt separates updated, current, failed,
+review-required and skipped items. Held or pinned installs stay under Hermes'
+policy; changes needing review remain for the operator. Refresh reads the current
+inventory after an uncertain result. This action does not enable automatic updates.
 
-The row uses the retained credential result. Configuration presence and unknown
-provider catalog entries do not substitute for it. Successful checks require the
-canonical profile and resolved model/provider. A different resolved model/provider
-is named explicitly and does not validate the selected route; aliases are not guessed
-to be fallbacks. Unchanged selections retain results; an observed model/provider
-change or return from the recovery editor clears them, including in-flight results.
-Model selection and routine account management remain in Administration. Recovery
-editors capture the profile they save to.
+Provider access belongs to the selected profile. Depending on the provider and credential source, Wing offers key management, sign-in, renewal, status checks and removal. Some external CLI logins must be completed on the server. Removing a saved sign-in does not revoke the provider account or necessarily clear credentials already in use.
 
-The credential check calls only `setup.runtime_check`, scoped to the captured
-canonical profile. Verified against latest stock upstream
-[`783f854b0fb2bb224cedf972b40adfc77e9c818f`](https://github.com/NousResearch/hermes-agent/blob/783f854b0fb2bb224cedf972b40adfc77e9c818f/tui_gateway/methods_config.py#L296)
-on 19 September 2026: without a provider override it resolves the startup model and
-configured fallback chain. This establishes credential resolution, not successful
-inference or available quota. Resolution may use the provider's credential renewal;
-opening Health runs this credential check when the saved profile refresh is absent or expired. Only known missing-credential
-messages are described as missing credentials. Other negative results say Provider
-check failed; arbitrary server exception text is not displayed. A missing/mismatched
-success scope or malformed response is incomplete, never success. Transport failures
-are inconclusive, never evidence that credentials are missing.
-The selected model/provider comes from stock [`GET /api/model/info`](https://github.com/NousResearch/hermes-agent/blob/f971bbf51298e846834d3d76e18d763223bd58ec/hermes_cli/web_routers/models.py#L40),
-refreshed before each credential check and after editing. No backend changes are needed.
+Opening a key editor checks the selected profile's stored-key state. Switching
+profiles from an untouched editor checks the newly selected profile before
+showing its credential actions. The header Wing pulses during that check; a
+failed check offers Retry.
 
-Connector checks use stock [`POST /api/mcp/servers/{name}/test`](https://github.com/NousResearch/hermes-agent/blob/783f854b0fb2bb224cedf972b40adfc77e9c818f/hermes_cli/web_routers/mcp.py#L166)
-with the captured canonical `profile`, verified at the same upstream commit. Hermes
-connects, lists capabilities, then disconnects; a local connector may start its configured
-process. Disabled connectors are skipped. Empty profiles say No connectors configured.
-Failed probes and unavailable/malformed responses remain distinct from successful checks.
-Checks do not save settings or reload running chats. Tools reports enabled toolsets with
-missing setup; tasks reports recorded errors and uncertain actions, without executing tools
-or scheduled jobs.
+Retained memory can be searched and read. Memory entry editing and deletion are unavailable. See [MCP connectors](MCP_CONNECTORS.md) for connector setup, sign-in and reconnection.
 
-Configuration does not become unknown just because five minutes pass. Failed
-refreshes retain the previous result and timestamp with a local qualification;
-actual provider credential expiration still becomes a reported failure. Connector
-configuration never establishes connectivity. Switching profiles detaches old
-observations immediately, and late responses cannot replace the current profile.
+### Refreshing saved prompts
 
-Health state belongs to the connection, not its route. Navigating away keeps
-in-flight checks alive. Server diagnostic results and a separate result/refresh
-time for every canonical profile are saved on the device and restored after app
-restart. Storage is scoped by connection ID and endpoint/authentication identity.
-Profile snapshots contain health metadata rather than connector commands,
-environment values or provider secrets. Completed diagnostic details use their
-saved output without issuing another status request. An unfinished restored run
-resumes status reads for its saved action identity without launching a new process.
-
-On Health entry, each completed server diagnostic at least 24 hours old runs
-again automatically; diagnostics with no prior attempt trigger their initial run.
-An unconfirmed start is saved too: reopening Health never repeats it automatically.
-The row keeps an explicit Run action for the user to retry.
-Profile and server clocks are independent. Manual refresh remains available,
-and an in-flight refresh is shared across repeated visits. Old observations remain
-available while replacement checks are pending. Provider credential expiry is
-still evaluated from the saved expiry timestamp.
-
-Connectivity recovery retries temporary reads up to three attempts with one- and
-two-second delays. Known diagnostic runs keep polling after an extended outage.
-Starts retry only failures known to precede delivery, including transient
-pre-dispatch authentication failures and Android/Linux connect/DNS failures.
-A lost POST response, timeout after dispatch, server error or reset is not replayed:
-stock Hermes cannot associate an idempotency key with a diagnostic start.
-Authentication preparation has its own deadline, so a timed-out preparation
-cannot later dispatch the abandoned diagnostic.
-
-Retry contract verified on 19 September 2026 against upstream main
-[`a11bac476bb2a2129fdffca9511d41260fa5f51f`](https://github.com/NousResearch/hermes-agent/commit/a11bac476bb2a2129fdffca9511d41260fa5f51f):
-[`ops.py`](https://github.com/NousResearch/hermes-agent/blob/a11bac476bb2a2129fdffca9511d41260fa5f51f/hermes_cli/web_routers/ops.py)
-uses separate Doctor and security-audit POST routes;
-[`_common.py`](https://github.com/NousResearch/hermes-agent/blob/a11bac476bb2a2129fdffca9511d41260fa5f51f/hermes_cli/web_routers/_common.py)
-returns the spawned name/PID, and
-[`web_server_gateway.py`](https://github.com/NousResearch/hermes-agent/blob/a11bac476bb2a2129fdffca9511d41260fa5f51f/hermes_cli/web_server_gateway.py)
-launches a new process on every call and overwrites the same-name action handle.
-All recovery and persistence changes are client-only.
-
-Server diagnostic results retain their action identity, captured scope, output and
-timestamps through detail navigation and profile switches. Run starts the diagnostic
-without opening its result screen; tapping the row opens details. Health polls
-running diagnostics every three seconds and updates Doctor issue counts in place.
-Reviewing output reads
-the same operation. Run again is a separate detail action, offered only for a known
-finished operation. Doctor summaries show parsed findings; full output remains
-available. Other operations show their actual output. Exit zero alone never means
-no issues. Security audit shows its vulnerability count in Health, then the full
-finding/component total and expandable severity groups in details. Each finding
-retains its package, source component, advisory, description and reported fixed
-versions. Audit notices remain separate from vulnerability counts. Diagnostic
-output is available in a disclosure, collapsed by default. Only a complete current
-report with exit 0 or 1 supplies structured audit counts; exit 2 is an audit error.
-Unrecognized or truncated output never implies no vulnerabilities.
-Stock Hermes exposes no remote Doctor repair action, so Wing adds none.
-Each Doctor finding has an **Ask Hermes** action that opens a new chat using the
-selected profile, with that finding and the available diagnostic log in an
-editable, unsent draft. The prompt asks for an explanation and proposed solution,
-including data-loss risks and verification, and says not to make changes or run
-repairs yet. The user reviews and sends it. Doctor output is requested up to the
-stock limit of 2,000 lines / 256 KiB; it is not guaranteed to be complete.
-
-Run-all contract rechecked on 19 September 2026 against upstream
-[`96b6c534c3fc1681ecbf2df0f92d1b3c6cce4f62`](https://github.com/NousResearch/hermes-agent/commit/96b6c534c3fc1681ecbf2df0f92d1b3c6cce4f62):
-`hermes_cli/web_routers/ops.py` still exposes separate POST endpoints for Doctor
-and security audit, with no profile argument. Both use `_spawn_action`, which
-calls `spawn_profile_action(None, ...)` in the dashboard's environment. Wing does
-not select a diagnostic profile or claim that profile discovery establishes one.
-Run all composes these existing endpoints entirely in the client.
-Verified on 18 September 2026 against stock upstream
-[`8a492617e1239ab90bd3e3f7794b1e443f37a287`](https://github.com/NousResearch/hermes-agent/commit/8a492617e1239ab90bd3e3f7794b1e443f37a287):
-- `hermes_cli/web_routers/ops.py`: Doctor and security audit take no profile or repair flag.
-- `hermes_cli/web_routers/status.py`: Logs supports file, level and search; returns `lines`, with no profile parameter.
-- `hermes_cli/web_routers/analytics.py`: model usage accepts an explicit profile and day range.
-- `tui_gateway/methods_config.py`: `setup.status` observes configuration; `setup.runtime_check` resolves the selected profile's runtime credentials without model inference.
-
-Usage uses compact period buttons, a daily token grid, animated composition bars
-and a stacked token trend. Tappable chart titles switch model/token grouping;
-Tokens/Cost controls are independent for each chart. Breakdown rows combine all
-providers and auxiliary contributions for each model and have no detail action.
-The header dropdown offers profiles only; chart toggle icons precede their titles. Unknown costs stay unavailable
-and partial coverage is stated.
-Logs keeps server source, severity, submitted text search, a 100-line limit and
-explicit empty/error states.
-
-## Current controls
-
-| Roadmap | Implemented surface | Boundary |
-| --- | --- | --- |
-| A01–A02 | Existing main-model editor; capability-gated reasoning and speed defaults | Defaults apply to new sessions. Model identity is rechecked before reasoning/speed saves. Unsupported flags do not create controls. |
-| A03–A06 | Existing individual skill/tool toggles and inventories, reached from Skills and tools | Configured, enabled and platform remain distinct. Toolset enablement can start backend setup; it is not proof of readiness. |
-| A07 | Searchable retained-memory list and complete detail | Read-only; generated positional identity is used only for reads. |
-| A08 | Explicit unavailable state | Edit/delete requires a stable identity and concurrency-safe backend contract. No memory mutation is sent. |
-| A09–A11 | Shared and profile access inventories, source labels, stored-key management, supported device-code sign-in, cancellation, disconnect | External CLI login remains external. Pool-account detail cannot be safely attributed to an arbitrary selected owner; it is explicitly unavailable. No credential values are fetched for display. |
-| A13 | Auxiliary assignments, automatic choice, reset-all, unavailable-model warning, expensive-model confirmation | Reset-all discloses endpoint-credential clearing. Readback must match the affected tasks. |
-| A14 | Ordered fallback list with add/remove/reorder, schema-supported agent/subagent execution controls | Fallback edits check for an already-changed list and verify the saved result. Matches desktop normalization: string entries become provider/model rows, incomplete rows remain editable locally, and only complete pairs are saved after an explicit edit. Opening does not write settings; routing metadata is preserved. Non-list values produce an empty editor. Verified against upstream `21642218445e213b02ea7158f71214022645c9c6` (`apps/desktop/src/app/settings/fallback-models-field.tsx`) on 2026-09-19. Custom provider definitions remain P2. |
-| A16 | Dedicated full-screen description/SOUL editor under Identity | Uses the captured profile gateway; existing readback behavior is retained. |
-| A17 | Create, clone configuration, rename and delete through the trailing Manage profiles pill in the Profile selector | Default profile has presentation-only rename and no delete action. Creation/rename/deletion is followed by discovery. Unconfirmed outcomes remain unconfirmed. Full-data/channel cloning and optional multi-step setup are not offered. |
-| A18–A19 | Recorded skill usage ordering, provenance, complete instructions, edit/archive agent-owned skills | Bundled instructions are read-only. Existing changed content is detected before saving; this is not a server compare-and-swap guarantee. |
-| A20 | Official Hub/search, provenance preview, install, uninstall and group update | Tracks returned background action identity and actual exit status. Install/update acceptance requires an authorized target and actual action result. |
-| A22 | Scoped toolset providers, effective key readiness, model selection, explicit post-setup action | Setup explains host requirements and tracks the returned action. An effective inherited key is not offered as removable from the profile. |
-| A24–A25 | MCP inventory/enablement, cached status, explicit Test, returned tool details and prompt/resource counts, browser OAuth, remove; Reconnect MCP tools under MCP connectors (all server profiles) | Per-tool edits remain unavailable because the backend replaces the whole map. Missing cached status is not disconnected. OAuth uses the configured server callback. Runtime reload is process-wide. |
-| A27 | Agent-plugin inventory/status and individual enablement | Selected P1 portion only. Install/remove/update and Desktop UI extensions are outside this slice. |
-| A28 | Memory enablement and character budgets | Exact retained-file sizes lack an arbitrary-profile contract and are explicitly unavailable. |
-| A31 | Compression percentages, capacity illustration, enablement and protected recent messages | Schema-supported basic controls only; advanced context-engine work remains P2. |
-| A32 | Approval mode/timeout, command allowlist, reload confirmation | Backend policy is distinct from per-chat controls. |
-| A33 | Secret redaction, private-URL access and checkpoint enablement | Uses `security.allow_private_urls`; browser-profile grants and advanced recovery remain P2. |
-| A36–A37 | Existing connection management and authenticated profile diagnostics | Device connection settings and backend policy remain separate. |
-| A38–A39 | Bounded log categories/severity/search; explicit Doctor and security audit with action status | Runtime scope is independent of mobile selection. No automatic repair or new restart action. |
-| A41 | Backend version and update flow under Versions & updates; automatic server checks and a circular-arrows indicator in the global menu | Request acceptance does not prove a completed update. |
-| A42 | Rolling 1/7/30/90/365-day usage with per-model tokens and estimated cost | OpenAI Codex subscriptions show a client-calculated API equivalent; other routes use Hermes estimates. Missing usage is not invented. |
-| A44 | Guided STT setup, combined speech synthesis provider/voice selection with Play/Stop, and supported model/language/automatic-speech defaults | Vanilla APIs only. Edge uses suggested voices; ElevenLabs loads the account list. Custom voice IDs live under Advanced. Engine installation and advanced tuning are excluded. See [profile voice](PROFILE_VOICE.md). |
-| A45 | Searchable owner paths and task vocabulary with exact-field scrolling, emphasis and explicit clearing | Import/export/reset remain P2. |
-| A48–A49 | Profile-owned scheduled tasks: search/filter, details, create/edit, templates, model/delivery choices, pause/resume/run/delete and recent run conversations | Hermes executes schedules. One-time completion may remove the task. Script-only tasks may have no conversation. No Android scheduler or new notification subscription is created. |
-
-## MCP connection failures
-
-Verified the stock API against upstream main commit
-`a566d20d226a8e2ef0747639dc8a3fc1c43f9dba` on 18 September 2026.
-The profile-scoped [test route](https://github.com/NousResearch/hermes-agent/blob/a566d20d226a8e2ef0747639dc8a3fc1c43f9dba/hermes_cli/web_routers/mcp.py)
-returns HTTP 200 with `ok: false`, `error` and an empty tool list when a probe
-fails. OAuth start and polling return a [flow snapshot](https://github.com/NousResearch/hermes-agent/blob/a566d20d226a8e2ef0747639dc8a3fc1c43f9dba/tools/mcp_dashboard_oauth.py)
-with `status: error` and `error` when sign-in fails.
-
-Wing displays those reasons in the existing error notices, redacting URL
-credentials/query strings, authorization/cookie headers and credential
-assignments. A new probe clears the previous successful capability result.
-`test/administration_mcp_test.dart` covers immediate and polled failures, profile
-scope, redaction, successful-then-failed probes, and both themes at normal and
-enlarged text. These fixtures establish error reporting, not successful sign-in
-to a particular deployed connector; that requires its actual server response.
-
-Reload uses the same upstream revision's strict
-[`ReloadMcpParams` contract](https://github.com/NousResearch/hermes-agent/blob/a566d20d226a8e2ef0747639dc8a3fc1c43f9dba/tui_gateway/contracts/tools_mcp_plugins.py):
-the server-wide `reload.mcp` command accepts `session_id`, `confirm`, `always`
-and `rev`, but no `profile`. Wing asks once in a client dialog and sends
-`confirm: true` in its single request after consent. It does not set `always`
-or change the server's approval policy. The previous
-profile-scoped call added `profile: default`, which stock parameter validation
-rejects before reloading. Reload errors now retain the redacted server reason;
-timeouts and disconnects report an uncertain outcome without automatically
-retrying. The recovery tests enforce the single-confirmation contract and
-cancellation before any request is sent.
+On the Hermes host, an operator can run
+`hermes -p PROFILE sessions refresh-prompts --session SESSION_ID --json` to request
+a saved conversation's system-prompt rebuild on its next turn. Omit `--session`
+to request it profile-wide. The command retains conversation history and identity;
+the next turn can incur a prompt-cache miss. Inspect the JSON receipt for the
+resolved target. Stock Hermes has no remote API for this operation, so Wing has
+no corresponding action. Refresh skills only reloads skill information and does
+not perform this saved-prompt refresh.
 
 ## Scheduled tasks
 
-Open Profile / Scheduled tasks to manage the selected profile's routines. Each
-task shows its next run and state. The overview chooses the earliest eligible
-server timestamp separately from running/attention ordering. Its latest-run summary
-covers only tasks still listed; an ended conversation does not establish success. Tap it for instructions, delivery, model,
-last-run details and recent conversations. Search and All / Active / Paused /
-Needs attention filters affect only this list. Opening a run works independently
-of the Chats “Include automated chats” filter.
+Open **Profile → Scheduled tasks** to create, edit, pause, resume, run or delete routines. Search and the All, Active, Paused and Needs attention filters affect this list. Open a task for instructions, delivery, model, last-run details and recent runs.
 
-New task supports daily, weekday, weekly, monthly, hourly and interval schedules,
-one-time dates/delays, and custom expressions. Server templates provide starting
-points. Recurrences use Hermes' effective timezone; Wing labels it as Hermes time
-when the server does not establish its name. Run timestamps use phone time.
-One-time dates chosen on the phone are sent as explicit UTC instants. Editing a
-name or instructions leaves an unchanged schedule's anchor intact.
+When the last run has an error, use the copy icon to copy its full text. **Ask <profile>** takes you straight to a new chat in that task’s profile, outside any project. The header Wing pulses while the chat is created and the task name, recorded run time and error are sent. If creation fails, retry from that chat. It uses the same Ask action as Doctor findings.
 
-“Save on server” stores results in Hermes, not on the phone. Other choices come
-from the connected server's delivery catalog, which is not a claim that every
-profile has its own configured channel. Destinations missing a home channel
-need server setup. Missing catalog entries are not silently removed from an
-existing task. A model override is paired with its provider; Profile default
-resolves at run time. Custom endpoint routing and script/skill execution settings
-remain server-managed; common-field edits do not erase them.
+Schedules include recurring intervals, daily/weekly/monthly choices, one-time dates or delays, and custom expressions. Server templates provide starting points. Set a schedule timezone or leave it empty to use the profile timezone; run timestamps display in phone time. Edit the late-run window and missed-run catch-up policy in the task editor. Editing a name or instructions preserves an unchanged schedule.
 
-Run now can take as long as the task itself. Leaving its detail screen does not
-resubmit or cancel it. Running a paused task explicitly confirms “Resume and
-run”; pausing a schedule does not stop a run already underway. A lost response
-keeps an uncertainty notice and blocks another request until reconciliation or
-explicit review. Only task IDs, operation names and prior run timestamps are
-journaled locally, not instructions. Partial scheduler registration failures
-retain the saved task identity and prevent duplicate creation.
+**Save on server** stores results on Hermes. Choose a discovered group chat to post results into a discussion; member mentions can ask bots to continue the work. Other delivery choices depend on the connected server's configured destinations and may need setup there. A model override applies to that task; Profile default is resolved when it runs.
 
-Recent runs starts with 20 conversations and can expand to the latest 100.
-Failures remain distinct from an empty history. No task-specific Stop command,
-script upload, workflow builder or unlimited history is provided.
+**Run now** may take as long as the task itself. Leaving the screen does not cancel or repeat it. A paused task asks you to confirm **Resume and run**. Pausing a schedule does not stop a run already underway. If a response is lost, review the uncertainty notice before attempting another run or creating another task.
 
-## Provider recovery
+Recent runs starts with 20 records and can expand to the latest 100. Agent runs open their conversation; script runs show available output and errors. **Stop run** requests cancellation of the current execution without pausing its schedule, including while Run now is waiting. Wing does not offer script upload or a workflow builder. Hermes runs schedules even when Wing is closed. See [Scheduled tasks](SCHEDULED_TASKS.md) for timing, cancellation and group delivery.
 
-Provider details now offer **Renew access**, **Sign in again / Sign-in options**,
-**Check status**, and a source-specific removal action. Implemented entirely in
-Wing against stock Hermes `9dda4332f80c66994fe0e21197a8065a73a88991` (18 September
-2026).
-Renewal supports identified Anthropic/Claude, Nous device-code, Codex and xAI OAuth
-credentials through the scoped stock console. Multiple identifiable matches need
-an explicit choice. Other providers retain their supported sign-in/key workflow.
+## Health checks and diagnostics
 
-Hermes-managed OAuth removal uses the profile-scoped API and discloses that it
-clears the provider's saved sign-ins. Claude Code file removal requires a reviewed
-server path, explicit shared-file confirmation and permission from Hermes' file
-API. It does not revoke the provider account, remove keychain credentials or clear
-copies already in use. Unknown sources never receive an inferred deletion action.
-No real provider credentials were changed during automated verification.
+Connection health includes whether the configured endpoint supports Wing chats.
+A reachable standalone Dashboard produces **Chat address needs changing**; healthy
+HTTP or provider checks do not clear that failure. Open the instance menu →
+**Edit instance** and check the gateway Webapp address.
 
-## Ownership and credentials
+Health displays **Host**, **Server** and **Profile** separately. Each section has its own refresh and check time; there is no combined healthy verdict.
 
-Profile / Provider access targets the selected profile, including `default`.
-The Server tab and shared-account redirects have been removed.
-An omitted or `current` profile can mean the dashboard's
-launch home; use explicit canonical profile identity for credential operations.
+Host shows the connected machine's CPU, memory, disk, uptime and load when available. Tap the machine row for more details. Disk readings describe the Hermes data volume; process memory describes the API process, rather than all agents. Missing measurements stay unavailable.
 
-The target ownership contract places accounts, keys and model defaults under
-Profile. Current upstream no longer falls back to root `auth.json` when a named
-profile lacks credentials.
-Credential sources still differ by provider: external CLI accounts and explicit
-shared-store mechanisms must be described according to verified backend behavior.
+Server contains Doctor, security audit and Logs. Its refresh runs both diagnostics. They also run on first entry and when a completed result is at least 24 hours old. Open a diagnostic for its output and rerun action. Leaving Health keeps an accepted diagnostic running. Results survive restarting Wing; an unfinished run is checked again without automatically starting another copy.
 
-Capture the connection and canonical profile when an editor opens. Profile writes recheck that identity and use it consistently in query and body. Server collection/runtime operations do not inherit the currently selected profile. Administration RPC transports must not replace chat event handlers.
+Doctor findings can offer **Ask Hermes**, which opens an editable draft containing the finding and available log. Review and send it yourself. Wing does not perform Doctor repairs. Logs supports source, severity and submitted text search, with up to 100 lines.
 
-Model defaults apply to new sessions. Per-chat models use a separate session API. Provider resolution or a pool row does not prove a working login or inference. A Nous selection requiring `needs_nous_auth` is saved but not active yet; follow the returned `is_active` state for provider flows. Service-only setup entries such as X, Home Assistant, Spotify and Langfuse must not offer a meaningless Use provider action.
+Profile checks cover model access, tool setup, connectors and scheduled tasks. Saved results are reused for up to 24 hours; refresh runs them again. These checks do not send a model prompt, execute tools or run jobs. A connector test can start its configured program. Resolved credentials do not prove available quota or successful model inference. **What's checked?** explains each result's limits.
 
-## Saving and recovery
+MCP connector pages also show Hermes' cached runtime observation. Reading or
+refreshing it does not run a connector test. Runtime recovery clears its own
+runtime finding while preserving separate explicit probe results and timestamps.
 
-Settings and Identity show their captured target and an unsaved-change count, with
-reachable Close/Save actions above the keyboard. Compression inputs display exact
-decimal percentages and serialize fractions; the diagram shows configured capacity,
-not live usage. Detected settings conflicts compare Current server value with Your
-value. Keep my value or Use server value resolves each field, followed by a fresh
-comparison before any write. Failed/partial saves bring their explanation into view.
+Reported access problems offer the relevant recovery action, such as **Fix access**, **Review access**, **Retry** or **Review connection**. Routine model selection and account management remain in Administration. A failed refresh retains the previous result and time, qualified as last known.
 
-Submit sparse settings patches and read back the affected fields. Keep the form after a rejection, partial result or uncertain completion; guard duplicate submission. A preflight comparison can detect an already changed value but cannot make separate calls atomic against another client.
+## Health alerts
 
-Refresh failure retains the previous observation with its last-checked time. Malformed or missing data is unavailable, not an invented empty value. OAuth keeps its returned flow identity through polling/cancellation. Pending OAuth and background-action screens do not survive Android process death; reopen the owning page and refresh instead of silently starting another flow.
+In **Hermes health**, tap the **Alert settings** sliders beside **Alerts**. Settings apply on this device across active connections. Memory and disk usage warnings start above 90% for two minutes and clear below 85% for two minutes. CPU warnings start disabled; their editable defaults are 95%, 80% and three minutes.
 
-Track background actions by returned name and PID. A same-name replacement is not the original action's success. Authenticated DELETE retries must preserve the request body and report the backend's real outcome.
+Warning and recovery durations can be set independently from 1 to 30 minutes. The clear percentage must be lower than the alert percentage. Valid edits save automatically; invalid text keeps the last valid rule. A failed save offers Retry.
 
-Usage supports **1D, 7D, 30D, 90D and 365D** using profile-scoped model and daily analytics reads plus a separately cached year-wide daily read. A single band of week columns browses that year with earlier/later controls. Previously loaded periods are cached while the page remains open, and Refresh reloads year and period data. Day/grouping/measure selection makes no network requests. Daily model history and daily API-equivalent costs are explicitly unavailable; the daily token-type chart is supported. Daily records use UTC session-start dates and exclude auxiliary usage included in the model totals. A rolling N-day period can span N+1 UTC dates. The stock API and these limits were checked at `c62bd9f2078a946108f1c9d9b24bf118963277ef` on 18 September 2026.
+Memory and disk also have separate **Native Hermes critical pressure alert** switches, enabled initially. These alerts can appear immediately even without a percentage reading. They are independent of the configurable usage warnings.
 
-For `openai-codex` only, Wing multiplies the already-uncached input, cached input and output counters by published standard OpenAI API rates. Output includes reasoning; it is not charged again. Other providers, including paid OpenAI API routes, retain Hermes's estimate. This rule uses provider identity, never a zero cost or model-name prefix.
+Wing watches while foregrounded or while its existing background task monitoring is active. Health alerts do not keep monitoring running by themselves. Paused or failed readings can leave an issue qualified as last known. Doctor and security audit findings do not generate these alerts.
 
-Subscription-only history shows **API-equivalent cost**. Mixed history shows **Estimated usage value**, with Hermes and subscription subtotals. Composition bars use these same displayed values. Model rows combine matching model IDs across providers after valuing each contribution, and are ordered by the selected token/cost amount. Rows are passive; the individual model details sheet has been removed. A positive value below one cent displays **< USD 0.01**. Missing model prices or any of the three required counts stay unavailable; partial totals are identified and unpriced models remain visibly unavailable. Separate rows returned by Hermes (including auxiliary calls) each contribute once; Wing does not add the endpoint's totals again.
+Scheduled-task alerts clear when a successful task-list refresh confirms the error is resolved or the failed task has been removed, including after restarting Wing.
 
-These are base-rate estimates at the bundled catalogue's current prices, applied to the selected history, not invoices or historical price reconstruction. Cache-write charges, long-context premiums and service-tier adjustments are excluded and disclosed on the screen. Hermes groups primary usage by the session's model/provider and filters sessions by start time, so mixed-model sessions and period boundaries inherit those upstream limitations.
+Wing also rechecks unresolved task alerts when it opens or resumes, including acknowledged issues for other profiles. A fresh healthy reading removes the issue without changing your selected profile.
 
-Maintain [the bundled OpenAI catalogue](../assets/pricing/openai.json) by adding exact model IDs with all three USD-per-million rates, their official source URL and `verified_on` date. Check the standard/base rates in official OpenAI documentation; do not copy Fast/Batch rates or infer prices for similarly named variants. The initial catalogue covers Astra, Sol, Terra, Luna, GPT-5.5, GPT-5.4, GPT-5.4 Mini and GPT-5.3 Codex. Spark and unlisted variants show unavailable. Updating this file ships with the app and requires no runtime pricing service or server changes. Run `test/usage_cost_test.dart` and `test/administration_usage_test.dart` after updating it.
+Tap the toolbar warning triangle to open Quick view beneath it. Tap the issue or its open icon to reach its recovery screen. A connector alert opens the failed connector directly; if several failed, the connector list marks them. Profile alerts keep the connection and profile captured by the check. Resource alerts open Hermes health. Tapping a brief notice opens the same destination. Use the checkmark to acknowledge an issue and silence its cues for that occurrence, or the snooze icon to pause cues for 30 minutes. While saving, the dialog shows progress. Once saved, the choice removes the issue from the toolbar count. The undo and clock-arrow icons restore attention to an acknowledged or snoozed issue. A failed save keeps the issue active and lets you retry. The **Alerts** section lists every current issue with its status until recovery. If the list is empty, it shows **No current alerts**. Snooze expiry restores the warning. Escalation or recurrence alerts you again. These choices are saved on this device and survive app restarts and updates. Snooze retains its original deadline. Restored issues remain last known until fresh checks confirm their status. Dismissing a notice keeps the issue; recovery clears it. Health monitoring controls CPU, memory and disk alerts. Profile, connection and service alerts can still appear when it is off. Host continues to show measured pressure beside its meter. These are in-app alerts and do not require Android notification permission.
 
-The stock pricing rule, model catalogue and analytics response were rechecked against upstream main **`d177b119e9c56c9ddc0b7379ffce52341ec06584`** on 2026-09-18. Render the actual Usage screen with `CAPTURE_USAGE=true` and `CAPTURE_FONT_DIR` pointing to Flutter's `bin/cache/artifacts/material_fonts`; `test/administration_usage_test.dart` writes captures to ignored `build/usage-review/`.
+## Analytics
 
-## Backend limits and verification
+**All** is selected by default and sums usage across every profile on the current connection. Use the instance name in the header to change servers. The separate profile picker beside it offers All and every profile on that instance; choose a named profile to focus on its usage. This filter does not switch your chat workspace. Profile reads run concurrently, with up to ten requests in flight. If a profile cannot be read, the affected total stays unavailable or retains the previous complete observation, with a notice and Refresh to retry.
 
-Memory edit/delete needs stable IDs and safe concurrent writes. Per-tool MCP mutation needs a contract that does not replace an unchecked whole map. Arbitrary-owner credential-pool detail and exact retained-file sizes are unavailable. These restrictions do not block independent browsing, enablement or supported settings.
+Analytics offers **1D, 7D, 30D, 90D and 365D** periods, a daily token grid and model/token breakdowns. Daily tooltips use compact token counts, such as 298M. Chart titles and Tokens/Cost controls change the displayed grouping. Recently viewed data is cached for five minutes across profile changes and screen visits. Older data stays visible while it refreshes in the background; the Updated time shows its age. Refresh requests fresh observations. Missing costs and partial coverage remain identified.
 
-Recorded native acceptance against Hermes 0.21.2 includes real profile lifecycle, settings readback, temporary credential-source changes and MCP operations using disposable data. Provider account approval, real inference for every route, SDK installation and backend self-update are not established by that run. See [Testing](TESTING.md) and [upstream bugs](UPSTREAM_HERMES_BUGS.md), including the Windows MCP profile-deletion failure.
+Token totals and model breakdowns can appear before the activity year finishes. Sections stay in place while loading. Scroll within the model breakdown for
+additional models; the selected daily range includes days with no recorded usage.
 
-Backend update checks also supply the read-only **Changes in this update** screen. It shows the returned commit summaries in server order, dates when available, optional authors and commit IDs, and a partial-history count when fewer commits are returned than the backend is behind. The stock API returns at most 20 summaries. Missing details do not block updates; opening the captured changelog makes no extra request.
+OpenAI Codex subscription usage shows an **API-equivalent cost** using current direct OpenAI API base rates from models.dev. Other providers retain Hermes's estimate. Mixed history shows **Estimated usage value**. These values are estimates, not invoices or historical price reconstruction; cache-write charges, long-context premiums and service-tier adjustments are excluded. Missing prices leave the affected amount unavailable.
+
+Daily records and model totals can cover different usage, and period edges may include partial days. Use the displayed coverage notes when comparing charts.
+
+For connection details, versions and server updates, see [Connections and updates](CONNECTION_DIAGNOSTICS_AND_VERSIONS.md).

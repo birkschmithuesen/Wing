@@ -1,8 +1,8 @@
+import '../../widgets/selection_viewport.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/doctor_diagnostic.dart';
 import '../../theme/wing_theme.dart';
-import '../../theme/wing_icons.dart';
 import 'admin_widgets.dart';
 
 /// Findings are the main content; process completion is secondary metadata.
@@ -13,12 +13,14 @@ class AdminDoctorDiagnosis extends StatelessWidget {
     required this.checkedAt,
     this.onAskHermes,
     this.openingFinding,
+    this.findingError,
   });
 
   final DoctorDiagnostic diagnosis;
   final DateTime? checkedAt;
   final ValueChanged<int>? onAskHermes;
   final int? openingFinding;
+  final ({int index, Widget notice})? findingError;
 
   @override
   Widget build(BuildContext context) {
@@ -76,36 +78,37 @@ class AdminDoctorDiagnosis extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        SelectableText(
-                          finding.title,
-                          style: theme.textTheme.titleMedium,
+                        viewportSelection(
+                          SelectableText(
+                            finding.title,
+                            style: theme.textTheme.titleMedium,
+                          ),
                         ),
                         if (finding.detail != null) ...[
                           const SizedBox(height: WingSpacing.sm),
-                          SelectableText(
-                            finding.detail!,
-                            style: theme.textTheme.bodyMedium?.copyWith(
-                              color: tokens.muted,
+                          viewportSelection(
+                            SelectableText(
+                              finding.detail!,
+                              style: theme.textTheme.bodyMedium?.copyWith(
+                                color: tokens.muted,
+                              ),
                             ),
                           ),
                         ],
+                        if (findingError case (
+                          index: final failed,
+                          :final notice,
+                        ) when failed == index)
+                          notice,
                         const SizedBox(height: WingSpacing.xs),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: TextButton.icon(
+                          child: AdminAskHermesButton(
+                            label: 'Ask Hermes',
                             onPressed:
                                 onAskHermes == null || openingFinding != null
                                 ? null
                                 : () => onAskHermes!(index),
-                            icon: openingFinding == index
-                                ? const SizedBox.square(
-                                    dimension: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Icon(WingIcons.newChat, size: 18),
-                            label: const Text('Ask Hermes'),
                           ),
                         ),
                       ],

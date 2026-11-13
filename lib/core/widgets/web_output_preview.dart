@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../services/remote_files_client.dart';
-import 'markdown_code_block.dart';
+import '../theme/wing_theme.dart';
+import 'source_code_block.dart';
+import 'resource_filename.dart';
 
 enum WebOutputFormat { mermaid, svg, html }
 
@@ -11,20 +13,22 @@ enum WebOutputFormat { mermaid, svg, html }
 class WebOutputPreview extends StatefulWidget {
   static const maxMermaidSourceLength = 50000;
   static const maxSvgSourceLength = 256 * 1024;
-  static const maxHtmlSourceLength = RemoteFilesClient.defaultMaxDownloadBytes;
+  static const maxHtmlSourceLength = maxFilePreviewBytes;
   static const viewType = 'com.tarkilhk.wing/mermaid_diagram';
 
   final String source;
   final WebOutputFormat format;
   final String? title;
+  final String? resourceTarget;
   final String? actionLabel;
-  final VoidCallback? onAction;
+  final Future<void> Function(BuildContext)? onAction;
 
   const WebOutputPreview({
     super.key,
     required this.source,
     required this.format,
     this.title,
+    this.resourceTarget,
     this.actionLabel,
     this.onAction,
   });
@@ -35,6 +39,18 @@ class WebOutputPreview extends StatefulWidget {
 
 class _WebOutputPreviewState extends State<WebOutputPreview> {
   bool _showSource = false;
+  bool _actionBusy = false;
+
+  Future<void> _runAction(BuildContext anchor) async {
+    final action = widget.onAction;
+    if (_actionBusy || action == null) return;
+    setState(() => _actionBusy = true);
+    try {
+      await action(anchor);
+    } finally {
+      if (mounted) setState(() => _actionBusy = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -60,27 +76,30 @@ class _WebOutputPreviewState extends State<WebOutputPreview> {
     };
     final theme = Theme.of(context);
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          widget.title ??
-              (widget.format == WebOutputFormat.mermaid
-                  ? 'Diagram'
-                  : '$label preview'),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-        ),
+      appBar: ResourceViewerAppBar(
+        context: context,
+        title:
+            widget.title ??
+            (widget.format == WebOutputFormat.mermaid
+                ? 'Diagram'
+                : '$label preview'),
+        target: widget.resourceTarget,
         actions: [
-          if (widget.onAction != null)
-            IconButton(
-              tooltip: widget.actionLabel,
-              icon: const Icon(Icons.ios_share),
-              onPressed: widget.onAction,
-            ),
           if (canRender)
-            IconButton(
-              tooltip: _showSource ? 'Show $label' : 'Show source',
-              icon: Icon(_showSource ? previewIcon : Icons.code),
+            ResourceViewerAction(
+              label: _showSource ? 'Show $label' : 'Show source',
+              icon: _showSource ? previewIcon : Icons.code,
               onPressed: () => setState(() => _showSource = !_showSource),
+            ),
+          if (widget.onAction != null)
+            Builder(
+              builder: (anchor) => ResourceViewerAction(
+                label: _actionBusy
+                    ? 'Preparing share'
+                    : widget.actionLabel ?? 'Share resource',
+                icon: _actionBusy ? Icons.hourglass_top : Icons.ios_share,
+                onPressed: _actionBusy ? null : () => _runAction(anchor),
+              ),
             ),
         ],
       ),
@@ -93,10 +112,10 @@ class _WebOutputPreviewState extends State<WebOutputPreview> {
                   children: [
                     if (!canRender)
                       Text('This $label is available as source here.'),
-                    MarkdownCodeBlock(
+                    SourceCodeBlock(
                       code: widget.source,
                       language: language,
-                      previewEnabled: false,
+                      headerAction: null,
                     ),
                   ],
                 ),
@@ -116,6 +135,9 @@ class _WebOutputPreviewState extends State<WebOutputPreview> {
                     'muted': theme.colorScheme.onSurfaceVariant.toARGB32(),
                     'border': theme.colorScheme.outlineVariant.toARGB32(),
                     'error': theme.colorScheme.error.toARGB32(),
+                    'error-surface': WingTokens.of(
+                      context,
+                    ).dangerSurface.toARGB32(),
                     'accent': theme.colorScheme.primary.toARGB32(),
                   },
                 },

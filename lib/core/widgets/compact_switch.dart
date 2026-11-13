@@ -1,3 +1,4 @@
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:flutter/material.dart';
 
 /// A small switch face with an unscaled touch and accessibility target.
@@ -53,24 +54,26 @@ class CompactSwitchListTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MergeSemantics(
-    child: ListTile(
-      contentPadding:
-          contentPadding ?? const EdgeInsets.symmetric(horizontal: 16),
-      minTileHeight: 48,
-      minVerticalPadding: 4,
-      horizontalTitleGap: 12,
-      title: title,
-      subtitle: subtitle,
-      titleTextStyle: Theme.of(context).textTheme.bodyLarge,
-      subtitleTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
-        fontSize: 13,
-        fontWeight: FontWeight.w400,
-        letterSpacing: 0,
-        color: Theme.of(context).colorScheme.onSurfaceVariant,
+    child: StudioButtonPress(
+      child: ListTile(
+        contentPadding:
+            contentPadding ?? const EdgeInsets.symmetric(horizontal: 16),
+        minTileHeight: 48,
+        minVerticalPadding: 4,
+        horizontalTitleGap: 12,
+        title: title,
+        subtitle: subtitle,
+        titleTextStyle: Theme.of(context).textTheme.bodyLarge,
+        subtitleTextStyle: Theme.of(context).textTheme.bodySmall?.copyWith(
+          fontSize: 13,
+          fontWeight: FontWeight.w400,
+          letterSpacing: 0,
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
+        enabled: onChanged != null,
+        onTap: onChanged == null ? null : () => onChanged!(!value),
+        trailing: CompactSwitch(value: value, onChanged: onChanged),
       ),
-      enabled: onChanged != null,
-      onTap: onChanged == null ? null : () => onChanged!(!value),
-      trailing: CompactSwitch(value: value, onChanged: onChanged),
     ),
   );
 }

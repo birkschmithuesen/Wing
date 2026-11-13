@@ -16,8 +16,11 @@ Future<String?> showWorkspaceActionMenu(
   final tokens = WingTokens.of(context);
   final overlay =
       Navigator.of(context).overlay!.context.findRenderObject()! as RenderBox;
+  // A live list update can deactivate the invoking element before the popup's
+  // first layout. Capture its render box while the element is still active;
+  // mounted alone does not make a later findRenderObject() safe.
+  final box = context.findRenderObject()! as RenderBox;
   RelativeRect position() {
-    final box = context.findRenderObject()! as RenderBox;
     final rect = box.localToGlobal(Offset.zero, ancestor: overlay) & box.size;
     // Anchor the trailing control, including when opened by long-pressing a row.
     return RelativeRect.fromRect(
@@ -33,7 +36,9 @@ Future<String?> showWorkspaceActionMenu(
     semanticLabel: 'Actions for $title in $scope',
     requestFocus: true,
     positionBuilder: (_, _) {
-      if (context.mounted) lastPosition = position();
+      if (box.attached && overlay.attached && box.hasSize && overlay.hasSize) {
+        lastPosition = position();
+      }
       return lastPosition;
     },
     constraints: const BoxConstraints(minWidth: 240, maxWidth: 280),
@@ -49,7 +54,7 @@ Future<String?> showWorkspaceActionMenu(
         ? AnimationStyle.noAnimation
         : const AnimationStyle(duration: Duration(milliseconds: 160)),
     items: [
-      PopupMenuItem<String>(
+      StudioPopupMenuItem<String>(
         enabled: false,
         child: Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 8),
@@ -84,7 +89,7 @@ Future<String?> showWorkspaceActionMenu(
       for (final (id, label, icon, enabled) in actions) ...[
         if (id == 'archive' || id == 'delete')
           const PopupMenuDivider(height: 9),
-        PopupMenuItem<String>(
+        StudioPopupMenuItem<String>(
           key: ValueKey('$keyPrefix-$id'),
           value: id,
           enabled: enabled,

@@ -1,3 +1,6 @@
+import 'package:wing/core/models/chat_runtime.dart';
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -19,18 +22,26 @@ void evidence(String scenario, Map<String, Object?> result) {
   debugPrint('REMAINING_QA ${jsonEncode({'case': scenario, ...result})}');
 }
 
-Future<ProfileWorkspaceController> connect(String profile) async {
+Future<ProfileWorkspaceController> connect(
+  String profile,
+  SharedPreferences preferences,
+  AppPreferences appPreferences,
+) async {
   final client = ProfileWorkspaceController(
     connectionIdentity: 'remaining-qa-$profile',
-    connection: SavedConnection(
-      id: 'remaining-qa-$profile',
-      label: 'Local acceptance',
-      host: '127.0.0.1',
-      port: _port,
-      dashboardPortOverride: _port,
-      apiKey: '',
+    access: ConnectionAccess(
+      connection: SavedConnection(
+        id: 'remaining-qa-$profile',
+        label: 'Local acceptance',
+        host: '127.0.0.1',
+        port: _port,
+        dashboardPortOverride: _port,
+        apiKey: '',
+      ),
+      dashboardOAuth: null,
     ),
-    preferences: await SharedPreferences.getInstance(),
+    preferences: preferences,
+    appPreferences: appPreferences,
   );
   await client.initialize();
   expect(client.error, isNull);
@@ -58,20 +69,16 @@ Future<void> send(
 ) async {
   await client.updateDraft(chat, prompt);
   await client.send(chat);
-  // A failed pre-submit profile read is safe to retry; uncertain delivery is not.
-  if (chat.status == ProfileTurnStatus.failed &&
-      chat.error?.contains('Connection closed before full header') == true &&
-      chat.draft == prompt &&
-      !chat.draftSubmissionUncertain) {
-    evidence('pre_submit_retry', {'profile_read_closed': true});
-    await client.send(chat);
-  }
 }
 
 Future<void> settled(WidgetTester tester, ProfileChat chat) async {
-  await until(tester, () => !chat.busy, 'Real Hermes turn must settle');
-  expect(chat.error, isNull);
-  expect(chat.status, ProfileTurnStatus.completed);
+  await until(
+    tester,
+    () => !chat.runtime.blocksTurnAdmission,
+    'Real Hermes turn must settle',
+  );
+  expect(chat.runtime.error, isNull);
+  expect(chat.runtime.execution, ChatExecution.completed);
 }
 
 void main() {
@@ -88,50 +95,73 @@ void main() {
   final fixtureStates = <String, bool>{};
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
-    for (final profile in ['android-qa-a', 'android-qa-b']) {
-      final client = await connect(profile);
-      try {
-        final config = await client.current!.gateway.read('config');
-        final disabled = config['skills']?['disabled'] as List? ?? [];
-        fixtureStates[profile] = !disabled.contains('android-mobile-slash-qa');
-        await client.current!.gateway.put('skills/toggle', {
-          'name': 'android-mobile-slash-qa',
-          'enabled': false,
-        });
-      } finally {
-        client.dispose();
+    final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    try {
+      for (final profile in ['android-qa-a', 'android-qa-b']) {
+        final client = await connect(profile, preferences, appPreferences);
+        try {
+          final config = await client.current!.gateway.read('config');
+          final disabled = config['skills']?['disabled'] as List? ?? [];
+          fixtureStates[profile] = !disabled.contains(
+            'android-mobile-slash-qa',
+          );
+          final mutationOwner = client.current!;
+          await mutationOwner.gateway.putOwned(
+            'skills/toggle',
+            {'name': 'android-mobile-slash-qa', 'enabled': false},
+            canDispatch: () => identical(client.current, mutationOwner),
+            onDispatched: () {},
+          );
+        } finally {
+          client.dispose();
+        }
       }
+    } finally {
+      appPreferences.dispose();
     }
   });
   tearDownAll(() async {
-    for (final entry in fixtureStates.entries) {
-      final client = await connect(entry.key);
-      try {
-        await client.current!.gateway.put('skills/toggle', {
-          'name': 'android-mobile-slash-qa',
-          'enabled': entry.value,
-        });
-        final config = await client.current!.gateway.read('config');
-        final disabled = config['skills']?['disabled'] as List? ?? [];
-        expect(!disabled.contains('android-mobile-slash-qa'), entry.value);
-      } finally {
-        client.dispose();
+    final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    try {
+      for (final entry in fixtureStates.entries) {
+        final client = await connect(entry.key, preferences, appPreferences);
+        try {
+          final mutationOwner = client.current!;
+          await mutationOwner.gateway.putOwned(
+            'skills/toggle',
+            {'name': 'android-mobile-slash-qa', 'enabled': entry.value},
+            canDispatch: () => identical(client.current, mutationOwner),
+            onDispatched: () {},
+          );
+          final config = await client.current!.gateway.read('config');
+          final disabled = config['skills']?['disabled'] as List? ?? [];
+          expect(!disabled.contains('android-mobile-slash-qa'), entry.value);
+        } finally {
+          client.dispose();
+        }
       }
+      evidence('skill_cleanup', {'fixture_states_restored': true});
+    } finally {
+      appPreferences.dispose();
     }
-    evidence('skill_cleanup', {'fixture_states_restored': true});
   });
 
   testWidgets(
     'real local vault save and code forms submit and cancel safely',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final client = await connect('android-qa-b');
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final client = await connect('android-qa-b', preferences, appPreferences);
       final gateway = client.current!.gateway;
       final label =
           'android-vault-acceptance-${DateTime.now().millisecondsSinceEpoch}';
       const password = 'DummyOnly-VaultAcceptance-6842';
       const code = '684219';
-      final chat = await client.createChat();
+      final chat = await client.createChat(canDispatch: () => true);
       Future<List<Map>> ownItems() async =>
           ((await gateway.call('vault.list'))['items'] as List)
               .whereType<Map>()
@@ -149,16 +179,18 @@ void main() {
           await send(client, chat, prompt);
           await until(
             tester,
-            () => chat.sensitivePrompt != null || !chat.busy,
+            () =>
+                chat.runtime.secureInput != null ||
+                !chat.runtime.blocksTurnAdmission,
             'Expected a real vault request',
             seconds: 60,
           );
-          if (chat.sensitivePrompt?.kind != kind) {
+          if (chat.runtime.secureInput?.kind != kind) {
             evidence('vault_request_failure', {
               'session': chat.key.sessionId,
-              'status': chat.status.name,
-              'error': chat.error,
-              'tools': chat.toolActivities
+              'status': chat.runtime.execution.name,
+              'error': chat.runtime.error,
+              'tools': chat.runtime.toolActivities
                   .map(
                     (t) => {
                       'name': t.name,
@@ -171,7 +203,7 @@ void main() {
             });
           }
           expect(
-            chat.sensitivePrompt?.kind,
+            chat.runtime.secureInput?.kind,
             kind,
             reason: 'Real gateway must emit the requested form',
           );
@@ -186,7 +218,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 300));
           await tester.tap(button);
           await settled(tester, chat);
-          expect(chat.sensitivePrompt, isNull);
+          expect(chat.runtime.secureInput, isNull);
           expect(find.byKey(const Key('sensitive-prompt-field')), findsNothing);
         }
 
@@ -237,7 +269,7 @@ void main() {
         );
         await tester.pump();
         await tap('Continue', submit: true);
-        final results = chat.toolActivities
+        final results = chat.runtime.toolActivities
             .where(
               (tool) =>
                   tool.name == 'browser_vault_enter_code' && tool.isTerminal,
@@ -248,9 +280,8 @@ void main() {
         expect(results, isNotEmpty);
         expect(jsonDecode(results.last)['success'], isTrue);
         expect(jsonDecode(results.last)['filled_fields'], greaterThan(0));
-        final preferences = await SharedPreferences.getInstance();
         final persisted =
-            '${jsonEncode(chat.messages)} ${chat.draft} '
+            '${jsonEncode(chat.reading.messages)} ${chat.composer.observation.text} '
             '${preferences.getKeys().map(preferences.get).toList()}';
         expect(persisted, isNot(contains(password)));
         expect(persisted, isNot(contains(code)));
@@ -270,7 +301,7 @@ void main() {
       } finally {
         await tester.pumpWidget(const SizedBox.shrink());
         try {
-          if (chat.busy) await client.stop(chat);
+          if (chat.runtime.blocksTurnAdmission) await client.stop(chat);
           for (final item in await ownItems()) {
             expect(
               (await gateway.call('vault.remove', {
@@ -280,7 +311,9 @@ void main() {
             );
           }
           expect(await ownItems(), isEmpty);
-          await gateway.call('session.close', {'session_id': chat.runtimeId});
+          await gateway.call('session.close', {
+            'session_id': chat.runtime.runtimeId,
+          });
           evidence('vault_cleanup', {'owned_login_removed': true});
         } finally {
           client.dispose();
@@ -299,12 +332,15 @@ void main() {
         contains('/build/qa-approval-scope-'),
       );
       SharedPreferences.setMockInitialValues({});
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
       final clients = <ProfileWorkspaceController>[];
       final originals = <ProfileWorkspaceController, Map<String, dynamic>>{};
       final chats = <(ProfileWorkspaceController, ProfileChat)>[];
       try {
         for (final profile in ['android-qa-a', 'android-qa-b']) {
-          final client = await connect(profile);
+          final client = await connect(profile, preferences, appPreferences);
           clients.add(client);
           final config = await client.current!.gateway.read('config');
           originals[client] = {
@@ -316,17 +352,23 @@ void main() {
             isEmpty,
             reason: 'Use dedicated QA profiles without existing approval rules',
           );
-          await client.current!.gateway.put('config', {
-            'config': {
-              'approvals': {'mode': 'manual'},
+          final mutationOwner = client.current!;
+          await mutationOwner.gateway.putOwned(
+            'config',
+            {
+              'config': {
+                'approvals': {'mode': 'manual'},
+              },
             },
-          });
+            canDispatch: () => identical(client.current, mutationOwner),
+            onDispatched: () {},
+          );
         }
         final a = clients[0];
         final b = clients[1];
         Future<ProfileChat> newChat(ProfileWorkspaceController client) async {
           await tester.pumpWidget(const SizedBox.shrink());
-          final chat = await client.createChat();
+          final chat = await client.createChat(canDispatch: () => true);
           chats.add((client, chat));
           await tester.pumpWidget(
             MaterialApp(home: ProfileWorkspaceScreen(controller: client)),
@@ -351,12 +393,12 @@ void main() {
           await until(
             tester,
             () =>
-                chat.approval != null ||
-                chat.pendingQuestion != null ||
-                !chat.busy,
+                chat.runtime.approval != null ||
+                chat.runtime.pendingQuestion != null ||
+                !chat.runtime.blocksTurnAdmission,
             'Terminal must run or request permission',
           );
-          if (chat.pendingQuestion != null) {
+          if (chat.runtime.pendingQuestion != null) {
             await client.clarify(
               chat,
               'Approved, only in the specified empty QA repository. Invoke terminal now; its approval system handles permission.',
@@ -365,7 +407,7 @@ void main() {
         }
 
         void verifyTerminal(ProfileChat chat) {
-          final results = chat.messages
+          final results = chat.reading.messages
               .where((row) => row['role'] == 'tool')
               .map((row) => row['content'])
               .whereType<String>()
@@ -387,11 +429,13 @@ void main() {
         Future<void> choose(ProfileChat chat, String label) async {
           await until(
             tester,
-            () => chat.approval != null || !chat.busy,
+            () =>
+                chat.runtime.approval != null ||
+                !chat.runtime.blocksTurnAdmission,
             'Expected real approval request',
           );
           expect(
-            chat.approval,
+            chat.runtime.approval,
             isNotNull,
             reason: 'Model must invoke the requested terminal action',
           );
@@ -402,7 +446,7 @@ void main() {
           await tester.pump(const Duration(milliseconds: 250));
           await tester.tap(button, warnIfMissed: true);
           await settled(tester, chat);
-          expect(chat.approval, isNull);
+          expect(chat.runtime.approval, isNull);
           verifyTerminal(chat);
         }
 
@@ -411,7 +455,7 @@ void main() {
         await choose(session, 'Allow for session');
         var repeatedPrompt = false;
         void observeRepeat() {
-          repeatedPrompt |= session.approval != null;
+          repeatedPrompt |= session.runtime.approval != null;
         }
 
         a.addListener(observeRepeat);
@@ -439,7 +483,7 @@ void main() {
         final later = await newChat(a);
         var laterPrompt = false;
         void observeLater() {
-          laterPrompt |= later.approval != null;
+          laterPrompt |= later.runtime.approval != null;
         }
 
         a.addListener(observeLater);
@@ -457,7 +501,7 @@ void main() {
         await submitTerminal(b, other);
         await until(
           tester,
-          () => other.approval != null,
+          () => other.runtime.approval != null,
           'Other profile must still require approval',
         );
         await tester.pump();
@@ -466,7 +510,7 @@ void main() {
         await tester.pump(const Duration(milliseconds: 250));
         await tester.tap(deny);
         await settled(tester, other);
-        final denied = other.messages
+        final denied = other.reading.messages
             .where((row) => row['role'] == 'tool')
             .map((row) => row['content'])
             .whereType<String>()
@@ -491,16 +535,20 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
         try {
           for (final (client, chat) in chats) {
-            if (chat.busy) await client.stop(chat);
+            if (chat.runtime.blocksTurnAdmission) await client.stop(chat);
           }
         } finally {
           for (final client in clients) {
             try {
               final original = originals[client];
               if (original != null) {
-                await client.current!.gateway.put('config', {
-                  'config': original,
-                });
+                final mutationOwner = client.current!;
+                await mutationOwner.gateway.putOwned(
+                  'config',
+                  {'config': original},
+                  canDispatch: () => identical(client.current, mutationOwner),
+                  onDispatched: () {},
+                );
                 final restored = await client.current!.gateway.read('config');
                 expect(
                   restored['approvals']?['mode'],
@@ -526,9 +574,20 @@ void main() {
     'unopened parent with actual child work is compared with global status',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final producer = await connect('android-qa-a');
-      final observer = await connect('android-qa-b');
-      final chat = await producer.createChat();
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final producer = await connect(
+        'android-qa-a',
+        preferences,
+        appPreferences,
+      );
+      final observer = await connect(
+        'android-qa-b',
+        preferences,
+        appPreferences,
+      );
+      final chat = await producer.createChat(canDispatch: () => true);
       try {
         await send(
           producer,
@@ -540,7 +599,9 @@ void main() {
         );
         await until(
           tester,
-          () => chat.subagents.any((child) => !child.isTerminal) && !chat.busy,
+          () =>
+              chat.subagents.any((child) => !child.isTerminal) &&
+              !chat.runtime.blocksTurnAdmission,
           'Need a real running child after its parent settles',
           seconds: 90,
         );
@@ -552,7 +613,7 @@ void main() {
           'session.active_list',
         );
         final parent = (active['sessions'] as List)
-            .where((item) => item['id'] == chat.runtimeId)
+            .where((item) => item['id'] == chat.runtime.runtimeId)
             .firstOrNull;
         evidence('child_only_activity', {
           'outcome': row != null ? 'passed' : 'backend_limited',
@@ -563,6 +624,12 @@ void main() {
               .length,
           'unopened_parent_visible': row != null,
         });
+        expect(
+          row,
+          isNotNull,
+          reason:
+              'An unopened parent with running child work must be visible in Activity',
+        );
         await until(
           tester,
           () => chat.subagents.every((child) => child.isTerminal),
@@ -588,9 +655,13 @@ void main() {
       } finally {
         for (final child
             in chat.subagents.where((child) => !child.isTerminal).toList()) {
-          await producer.interruptSubagent(chat, child.id);
+          await producer.interruptSubagent(
+            chat,
+            child.id,
+            canDispatch: () => true,
+          );
         }
-        if (chat.busy) await producer.stop(chat);
+        if (chat.runtime.blocksTurnAdmission) await producer.stop(chat);
         producer.dispose();
         observer.dispose();
       }
@@ -602,12 +673,15 @@ void main() {
     'nondefault loop command and controls address the same local work',
     (tester) async {
       SharedPreferences.setMockInitialValues({});
-      final client = await connect('android-qa-a');
-      final chat = await client.createChat();
+      final preferences = await SharedPreferences.getInstance();
+      final appPreferences = AppPreferences(preferences);
+      addTearDown(appPreferences.dispose);
+      final client = await connect('android-qa-a', preferences, appPreferences);
+      final chat = await client.createChat(canDispatch: () => true);
       final gateway = client.current!.gateway;
       Future<Map<String, dynamic>> loop(String arg) => gateway.call(
         'command.dispatch',
-        {'session_id': chat.runtimeId, 'name': 'loop', 'arg': arg},
+        {'session_id': chat.runtime.runtimeId, 'name': 'loop', 'arg': arg},
       );
       try {
         final started = await loop(
@@ -625,17 +699,35 @@ void main() {
           'slash_status': status,
           'structured_loop_present': present,
         });
-        if (present) {
+        expect(
+          present,
+          isTrue,
+          reason:
+              'This acceptance case requires the stock structured loop controls',
+        );
+        {
           expect(
-            await client.controlSession(chat, SessionControlAction.loopPause),
+            await client.controlSession(
+              chat,
+              SessionControlAction.loopPause,
+              canDispatch: () => true,
+            ),
             isTrue,
           );
           expect(
-            await client.controlSession(chat, SessionControlAction.loopResume),
+            await client.controlSession(
+              chat,
+              SessionControlAction.loopResume,
+              canDispatch: () => true,
+            ),
             isTrue,
           );
           expect(
-            await client.controlSession(chat, SessionControlAction.loopStop),
+            await client.controlSession(
+              chat,
+              SessionControlAction.loopStop,
+              canDispatch: () => true,
+            ),
             isTrue,
           );
         }
@@ -645,7 +737,7 @@ void main() {
           final status = await loop('status');
           evidence('loop_cleanup', {'stop': stopped, 'status': status});
           expect(status['output'], contains('No loop set'));
-          if (chat.busy) await client.stop(chat);
+          if (chat.runtime.blocksTurnAdmission) await client.stop(chat);
         } finally {
           client.dispose();
         }

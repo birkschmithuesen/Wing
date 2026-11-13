@@ -72,9 +72,8 @@ void main() {
 
         await open();
         for (final label in ['Cancel', 'Switch model']) {
-          final button = find.widgetWithText(
-            label == 'Cancel' ? TextButton : FilledButton,
-            label,
+          final button = find.byWidgetPredicate(
+            (widget) => widget is IconButton && widget.tooltip == label,
           );
           expect(button.hitTestable(), findsOneWidget);
           final rect = tester.getRect(button);
@@ -101,7 +100,7 @@ void main() {
             image.dispose();
           });
         }
-        await tester.tap(find.text('Cancel'));
+        await tester.tap(find.byTooltip('Cancel'));
         await tester.pumpAndSettle();
         expect(result, isFalse);
 
@@ -116,7 +115,7 @@ void main() {
         expect(result, isFalse);
 
         await open();
-        await tester.tap(find.text('Switch model'));
+        await tester.tap(find.byTooltip('Switch model'));
         await tester.pumpAndSettle();
         expect(result, isTrue);
         expect(tester.takeException(), isNull);

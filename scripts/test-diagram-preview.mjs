@@ -7,15 +7,16 @@ import { extname, join, resolve } from 'node:path';
 const root = resolve(import.meta.dirname, '..');
 const assets = join(root, 'android', 'app', 'src', 'main', 'assets', 'diagrams');
 const playwrightPath = process.env.PLAYWRIGHT_CORE_PATH
-  ?? join(root, 'build', 'diagram-vendor', 'node_modules', 'playwright-core');
+  ?? join(root, 'scripts', 'diagram-preview', 'node_modules', 'playwright-core');
 const { chromium } = createRequire(import.meta.url)(playwrightPath);
-const chromePath = process.env.CHROME_PATH
-  ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
+const chromePath = process.env.CHROME_PATH;
 const allowedFiles = new Set(['index.html', 'app.js', 'mermaid.min.js', 'report.html']);
 let reportSource = '';
 // Exercise the same response policy that Android applies to the local document.
 const nativeViewer = await readFile(join(root, 'android/app/src/main/kotlin/com/tarkilhk/wing/MermaidDiagramView.kt'), 'utf8');
 const htmlPolicy = nativeViewer.match(/private const val HTML_POLICY = ([\s\S]*?)\n        private val ASSETS/)[1]
+  .match(/"[^"]*"/g).map(value => JSON.parse(value)).join('');
+const viewerUnavailable = nativeViewer.match(/private fun viewerUnavailableScript\(\): String =\s*([\s\S]*?)\n\n/)[1]
   .match(/"[^"]*"/g).map(value => JSON.parse(value)).join('');
 
 const server = createServer(async (request, response) => {
@@ -77,6 +78,8 @@ try {
     ['%%{init: {"securityLevel": "loose"}}%%\nflowchart LR\nA-->B', false],
     ['---\nconfig:\n  securityLevel: loose\n---\nflowchart LR\nA-->B', false],
     ['flowchart LR\nSECRET_PARSE_TEXT_7f13 -- broken', false],
+    ['flowchart LR\nA["ice point<br/>limit-up below twenty"] --> B["warming<br/>volume up"]', false],
+    ['flowchart LR\nA["one&nbsp;two"] --> B["three #nbsp; four"]', true],
   ];
   const results = [];
 
@@ -115,8 +118,15 @@ try {
   assert.equal(results[5].body.includes('securityLevel'), false);
   assert.match(results[6].status, /could not parse/i);
   assert.equal(results[6].body.includes('SECRET_PARSE_TEXT_7f13'), false);
+  for (const [index, result] of results.slice(7).entries()) {
+    assert.equal(result.rendered, true, `multiline label ${index} failed: ${result.status}`);
+    assert.equal(result.svg, true);
+    assert.equal(result.blockedNodes, 0);
+  }
+  assert.match(results[7].body, /ice point/);
+  assert.match(results[8].body, /one/);
 
-  console.log('Rendered flowchart, sequence, and pie cases in headless Chrome.');
+  console.log('Rendered flowchart, sequence, and pie cases in headless Chromium.');
   console.log('Rejected links and config overrides, and kept errors free of source text.');
 
   const svgResults = await page.evaluate(async (origin) => {
@@ -233,20 +243,72 @@ try {
   assert.equal(await page.locator('#diagram iframe').count(), 0);
   assert.equal(page.url(), `${origin}/index.html`);
   console.log('HTML controls work in an opaque sandbox; parent/storage access and HTTP resources are blocked.');
-  for (const dark of [false, true]) {
+  assert.equal(await page.evaluate(() => {
+    const createElement = document.createElement;
+    document.createElement = () => { throw new Error('Could not create iframe'); };
+    try {
+      return window.renderHtml();
+    } finally {
+      document.createElement = createElement;
+    }
+  }), false);
+  assert.match(await page.getByRole('alert').textContent(), /HTML file could not be previewed/);
+
+  async function checkStudioError(surface, dark, name, copy) {
     const palette = dark
-      ? { canvas: '#101B24', panel: '#192934', text: '#EBF1F2', muted: '#ADBDC4', border: '#344C58', error: '#F87171', accent: '#ABC9FF' }
-      : { canvas: '#F7F7F4', panel: '#FFFFFF', text: '#1B2D36', muted: '#586970', border: '#D6E0E1', error: '#B91C1C', accent: '#285F9B' };
-    await page.evaluate(({ dark, palette }) => {
-      window.setStudioTheme(dark, palette);
-      window.showDiagramError('This diagram could not be displayed. Return to source to review it.');
-    }, { dark, palette });
-    assert.equal(await page.locator('html').evaluate(node => getComputedStyle(node).backgroundColor), dark ? 'rgb(16, 27, 36)' : 'rgb(247, 247, 244)');
-    assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node).color), dark ? 'rgb(248, 113, 113)' : 'rgb(185, 28, 28)');
-    assert.equal(await page.locator('#status').evaluate(node => getComputedStyle(node, '::before').content), '"!"');
-    await page.screenshot({ path: join(root, 'build', `studio-diagram-error-${dark ? 'dark' : 'light'}.png`), fullPage: true });
+      ? { canvas: '#101B24', panel: '#192934', text: '#EBF1F2', muted: '#ADBDC4', border: '#344C58', error: '#F87171', 'error-surface': '#352422', accent: '#ABC9FF' }
+      : { canvas: '#F7F7F4', panel: '#FFFFFF', text: '#1B2D36', muted: '#586970', border: '#D6E0E1', error: '#B91C1C', 'error-surface': '#FFF1EF', accent: '#285F9B' };
+    await surface.evaluate(({ dark, palette }) => window.setStudioTheme(dark, palette), { dark, palette });
+    const alert = surface.getByRole('alert');
+    assert.match(await alert.textContent(), copy);
+    assert.equal(await alert.locator('.status-icon').getAttribute('aria-hidden'), 'true');
+    const style = await alert.evaluate(node => ({
+      ink: getComputedStyle(node).color,
+      fill: getComputedStyle(node).backgroundColor,
+      border: getComputedStyle(node, '::before').borderTopColor,
+      borderOpacity: getComputedStyle(node, '::before').opacity,
+      icon: getComputedStyle(node.querySelector('.status-icon')).color,
+      width: document.documentElement.scrollWidth,
+    }));
+    const rgb = hex => `rgb(${[1, 3, 5].map(offset => parseInt(hex.slice(offset, offset + 2), 16)).join(', ')})`;
+    assert.deepEqual(style, {
+      ink: rgb(palette.text),
+      fill: rgb(palette['error-surface']),
+      border: rgb(palette.error),
+      borderOpacity: dark ? '0.42' : '0.3',
+      icon: rgb(palette.error),
+      width: surface.viewportSize().width,
+    });
+    assert.equal(await surface.locator('html').evaluate(node => getComputedStyle(node).backgroundColor), rgb(palette.canvas));
+    await surface.screenshot({ path: join(root, 'build', `studio-diagram-error-${name}.png`), fullPage: true });
   }
-  console.log('Native viewer shell receives Studio canvas, panel, accent and semantic error colors in both themes.');
+
+  const missingScript = await browser.newPage();
+  await missingScript.route('**/app.js', route => route.abort());
+  for (const dark of [false, true]) {
+    for (const scale of [1, 2]) {
+      const viewport = { width: scale === 1 ? 390 : 320, height: 740 };
+      const name = `${dark ? 'dark' : 'light'}-${scale}x`;
+      for (const surface of [page, missingScript]) {
+        await surface.setViewportSize(viewport);
+        await surface.goto(`${origin}/index.html`);
+        await surface.evaluate(scale => {
+          document.documentElement.style.fontSize = `${scale * 100}%`;
+        }, scale);
+      }
+      assert.equal(await page.evaluate(dark => window.renderDiagram('bad Mermaid', dark), dark), false);
+      await checkStudioError(page, dark, `mermaid-${name}`, /could not parse/i);
+      assert.equal(await page.evaluate(dark => window.renderSvg('<svg>', dark), dark), false);
+      await checkStudioError(page, dark, `svg-${name}`, /SVG/i);
+      // Android sends source-validation failures via this same shell entry.
+      await page.evaluate(() => window.showDiagramError('This HTML file is too large to preview.'));
+      await checkStudioError(page, dark, `html-${name}`, /HTML file/i);
+      assert.equal(await missingScript.evaluate(() => typeof window.renderDiagram), 'undefined');
+      await missingScript.evaluate(viewerUnavailable);
+      await checkStudioError(missingScript, dark, `missing-script-${name}`, /viewer could not load/i);
+    }
+  }
+  console.log('Mermaid, SVG, HTML and missing-script errors share Studio ink, icon, tint and border at phone widths in both themes and text sizes.');
 
 } finally {
   await browser?.close();

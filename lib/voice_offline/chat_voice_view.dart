@@ -1,23 +1,37 @@
+import '../core/models/chat_runtime.dart';
 import '../core/services/profile_workspace_controller.dart';
 import 'barge_in_policy.dart';
 
-/// The ProfileChat fields the fork voice driver reads. At the upstream merge
-/// only this file follows upstream's chat.composer / chat.runtime split.
+/// The ProfileChat state the fork voice driver and car mode read. The only
+/// place that follows upstream's chat.runtime / chat.composer split.
 extension ChatVoiceView on ProfileChat {
-  bool get voiceBusy => busy;
+  bool get voiceBusy => runtime.blocksTurnAdmission;
 
-  String get voiceDraft => draft;
+  String get voiceDraft => composer.observation.text;
 
   /// Approvals, clarify questions and secure prompts need the user's hands or
   /// eyes, so they end a hands-free conversation.
-  bool get needsUserInput =>
-      approval != null || clarification != null || sensitivePrompt != null;
+  bool get needsUserInput => runtime.needsInput;
 
-  ListenChatState get listenState => switch (status) {
-    ProfileTurnStatus.running ||
-    ProfileTurnStatus.attention => ListenChatState.steerable,
-    ProfileTurnStatus.submitting ||
-    ProfileTurnStatus.reconnecting => ListenChatState.busy,
-    _ => ListenChatState.idle,
-  };
+  bool get voiceOpening => runtime.opening;
+
+  bool get voiceOffline => runtime.offline;
+
+  bool get voiceCommandRunning => runtime.commandRunning;
+
+  bool get voiceChangingAnswer => runtime.changingAnswer;
+
+  bool get voiceEditingQueue => composer.observation.editing != null;
+
+  bool get voiceTurnEnded =>
+      runtime.execution == ChatExecution.failed ||
+      runtime.execution == ChatExecution.cancelled;
+
+  ListenChatState get listenState => runtime.canSteer || runtime.needsInput
+      ? ListenChatState.steerable
+      : runtime.execution == ChatExecution.submitting ||
+            runtime.reconnecting ||
+            runtime.executionActive
+      ? ListenChatState.busy
+      : ListenChatState.idle;
 }

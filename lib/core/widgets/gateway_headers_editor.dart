@@ -1,3 +1,5 @@
+import 'selection_viewport.dart';
+import 'package:wing/core/theme/wing_theme.dart';
 import 'package:flutter/material.dart';
 
 import '../models/connection.dart';
@@ -6,7 +8,7 @@ import '../models/connection.dart';
 class GatewayHeadersEditor extends StatefulWidget {
   final Set<String> savedNames;
   final bool enabled;
-  final ValueChanged<Map<String, String?>> onChanged;
+  final ValueChanged<GatewayHeaderEdit> onChanged;
 
   const GatewayHeadersEditor({
     super.key,
@@ -26,11 +28,6 @@ class _HeaderRow {
 
   _HeaderRow([this.savedName])
     : name = TextEditingController(text: savedName ?? '');
-
-  bool get keepsSavedValue =>
-      savedName != null &&
-      name.text.trim().toLowerCase() == savedName!.toLowerCase() &&
-      value.text.isEmpty;
 
   void dispose() {
     name.dispose();
@@ -68,63 +65,19 @@ class _GatewayHeadersEditorState extends State<GatewayHeadersEditor> {
     super.dispose();
   }
 
-  String? _nameError(int index) {
-    final name = _rows[index].name.text.trim();
-    if (name.isEmpty) {
-      return 'Header name is required';
-    }
-    final duplicate = _rows.indexed.any(
-      (entry) =>
-          entry.$1 != index &&
-          entry.$2.name.text.trim().toLowerCase() == name.toLowerCase(),
-    );
-    if (duplicate) {
-      return 'Header names must be unique.';
-    }
-    try {
-      validateGatewayHeaders(<String, String>{name: 'value'});
-      return null;
-    } on FormatException catch (error) {
-      return error.message;
-    }
-  }
+  GatewayHeaderEdit _captureEdit() => GatewayHeaderEdit([
+    for (final row in _rows)
+      GatewayHeaderDraft(
+        savedName: row.savedName,
+        name: row.name.text,
+        value: row.value.text,
+      ),
+  ]);
 
-  String? _valueError(int index) {
-    final row = _rows[index];
-    if (row.keepsSavedValue) {
-      return null;
-    }
-    if (row.value.text.isEmpty) {
-      return 'Value is required';
-    }
-    try {
-      validateGatewayHeaders(<String, String>{
-        'X-Hermes-Validation': row.value.text,
-      });
-      return null;
-    } on FormatException catch (error) {
-      return error.message;
-    }
-  }
-
-  void _changed() {
+  void _publishEdit() {
     setState(() {});
-    final names = <String>{};
-    final result = <String, String?>{};
-    for (final row in _rows) {
-      final name = row.name.text.trim();
-      if (name.isEmpty || !names.add(name.toLowerCase())) {
-        return;
-      }
-      final value = row.keepsSavedValue ? null : row.value.text;
-      try {
-        validateGatewayHeaders(<String, String>{name: value ?? 'value'});
-      } on FormatException {
-        return;
-      }
-      result[name] = value;
-    }
-    widget.onChanged(result);
+    final edit = _captureEdit();
+    if (edit.update != null) widget.onChanged(edit);
   }
 
   void _add() {
@@ -140,7 +93,7 @@ class _GatewayHeadersEditorState extends State<GatewayHeadersEditor> {
     }
     final row = _rows.removeAt(index);
     row.dispose();
-    _changed();
+    _publishEdit();
   }
 
   @override
@@ -160,39 +113,45 @@ class _GatewayHeadersEditorState extends State<GatewayHeadersEditor> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextFormField(
-                key: ObjectKey(entry.$2.name),
-                controller: entry.$2.name,
-                enabled: widget.enabled,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                validator: (_) => _nameError(entry.$1),
-                onChanged: (_) => _changed(),
-                decoration: const InputDecoration(labelText: 'Header name'),
-                autocorrect: false,
-              ),
-              TextFormField(
-                key: ObjectKey(entry.$2.value),
-                controller: entry.$2.value,
-                enabled: widget.enabled,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                validator: (_) => _valueError(entry.$1),
-                onChanged: (_) => _changed(),
-                obscureText: true,
-                autofillHints: const [AutofillHints.password],
-                decoration: InputDecoration(
-                  labelText: 'Value',
-                  hintText: entry.$2.savedName == null
-                      ? null
-                      : 'Keep saved value',
+              viewportSelection(
+                TextFormField(
+                  key: ObjectKey(entry.$2.name),
+                  controller: entry.$2.name,
+                  enabled: widget.enabled,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  validator: (_) => _captureEdit().nameError(entry.$1),
+                  onChanged: (_) => _publishEdit(),
+                  decoration: const InputDecoration(labelText: 'Header name'),
+                  autocorrect: false,
                 ),
-                autocorrect: false,
+              ),
+              viewportSelection(
+                TextFormField(
+                  key: ObjectKey(entry.$2.value),
+                  controller: entry.$2.value,
+                  enabled: widget.enabled,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  validator: (_) => _captureEdit().valueError(entry.$1),
+                  onChanged: (_) => _publishEdit(),
+                  obscureText: true,
+                  autofillHints: const [AutofillHints.password],
+                  decoration: InputDecoration(
+                    labelText: 'Value',
+                    hintText: entry.$2.savedName == null
+                        ? null
+                        : 'Keep saved value',
+                  ),
+                  autocorrect: false,
+                ),
               ),
               Align(
                 alignment: AlignmentDirectional.centerEnd,
-                child: IconButton(
-                  tooltip: 'Remove header',
-                  onPressed: widget.enabled ? () => _remove(entry.$1) : null,
-                  icon: const Icon(Icons.close),
+                child: StudioButtonPress(
+                  child: IconButton(
+                    tooltip: 'Remove header',
+                    onPressed: widget.enabled ? () => _remove(entry.$1) : null,
+                    icon: const Icon(Icons.close),
+                  ),
                 ),
               ),
             ],
@@ -200,10 +159,12 @@ class _GatewayHeadersEditorState extends State<GatewayHeadersEditor> {
         ),
       Align(
         alignment: AlignmentDirectional.centerStart,
-        child: OutlinedButton.icon(
-          onPressed: widget.enabled ? _add : null,
-          icon: const Icon(Icons.add),
-          label: const Text('Add header'),
+        child: StudioButtonPress(
+          child: IconButton.filled(
+            tooltip: 'Add header',
+            onPressed: widget.enabled ? _add : null,
+            icon: const Icon(Icons.add),
+          ),
         ),
       ),
     ],

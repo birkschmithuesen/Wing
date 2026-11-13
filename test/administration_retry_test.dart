@@ -1,3 +1,5 @@
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +11,63 @@ import 'package:wing/core/services/administration_health.dart';
 import 'support/administration_fixture.dart';
 
 void main() {
+  testWidgets(
+    'retired diagnostic authority cannot dispatch after held authentication',
+    (tester) async {
+      final login = Completer<http.Response>();
+      var admitted = false;
+      var active = true;
+      var posts = 0;
+      var dispatches = 0;
+      final client = DashboardClient(
+        host: 'server',
+        httpClient: MockClient((request) async {
+          if (request.url.path == '/') {
+            admitted = true;
+            return login.future;
+          }
+          posts++;
+          return http.Response('{"ok":true,"name":"doctor","pid":7}', 200);
+        }),
+      );
+      final server = AdministrationRepository(
+        connectionId: 'server',
+        connectionIdentity: 'server',
+        connectionLabel: 'Server',
+        gateway: (_) => throw UnimplementedError(),
+        settingsWrite: (_, _, _, _) => throw UnimplementedError(),
+        request: (_, endpoint, _, body) => client.apiPost(endpoint, body: body),
+        ownedMutation: (method, endpoint, _, body, canDispatch, onDispatched) =>
+            client.apiWriteOwned(
+              method,
+              endpoint,
+              body: body,
+              canDispatch: canDispatch,
+              onDispatched: () {
+                dispatches++;
+                onDispatched();
+              },
+            ),
+        close: client.close,
+      );
+      addTearDown(server.close);
+      final result = expectLater(
+        server.startDiagnostic('ops/doctor', isActive: () => active),
+        throwsA(isA<DashboardRequestNotSentException>()),
+      );
+      await tester.pump();
+      expect(admitted, isTrue);
+      active = false;
+      login.complete(
+        http.Response('window.__HERMES_SESSION_TOKEN__="test";', 200),
+      );
+      await tester.pump();
+      await result;
+      expect(posts, 0);
+      expect(dispatches, 0);
+    },
+  );
+
   testWidgets(
     'transient dashboard authentication failure retries before starting once',
     (tester) async {
@@ -25,10 +84,20 @@ void main() {
             );
           }
           posts++;
-          return http.Response('{"name":"doctor","pid":7}', 200);
+          return http.Response('{"ok":true,"name":"doctor","pid":7}', 200);
         }),
       );
       final server = AdministrationRepository(
+        ownedMutation: (method, endpoint, _, body, active, dispatched) =>
+            client.apiWriteOwned(
+              method,
+              endpoint,
+              body: body,
+              canDispatch: active,
+              onDispatched: dispatched,
+            ),
+        settingsWrite: (_, _, _, _) async =>
+            throw StateError('Unexpected settings write'),
         connectionId: 'server',
         connectionIdentity: 'server',
         connectionLabel: 'Server',
@@ -37,10 +106,10 @@ void main() {
         close: client.close,
       );
       addTearDown(server.close);
-      final result = server.startDiagnostic('ops/doctor');
+      final result = server.startDiagnostic('ops/doctor', isActive: () => true);
       await tester.pump();
       await tester.pump(const Duration(seconds: 1));
-      expect((await result)['pid'], 7);
+      expect((await result).pid, 7);
       expect(logins, 2);
       expect(posts, 1);
     },
@@ -86,7 +155,10 @@ void main() {
         addTearDown(fixture.server.close);
         fixture.override = (_, _, _, _) async => throw error;
         await expectLater(
-          fixture.server.startDiagnostic('ops/security-audit'),
+          fixture.server.startDiagnostic(
+            'ops/security-audit',
+            isActive: () => true,
+          ),
           throwsA(same(error)),
         );
         expect(fixture.requests, hasLength(1));
@@ -123,7 +195,7 @@ void main() {
       osError: OSError('Connection refused', 111),
     );
     final result = expectLater(
-      fixture.server.startDiagnostic('ops/doctor'),
+      fixture.server.startDiagnostic('ops/doctor', isActive: () => true),
       throwsA(isA<SocketException>()),
     );
     await tester.pump();
@@ -158,19 +230,20 @@ void main() {
     fixture.override = (_, _, _, _) async {
       if (!online) throw TimeoutException('offline');
       return {
+        'name': 'doctor',
         'pid': 7,
         'running': false,
         'exit_code': 0,
         'lines': ['Done'],
       };
     };
-    final generation = health.beginDiagnostic('ops/doctor')!;
-    health.trackDiagnostic(
+    restoreDiagnostic(
+      health,
       'ops/doctor',
-      const AdministrationAction('doctor', 7),
-      generation: generation,
+      AdminDiagnosticObservation(const AdministrationAction('doctor', 7), {
+        'running': true,
+      }, null),
     );
-    health.finishDiagnostic('ops/doctor', generation);
     await tester.pump();
     await tester.pump(const Duration(seconds: 1));
     await tester.pump(const Duration(seconds: 2));

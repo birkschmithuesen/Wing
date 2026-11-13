@@ -1,0 +1,101 @@
+{
+  "schema": [
+    {
+      "name": "canonical",
+      "exit": 0
+    },
+    {
+      "name": "dynamic-delivery",
+      "exit": 0,
+      "delivery_targets": [
+        "local",
+        "telegram",
+        "discord"
+      ]
+    },
+    {
+      "name": "invented-topic",
+      "exit": 1,
+      "field": {
+        "name": "topic",
+        "type": "text",
+        "label": "What to cover",
+        "default": "",
+        "options": [],
+        "optional": false,
+        "strict": true,
+        "help": ""
+      }
+    },
+    {
+      "name": "wrong-default",
+      "exit": 1,
+      "default": "09:00"
+    },
+    {
+      "name": "optional-invention",
+      "exit": 1,
+      "optional": true
+    }
+  ],
+  "slots": [
+    {
+      "name": "morning-time",
+      "exit": 0,
+      "submissions": [
+        {
+          "blueprint": "morning-brief",
+          "values": {
+            "time": "09:00",
+            "deliver": "local"
+          }
+        }
+      ]
+    },
+    {
+      "name": "stock-defaults",
+      "exit": 0,
+      "submissions": [
+        {
+          "blueprint": "morning-brief",
+          "values": {}
+        }
+      ]
+    },
+    {
+      "name": "legitimate-topic",
+      "exit": 0,
+      "submissions": [
+        {
+          "blueprint": "news-digest",
+          "values": {
+            "topic": "Flutter",
+            "deliver": "local"
+          }
+        }
+      ]
+    },
+    {
+      "name": "invented-topic",
+      "exit": 1,
+      "submissions": [
+        {
+          "blueprint": "morning-brief",
+          "values": {
+            "topic": "Flutter"
+          }
+        }
+      ]
+    },
+    {
+      "name": "unknown-blueprint",
+      "exit": 1,
+      "submissions": [
+        {
+          "blueprint": "invented",
+          "values": {}
+        }
+      ]
+    }
+  ]
+}

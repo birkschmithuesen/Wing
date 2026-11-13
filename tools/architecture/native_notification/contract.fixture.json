@@ -1,0 +1,70 @@
+{
+  "schema": 1,
+  "rule": "NATIVE_NOTIFICATION_RETIRED_ACTION",
+  "cases": [
+    {
+      "name": "original retired case",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   when (call.method) {\n    \"cancelAll\" -> result.success(null)\n    \"cancel\" -> result.success(null)\n   }\n  }\n }\n}\n",
+      "exit": 1,
+      "count": 1,
+      "line": 6
+    },
+    {
+      "name": "captured cancel retained",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   when (call.method) {\n    \"cancel\" -> result.success(null)\n    else -> result.notImplemented()\n   }\n  }\n }\n}\n",
+      "exit": 0,
+      "count": 0
+    },
+    {
+      "name": "renamed handler parameter and parentheses",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { request, result ->\n   when ((request).method) { \"cancelAll\" -> result.success(null) }\n  }\n }\n}\n",
+      "exit": 1,
+      "count": 1,
+      "line": 5
+    },
+    {
+      "name": "escaped literal",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   when (call.method) { \"\\u0063ancelAll\" -> result.success(null) }\n  }\n }\n}\n",
+      "exit": 1,
+      "count": 1,
+      "line": 5
+    },
+    {
+      "name": "binary dispatch alternative",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   if (call.method == \"cancelAll\") result.success(null)\n  }\n }\n}\n",
+      "exit": 1,
+      "count": 1,
+      "line": 5
+    },
+    {
+      "name": "unrelated display text method name and when subject",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   val label = \"cancelAll\"\n   when (state) { \"cancelAll\" -> result.success(label) }\n   when (call.method) { \"cancel\" -> result.success(null) }\n   helper.cancelAll()\n  }\n }\n}\n",
+      "exit": 0,
+      "count": 0
+    },
+    {
+      "name": "unrelated object action",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {}\nobject Other { fun attach() { channel.setMethodCallHandler { call, result -> when(call.method) { \"cancelAll\" -> result.success(null) } } } }",
+      "exit": 0,
+      "count": 0
+    },
+    {
+      "name": "comments are not dispatch",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications {\n fun attach() {\n  channel.setMethodCallHandler { call, result ->\n   // \"cancelAll\" -> result.success(null)\n   when (call.method) { \"cancel\" -> result.success(null) }\n  }\n }\n}\n",
+      "exit": 0,
+      "count": 0
+    },
+    {
+      "name": "missing canonical owner",
+      "source": "package com.tarkilhk.wing\nobject Other {}",
+      "exit": 2,
+      "count": 0
+    },
+    {
+      "name": "malformed source",
+      "source": "package com.tarkilhk.wing\nobject ChatNotifications { broken (",
+      "exit": 2,
+      "count": 0
+    }
+  ]
+}

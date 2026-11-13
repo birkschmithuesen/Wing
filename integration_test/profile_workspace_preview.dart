@@ -2,6 +2,15 @@
 /// imported by lib/main.dart. Restore the normal APK after visual inspection.
 library;
 
+import 'package:wing/core/models/chat_runtime.dart';
+import '../test/support/composer_fixture.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/bots_session.dart';
+import 'support/profile_fixture_root.dart';
+
+import 'package:wing/core/services/connection_access.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/profile_workspace_screen.dart';
@@ -50,40 +59,66 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint('Design preview: starting');
   final fixture = DesignPreviewFixture();
+  final runtimes = WorkspaceRuntimeFixture();
+  final preferences = await SharedPreferences.getInstance();
+  final appPreferences = AppPreferences(preferences);
   final controller = ProfileWorkspaceController(
-    connection: SavedConnection(
-      id: 'ui-preview',
-      label: 'UI preview · Prestige',
-      host: 'unused',
-      port: 1,
-      apiKey: '',
+    appPreferences: appPreferences,
+    access: ConnectionAccess(
+      connection: SavedConnection(
+        id: 'ui-preview',
+        label: 'UI preview · Prestige',
+        host: 'unused',
+        port: 1,
+        apiKey: '',
+      ),
+      dashboardOAuth: null,
     ),
     connectionIdentity: 'authored-ui-preview',
-    preferences: await SharedPreferences.getInstance(),
+    preferences: preferences,
     gatewayFactory: fixture.gateway,
+    runtimeFactory: runtimes.create,
   );
   await controller.initialize();
   debugPrint('Design preview: initialized');
   for (final (id, status) in [
-    ('pinned', ProfileTurnStatus.completed),
-    ('newest', ProfileTurnStatus.running),
-    ('pin-two', ProfileTurnStatus.attention),
+    ('pinned', ChatExecution.completed),
+    ('newest', ChatExecution.running),
+    ('pin-two', null),
   ]) {
     final row = controller.current!.sessions.firstWhere(
       (row) => row['id'] == id,
     );
-    controller.current!.chats[id] = ProfileChat(
+    final chat = await openFixtureChat(
+      controller: controller,
       key: ProfileSessionKey(controller.current!.scope, id),
-      runtimeId: 'preview-$id',
       title: row['title'] as String,
-    )..status = status;
+      select: false,
+    );
+    final runtime = runtimes.forChat(chat);
+    if (status == null) {
+      runtime.receiveApproval({
+        'request_id': 'preview-input',
+        'command': 'Review',
+      });
+    } else if (status == ChatExecution.running) {
+      runtime.beginTurn(submitting: false);
+    } else {
+      runtime.completeTurn(failed: false, cancelled: false, error: null);
+    }
   }
   runApp(
-    MaterialApp(
-      debugShowCheckedModeBanner: false,
-      theme: wingTheme(Brightness.light),
-      darkTheme: wingTheme(Brightness.dark),
-      home: ProfileWorkspaceScreen(controller: controller),
+    ProfileFixtureRoot(
+      controller: controller,
+      child: MaterialApp(
+        debugShowCheckedModeBanner: false,
+        theme: wingTheme(Brightness.light),
+        darkTheme: wingTheme(Brightness.dark),
+        home: ProfileWorkspaceScreen(
+          controller: controller,
+          createBotsSession: () => BotsSession((_) async => const []),
+        ),
+      ),
     ),
   );
 }

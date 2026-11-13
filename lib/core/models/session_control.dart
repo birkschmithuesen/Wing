@@ -144,11 +144,8 @@ class SessionLoop {
   final num intervalSeconds;
   final num currentDelay;
   final int times;
-  final String until;
   final int maxTicks;
   final int ticksFired;
-  final num createdAt;
-  final num lastFiredAt;
   final num nextDueAt;
   final bool awaitingResponse;
   final bool deferredByGoal;
@@ -162,11 +159,8 @@ class SessionLoop {
     required this.intervalSeconds,
     required this.currentDelay,
     required this.times,
-    required this.until,
     required this.maxTicks,
     required this.ticksFired,
-    required this.createdAt,
-    required this.lastFiredAt,
     required this.nextDueAt,
     required this.awaitingResponse,
     required this.deferredByGoal,
@@ -179,16 +173,12 @@ class SessionHeartbeat {
   final String prompt;
   final SessionHeartbeatStatus status;
   final num intervalSeconds;
-  final num createdAt;
-  final num lastFiredAt;
   final int fireCount;
 
   const SessionHeartbeat({
     required this.prompt,
     required this.status,
     required this.intervalSeconds,
-    required this.createdAt,
-    required this.lastFiredAt,
     required this.fireCount,
   });
 }
@@ -372,11 +362,8 @@ class SessionControlSnapshot {
       intervalSeconds: map['interval_seconds'] as num,
       currentDelay: map['current_delay'] as num,
       times: map['times'] as int,
-      until: map['until'] as String,
       maxTicks: map['max_ticks'] as int,
       ticksFired: map['ticks_fired'] as int,
-      createdAt: map['created_at'] as num,
-      lastFiredAt: map['last_fired_at'] as num,
       nextDueAt: map['next_due_at'] as num,
       awaitingResponse: map['awaiting_response'] as bool,
       deferredByGoal: map['deferred_by_goal'] as bool,
@@ -418,8 +405,6 @@ class SessionControlSnapshot {
       prompt: map['prompt'] as String,
       status: status,
       intervalSeconds: map['interval_seconds'] as num,
-      createdAt: map['created_at'] as num,
-      lastFiredAt: map['last_fired_at'] as num,
       fireCount: map['fire_count'] as int,
     );
   }

@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0c304a">
+<meta name="description" content="Check host resources, diagnostics and profiles. Inspect health alerts and set memory, disk and CPU warning and recovery thresholds.">
+<title>Hermes health · Wing</title>
+<link rel="icon" type="image/png" href="assets/wing.png">
+<link rel="stylesheet" href="styles.css">
+<script src="script.js" defer></script>
+</head>
+<body class="guide-page">
+<a class="skip-link" href="#main">Skip to content</a>
+<svg class="icon-definitions" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+<symbol id="github" viewBox="0 0 24 24">
+<path fill="currentColor" stroke="none" d="M12 2a10 10 0 0 0-3.16 19.49c.5.09.68-.22.68-.48v-1.86c-2.78.6-3.37-1.18-3.37-1.18-.45-1.16-1.11-1.47-1.11-1.47-.91-.62.07-.61.07-.61 1 .07 1.53 1.03 1.53 1.03.9 1.53 2.35 1.09 2.92.83.09-.65.35-1.09.64-1.34-2.22-.25-4.55-1.11-4.55-4.94 0-1.09.39-1.99 1.03-2.69-.1-.25-.45-1.28.1-2.67 0 0 .84-.27 2.75 1.03A9.6 9.6 0 0 1 12 6.8c.85 0 1.71.12 2.51.34 1.91-1.3 2.75-1.03 2.75-1.03.55 1.39.2 2.42.1 2.67.64.7 1.03 1.6 1.03 2.69 0 3.84-2.33 4.69-4.56 4.94.36.31.68.92.68 1.85v2.75c0 .27.18.58.69.48A10 10 0 0 0 12 2Z"/></symbol>
+<symbol id="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/>
+<path d="M12 2v2m0 16v2M2 12h2m16 0h2M5 5l1.5 1.5m11 11L19 19M5 19l1.5-1.5m11-11L19 5"/></symbol>
+<symbol id="moon" viewBox="0 0 24 24">
+<path d="M20.6 14A9 9 0 0 1 10 3.4 9 9 0 1 0 20.6 14Z"/></symbol>
+<symbol id="plus" viewBox="0 0 24 24">
+<path d="M12 5v14M5 12h14"/></symbol>
+</svg>
+<div class="header-surface">
+<header class="site-header page-width">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<nav aria-label="Main navigation">
+<a class="nav-link" href="index.html">Home</a>
+<a class="nav-link" href="workspaces.html">Features</a>
+<a class="nav-link" href="get-started.html">Get connected</a>
+<a class="icon-button source-link" href="https://github.com/tarkilhk/Wing" aria-label="Wing source code on GitHub" title="Source code on GitHub">
+<svg><use href="#github"/></svg></a>
+</nav>
+</header>
+</div>
+<nav class="topic-nav page-width" aria-label="Wing feature guides">
+<a href="workspaces.html">Profiles &amp; projects</a>
+<a href="bots.html">Bots &amp; groups</a>
+<a href="recents.html">Recents</a>
+<a href="live-work.html">Live work</a>
+<a href="voice.html">Live voice</a>
+<a href="wing-plugin.html">Wing plugin</a>
+<a href="results.html">Results</a>
+<a href="health.html" aria-current="page">Health</a>
+<a href="administration.html">Administration</a>
+<a href="scheduled-tasks.html">Schedules</a>
+<a href="usage.html">Usage</a>
+<a href="get-started.html">Get connected</a>
+</nav>
+<main id="main">
+<section class="guide-hero page-width" aria-labelledby="guide-title">
+<div>
+<h1 id="guide-title">Monitor your<br> Hermes health</h1>
+</div>
+</section>
+<div class="guide-layout page-width" id="guide-content">
+<aside>
+<nav class="guide-toc" aria-label="Page contents">
+<a href="#checks">Check your setup</a>
+<a href="#thresholds">Choose your alerts</a>
+<a href="#alerts">Inspect a notification</a>
+</nav>
+</aside>
+<div class="guide-copy">
+<section id="checks" aria-labelledby="checks-title">
+<h2 id="checks-title">Check your setup</h2>
+<p>See CPU, memory and disk usage, run Doctor or a security audit, and read backend logs. Switch profiles to check model access, tools, connectors and scheduled tasks.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/health-light.png" aria-label="Enlarge screenshot: Wing Health with Alert settings, host readings, backend diagnostics and profile checks"><img src="assets/screenshots/health-light.png" width="780" height="1688" alt="Wing Health with Alert settings, host readings, backend diagnostics and profile checks" loading="lazy"></a>
+</div>
+</figure>
+<p>Each result shows when it was checked. Open <strong>What's checked?</strong> for the scope of each check.</p>
+</section>
+<section id="thresholds" aria-labelledby="thresholds-title">
+<h2 id="thresholds-title">Choose your alerts</h2>
+<p>Tap the <strong>Alert settings</strong> sliders beside <strong>Alerts</strong> in Hermes health. Set host resource monitoring and profile alerts separately. Set memory, disk and CPU warning and recovery thresholds, with separate durations.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/alert-settings-light.png" aria-label="Enlarge screenshot: Wing Alert settings with host thresholds, profile alerts and notification controls"><img src="assets/screenshots/alert-settings-light.png" width="780" height="1688" alt="Wing Alert settings with host thresholds, profile alerts and notification controls" loading="lazy"></a>
+</div>
+</figure>
+<p>Checks run while Wing is open or monitoring ongoing work. If fresh readings are unavailable, existing issues are marked as last known.</p>
+</section>
+<section id="alerts" aria-labelledby="alerts-title">
+<h2 id="alerts-title">Inspect a notification</h2>
+<p>Tap the header warning triangle to open Quick view beneath it. Acknowledge an occurrence or snooze it for 30 minutes; those choices survive a restart. Use the undo or clock-arrow icon to bring the issue back to attention. Review acknowledged and snoozed issues in the Alerts section of Hermes health. Snooze expiry, escalation or recurrence can alert you again.</p>
+<figure class="guide-shot guide-inline-shot">
+<div class="app-frame">
+<a class="screenshot-link" data-screenshot href="assets/screenshots/health-alerts-light.png" aria-label="Enlarge screenshot: Wing health notification showing critical memory pressure, its triggering reading and an action to open Health"><img src="assets/screenshots/health-alerts-light.png" width="780" height="1688" alt="Wing health notification showing critical memory pressure, its triggering reading and an action to open Health" loading="lazy"></a>
+</div>
+</figure>
+</section>
+</div>
+</div>
+<div class="guide-next page-width">
+<h2>Related guides</h2>
+<nav aria-label="Related guides">
+<a class="text-link" href="administration.html">Change profile settings</a>
+<a class="text-link" href="get-started.html#connection-help">Connection troubleshooting</a>
+</nav>
+<a class="button button-navy" href="https://github.com/tarkilhk/Wing/releases/latest">Download Wing</a>
+<p>Android 7.0+ · Requires a reachable Hermes server</p>
+</div>
+</main>
+<footer class="site-footer">
+<div class="page-width footer-top">
+<a class="brand" href="index.html" aria-label="Wing home"><img class="brand-portrait" src="assets/wing.png" width="48" height="48" alt=""><img class="brand-wordmark" src="assets/wordmark.svg" width="104" height="52" alt="Wing"></a>
+<p>An independent, open-source client for Hermes Agent.</p>
+<nav aria-label="Footer navigation">
+<a href="https://github.com/tarkilhk/Wing">Source</a>
+<a href="get-started.html">Get connected</a>
+<a href="get-started.html#privacy">Privacy</a>
+<a href="https://github.com/sponsors/tarkilhk">Support Wing</a>
+</nav>
+</div>
+<div class="page-width footer-bottom">
+<a href="https://github.com/tarkilhk/Wing/blob/main/NOTICE.md">Credits and licenses</a>
+</div>
+</footer>
+</body>
+</html>

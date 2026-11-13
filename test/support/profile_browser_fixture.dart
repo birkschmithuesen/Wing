@@ -1,11 +1,19 @@
+import 'canonical_gateway_fixture.dart';
+import 'package:wing/core/services/group_observations.dart';
 import 'dart:async';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/profile_gateway.dart';
+import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'package:wing/core/services/ws_client.dart';
+import 'package:wing/core/models/bots.dart';
+import 'package:wing/core/models/profile_session_key.dart';
+import 'package:wing/core/services/bots_repository.dart';
+import 'package:wing/core/services/bots_session.dart';
 
 /// Authored UI data, never used by the production application or a live server.
 class ProfileBrowserFixture {
+  final canonicalRevisions = <String, int>{};
   final now = DateTime.now().millisecondsSinceEpoch / 1000;
   final delays = <String, Completer<void>>{};
   final calls = <(String, String, Map<String, dynamic>)>[];
@@ -21,18 +29,61 @@ class ProfileBrowserFixture {
   Map<String, dynamic> steerResult = {'status': 'queued'};
   final historyDelays = <(String, int), Completer<void>>{};
   final searchDelays = <String, Completer<void>>{};
+  final sessionMetadataDelays = <(String, String), Completer<void>>{};
   final liveSessions = <String, List<Map<String, dynamic>>>{};
+  final detachedSessions = <String, List<Map<String, dynamic>>>{};
+  final hiddenSessions = <String, List<Map<String, dynamic>>>{};
+  final compressionTips = <String, String>{};
+  final botMetadata = <String, Map<String, dynamic>>{};
+  final botAvatars = <String, String>{};
+  Completer<void>? botAppearanceDelay;
+  bool failBotAppearance = false;
+  Future<Map<ProfileSessionKey, BotRecord>> botAppearances(
+    Iterable<ProfileSessionKey> conversations,
+  ) async {
+    if (failBotAppearance) throw StateError('Appearance unavailable');
+    final keys = conversations.toList();
+    final workspace = keys.first.workspace;
+    final source = BotsRepository(
+      groupObservations: GroupObservations(workspace),
+      scope: workspace,
+      instance: 'Test',
+      read: (profile, method, params) => gateway(
+        WorkspaceScope(
+          connectionId: workspace.connectionId,
+          connectionIdentity: workspace.connectionIdentity,
+          profileName: profile,
+        ),
+      ).call(method, params),
+      command: (_, _, _, _, _) async => throw StateError('Passive appearance'),
+      ownership: (_, _) async => throw StateError('No presence reads'),
+    );
+    final session = BotsSession((_) async => [source]);
+    try {
+      return await session.appearancesForConversations(
+        keys,
+        canRead: () => true,
+      );
+    } finally {
+      session.dispose();
+    }
+  }
+
   List<Map<String, dynamic>> historyRows(String profile, String id) => [];
   List<Map<String, dynamic>> searchRows(String profile, String query) => [
-    for (final row in sessions(
-      profile,
-    ).where((r) => r['title'].toString().toLowerCase().contains(query)))
-      {...row, 'session_id': row['id']},
+    for (final row in [
+      ...sessions(profile),
+      ...?hiddenSessions[profile],
+    ].where((r) => r['title'].toString().toLowerCase().contains(query)))
+      (Map<String, dynamic>.from({...row, 'session_id': row['id']})
+        ..remove('hidden')),
   ];
   List<Map<String, dynamic>> projectSessions(String profile, String id) =>
       sessions(profile)
           .where(
-            (r) => r['id'] == (profile == 'work' ? 'newest' : 'project-only'),
+            (r) =>
+                id == (profile == 'work' ? 'work-project' : 'p2') &&
+                r['id'] == (profile == 'work' ? 'newest' : 'project-only'),
           )
           .toList();
   List<Map<String, dynamic>> projects(String profile) => profile == 'work'
@@ -136,6 +187,19 @@ class ProfileBrowserFixture {
     ),
     get: (path, query) async {
       reads.add((path, query));
+      if (RegExp(r'^sessions/[^/]+/mutation-snapshot$').hasMatch(path)) {
+        return {
+          'session_id': Uri.decodeComponent(path.split('/')[1]),
+          'exists': true,
+          'runtime_revision': 0,
+          'runtime_generation': 0,
+        };
+      }
+      if (path == 'logs') return {'file': 'gui', 'lines': <String>[]};
+      // Browser-only scenarios expose no configured models. Model-selection
+      // scenarios override these explicit observations with their own catalog.
+      if (path == 'model/options') return {'providers': <Object>[]};
+      if (path == 'model/info') return <String, dynamic>{};
       final offset = int.parse(query['offset'] ?? '0');
       final limit = int.parse(query['limit'] ?? '50');
       if (path.endsWith('/messages')) {
@@ -164,6 +228,19 @@ class ProfileBrowserFixture {
         if (failSearch) throw StateError('Search offline');
         return {'results': rows};
       }
+      if (RegExp(r'^sessions/[^/]+$').hasMatch(path)) {
+        final id = Uri.decodeComponent(path.split('/')[1]);
+        await sessionMetadataDelays[(scope.profileName, id)]?.future;
+        final rows = [
+          ...sessions(scope.profileName),
+          ...?hiddenSessions[scope.profileName],
+        ].where((row) => row['id'] == id).toList();
+        if (rows.isEmpty) throw DashboardSessionNotFound(path);
+        return rows.single;
+      }
+      if (path != 'sessions') {
+        throw StateError('Unhandled fixture GET: $path');
+      }
       final rows =
           sessions(scope.profileName)
               .where(
@@ -187,37 +264,118 @@ class ProfileBrowserFixture {
         throw StateError('Page offline');
       }
       if (failWork && scope.profileName == 'work') throw StateError('Offline');
-      return path == 'sessions'
-          ? {
-              'sessions': page,
-              'offset': offset,
-              'limit': limit,
-              'total': rows.length,
-            }
-          : {'messages': []};
+      return {
+        'sessions': page,
+        'offset': offset,
+        'limit': limit,
+        'total': rows.length,
+      };
     },
     rpc: (method, params) async {
+      if (method == 'process.list') return {'processes': <Object>[]};
       calls.add((scope.profileName, method, params));
+      if (method == 'profiles.list') {
+        await botAppearanceDelay?.future;
+        if (failBotAppearance) throw StateError('Appearance unavailable');
+        return {
+          'install_id': 'fixture',
+          'bot_mode_protocol': true,
+          'profiles': [
+            for (final profile in ['personal', 'work'])
+              {
+                'name': profile,
+                'has_avatar': botAvatars.containsKey(profile),
+                'ui_meta': {
+                  'hermes-bots': {
+                    'title': profile,
+                    'shape': 'circle',
+                    'color': '#65c7bc',
+                    ...?botMetadata[profile],
+                  },
+                },
+                if ([
+                      ...sessions(profile),
+                      ...?hiddenSessions[profile],
+                    ].where((row) => row['title'] == 'Bot Chat').firstOrNull
+                    case final canonical?)
+                  'canonical_session': {
+                    'id': canonical['id'],
+                    'resolved_id':
+                        compressionTips[canonical['id']] ?? canonical['id'],
+                  },
+              },
+          ],
+        };
+      }
+      if (method == 'profiles.get_asset') {
+        return {
+          'found': botAvatars.containsKey(scope.profileName),
+          'data': botAvatars[scope.profileName],
+        };
+      }
+      if (method == 'commands.catalog') {
+        return {'pairs': <List<String>>[]};
+      }
       if (method == 'session.active_list') {
         return {
           'sessions': liveSessions.values.expand((rows) => rows).toList(),
         };
       }
+      if (method == 'subagent.roster') {
+        return {'sessions': detachedSessions[params['profile']] ?? <Object>[]};
+      }
+      if (method == 'session.list') {
+        final rows = [
+          ...sessions(scope.profileName),
+          ...?hiddenSessions[scope.profileName],
+        ].where((row) => row['title'] == params['title']).toList();
+        return {
+          'sessions': [
+            for (final row in rows.take(1))
+              {
+                ...row,
+                'root_title': row['title'],
+                'title':
+                    [
+                          ...sessions(scope.profileName),
+                          ...?hiddenSessions[scope.profileName],
+                        ]
+                        .where((tip) => tip['id'] == compressionTips[row['id']])
+                        .firstOrNull?['title'] ??
+                    row['title'],
+                'resolved_id': compressionTips[row['id']] ?? row['id'],
+              },
+          ],
+        };
+      }
       if (method == 'projects.tree') {
         if (failProjects) throw StateError('Projects unavailable');
+        final projectRows = projects(scope.profileName);
+        final assignedIds = {
+          for (final project in projectRows)
+            if (project['isNoProject'] != true)
+              ...project.containsKey('sessionIds')
+                  ? project['sessionIds'] as List
+                  : projectSessions(
+                      scope.profileName,
+                      project['id'] as String,
+                    ).map((row) => row['id']),
+        };
         return {
           'projects': [
-            for (final project in projects(scope.profileName))
+            for (final project in projectRows)
               {
                 ...project,
                 if (!project.containsKey('sessionIds'))
-                  'sessionIds':
-                      project['id'] == 'p2' || project['id'] == 'work-project'
-                      ? projectSessions(
+                  'sessionIds': project['isNoProject'] == true
+                      ? sessions(scope.profileName)
+                            .where((row) => !assignedIds.contains(row['id']))
+                            .map((row) => row['id'])
+                            .toList()
+                      : projectSessions(
                           scope.profileName,
                           project['id'] as String,
-                        ).map((r) => r['id']).toList()
-                      : <String>[],
+                        ).map((row) => row['id']).toList(),
               },
           ],
         };
@@ -241,19 +399,65 @@ class ProfileBrowserFixture {
           },
         };
       }
-      if (method == 'session.resume' || method == 'session.create') {
+      if (method == 'prompt.submit') {
+        if (promptSubmitFailures > 0) {
+          promptSubmitFailures--;
+          throw JsonRpcError(
+            method,
+            'Connection closed',
+            reason: 'connection_closed',
+          );
+        }
+        if (params['submission_id'] is! String) {
+          throw const FormatException('Missing submission identity');
+        }
+        return canonicalReceipt(
+          params,
+          admissionId: 'fixture-${params['submission_id']}',
+        );
+      }
+      if (method == 'session.mutate') {
+        canonicalRevisions['${scope.profileName}:${params['session_id']}'] =
+            (params['expected_revision'] as int) + 1;
         return {
-          'session_id': 'runtime',
-          'stored_session_id': 'new-chat',
+          'session_id': params['session_id'],
+          'operation': params['operation'],
+          'revision': (params['expected_revision'] as int) + 1,
+          'execution_generation': params['expected_generation'],
+          'status': 'applied',
+        };
+      }
+      if (method == 'session.resume' || method == 'session.create') {
+        final stored = [
+          ...sessions(scope.profileName),
+          ...?hiddenSessions[scope.profileName],
+        ].where((row) => row['id'] == params['session_id']).firstOrNull;
+        final runtimeId = method == 'session.create'
+            ? 'runtime'
+            : (liveSessions[scope.profileName] ?? [])
+                      .where(
+                        (row) => row['session_key'] == params['session_id'],
+                      )
+                      .firstOrNull?['id'] ??
+                  'runtime-${params['session_id']}';
+        return {
+          ...canonicalSnapshotFields,
+          'revision':
+              canonicalRevisions['${scope.profileName}:$runtimeId'] ?? 0,
+          'session_id': runtimeId,
+          'stored_session_id': method == 'session.create'
+              ? 'new-chat'
+              : params['session_id'],
           'messages': [],
-          'info': {'profile_name': scope.profileName},
+          'info': {
+            'profile_name': scope.profileName,
+            if (method == 'session.resume') 'source': stored?['source'],
+            if (method == 'session.resume') 'title': stored?['title'],
+            if (method == 'session.create') 'cwd': params['cwd'] ?? '/default',
+          },
         };
       }
       if (method == 'session.steer') return steerResult;
-      if (method == 'prompt.submit' && promptSubmitFailures > 0) {
-        promptSubmitFailures--;
-        throw JsonRpcError(method, 'Connection closed', reason: 'connection_closed');
-      }
       return {};
     },
   );

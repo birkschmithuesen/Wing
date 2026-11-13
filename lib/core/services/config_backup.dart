@@ -18,6 +18,39 @@ class ConfigBackupException implements Exception {
   String toString() => message;
 }
 
+/// Shared bounds for file intake, plaintext and encrypted backup envelopes.
+class ConfigBackupLimits {
+  static const maxBytes = 2 * 1024 * 1024;
+  static const maxConnections = 256;
+  static const maxPreferences = 2048;
+  static const maxStringLength = 64 * 1024;
+
+  static void checkText(String value) {
+    if (value.length > maxBytes || utf8.encode(value).length > maxBytes) {
+      throw const ConfigBackupException('This backup exceeds the 2 MiB limit.');
+    }
+  }
+
+  static void checkStructure(Object? value, [int depth = 0]) {
+    if (depth > 12 ||
+        value is String && value.length > maxStringLength ||
+        value is List && value.length > maxPreferences ||
+        value is Map && value.length > maxPreferences) {
+      throw const ConfigBackupException('This backup exceeds its data limits.');
+    }
+    if (value is Map) {
+      for (final entry in value.entries) {
+        checkStructure(entry.key, depth + 1);
+        checkStructure(entry.value, depth + 1);
+      }
+    } else if (value is List) {
+      for (final item in value) {
+        checkStructure(item, depth + 1);
+      }
+    }
+  }
+}
+
 /// A complete, portable snapshot of what the user configured on this device:
 /// every saved connection (including its secrets) plus the non-secret app
 /// preferences.
@@ -26,7 +59,7 @@ class ConfigBackupException implements Exception {
 /// writes plain JSON when the user chooses to leave it empty.
 class ConfigBackup {
   static const String format = 'wing-config';
-  static const int currentVersion = 1;
+  static const int currentVersion = 2;
 
   final DateTime createdAt;
   final String appVersion;
@@ -41,6 +74,11 @@ class ConfigBackup {
   });
 
   Map<String, dynamic> toJson() {
+    if (connections.length > ConfigBackupLimits.maxConnections ||
+        preferences.length > ConfigBackupLimits.maxPreferences) {
+      throw const ConfigBackupException('This backup exceeds its data limits.');
+    }
+    ConfigBackupLimits.checkStructure(preferences);
     return <String, dynamic>{
       'format': format,
       'version': currentVersion,
@@ -60,27 +98,55 @@ class ConfigBackup {
       );
     }
     final version = json['version'];
-    if (version is! int || version < 1 || version > currentVersion) {
+    if (version is! int || version != currentVersion) {
       throw const ConfigBackupException(
-        'This backup was made by a newer version of the app and cannot be '
-        'imported.',
+        'This backup uses an unsupported format version. Export a new backup '
+        'using the current app.',
       );
     }
 
     try {
+      ConfigBackupLimits.checkStructure(json);
+      const requiredFields = {
+        'format',
+        'version',
+        'created_at',
+        'app_version',
+        'connections',
+        'preferences',
+      };
+      if (!requiredFields.every(json.containsKey)) {
+        throw const ConfigBackupException('Missing required backup settings.');
+      }
+      final createdAtText = json['created_at'] as String;
+      final createdAt = DateTime.tryParse(createdAtText);
+      if (createdAt == null ||
+          createdAt.toUtc().toIso8601String() != createdAtText) {
+        throw const ConfigBackupException('Invalid backup creation date.');
+      }
+      final appVersion = json['app_version'] as String;
       final rawConnections = json['connections'] as List<dynamic>;
-      final rawPreferences =
-          (json['preferences'] as Map<String, dynamic>?) ??
-          const <String, dynamic>{};
+      final rawPreferences = json['preferences'] as Map<String, dynamic>;
+      if (rawConnections.length > ConfigBackupLimits.maxConnections ||
+          rawPreferences.length > ConfigBackupLimits.maxPreferences) {
+        throw const ConfigBackupException(
+          'This backup exceeds its data limits.',
+        );
+      }
+      final connections = rawConnections
+          .map((entry) => _connectionFromJson(entry as Map<String, dynamic>))
+          .toList();
+      if (connections.any((c) => c.id.isEmpty) ||
+          connections.map((c) => c.id).toSet().length != connections.length) {
+        throw const ConfigBackupException(
+          'Backup connection IDs must be unique.',
+        );
+      }
 
       return ConfigBackup(
-        createdAt:
-            DateTime.tryParse(json['created_at'] as String? ?? '')?.toUtc() ??
-            DateTime.fromMillisecondsSinceEpoch(0, isUtc: true),
-        appVersion: (json['app_version'] as String?) ?? 'unknown',
-        connections: rawConnections
-            .map((entry) => _connectionFromJson(entry as Map<String, dynamic>))
-            .toList(),
+        createdAt: createdAt.toUtc(),
+        appVersion: appVersion,
+        connections: connections,
         preferences: rawPreferences.map(
           (key, value) =>
               MapEntry(key, _preferenceFromJson(value as Map<String, dynamic>)),
@@ -120,31 +186,62 @@ class ConfigBackup {
   }
 
   static SavedConnection _connectionFromJson(Map<String, dynamic> map) {
-    String? nonEmpty(Object? value) {
-      final text = (value as String?)?.trim();
-      return (text == null || text.isEmpty) ? null : text;
+    const requiredFields = {
+      'id',
+      'label',
+      'icon',
+      'host',
+      'port',
+      'api_key',
+      'use_https',
+      'gateway_prefix',
+      'dashboard_prefix',
+      'dashboard_proxied',
+      'desktop_gateway_url',
+      'dashboard_port',
+      'dashboard_username',
+      'dashboard_password',
+      'gateway_headers',
+    };
+    final dashboardPort = map['dashboard_port'];
+    if (!requiredFields.every(map.containsKey) ||
+        map['icon'] is! String ||
+        map['port'] is! int ||
+        (map['port'] as int) < 1 ||
+        (map['port'] as int) > 65535 ||
+        map['use_https'] is! bool ||
+        map['dashboard_proxied'] is! bool ||
+        map['api_key'] is! String ||
+        map['gateway_headers'] is! Map ||
+        dashboardPort != null &&
+            (dashboardPort is! int ||
+                dashboardPort < 1 ||
+                dashboardPort > 65535) ||
+        map.containsKey('cloud_instance_id') &&
+            map['cloud_instance_id'] is! String ||
+        map.containsKey('cloud_organization') &&
+            map['cloud_organization'] is! String) {
+      throw const ConfigBackupException('Invalid backup connection settings.');
     }
-
     return SavedConnection(
       id: map['id'] as String,
-      cloudInstanceId: nonEmpty(map['cloud_instance_id']),
-      cloudOrganization: nonEmpty(map['cloud_organization']),
+      cloudInstanceId: map['cloud_instance_id'] as String?,
+      cloudOrganization: map['cloud_organization'] as String?,
       label: map['label'] as String,
       icon: ConnectionIcon.fromStored(map['icon']),
       host: map['host'] as String,
-      port: (map['port'] as int?) ?? 8642,
-      apiKey: (map['api_key'] as String?) ?? '',
-      useHttps: (map['use_https'] as bool?) ?? false,
-      gatewayPrefix: nonEmpty(map['gateway_prefix']),
-      dashboardPrefix: nonEmpty(map['dashboard_prefix']),
-      dashboardProxied: (map['dashboard_proxied'] as bool?) ?? false,
-      desktopGatewayUrl: nonEmpty(map['desktop_gateway_url']),
+      port: map['port'] as int,
+      apiKey: map['api_key'] as String,
+      useHttps: map['use_https'] as bool,
+      gatewayPrefix: map['gateway_prefix'] as String?,
+      dashboardPrefix: map['dashboard_prefix'] as String?,
+      dashboardProxied: map['dashboard_proxied'] as bool,
+      desktopGatewayUrl: map['desktop_gateway_url'] as String?,
       dashboardPortOverride: map['dashboard_port'] as int?,
-      dashboardUsername: nonEmpty(map['dashboard_username']),
-      dashboardPassword: nonEmpty(map['dashboard_password']),
-      gatewayHeaders: map['gateway_headers'] == null
-          ? const {}
-          : Map<String, String>.from(map['gateway_headers'] as Map),
+      dashboardUsername: map['dashboard_username'] as String?,
+      // Password bytes are credentials, including empty or surrounding space.
+      dashboardPassword: map['dashboard_password'] as String?,
+      gatewayHeaders: Map<String, String>.from(map['gateway_headers'] as Map),
     );
   }
 
@@ -220,7 +317,11 @@ class ConfigBackupCodec {
     required String passphrase,
     int iterations = defaultIterations,
   }) async {
-    if (passphrase.isEmpty) return jsonEncode(backup.toJson());
+    final json = backup.toJson();
+    ConfigBackupLimits.checkStructure(json);
+    final contents = jsonEncode(json);
+    ConfigBackupLimits.checkText(contents);
+    if (passphrase.isEmpty) return contents;
     if (passphrase.trim().isEmpty) {
       throw const ConfigBackupException(
         'Choose a passphrase — the backup contains your API keys.',
@@ -235,7 +336,7 @@ class ConfigBackupCodec {
     final salt = _randomBytes(_saltLength);
     final nonce = _randomBytes(_nonceLength);
     final secretKey = await _deriveKey(passphrase, salt, iterations);
-    final plaintext = utf8.encode(jsonEncode(backup.toJson()));
+    final plaintext = utf8.encode(contents);
 
     final SecretBox box;
     try {
@@ -250,7 +351,7 @@ class ConfigBackupCodec {
       );
     }
 
-    return jsonEncode(<String, dynamic>{
+    final envelope = jsonEncode(<String, dynamic>{
       'format': envelopeFormat,
       'version': envelopeVersion,
       'kdf': <String, dynamic>{
@@ -265,12 +366,15 @@ class ConfigBackupCodec {
         'mac': base64Encode(box.mac.bytes),
       },
     });
+    ConfigBackupLimits.checkText(envelope);
+    return envelope;
   }
 
   static Future<ConfigBackup> decode(
     String armored, {
     required String passphrase,
   }) async {
+    ConfigBackupLimits.checkText(armored);
     final Map<String, dynamic> envelope;
     try {
       envelope = jsonDecode(armored) as Map<String, dynamic>;
@@ -294,7 +398,7 @@ class ConfigBackupCodec {
       );
     }
     final version = envelope['version'];
-    if (version is! int || version < 1 || version > envelopeVersion) {
+    if (version != envelopeVersion) {
       throw const ConfigBackupException(
         'This backup was made by a newer version of the app and cannot be '
         'imported.',
@@ -316,10 +420,22 @@ class ConfigBackupCodec {
         );
       }
       iterations = kdf['iterations'] as int;
+      if ((kdf['salt'] as String).length != 24 ||
+          (cipher['nonce'] as String).length != 16 ||
+          (cipher['mac'] as String).length != 24 ||
+          (cipher['ciphertext'] as String).length >
+              ConfigBackupLimits.maxBytes) {
+        throw const ConfigBackupException('Invalid encrypted backup data.');
+      }
       salt = base64Decode(kdf['salt'] as String);
       nonce = base64Decode(cipher['nonce'] as String);
       ciphertext = base64Decode(cipher['ciphertext'] as String);
       mac = base64Decode(cipher['mac'] as String);
+      if (salt.length != _saltLength ||
+          nonce.length != _nonceLength ||
+          mac.length != 16) {
+        throw const ConfigBackupException('Invalid encrypted backup data.');
+      }
     } on ConfigBackupException {
       rethrow;
     } catch (_) {

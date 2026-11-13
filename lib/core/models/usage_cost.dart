@@ -1,71 +1,5 @@
-import 'dart:convert';
-
-/// Published standard API rates, applied only to the openai-codex route.
-/// Exact IDs avoid pricing a newly discovered model as a different model.
-class OpenAiPricingCatalog {
-  final Map<String, OpenAiModelPrice> _models;
-
-  OpenAiPricingCatalog._(this._models);
-
-  factory OpenAiPricingCatalog.fromJson(String source) {
-    final json = jsonDecode(source);
-    if (json is! Map || json['version'] != 1 || json['currency'] != 'USD') {
-      throw const FormatException('Invalid OpenAI price catalogue');
-    }
-    final models = json['models'];
-    if (models is! Map || models.isEmpty) {
-      throw const FormatException('Missing OpenAI prices');
-    }
-    final prices = <String, OpenAiModelPrice>{};
-    for (final entry in models.entries) {
-      if (entry.key is! String || (entry.key as String).isEmpty) {
-        throw const FormatException('Invalid model ID');
-      }
-      prices[entry.key as String] = OpenAiModelPrice._fromJson(entry.value);
-    }
-    return OpenAiPricingCatalog._(Map.unmodifiable(prices));
-  }
-
-  OpenAiModelPrice? priceFor(String model) => _models[model];
-}
-
-class OpenAiModelPrice {
-  final double input;
-  final double cachedInput;
-  final double output;
-  final DateTime verifiedOn;
-  final Uri source;
-
-  const OpenAiModelPrice._(
-    this.input,
-    this.cachedInput,
-    this.output,
-    this.verifiedOn,
-    this.source,
-  );
-
-  factory OpenAiModelPrice._fromJson(Object? value) {
-    if (value is! Map || value['usd_per_million'] is! Map) {
-      throw const FormatException('Invalid model price');
-    }
-    final rates = value['usd_per_million'] as Map;
-    final input = usageAmount(rates['input']);
-    final cachedInput = usageAmount(rates['cached_input']);
-    final output = usageAmount(rates['output']);
-    final verifiedOn = DateTime.tryParse('${value['verified_on']}');
-    final source = Uri.tryParse('${value['source']}');
-    if (input == null ||
-        cachedInput == null ||
-        output == null ||
-        verifiedOn == null ||
-        source == null ||
-        source.scheme != 'https' ||
-        source.host != 'developers.openai.com') {
-      throw const FormatException('Incomplete model price');
-    }
-    return OpenAiModelPrice._(input, cachedInput, output, verifiedOn, source);
-  }
-}
+import 'model_catalog.dart';
+import 'models_dev_prices.dart';
 
 double? usageAmount(Object? value) =>
     value is num && value.isFinite && value >= 0 ? value.toDouble() : null;
@@ -84,37 +18,43 @@ enum UsageCostUnavailable { price, tokens, reportedCost }
 /// Hermes analytics input is already uncached; output already includes reasoning.
 /// These estimates intentionally exclude cache writes and request-level surcharges.
 class ModelUsageCost {
-  final Map<String, dynamic> usage;
-  final OpenAiModelPrice? price;
+  static bool isSubscriptionUsage(Map<dynamic, dynamic> usage) =>
+      ModelCatalog.isSubscriptionProvider(usage['provider']);
+
+  final String model;
+  final bool isApiEquivalent;
+  final List<int?> tokenCounts;
   final double? inputCost;
   final double? cachedInputCost;
   final double? outputCost;
   final double? amount;
   final UsageCostUnavailable? unavailable;
 
-  bool get isApiEquivalent => usage['provider'] == 'openai-codex';
-  String get model =>
-      usage['model'] is String ? usage['model'] as String : 'Unknown model';
-
-  const ModelUsageCost._(
-    this.usage,
-    this.price,
+  ModelUsageCost._(
+    Map<String, dynamic> usage,
     this.inputCost,
     this.cachedInputCost,
     this.outputCost,
     this.amount,
     this.unavailable,
-  );
+  ) : model = usage['model'] is String
+          ? usage['model'] as String
+          : 'Unknown model',
+      isApiEquivalent = isSubscriptionUsage(usage),
+      tokenCounts = List.unmodifiable([
+        usageTokenCount(usage['input_tokens']),
+        usageTokenCount(usage['cache_read_tokens']),
+        usageTokenCount(usage['output_tokens']),
+      ]);
 
   factory ModelUsageCost.fromUsage(
     Map<String, dynamic> usage,
-    OpenAiPricingCatalog? catalog,
+    ModelsDevPrices? prices,
   ) {
-    if (usage['provider'] != 'openai-codex') {
+    if (!isSubscriptionUsage(usage)) {
       final amount = usageAmount(usage['estimated_cost']);
       return ModelUsageCost._(
         usage,
-        null,
         null,
         null,
         null,
@@ -122,11 +62,13 @@ class ModelUsageCost {
         amount == null ? UsageCostUnavailable.reportedCost : null,
       );
     }
-    final price = catalog?.priceFor('${usage['model']}');
-    if (price == null) {
+    final price = prices?.models['${usage['model']}'];
+    final inputRate = price?.inputUsdPerMillion;
+    final cachedRate = price?.cacheUsdPerMillion;
+    final outputRate = price?.outputUsdPerMillion;
+    if (inputRate == null || cachedRate == null || outputRate == null) {
       return ModelUsageCost._(
         usage,
-        null,
         null,
         null,
         null,
@@ -140,7 +82,6 @@ class ModelUsageCost {
     if (input == null || cached == null || output == null) {
       return ModelUsageCost._(
         usage,
-        price,
         null,
         null,
         null,
@@ -148,13 +89,12 @@ class ModelUsageCost {
         UsageCostUnavailable.tokens,
       );
     }
-    final inputCost = input / 1000000 * price.input;
-    final cachedCost = cached / 1000000 * price.cachedInput;
-    final outputCost = output / 1000000 * price.output;
+    final inputCost = input / 1000000 * inputRate;
+    final cachedCost = cached / 1000000 * cachedRate;
+    final outputCost = output / 1000000 * outputRate;
     final amount = usageAmount(inputCost + cachedCost + outputCost);
     return ModelUsageCost._(
       usage,
-      price,
       inputCost,
       cachedCost,
       outputCost,
@@ -162,6 +102,17 @@ class ModelUsageCost {
       amount == null ? UsageCostUnavailable.tokens : null,
     );
   }
+
+  /// Revalue cached token facts using the shared exact-ID rate observation.
+  ModelUsageCost withPrices(ModelsDevPrices? prices) => !isApiEquivalent
+      ? this
+      : ModelUsageCost.fromUsage({
+          'model': model,
+          'provider': 'openai-codex',
+          for (var i = 0; i < 3; i++)
+            ['input_tokens', 'cache_read_tokens', 'output_tokens'][i]:
+                tokenCounts[i],
+        }, prices);
 }
 
 class UsageCostSummary {

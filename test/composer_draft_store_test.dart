@@ -34,6 +34,29 @@ void main() {
     );
   }
 
+  test('voice origin and recent speech survive outbox reload', () async {
+    final store = ComposerDraftStore(preferences, connectionIdentity: 'host');
+    await store.write(
+      profileName: 'work',
+      sessionId: 'one',
+      text: '',
+      attachments: [],
+      queuedPrompts: [
+        QueuedPromptDraft(
+          text: 'Use Hermes',
+          voiceContext: 'Voice: I will ask Hermes.',
+          submissionId: 'input-one',
+        ),
+      ],
+    );
+    final restored = await store.read(profileName: 'work', sessionId: 'one');
+    expect(
+      restored!.queuedPrompts.single.voiceContext,
+      'Voice: I will ask Hermes.',
+    );
+    expect(restored.queuedPrompts.single.submissionId, 'input-one');
+  });
+
   test(
     'retains accepted image ownership and resets it for a new session',
     () async {
@@ -108,6 +131,17 @@ void main() {
         attachments: const [],
       );
 
+      await first.write(
+        profileName: 'work',
+        sessionId: 'two',
+        text: 'fourth',
+        attachments: const [],
+      );
+      expect(
+        (await first.read(profileName: 'work', sessionId: 'two'))!.text,
+        'fourth',
+      );
+
       expect(
         (await first.read(profileName: 'work', sessionId: 'one'))!.text,
         'first',
@@ -140,7 +174,10 @@ void main() {
     final restored = await store.read(profileName: 'work', sessionId: 'chat');
     expect(restored!.text, 'keep this text');
     expect(restored.attachments.single.status, AttachmentDraftStatus.failed);
-    expect(restored.attachments.single.error, contains('no longer available'));
+    expect(
+      restored.attachments.single.error,
+      'File missing. Remove and reattach.',
+    );
   });
 
   test('empty draft removes its durable record', () async {
@@ -163,7 +200,7 @@ void main() {
 
     expect(await store.read(profileName: 'work', sessionId: 'chat'), isNull);
     expect(
-      preferences.getKeys().where((key) => key.startsWith('composer_drafts')),
+      preferences.getKeys().where((key) => key.startsWith('composer_work_v3.')),
       isEmpty,
     );
   });
@@ -208,28 +245,110 @@ void main() {
     expect(restored.queuedPrompts.single.attachments.single.id, 'queued.txt');
   });
 
-  test('restores existing string queue entries as text-only work', () async {
-    await preferences.setString(
-      'composer_drafts_v1_host-auth',
-      jsonEncode([
-        {
-          'profile': 'work',
-          'session': 'chat',
-          'text': '',
-          'attachments': <Object?>[],
-          'queue': ['existing unsent message'],
-          'queue_paused': true,
-        },
-      ]),
-    );
+  test(
+    'round trips queue dispatch uncertainty independently of composer',
+    () async {
+      final store = ComposerDraftStore(
+        preferences,
+        connectionIdentity: 'host-auth',
+      );
+      await store.write(
+        profileName: 'work',
+        sessionId: 'chat',
+        text: 'Fresh composer',
+        attachments: const [],
+        queuedPrompts: [
+          QueuedPromptDraft(
+            text: 'Dispatched outgoing',
+            submissionUncertain: true,
+          ),
+          QueuedPromptDraft(text: 'Ordinary queued work'),
+        ],
+        queuePaused: true,
+      );
+      final restored = await store.read(profileName: 'work', sessionId: 'chat');
+      expect(restored!.text, 'Fresh composer');
+      expect(restored.submissionUncertain, isFalse);
+      expect(
+        restored.queuedPrompts.map((prompt) => prompt.submissionUncertain),
+        [true, false],
+      );
+      final moved = await store.move(
+        profileName: 'work',
+        fromSessionId: 'chat',
+        toSessionId: 'replacement',
+        forNewSession: true,
+      );
+      expect(moved!.queuedPrompts.first.submissionUncertain, isTrue);
+    },
+  );
+
+  test('damaged queue entries do not discard valid unsent work', () async {
     final store = ComposerDraftStore(
       preferences,
       connectionIdentity: 'host-auth',
     );
+    await store.write(
+      profileName: 'work',
+      sessionId: 'chat',
+      text: 'Existing composer',
+      attachments: const [],
+      queuedPrompts: [QueuedPromptDraft(text: 'Valid queued work')],
+      queuePaused: true,
+    );
+    final key = preferences.getKeys().single;
+    final record =
+        jsonDecode(preferences.getString(key)!) as Map<String, dynamic>;
+    record['queue'] = [
+      null,
+      'not a supported queue record',
+      {'text': 42, 'attachments': []},
+      ...(record['queue'] as List),
+      {
+        'text': 'bad uncertainty',
+        'attachments': [],
+        'submission_uncertain': 42,
+      },
+    ];
+    await preferences.setString(key, jsonEncode(record));
+    final restored = (await store.read(
+      profileName: 'work',
+      sessionId: 'chat',
+    ))!;
+    expect(restored.text, 'Existing composer');
+    expect(restored.queuedPrompts.single.text, 'Valid queued work');
+    expect(restored.queuePaused, isTrue);
+  });
 
-    final restored = await store.read(profileName: 'work', sessionId: 'chat');
-    expect(restored!.queuedPrompts.single.text, 'existing unsent message');
-    expect(restored.queuedPrompts.single.attachments, isEmpty);
+  test('old combined storage is not read or converted', () async {
+    const oldKey = 'composer_drafts_v1_host-auth';
+    final oldValue = jsonEncode([
+      {
+        'profile': 'work',
+        'session': 'chat',
+        'text': 'Old draft',
+        'attachments': [],
+        'queue': ['Old queued work'],
+      },
+    ]);
+    await preferences.setString(oldKey, oldValue);
+    final store = ComposerDraftStore(
+      preferences,
+      connectionIdentity: 'host-auth',
+    );
+    expect(await store.read(profileName: 'work', sessionId: 'chat'), isNull);
+    expect(store.summaries(profileName: 'work'), isEmpty);
+    await store.write(
+      profileName: 'work',
+      sessionId: 'chat',
+      text: 'New draft',
+      attachments: const [],
+    );
+    expect(
+      (await store.read(profileName: 'work', sessionId: 'chat'))!.text,
+      'New draft',
+    );
+    expect(preferences.getString(oldKey), oldValue);
   });
 
   test(
@@ -279,7 +398,10 @@ void main() {
       expect(moved.attachments.first.atlasIntakeAccepted, isNull);
       expect(moved.attachments.last.status, AttachmentDraftStatus.failed);
       expect(moved.attachments.last.refText, isNull);
-      expect(moved.attachments.last.error, contains('no longer available'));
+      expect(
+        moved.attachments.last.error,
+        'File missing. Remove and reattach.',
+      );
       final queuedMoved = moved.queuedPrompts.single.attachments.single;
       expect(queuedMoved.status, AttachmentDraftStatus.ready);
       expect(queuedMoved.refText, isNull);

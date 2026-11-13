@@ -28,6 +28,27 @@ class GatewayClarifyRequest {
 
   bool get hasChoices => choices.isNotEmpty;
 
+  /// Encodes a staged answer in Hermes' choice order, with custom text last.
+  /// For a single choice, nonempty custom text takes precedence.
+  String answer({
+    required int? selectedIndex,
+    required Iterable<int> selectedIndices,
+    required String customText,
+  }) {
+    final custom = customText.trim();
+    if (!multiSelect) {
+      if (custom.isNotEmpty) return custom;
+      return selectedIndex == null ? '' : choices[selectedIndex];
+    }
+
+    final ordered = selectedIndices.toList()..sort();
+    final parts = [
+      for (final index in ordered) choices[index],
+      if (custom.isNotEmpty) custom,
+    ];
+    return parts.join(', ');
+  }
+
   /// Parses a normalized `clarify` request into zero or more prompts.
   ///
   /// Batch payloads expand to one prompt per question (each carrying its own
@@ -100,9 +121,4 @@ class GatewayClarifyRequest {
 
   static String _normalizeQuestion(String? rawQuestion) =>
       rawQuestion?.trim() ?? '';
-
-  /// Identity key for queue de-duplication: two prompts are the same prompt
-  /// only when both the gateway request id and the per-question id agree.
-  String get identityKey =>
-      questionId == null ? requestId : '$requestId::$questionId';
 }

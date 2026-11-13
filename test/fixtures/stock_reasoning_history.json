@@ -1,0 +1,70 @@
+{
+  "source_commit": "6f46e2b98cd986c795ed0095a13b570f41cbf2c0",
+  "sources": [
+    "agent/history_commentary.py",
+    "hermes_cli/web_routers/sessions.py",
+    "tui_gateway/session_history.py"
+  ],
+  "provenance": "Sanitized source-shaped history observations. Raw replay text deliberately differs from authoritative display text. These are not private conversation captures.",
+  "cases": [
+    {
+      "name": "reasoning and public commentary have distinct display channels",
+      "row": {
+        "reasoning": "Check the evidence.\n\nI will inspect the files.",
+        "reasoning_content": "Check the evidence.\n\nI will inspect the files.",
+        "display_reasoning": "Check the evidence.",
+        "display_commentary": ["I will inspect the files."]
+      },
+      "expected": "Check the evidence."
+    },
+    {
+      "name": "commentary-only history has intentionally empty reasoning",
+      "row": {
+        "reasoning": "I will inspect the files.",
+        "display_reasoning": "",
+        "display_commentary": ["I will inspect the files."]
+      },
+      "expected": ""
+    },
+    {
+      "name": "empty commentary does not expose raw text",
+      "row": {
+        "reasoning": "Replay-only public commentary.",
+        "display_reasoning": "",
+        "display_commentary": []
+      },
+      "expected": ""
+    },
+    {
+      "name": "ordinary provider reasoning has no commentary projection",
+      "row": {"reasoning_content": "Check the evidence."},
+      "expected": "Check the evidence."
+    },
+    {
+      "name": "structured provider reasoning excludes encrypted material",
+      "row": {
+        "reasoning_details": [
+          {"type": "reasoning.text", "text": "Inspect the first source."},
+          {"type": "reasoning.encrypted", "data": "opaque-example"},
+          {"type": "reasoning.summary", "summary": "Compare the second source."}
+        ]
+      },
+      "expected": "Inspect the first source.\n\nCompare the second source."
+    },
+    {
+      "name": "Codex summaries exclude encrypted provider state",
+      "row": {
+        "codex_reasoning_items": [
+          {
+            "type": "reasoning",
+            "encrypted_content": "opaque-example",
+            "summary": [
+              {"type": "summary_text", "text": "Compare the sources."}
+            ]
+          }
+        ]
+      },
+      "expected": "Compare the sources."
+    }
+  ]
+}

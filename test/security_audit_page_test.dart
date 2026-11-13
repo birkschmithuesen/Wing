@@ -1,3 +1,5 @@
+import 'package:wing/core/models/administration_operation.dart';
+import 'support/administration_operation_fixture.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -8,7 +10,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_operations_page.dart';
 import 'package:wing/core/screens/administration/admin_runtime_health.dart';
 import 'package:wing/core/services/administration_health.dart';
-import 'package:wing/core/services/administration_repository.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 
 import 'support/administration_fixture.dart';
@@ -60,7 +61,13 @@ void main() {
         addTearDown(fixture.server.close);
         var runs = 0;
         fixture.override = (method, path, query, body) async {
-          return {'pid': 7, 'running': false, 'exit_code': 1, 'lines': lines};
+          return {
+            'name': 'security-audit',
+            'pid': 7,
+            'running': false,
+            'exit_code': 1,
+            'lines': lines,
+          };
         };
         await tester.pumpWidget(
           MaterialApp(
@@ -76,8 +83,10 @@ void main() {
               ),
             ),
             home: AdminActionPage(
-              server: fixture.server,
-              action: const AdministrationAction('security-audit', 7),
+              operation: fixtureOperation(
+                fixture.server,
+                const AdministrationAction('security-audit', 7),
+              ),
               title: 'Security audit',
               onRunAgain: () async {
                 runs++;
@@ -184,16 +193,20 @@ void main() {
       final fixture = AdministrationFixture();
       addTearDown(fixture.server.close);
       fixture.override = (method, path, query, body) async => {
+        'name': 'security-audit',
         'pid': 7,
         'running': running,
         'exit_code': exitCode,
         'lines': output,
       };
+      final operation = fixtureOperation(
+        fixture.server,
+        const AdministrationAction('security-audit', 7),
+      );
       await tester.pumpWidget(
         MaterialApp(
           home: AdminActionPage(
-            server: fixture.server,
-            action: const AdministrationAction('security-audit', 7),
+            operation: operation,
             title: 'Security audit',
             scope: 'Home server',
           ),
@@ -201,6 +214,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.text(expected), findsOneWidget);
+      if (name == 'running' || name == 'unknown') {
+        expect(find.textContaining('Last updated '), findsOneWidget);
+        expect(find.textContaining('Checked '), findsNothing);
+      }
       expect(find.text(summary), findsNothing);
       expect(find.text('High · 4'), findsNothing);
       expect(find.text(output.join('\n')), findsNothing);
@@ -209,6 +226,7 @@ void main() {
       expect(find.text(output.join('\n')), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
+      operation.dispose();
     });
   }
 
@@ -227,8 +245,9 @@ void main() {
           {'name': 'default', 'is_default': true},
         ],
       },
-      'ops/security-audit' => {'name': 'security-audit', 'pid': 7},
+      'ops/security-audit' => {'ok': true, 'name': 'security-audit', 'pid': 7},
       'actions/security-audit/status' => {
+        'name': 'security-audit',
         'pid': 7,
         'running': running,
         'exit_code': running ? null : 1,
@@ -251,7 +270,10 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
     await tester.tap(
-      find.descendant(of: find.byType(AlertDialog), matching: find.text('Run')),
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.byTooltip('Run'),
+      ),
     );
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));

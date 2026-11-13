@@ -161,26 +161,24 @@ internal class MediaPreviewChannel(
 
 internal const val MEDIA_PREVIEW_CACHE_DIRECTORY = "media_previews"
 
-internal val supportedMediaPreviewTypes = setOf(
-    "audio/aac", "audio/flac", "audio/mp4", "audio/mpeg", "audio/ogg",
-    "audio/wav", "audio/webm", "audio/x-wav",
-    "video/mp4", "video/mpeg", "video/quicktime", "video/webm",
-    "video/x-matroska", "video/x-msvideo",
+private val mediaPreviewExtensions = mapOf(
+    "audio/aac" to "aac",
+    "audio/flac" to "flac",
+    "audio/mp4" to "m4a",
+    "audio/mpeg" to "mp3",
+    "audio/ogg" to "ogg",
+    "audio/wav" to "wav",
+    "audio/webm" to "weba",
+    "audio/x-wav" to "wav",
+    "video/mp4" to "mp4",
+    "video/mpeg" to "mpeg",
+    "video/quicktime" to "mov",
+    "video/webm" to "webm",
+    "video/x-matroska" to "mkv",
+    "video/x-msvideo" to "avi",
 )
 
-internal fun extensionForMediaPreview(mimeType: String): String = when (mimeType) {
-    "audio/aac" -> "aac"
-    "audio/flac" -> "flac"
-    "audio/mp4" -> "m4a"
-    "audio/mpeg" -> "mp3"
-    "audio/ogg" -> "ogg"
-    "audio/wav", "audio/x-wav" -> "wav"
-    "audio/webm" -> "weba"
-    "video/mp4" -> "mp4"
-    "video/mpeg" -> "mpeg"
-    "video/quicktime" -> "mov"
-    "video/webm" -> "webm"
-    "video/x-matroska" -> "mkv"
-    "video/x-msvideo" -> "avi"
-    else -> "media"
-}
+internal val supportedMediaPreviewTypes = mediaPreviewExtensions.keys
+
+internal fun extensionForMediaPreview(mimeType: String): String =
+    mediaPreviewExtensions.getValue(mimeType)

@@ -31,6 +31,9 @@ void main() {
         () => HermesProfile.fromJson({'name': '../default'}),
         throwsFormatException,
       );
+    });
+
+    test('accepts canonical letters digits underscores and hyphens', () {
       expect(HermesProfile.isCanonicalName('qa_profile-2'), isTrue);
     });
   });
@@ -47,16 +50,41 @@ void main() {
       );
 
       expect(first, second);
-      expect(first.storageNamespace, hasLength(64));
+      expect(first.storageNamespace, second.storageNamespace);
+      expect(first.storageNamespace, matches(RegExp(r'^[A-Za-z0-9_-]+$')));
       expect(first.storageNamespace, isNot(contains('host')));
       expect(first.storageNamespace, isNot(contains('client-work')));
     });
 
-    test('refuses empty connections and non-canonical profiles', () {
+    for (final changed in ['connection', 'profile', 'authentication']) {
+      test('storage ownership is isolated by $changed', () {
+        final original = WorkspaceScope(
+          connectionId: 'connection-a',
+          profileName: 'default',
+          connectionIdentity: 'authentication-a',
+        );
+        final other = WorkspaceScope(
+          connectionId: changed == 'connection'
+              ? 'connection-b'
+              : 'connection-a',
+          profileName: changed == 'profile' ? 'work' : 'default',
+          connectionIdentity: changed == 'authentication'
+              ? 'authentication-b'
+              : 'authentication-a',
+        );
+        expect(other, isNot(original));
+        expect(other.storageNamespace, isNot(original.storageNamespace));
+      });
+    }
+
+    test('refuses an empty connection identity', () {
       expect(
         () => WorkspaceScope(connectionId: '', profileName: 'default'),
         throwsArgumentError,
       );
+    });
+
+    test('refuses a non-canonical profile', () {
       expect(
         () => WorkspaceScope(connectionId: 'conn', profileName: 'Client Work'),
         throwsArgumentError,

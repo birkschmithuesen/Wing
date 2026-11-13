@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../core/theme/app_preferences_rendering.dart';
 import '../core/theme/profile_workspace_theme.dart';
 import '../core/theme/wing_theme.dart';
 import 'car_mode_palette.dart';
@@ -44,9 +45,9 @@ class _CarModeScreenState extends State<CarModeScreen> {
     // The pushed route sits outside the workspace's accent theme.
     final theme = profileWorkspaceTheme(
       Theme.of(context),
-      accent: WorkspaceAccent.fromName(
-        widget.session.bridge.preferences.getString(WorkspaceAccent.preferenceKey),
-      ),
+      accent:
+          widget.session.bridge.appPreferences.current.values.accent?.appearance ??
+          WorkspaceAccent.teal,
     );
     return Theme(
       data: theme,
@@ -107,15 +108,17 @@ class _CarModeScreenState extends State<CarModeScreen> {
                       ? BorderSide.none
                       : BorderSide(color: colors.border!, width: 4),
                 ),
-                child: InkWell(
-                  onTap: session.tap,
-                  child: Transform.translate(
-                    offset: Offset(_dragDx * .35, 0),
-                    child: Padding(
-                      padding: landscape
-                          ? const EdgeInsets.fromLTRB(20, 16, 20, 12)
-                          : const EdgeInsets.fromLTRB(20, 20, 20, 16),
-                      child: _content(context, phase, snap, colors, text, status, landscape, width),
+                child: StudioButtonPress(
+                  child: InkWell(
+                    onTap: session.tap,
+                    child: Transform.translate(
+                      offset: Offset(_dragDx * .35, 0),
+                      child: Padding(
+                        padding: landscape
+                            ? const EdgeInsets.fromLTRB(20, 16, 20, 12)
+                            : const EdgeInsets.fromLTRB(20, 20, 20, 16),
+                        child: _content(context, phase, snap, colors, text, status, landscape, width),
+                      ),
                     ),
                   ),
                 ),

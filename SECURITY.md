@@ -17,7 +17,7 @@ Include the app version/build, Android version, backend revision if known, expec
 
 Use HTTPS or an encrypted private network for remote access. Plain HTTP does not encrypt credentials or messages. Keep the dashboard authenticated and restrict who can reach it. The app refuses HTTP redirects for dashboard requests; configure the final address and path directly. Custom access-header secrets are stored with connection credentials in Android secure storage.
 
-Only install artifacts from a source you trust. Wing uses `com.tarkilhk.wing` and its own signing identity. Debug builds and unsigned build outputs are not production releases. See [the release guide](docs/ANDROID_RELEASE_PLAN.md).
+Only install artifacts from a source you trust. Wing uses `com.tarkilhk.wing` and its own signing identity. Debug builds and unsigned build outputs are not production releases. Download published builds from [Wing Releases](https://github.com/tarkilhk/Wing/releases).
 
 ## Data handling
 

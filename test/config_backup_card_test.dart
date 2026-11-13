@@ -1,36 +1,37 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:wing/core/services/config_backup.dart';
-import 'package:wing/core/services/config_backup_service.dart';
+import 'package:wing/core/models/config_backup_operation.dart';
 import 'package:wing/core/widgets/config_backup_card.dart';
 
-Widget wrap(Widget child) {
-  return MaterialApp(
-    home: Scaffold(body: SingleChildScrollView(child: child)),
+Future<void> openSheet<T>(
+  WidgetTester tester,
+  Widget sheet,
+  Completer<T?> result,
+) async {
+  await tester.pumpWidget(
+    MaterialApp(
+      home: Scaffold(
+        body: Builder(
+          builder: (context) => TextButton(
+            onPressed: () async {
+              result.complete(
+                await showModalBottomSheet<T>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => sheet,
+                ),
+              );
+            },
+            child: const Text('Open sheet'),
+          ),
+        ),
+      ),
+    ),
   );
-}
-
-const ConfigImportResult _noopResult = ConfigImportResult(
-  connectionsAdded: 0,
-  connectionsUpdated: 0,
-  connectionsRemoved: 0,
-  preferencesApplied: 0,
-  preferencesSkipped: 0,
-);
-
-ConfigBackupCard buildCard({
-  Future<String> Function(String)? onExport,
-  Future<String?> Function(String)? onDeliverExport,
-  Future<String?> Function()? onPickBackupFile,
-  Future<ConfigImportResult> Function(String, String, ConfigImportMode)?
-  onImport,
-}) {
-  return ConfigBackupCard(
-    onExport: onExport ?? (_) async => 'encrypted',
-    onDeliverExport: onDeliverExport ?? (_) async => 'shared',
-    onPickBackupFile: onPickBackupFile ?? () async => 'encrypted',
-    onImport: onImport ?? (_, _, _) async => _noopResult,
-  );
+  await tester.tap(find.text('Open sheet'));
+  await tester.pumpAndSettle();
 }
 
 Future<void> completeExportSheet(
@@ -38,8 +39,6 @@ Future<void> completeExportSheet(
   required String passphrase,
   String? confirm,
 }) async {
-  await tester.tap(find.byKey(const Key('config_export_button')));
-  await tester.pumpAndSettle();
   await tester.enterText(
     find.byKey(const Key('export_passphrase_field')),
     passphrase,
@@ -53,216 +52,103 @@ Future<void> completeExportSheet(
 }
 
 void main() {
-  group('export flow', () {
+  group('export sheet', () {
     testWidgets('allows export with both passphrase fields empty', (
       tester,
     ) async {
-      String? seen;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (passphrase) async {
-              seen = passphrase;
-              return 'plain-json';
-            },
-          ),
-        ),
-      );
+      final result = Completer<BackupExportIntent?>();
+      await openSheet(tester, const ExportPassphraseSheet(), result);
       await completeExportSheet(tester, passphrase: '');
-      expect(seen, '');
+
+      expect((await result.future)!.passphrase, '');
       expect(find.byKey(const Key('export_passphrase_field')), findsNothing);
     });
 
-    testWidgets('passes the confirmed passphrase to the exporter', (
+    testWidgets('returns the confirmed passphrase as the export choice', (
       tester,
     ) async {
-      String? seen;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (passphrase) async {
-              seen = passphrase;
-              return 'encrypted-blob';
-            },
-          ),
-        ),
-      );
-
+      final result = Completer<BackupExportIntent?>();
+      await openSheet(tester, const ExportPassphraseSheet(), result);
       await completeExportSheet(tester, passphrase: 'correct horse');
 
-      expect(seen, 'correct horse');
+      expect((await result.future)!.passphrase, 'correct horse');
     });
 
     testWidgets('refuses to export when the confirmation does not match', (
       tester,
     ) async {
-      var exported = false;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (_) async {
-              exported = true;
-              return 'blob';
-            },
-          ),
-        ),
-      );
-
+      final result = Completer<BackupExportIntent?>();
+      await openSheet(tester, const ExportPassphraseSheet(), result);
       await completeExportSheet(
         tester,
         passphrase: 'correct horse',
         confirm: 'wrong horse',
       );
 
-      expect(exported, isFalse);
+      expect(result.isCompleted, isFalse);
       expect(find.text('The two passphrases do not match.'), findsOneWidget);
     });
 
     testWidgets('refuses a passphrase that is too short to protect keys', (
       tester,
     ) async {
-      var exported = false;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (_) async {
-              exported = true;
-              return 'blob';
-            },
-          ),
-        ),
-      );
-
+      final result = Completer<BackupExportIntent?>();
+      await openSheet(tester, const ExportPassphraseSheet(), result);
       await completeExportSheet(tester, passphrase: 'short');
 
-      expect(exported, isFalse);
+      expect(result.isCompleted, isFalse);
       expect(find.text('Use at least 8 characters.'), findsOneWidget);
     });
 
-    testWidgets('hands the encrypted blob to the delivery callback', (
+    testWidgets('cancelling the export sheet returns no choice', (
       tester,
     ) async {
-      String? delivered;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (_) async => 'encrypted-blob',
-            onDeliverExport: (contents) async {
-              delivered = contents;
-              return 'Saved to Downloads';
-            },
-          ),
-        ),
+      final result = Completer<BackupExportIntent?>();
+      await openSheet(tester, const ExportPassphraseSheet(), result);
+      await tester.enterText(
+        find.byKey(const Key('export_passphrase_field')),
+        'correct horse',
       );
+      await tester.tap(find.byTooltip('Cancel'));
+      await tester.pumpAndSettle();
 
-      await completeExportSheet(tester, passphrase: 'correct horse');
-
-      expect(delivered, 'encrypted-blob');
-      expect(find.text('Backup exported — Saved to Downloads'), findsOneWidget);
-    });
-
-    testWidgets('surfaces an export failure instead of failing silently', (
-      tester,
-    ) async {
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onExport: (_) async =>
-                throw const ConfigBackupException('Keystore unavailable.'),
-          ),
-        ),
-      );
-
-      await completeExportSheet(tester, passphrase: 'correct horse');
-
-      expect(find.byKey(const Key('config_backup_error')), findsOneWidget);
-      expect(find.text('Keystore unavailable.'), findsOneWidget);
+      expect(await result.future, isNull);
+      expect(find.byKey(const Key('export_passphrase_field')), findsNothing);
     });
   });
 
-  group('import flow', () {
-    testWidgets('does nothing when the user cancels the file picker', (
+  group('import sheet', () {
+    for (final passphrase in ['correct horse', '']) {
+      testWidgets(
+        passphrase.isEmpty
+            ? 'allows import without a passphrase'
+            : 'returns the chosen passphrase and merge mode',
+        (tester) async {
+          final result = Completer<BackupImportIntent?>();
+          await openSheet(tester, const ImportOptionsSheet(), result);
+          await tester.enterText(
+            find.byKey(const Key('import_passphrase_field')),
+            passphrase,
+          );
+          await tester.tap(find.byKey(const Key('import_confirm_button')));
+          await tester.pumpAndSettle();
+
+          final choice = (await result.future)!;
+          expect(choice.passphrase, passphrase);
+          expect(choice.mode, ConfigImportMode.merge);
+          expect(
+            find.byKey(const Key('import_passphrase_field')),
+            findsNothing,
+          );
+        },
+      );
+    }
+
+    testWidgets('returns replace mode when the user selects it', (
       tester,
     ) async {
-      var imported = false;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onPickBackupFile: () async => null,
-            onImport: (_, _, _) async {
-              imported = true;
-              return _noopResult;
-            },
-          ),
-        ),
-      );
-
-      await tester.tap(find.byKey(const Key('config_import_button')));
-      await tester.pumpAndSettle();
-
-      expect(imported, isFalse);
-      expect(find.byKey(const Key('import_passphrase_field')), findsNothing);
-    });
-
-    testWidgets('imports with the chosen passphrase and merge mode', (
-      tester,
-    ) async {
-      String? seenContents;
-      String? seenPassphrase;
-      ConfigImportMode? seenMode;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onPickBackupFile: () async => 'file-contents',
-            onImport: (contents, passphrase, mode) async {
-              seenContents = contents;
-              seenPassphrase = passphrase;
-              seenMode = mode;
-              return const ConfigImportResult(
-                connectionsAdded: 2,
-                connectionsUpdated: 0,
-                connectionsRemoved: 0,
-                preferencesApplied: 5,
-                preferencesSkipped: 0,
-              );
-            },
-          ),
-        ),
-      );
-
-      await tester.tap(find.byKey(const Key('config_import_button')));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const Key('import_passphrase_field')),
-        'correct horse',
-      );
-      await tester.tap(find.byKey(const Key('import_confirm_button')));
-      await tester.pumpAndSettle();
-
-      expect(seenContents, 'file-contents');
-      expect(seenPassphrase, 'correct horse');
-      expect(seenMode, ConfigImportMode.merge);
-      expect(
-        find.text('Connections: 2 added · 5 settings restored'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('passes replace mode when the user selects it', (tester) async {
-      ConfigImportMode? seenMode;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onImport: (_, _, mode) async {
-              seenMode = mode;
-              return _noopResult;
-            },
-          ),
-        ),
-      );
-
-      await tester.tap(find.byKey(const Key('config_import_button')));
-      await tester.pumpAndSettle();
+      final result = Completer<BackupImportIntent?>();
+      await openSheet(tester, const ImportOptionsSheet(), result);
       await tester.enterText(
         find.byKey(const Key('import_passphrase_field')),
         'pass',
@@ -272,58 +158,26 @@ void main() {
       await tester.tap(find.byKey(const Key('import_confirm_button')));
       await tester.pumpAndSettle();
 
-      expect(seenMode, ConfigImportMode.replace);
+      final choice = (await result.future)!;
+      expect(choice.mode, ConfigImportMode.replace);
+      expect(choice.passphrase, 'pass');
     });
 
-    testWidgets('shows the wrong-passphrase failure to the user', (
+    testWidgets('cancelling the import sheet returns no choice', (
       tester,
     ) async {
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onImport: (_, _, _) async => throw const ConfigBackupException(
-              'Wrong passphrase, or this backup file has been altered.',
-            ),
-          ),
-        ),
-      );
-
-      await tester.tap(find.byKey(const Key('config_import_button')));
-      await tester.pumpAndSettle();
+      final result = Completer<BackupImportIntent?>();
+      await openSheet(tester, const ImportOptionsSheet(), result);
       await tester.enterText(
         find.byKey(const Key('import_passphrase_field')),
-        'nope',
+        'pass',
       );
-      await tester.tap(find.byKey(const Key('import_confirm_button')));
+      await tester.tap(find.byKey(const Key('import_mode_replace')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byTooltip('Cancel'));
       await tester.pumpAndSettle();
 
-      expect(find.byKey(const Key('config_backup_error')), findsOneWidget);
-      expect(
-        find.text('Wrong passphrase, or this backup file has been altered.'),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('allows import without a passphrase', (tester) async {
-      var imported = false;
-      await tester.pumpWidget(
-        wrap(
-          buildCard(
-            onImport: (_, passphrase, _) async {
-              expect(passphrase, '');
-              imported = true;
-              return _noopResult;
-            },
-          ),
-        ),
-      );
-
-      await tester.tap(find.byKey(const Key('config_import_button')));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const Key('import_confirm_button')));
-      await tester.pumpAndSettle();
-
-      expect(imported, isTrue);
+      expect(await result.future, isNull);
       expect(find.byKey(const Key('import_passphrase_field')), findsNothing);
     });
   });

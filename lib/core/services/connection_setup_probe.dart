@@ -1,3 +1,5 @@
+import 'dashboard_oauth_session.dart';
+import 'connection_access.dart';
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
@@ -6,6 +8,7 @@ import '../models/hermes_profile.dart';
 import 'connection_manager.dart';
 import 'profile_gateway.dart';
 import 'profiles_repository.dart';
+import 'workspace_connection_failure.dart';
 
 enum ConnectionCheck { profiles, chat, history }
 
@@ -20,10 +23,11 @@ abstract interface class ConnectionProbe {
 }
 
 class DashboardConnectionProbe implements ConnectionProbe {
-  DashboardConnectionProbe(this.connection)
-    : _profiles = ProfilesRepository.forConnection(connection);
+  DashboardConnectionProbe(this.access)
+    : _profiles = ProfilesRepository.forConnection(access);
 
-  final SavedConnection connection;
+  final ConnectionAccess access;
+  SavedConnection get connection => access.connection;
   final ProfilesRepository _profiles;
   ProfileGateway? _gateway;
   bool _closed = false;
@@ -35,7 +39,7 @@ class DashboardConnectionProbe implements ConnectionProbe {
   Future<void> connect(HermesProfile profile) async {
     if (_closed) throw StateError('Connection check cancelled');
     final gateway = ProfileGateway.forConnection(
-      connection,
+      access,
       WorkspaceScope(connectionId: connection.id, profileName: profile.name),
     );
     _gateway = gateway;
@@ -62,21 +66,25 @@ class ConnectionSetupProbe extends ChangeNotifier {
   ConnectionSetupProbe({
     this.createProbe = DashboardConnectionProbe.new,
     this.deadline = const Duration(seconds: 15),
-  });
+    DateTime Function()? now,
+  }) : _now = now ?? DateTime.now;
 
-  final ConnectionProbe Function(SavedConnection) createProbe;
+  final ConnectionProbe Function(ConnectionAccess) createProbe;
   final Duration deadline;
+  final DateTime Function() _now;
   final statuses = {
     for (final stage in ConnectionCheck.values)
       stage: ConnectionCheckStatus.waiting,
   };
   ConnectionProbe? _probe;
+  ConnectionAccess? _access;
   int _generation = 0;
   bool checking = false;
   ProfileDiscovery? discovery;
   String? error;
   int? httpStatus;
   ConnectionCheck? failedStage;
+  bool chatEndpointUnsupported = false;
   DateTime? checkedAt;
 
   bool get verified =>
@@ -86,15 +94,23 @@ class ConnectionSetupProbe extends ChangeNotifier {
         (status) => status == ConnectionCheckStatus.available,
       );
 
-  Future<void> check(SavedConnection connection) async {
+  SavedConnection get verifiedConnection {
+    if (!verified || _access == null) {
+      throw StateError('This connection is not verified.');
+    }
+    return _access!.persistenceSnapshot;
+  }
+
+  Future<void> check(ConnectionAccess access) async {
     cancel();
+    _access = access;
     final generation = _generation;
     checking = true;
     notifyListeners();
     ConnectionCheck stage = ConnectionCheck.profiles;
     ConnectionProbe? probe;
     try {
-      probe = createProbe(connection);
+      probe = createProbe(access);
       _probe = probe;
       for (stage in ConnectionCheck.values) {
         statuses[stage] = ConnectionCheckStatus.checking;
@@ -117,6 +133,7 @@ class ConnectionSetupProbe extends ChangeNotifier {
       if (generation != _generation) return;
       statuses[stage] = ConnectionCheckStatus.failed;
       failedStage = stage;
+      chatEndpointUnsupported = isUnsupportedChatEndpoint(failure);
       httpStatus = failure is DashboardHttpException
           ? failure.statusCode
           : null;
@@ -126,17 +143,18 @@ class ConnectionSetupProbe extends ChangeNotifier {
       if (generation == _generation) {
         _probe = null;
         checking = false;
-        checkedAt = DateTime.now();
+        checkedAt = _now();
         notifyListeners();
       }
     }
   }
 
   static String _failureMessage(Object error, ConnectionCheck stage) {
+    if (isUnsupportedChatEndpoint(error)) return chatEndpointFailureMessage;
     if (error is CloudAccessException) return error.message;
     if (error is DashboardHttpException) {
       if ([301, 302, 303, 307, 308].contains(error.statusCode)) {
-        return 'This address redirects. Enter the final dashboard address.';
+        return 'This address redirects. Enter the final gateway Webapp address.';
       }
       if (error.statusCode == 401 && error.endpoint == 'auth/password-login') {
         return 'The dashboard rejected this username or password.';
@@ -146,7 +164,7 @@ class ConnectionSetupProbe extends ChangeNotifier {
       }
       if (stage == ConnectionCheck.profiles &&
           [404, 405].contains(error.statusCode)) {
-        return 'This server doesn’t provide the profile access Wing needs. Check the dashboard address and Connection guide.';
+        return 'This server doesn’t provide the profile access Wing needs. Check the gateway Webapp address and Connection guide.';
       }
     }
     if (error is TimeoutException) {
@@ -155,7 +173,7 @@ class ConnectionSetupProbe extends ChangeNotifier {
     return switch (stage) {
       ConnectionCheck.profiles =>
         error is FormatException
-            ? 'The server returned an unexpected profile response. Check the dashboard address and Connection guide.'
+            ? 'The server returned an unexpected profile response. Check the gateway Webapp address and Connection guide.'
             : 'Couldn’t reach your Hermes profiles. Check the address, sign-in and your phone’s network.',
       ConnectionCheck.chat =>
         'Profiles are available, but live chat couldn’t connect.',
@@ -168,11 +186,13 @@ class ConnectionSetupProbe extends ChangeNotifier {
     _generation++;
     _probe?.close();
     _probe = null;
+    _access = null;
     checking = false;
     discovery = null;
     error = null;
     httpStatus = null;
     failedStage = null;
+    chatEndpointUnsupported = false;
     checkedAt = null;
     for (final stage in ConnectionCheck.values) {
       statuses[stage] = ConnectionCheckStatus.waiting;

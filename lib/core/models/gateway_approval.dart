@@ -23,7 +23,6 @@ class GatewayApprovalQueue {
   int total = 0;
   int revision = 0;
 
-  Map<String, dynamic>? get first => _requests.firstOrNull;
   List<Map<String, dynamic>> get requests => List.unmodifiable(_requests);
   int get position => total - _requests.length + 1;
 
@@ -131,10 +130,6 @@ class GatewayApprovalRequest {
             }
             return true;
           }).toList();
-
-    if (rawChoices is! List && !choices.contains(GatewayApprovalChoice.deny)) {
-      choices.add(GatewayApprovalChoice.deny);
-    }
 
     return GatewayApprovalRequest(
       command: data['command']?.toString() ?? '',

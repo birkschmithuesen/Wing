@@ -1,9 +1,31 @@
+import 'package:wing/core/widgets/studio_loading.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/side_question_delivery.dart';
 import 'package:wing/core/widgets/side_question_delivery_card.dart';
 
 void main() {
+  testWidgets(
+    'pending dispatch keeps its semantic glyph without claiming execution',
+    (tester) async {
+      await tester.pumpWidget(
+        const MaterialApp(
+          home: Scaffold(
+            body: SideQuestionDeliveryCard(
+              delivery: SideQuestionDelivery(
+                taskId: 'retained',
+                question: 'What changed?',
+                state: SideQuestionDeliveryState.pending,
+              ),
+            ),
+          ),
+        ),
+      );
+      expect(find.text('Side question running'), findsOneWidget);
+      expect(find.byType(StudioLoading), findsNothing);
+      expect(tester.binding.transientCallbackCount, 0);
+    },
+  );
   testWidgets('renders pending side questions as selectable delivery cards', (
     tester,
   ) async {
@@ -23,6 +45,7 @@ void main() {
 
     expect(find.byType(Card), findsOneWidget);
     expect(find.text('Side question running'), findsOneWidget);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(
       find.widgetWithText(SelectableText, 'What changed?'),
       findsOneWidget,
@@ -87,10 +110,12 @@ void main() {
 
     await pump(SideQuestionDeliveryState.pending);
     expect(find.text('Background task running'), findsOneWidget);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(find.text('Background task result'), findsNothing);
 
     await pump(SideQuestionDeliveryState.completed);
     expect(find.text('Background task result'), findsOneWidget);
+    expect(find.byType(StudioLoading), findsNothing);
     expect(
       find.widgetWithText(SelectableText, 'The deployment failed.'),
       findsOneWidget,

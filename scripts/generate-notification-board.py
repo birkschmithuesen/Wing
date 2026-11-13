@@ -96,7 +96,8 @@ def main():
         'Monochrome app vectors · Android supplies the status-bar tint</text>',
         '</g></svg>',
     ])
-    target = ROOT / 'docs/design/images/notification-identity-board.svg'
+    target = ROOT / 'build/design-previews/notification-identity-board.svg'
+    target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text('\n'.join(parts) + '\n')
     print(target.relative_to(ROOT))
 

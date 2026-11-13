@@ -31,8 +31,10 @@ class VadInputRound {
     this.carMicSession,
     bool Function()? carKitConnected,
     bool Function()? carModeActive,
+    VoiceOfflinePrefs Function()? roundSettings,
   }) : _carKitConnected = carKitConnected ?? _never,
-       _carModeActive = carModeActive ?? _never;
+       _carModeActive = carModeActive ?? _never,
+       _roundSettings = roundSettings ?? _defaults;
 
   final VadVoiceDevice device;
 
@@ -54,7 +56,13 @@ class VadInputRound {
   bool _stopRequested = false;
   String? _micFallbackHint;
 
+  /// Settings of the round the controller starts next.
+  final VoiceOfflinePrefs Function() _roundSettings;
+
   static bool _never() => false;
+  static VoiceOfflinePrefs _defaults() => const VoiceOfflinePrefs();
+
+  VoiceOfflinePrefs roundSettings() => _roundSettings();
 
   /// True while a vad round owns the recording.
   bool get active => _endpointer != null;
@@ -125,6 +133,7 @@ class VadInputRound {
     required void Function() transcribing,
     required void Function(String text) finish,
     required void Function(Object error) fail,
+    required void Function() noSpeech,
   }) {
     if (event['windows'] case final List<Object?> windows) {
       final endpointer = _endpointer;
@@ -133,7 +142,7 @@ class VadInputRound {
         windows.map((value) => (value as num).toDouble()),
       );
       if (decision != null) {
-        unawaited(_finish(decision, transcribing, finish, fail));
+        unawaited(_finish(decision, transcribing, finish, fail, noSpeech));
       }
       return true;
     }
@@ -145,6 +154,7 @@ class VadInputRound {
     required void Function() transcribing,
     required void Function(String text) finish,
     required void Function(Object error) fail,
+    required void Function() noSpeech,
   }) async {
     final endpointer = _endpointer;
     if (endpointer == null) return;
@@ -153,6 +163,7 @@ class VadInputRound {
       transcribing,
       finish,
       fail,
+      noSpeech,
     );
   }
 
@@ -161,6 +172,7 @@ class VadInputRound {
     required void Function() transcribing,
     required void Function(String text) finish,
     required void Function(Object error) fail,
+    required void Function() noSpeech,
   }) async {
     final endpointer = _endpointer;
     if (endpointer == null) return;
@@ -169,6 +181,7 @@ class VadInputRound {
       transcribing,
       finish,
       fail,
+      noSpeech,
     );
   }
 
@@ -177,6 +190,7 @@ class VadInputRound {
     void Function() transcribing,
     void Function(String text) finish,
     void Function(Object error) fail,
+    void Function() noSpeech,
   ) async {
     final id = _id;
     final endpointer = _endpointer;
@@ -190,7 +204,7 @@ class VadInputRound {
             .finishVad(id, decision, endpointer.config)
             .then((_) {}, onError: (Object _) {}),
       );
-      fail(StateError('No speech detected. Try again.'));
+      noSpeech();
       return;
     }
     _stopRequested =

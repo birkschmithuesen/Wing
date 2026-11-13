@@ -16,9 +16,8 @@ typedef McpLoopbackFactory =
 
 /// A listener on this device only. Callback values never enter logs or storage.
 class McpLoopback {
-  final Uri redirectUri;
   final Future<void> Function() close;
-  McpLoopback({required this.redirectUri, required this.close});
+  McpLoopback({required this.close});
 
   static Future<McpLoopback> bind(
     Uri redirect,
@@ -51,7 +50,6 @@ class McpLoopback {
       }
     });
     return McpLoopback(
-      redirectUri: redirect,
       close: () async {
         await server.close(force: true);
       },
@@ -62,10 +60,14 @@ class McpLoopback {
 /// One profile-owned PKCE flow. Hermes owns state/PKCE validation and tokens;
 /// Wing captures only the browser callback and relays it through the stock RPC.
 class McpOAuth extends ChangeNotifier {
-  final ProfileAdministration profile;
+  final ProfileAdministration _administration;
+  String get profileName => _administration.name;
+  String get scopeLabel => _administration.label;
+  String get terminalCommand =>
+      "hermes --profile ${_shellQuote(profileName)} mcp login ${_shellQuote(name)}";
   final String name;
   final McpLoopbackFactory bindLoopback;
-  late final _gateway = profile.gateway;
+  late final _gateway = _administration.gateway;
   McpLoopback? _listener;
   Timer? _timer;
   bool _disposed = false;
@@ -74,57 +76,87 @@ class McpOAuth extends ChangeNotifier {
   bool _closing = false;
   String? _sessionId;
   String? _state;
-  Uri? authUrl;
+  Uri? _authUrl;
   Uri? _callbackUri;
-  bool manualOnly = false;
-  bool terminalRequired = false;
-  String status = 'idle';
-  String? error;
-  bool busy = false;
-  bool callbackAccepted = false;
-  bool get pending => _sessionId != null && status == 'pending';
+  bool _manualOnly = false;
+  bool _terminalRequired = false;
+  String _status = 'idle';
+  String? _error;
+  bool _busy = false;
+  bool _callbackAccepted = false;
+  Uri? get authUrl => _authUrl;
+  bool get manualOnly => _manualOnly;
+  bool get terminalRequired => _terminalRequired;
+  String get status => _status;
+  String? get error => _error;
+  bool get busy => _busy;
+  bool get callbackAccepted => _callbackAccepted;
+  bool get pending => _sessionId != null && _status == 'pending';
   bool get canRecoverPoll =>
-      pending && !busy && !_polling && !_pollBlocked && !_disposed && !_closing;
+      pending &&
+      !_busy &&
+      !_polling &&
+      !_pollBlocked &&
+      !_disposed &&
+      !_closing;
 
   McpOAuth({
-    required this.profile,
+    required ProfileAdministration profile,
     required this.name,
     this.bindLoopback = McpLoopback.bind,
-  });
+  }) : _administration = profile {
+    _administration.server.retain();
+  }
 
   /// Stable per connector: repeated login must not change a DCR callback port.
   /// Explicit provider-approved redirect_uri settings take precedence.
   Uri get defaultCallback {
     var hash = 2166136261;
     for (final unit
-        in '${profile.server.connectionId}/${profile.name}/$name'.codeUnits) {
+        in '${_administration.server.connectionId}/${_administration.name}/$name'
+            .codeUnits) {
       hash = ((hash ^ unit) * 16777619) & 0xffffffff;
     }
     return Uri.parse('http://127.0.0.1:${20000 + hash % 40000}/callback');
   }
 
+  int _notificationDepth = 0;
   void _changed() {
-    if (!_disposed) notifyListeners();
+    if (_disposed) return;
+    _notificationDepth++;
+    try {
+      notifyListeners();
+    } finally {
+      _notificationDepth--;
+      if (_disposed && _notificationDepth == 0) super.dispose();
+    }
   }
 
   Future<Map<String, dynamic>> _request(
     String action, [
     Map<String, dynamic> params = const {},
   ]) async {
-    await _gateway.connect();
-    final result = await _gateway.call('mcp.servers.oauth.$action', {
-      'name': name,
-      ...params,
-    });
-    if (result['ok'] != true) {
-      throw AdministrationFailure(
-        mcpErrorMessage(
-          result['error_message'],
-          summary: 'Sign-in could not be completed.',
-        ),
+    _administration.server.retain();
+    try {
+      final result = await _gateway.mcpCommand(
+        'oauth.$action',
+        {'name': name, ...params},
+        canDispatch: () =>
+            !_disposed || action == 'cancel' && _sessionId != null,
+        onDispatched: () {},
       );
+      if (result['ok'] != true) {
+        throw AdministrationFailure(
+          mcpErrorMessage(
+            result['error_message'],
+            summary: 'Sign-in could not be completed.',
+          ),
+        );
+      }
+      return result;
+    } finally {
+      _administration.server.release();
     }
-    return result;
   }
 
   String _failure(Object failure) {
@@ -135,7 +167,7 @@ class McpOAuth extends ChangeNotifier {
       final detail = failure.message.toLowerCase();
       if (detail.contains('device authorization') ||
           detail.contains('--flow device')) {
-        terminalRequired = true;
+        _terminalRequired = true;
         return 'This service needs device-code sign-in. Use the terminal instructions below, then test the connector here.';
       }
       if (detail.contains('redirect_uri') ||
@@ -162,20 +194,22 @@ class McpOAuth extends ChangeNotifier {
   }
 
   Future<void> start() async {
-    if (busy || pending || _disposed) return;
+    if (_busy || pending || _disposed) return;
     _sessionId = null;
     _pollBlocked = true;
-    authUrl = null;
-    callbackAccepted = false;
-    terminalRequired = false;
-    busy = true;
-    error = null;
+    _authUrl = null;
+    _callbackAccepted = false;
+    _terminalRequired = false;
+    _busy = true;
+    _error = null;
+    _administration.server.retain();
     _changed();
     try {
-      await profile.requireProfile();
+      if (_disposed) return;
+      await _administration.requireProfile();
       if (_disposed) return;
       // Read only the settings needed for this flow; never retain/log raw config.
-      final config = await profile.config();
+      final config = await _administration.config();
       final servers = config['mcp_servers'];
       final entry = servers is Map ? servers[name] : null;
       if (entry is! Map || entry['url'] is! String) {
@@ -185,7 +219,7 @@ class McpOAuth extends ChangeNotifier {
       }
       final oauth = entry['oauth'] is Map ? entry['oauth'] as Map : const {};
       if (oauth['flow'] == 'device') {
-        terminalRequired = true;
+        _terminalRequired = true;
         throw const AdministrationFailure(
           'This connector uses device-code sign-in. Complete it in a terminal on Hermes, then test the connection here.',
         );
@@ -205,11 +239,11 @@ class McpOAuth extends ChangeNotifier {
         );
       }
       _callbackUri = target;
-      manualOnly =
+      _manualOnly =
           !(target.scheme == 'http' &&
               {'127.0.0.1', 'localhost', '::1'}.contains(target.host) &&
               target.hasPort);
-      if (!manualOnly) {
+      if (!_manualOnly) {
         _listener = await bindLoopback(
           target,
           (uri) => submitCallback(uri.toString()),
@@ -217,7 +251,7 @@ class McpOAuth extends ChangeNotifier {
       }
       if (_disposed) return;
       final result = await _request('start', {
-        'client_redirect_uri': (manualOnly ? defaultCallback : _callbackUri!)
+        'client_redirect_uri': (_manualOnly ? defaultCallback : _callbackUri!)
             .toString(),
       });
       final session = result['session_id'];
@@ -227,7 +261,7 @@ class McpOAuth extends ChangeNotifier {
         );
       }
       _sessionId = session;
-      status = 'pending';
+      _status = 'pending';
       if (_disposed) {
         await _request('cancel', {'session_id': session});
         return;
@@ -250,23 +284,27 @@ class McpOAuth extends ChangeNotifier {
           'Hermes returned a different callback address. Cancel this sign-in and check the connector’s OAuth settings.',
         );
       }
-      authUrl = url;
+      _authUrl = url;
       _state = url.queryParameters['state'];
       _pollBlocked = false;
       _schedulePoll();
     } catch (e) {
-      error = _failure(e);
+      _error = _failure(e);
     } finally {
-      if (_disposed || _sessionId == null) await _closeListener();
-      busy = false;
-      _changed();
+      try {
+        if (_disposed || _sessionId == null) await _closeListener();
+        _busy = false;
+        _changed();
+      } finally {
+        _administration.server.release();
+      }
     }
   }
 
   /// Full URLs only: reject a different listener, missing/duplicate parameters,
   /// wrong state, and replays before sending a code to the captured profile.
   Future<bool> submitCallback(String input) async {
-    if (!pending || busy || callbackAccepted || _disposed) return false;
+    if (!pending || _busy || _callbackAccepted || _disposed) return false;
     final uri = Uri.tryParse(input.trim());
     final target = _callbackUri;
     final values = uri?.queryParametersAll;
@@ -288,12 +326,12 @@ class McpOAuth extends ChangeNotifier {
         ((uri.queryParameters['code'] ?? '').isNotEmpty !=
             (uri.queryParameters['error'] ?? '').isNotEmpty);
     if (!valid) {
-      error = 'Paste the complete callback URL from this sign-in attempt.';
+      _error = 'Paste the complete callback URL from this sign-in attempt.';
       _changed();
       return false;
     }
-    busy = true;
-    error = null;
+    _busy = true;
+    _error = null;
     _timer?.cancel();
     _changed();
     try {
@@ -303,13 +341,13 @@ class McpOAuth extends ChangeNotifier {
           if (uri.queryParameters.containsKey(key))
             key: uri.queryParameters[key],
       });
-      callbackAccepted = true;
+      _callbackAccepted = true;
       return true;
     } catch (e) {
-      error = _failure(e);
+      _error = _failure(e);
       return false;
     } finally {
-      busy = false;
+      _busy = false;
       _changed();
       _schedulePoll();
     }
@@ -323,7 +361,7 @@ class McpOAuth extends ChangeNotifier {
   }
 
   Future<void> poll() async {
-    if (!pending || busy || _polling || _disposed || _closing) return;
+    if (!pending || _busy || _polling || _disposed || _closing) return;
     _timer?.cancel();
     _polling = true;
     try {
@@ -334,9 +372,9 @@ class McpOAuth extends ChangeNotifier {
           'Hermes returned an unknown sign-in status.',
         );
       }
-      status = result['status'] as String;
+      _status = result['status'] as String;
       _pollBlocked = false;
-      error = status == 'error'
+      _error = _status == 'error'
           ? mcpErrorMessage(
               result['error_message'],
               summary: 'Sign-in did not complete.',
@@ -346,7 +384,7 @@ class McpOAuth extends ChangeNotifier {
       _schedulePoll();
     } catch (e) {
       if (!_closing) {
-        error = _failure(e);
+        _error = _failure(e);
         _pollBlocked = !isTemporaryWorkspaceFailure(e);
       }
     } finally {
@@ -356,22 +394,22 @@ class McpOAuth extends ChangeNotifier {
   }
 
   Future<bool> cancel() async {
-    if (busy || _disposed) return false;
+    if (_busy || _disposed) return false;
     if (!pending) return true;
-    busy = true;
+    _busy = true;
     _closing = true;
     _timer?.cancel();
     _changed();
     try {
       await _request('cancel', {'session_id': _sessionId});
-      status = 'cancelled';
+      _status = 'cancelled';
       await _closeListener();
       return true;
     } catch (_) {
-      error = 'Cancellation was not confirmed. Retry before closing.';
+      _error = 'Cancellation was not confirmed. Retry before closing.';
       return false;
     } finally {
-      busy = false;
+      _busy = false;
       _closing = false;
       _changed();
     }
@@ -387,12 +425,16 @@ class McpOAuth extends ChangeNotifier {
 
   @override
   void dispose() {
+    if (_disposed) return;
     _disposed = true;
     _timer?.cancel();
     if (pending && !_closing) {
       _request('cancel', {'session_id': _sessionId}).ignore();
     }
     _closeListener().ignore();
-    super.dispose();
+    _administration.server.release();
+    if (_notificationDepth == 0) super.dispose();
   }
 }
+
+String _shellQuote(String value) => "'${value.replaceAll("'", "'\"'\"'")}'";

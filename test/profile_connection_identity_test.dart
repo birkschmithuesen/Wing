@@ -16,8 +16,6 @@ class MemoryIdentityStore implements CredentialStore {
   }
 
   @override
-  String? readCached(String key) => values[key];
-  @override
   Future<void> write(String key, String value) async {
     writes++;
     if (!failVerify) values[key] = value;

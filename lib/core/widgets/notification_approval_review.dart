@@ -1,3 +1,6 @@
+import 'studio_error.dart';
+import 'gateway_approval_panel.dart';
+import 'studio_form_actions.dart';
 import 'package:flutter/material.dart';
 
 import '../models/gateway_approval.dart';
@@ -55,7 +58,7 @@ class _ReviewState extends State<NotificationApprovalReview> {
       final status = !pending
           ? 'This approval is no longer pending.'
           : sending
-          ? 'Sending decision…'
+          ? null
           : error ??
                 (offline
                     ? 'Offline—approval not sent. Reconnect to retry.'
@@ -69,7 +72,7 @@ class _ReviewState extends State<NotificationApprovalReview> {
       };
       return PopScope(
         canPop: !sending,
-        child: AlertDialog(
+        child: StudioDialog(
           titleTextStyle: Theme.of(context).textTheme.titleLarge,
           title: Text(
             widget.choice == 'always' ? 'Always allow?' : 'Review command',
@@ -84,50 +87,33 @@ class _ReviewState extends State<NotificationApprovalReview> {
                 if (status != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 12),
-                    child: Text(
-                      status,
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.error,
-                      ),
-                    ),
+                    child: StudioError(status, icon: Icons.rule_outlined),
                   ),
                 const SizedBox(height: 12),
                 Flexible(
                   child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SelectableText(widget.request.command),
-                        if (widget.request.description.isNotEmpty)
-                          ExpansionTile(
-                            tilePadding: EdgeInsets.zero,
-                            title: const Text('Hermes request details'),
-                            children: [Text(widget.request.description)],
-                          ),
-                      ],
-                    ),
+                    child: ApprovalCommandDetails(request: widget.request),
                   ),
                 ),
               ],
             ),
           ),
           actions: [
-            TextButton(
-              onPressed: sending ? null : () => Navigator.pop(context),
-              child: Text(pending ? 'Cancel' : 'Close'),
-            ),
-            FilledButton(
-              onPressed: sending || offline || !pending ? null : send,
-              child: Text(
-                sending
-                    ? 'Sending…'
-                    : switch (widget.choice) {
-                        'always' => 'Always allow',
-                        'session' => 'Allow for session',
-                        'deny' => 'Deny',
-                        _ => 'Allow once',
-                      },
-              ),
+            StudioFormActions(
+              onCancel: sending ? null : () => Navigator.pop(context),
+              cancelLabel: pending ? 'Cancel approval decision' : 'Close',
+              onConfirm: sending || offline || !pending ? null : send,
+              confirmLabel: switch (widget.choice) {
+                'always' => 'Always allow',
+                'session' => 'Allow for session',
+                'deny' => 'Deny request',
+                _ => 'Allow once',
+              },
+              confirmIcon: widget.choice == 'deny'
+                  ? Icons.block
+                  : Icons.verified_user_outlined,
+              busy: sending,
+              progressLabel: 'Sending approval decision',
             ),
           ],
         ),

@@ -1,23 +1,26 @@
+import 'studio_form_actions.dart';
+import 'activity/activity_detail_actions.dart';
 import '../theme/wing_theme.dart';
 import 'studio_error.dart';
 import 'package:flutter/material.dart';
-import 'anchored_expansion_tile.dart';
+import 'compact_activity_row.dart';
+import 'activity_time.dart';
+import 'tool_activity_details.dart';
+import '../presentation/tool_activity_details.dart';
 import 'profile_transcript_disclosure.dart';
 
 import '../models/gateway_process.dart';
 import '../models/session_control.dart';
-import '../services/profile_workspace_controller.dart';
+import '../services/profile_supervision_session.dart';
 
 /// Server-owned recurring work and background processes for one captured chat.
 class ProfileBackgroundWorkPanel extends StatefulWidget {
-  final ProfileWorkspaceController controller;
-  final ProfileChat chat;
+  final ProfileSupervisionSession session;
   final bool initiallyExpanded;
 
   const ProfileBackgroundWorkPanel({
     super.key,
-    required this.controller,
-    required this.chat,
+    required this.session,
     this.initiallyExpanded = false,
   });
 
@@ -29,11 +32,6 @@ class ProfileBackgroundWorkPanel extends StatefulWidget {
 class _ProfileBackgroundWorkPanelState
     extends State<ProfileBackgroundWorkPanel> {
   bool _requested = false;
-  bool _actionBusy = false;
-  final Set<String> _stopping = {};
-  String? _actionError;
-  final Map<String, String> _processErrors = {};
-
   @override
   void initState() {
     super.initState();
@@ -43,11 +41,8 @@ class _ProfileBackgroundWorkPanelState
   @override
   void didUpdateWidget(ProfileBackgroundWorkPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (!identical(oldWidget.chat, widget.chat)) {
+    if (!identical(oldWidget.session, widget.session)) {
       _requested = false;
-      _actionError = null;
-      _processErrors.clear();
-      _stopping.clear();
       _requestRefresh();
     }
   }
@@ -60,132 +55,68 @@ class _ProfileBackgroundWorkPanelState
     });
   }
 
-  Future<void> _refresh() async {
-    setState(() {
-      _actionError = null;
-      _processErrors.clear();
-    });
-    await Future.wait([_refreshSessionControl(), _refreshProcesses()]);
-  }
-
-  Future<void> _refreshSessionControl() async {
-    try {
-      await widget.controller.refreshSessionControl(widget.chat);
-    } catch (_) {
-      // The controller publishes the error for this chat.
-    }
-  }
-
-  Future<void> _refreshProcesses() async {
-    try {
-      await widget.controller.refreshProcesses(widget.chat);
-    } catch (_) {
-      // The controller publishes the error for this chat.
-    }
-  }
-
+  Future<void> _refresh() => widget.session.refreshControl();
+  Future<void> _refreshSessionControl() => widget.session.refreshControl();
   Future<void> _control(SessionControlAction action) async {
-    if (_actionBusy) return;
-    setState(() {
-      _actionBusy = true;
-      _actionError = null;
-    });
-    try {
-      final accepted = await widget.controller.controlSession(
-        widget.chat,
-        action,
-      );
-      if (!accepted && mounted && widget.chat.sessionControlError == null) {
-        setState(() => _actionError = 'The server did not accept the action.');
-      }
-    } catch (_) {
-      if (mounted && widget.chat.sessionControlError == null) {
-        setState(() => _actionError = 'The action could not be completed.');
-      }
-    } finally {
-      if (mounted) setState(() => _actionBusy = false);
-    }
+    await widget.session.control(action);
   }
 
   Future<void> _confirmClearHeartbeat() async {
+    final session = widget.session;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (context) => StudioDialog(
         title: const Text('Clear heartbeat?'),
         content: const Text(
           'This removes the heartbeat schedule from the Hermes server.',
         ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Clear'),
+          StudioFormActions(
+            onCancel: () => Navigator.pop(context, false),
+            onConfirm: () => Navigator.pop(context, true),
+            confirmLabel: 'Clear heartbeat',
+            confirmIcon: Icons.delete_outline,
+            destructive: true,
           ),
         ],
       ),
     );
-    if (confirmed == true && mounted) {
-      await _control(SessionControlAction.heartbeatClear);
-    }
-  }
-
-  Future<void> _stopProcess(GatewayProcessActivity process) async {
-    if (_stopping.contains(process.id)) return;
-    setState(() {
-      _stopping.add(process.id);
-      _processErrors.remove(process.id);
-    });
-    try {
-      final accepted = await widget.controller.stopProcess(
-        widget.chat,
-        process.id,
-      );
-      if (!accepted && mounted && widget.chat.processesError == null) {
-        setState(() {
-          _processErrors[process.id] =
-              'The server did not confirm that this process stopped.';
-        });
-      }
-    } catch (_) {
-      if (mounted && widget.chat.processesError == null) {
-        setState(() {
-          _processErrors[process.id] = 'This process could not be stopped.';
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _stopping.remove(process.id));
+    if (confirmed == true && mounted && identical(widget.session, session)) {
+      await session.control(SessionControlAction.heartbeatClear);
     }
   }
 
   @override
   Widget build(BuildContext context) => ListenableBuilder(
-    listenable: widget.controller,
+    listenable: widget.session,
     builder: (context, _) {
-      final chat = widget.chat;
+      final chat = widget.session.state;
       final snapshot = chat.sessionControl;
       final working =
-          _actionBusy ||
+          chat.actionBusy ||
           chat.sessionControlLoading ||
           chat.sessionControlWorking;
-      final refreshing = chat.sessionControlLoading || chat.processesLoading;
+      final refreshing = chat.sessionControlLoading;
       return ProfileTranscriptDisclosure(
         key: ValueKey(('background-work', chat.key)),
         initiallyExpanded: widget.initiallyExpanded,
         maintainState: false,
         icon: Icons.work_history_outlined,
         label: 'Background work',
-        summary: Text(_summary(snapshot, chat.processes)),
-        loading: refreshing,
-        childrenPadding: const EdgeInsets.fromLTRB(20, 0, 0, 8),
+        summary: Text(chat.backgroundSummary),
+        childrenPadding: EdgeInsets.zero,
         children: [
           if (snapshot?.loop case final loop?)
-            _LoopSection(loop: loop, disabled: working, onAction: _control),
+            _LoopSection(
+              loop: loop,
+              actions: chat.loopActions,
+              disabled: working,
+              onAction: _control,
+            ),
           if (snapshot?.heartbeat case final heartbeat?)
             _HeartbeatSection(
               heartbeat: heartbeat,
+              actions: chat.heartbeatActions,
               disabled: working,
               onAction: _control,
               onClear: _confirmClearHeartbeat,
@@ -200,74 +131,66 @@ class _ProfileBackgroundWorkPanelState
               message: error,
               onRetry: working ? null : _refreshSessionControl,
             ),
-          if (_actionError case final error?)
+          if (chat.actionError case final error?)
             Align(alignment: Alignment.centerLeft, child: StudioError(error)),
           if (chat.sessionControlNotice case final notice?)
             Align(alignment: Alignment.centerLeft, child: Text(notice)),
-          const Divider(),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text(
-              'Processes',
-              style: Theme.of(context).textTheme.titleSmall,
-            ),
-          ),
-          if (chat.processesError case final error?)
-            _ErrorRow(
-              message: error,
-              onRetry: chat.processesLoading ? null : _refreshProcesses,
-            ),
-          if (chat.processes.isEmpty && chat.processesError == null)
-            const Align(
-              alignment: Alignment.centerLeft,
-              child: Text('No background processes are running or retained.'),
-            ),
-          for (final process in chat.processes)
-            _ProcessTile(
-              process: process,
-              stopping: _stopping.contains(process.id),
-              error: _processErrors[process.id],
-              onStop: () => _stopProcess(process),
-              onDismiss: () {
-                setState(() => _processErrors.remove(process.id));
-                widget.controller.dismissProcess(chat, process.id);
-              },
-            ),
           Align(
             alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: refreshing || _actionBusy ? null : _refresh,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: const Text('Refresh'),
+            child: ActivityDetailAction(
+              onPressed: refreshing || chat.actionBusy ? null : _refresh,
+              busy: refreshing,
+              icon: Icons.refresh,
+              label: 'Refresh',
             ),
           ),
         ],
       );
     },
   );
+}
 
-  static String _summary(
-    SessionControlSnapshot? snapshot,
-    List<GatewayProcessActivity> processes,
-  ) {
-    final recurring = [
-      snapshot?.loop,
-      snapshot?.heartbeat,
-    ].where((item) => item != null).length;
-    final running = processes.where((process) => process.isRunning).length;
-    if (recurring == 0 && processes.isEmpty) return 'Server state';
-    return '$recurring recurring · $running running';
-  }
+/// Borrowed process rows in the live-work dock. The workspace owns discovery
+/// and refresh lifetime; mounting a kept-alive page performs no I/O.
+class ProfileProcessPanel extends StatelessWidget {
+  const ProfileProcessPanel({super.key, required this.session});
+  final ProfileSupervisionSession session;
+
+  @override
+  Widget build(BuildContext context) => ListenableBuilder(
+    listenable: session,
+    builder: (context, _) {
+      final state = session.state;
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (state.inlineProcessesError case final error?) StudioError(error),
+          for (final process in state.processes)
+            _ProcessTile(
+              key: ValueKey(process.id),
+              process: process,
+              confirmed: session.active && state.processesError == null,
+              stopping: state.stopping.contains(process.id),
+              error: state.processErrors[process.id],
+              onStop: () => session.stopProcess(process.id),
+              onDismiss: () => session.dismissProcess(process.id),
+            ),
+        ],
+      );
+    },
+  );
 }
 
 class _LoopSection extends StatelessWidget {
   final SessionLoop loop;
+  final List<SessionControlAction> actions;
   final bool disabled;
   final Future<void> Function(SessionControlAction) onAction;
 
   const _LoopSection({
     required this.loop,
     required this.disabled,
+    required this.actions,
     required this.onAction,
   });
 
@@ -279,8 +202,6 @@ class _LoopSection extends StatelessWidget {
     details: [
       _loopCadence(loop),
       _loopRunCount(loop),
-      if (loop.nextDueAt > 0)
-        'Next due ${_serverTime(context, loop.nextDueAt)}',
       if (loop.awaitingResponse) 'Waiting for the current response',
       if (loop.deferredByGoal) 'Deferred while the goal is active',
       if (loop.pausedReason case final reason? when reason.trim().isNotEmpty)
@@ -288,30 +209,41 @@ class _LoopSection extends StatelessWidget {
       if (loop.lastStopReason case final reason? when reason.trim().isNotEmpty)
         'Stopped: $reason',
     ],
+    timing:
+        loop.status == SessionLoopStatus.active &&
+            loop.nextDueAt > 0 &&
+            !loop.awaitingResponse &&
+            !loop.deferredByGoal
+        ? ActivityTime.countdown(
+            due: DateTime.fromMillisecondsSinceEpoch(
+              (loop.nextDueAt * 1000).round(),
+            ),
+          )
+        : null,
     actions: [
-      if (loop.status == SessionLoopStatus.active)
-        TextButton.icon(
+      if (actions.contains(SessionControlAction.loopPause))
+        ActivityDetailAction(
           onPressed: disabled
               ? null
               : () => onAction(SessionControlAction.loopPause),
-          icon: const Icon(Icons.pause, size: 18),
-          label: const Text('Pause loop'),
+          icon: Icons.pause,
+          label: 'Pause loop',
         ),
-      if (loop.status == SessionLoopStatus.paused)
-        TextButton.icon(
+      if (actions.contains(SessionControlAction.loopResume))
+        ActivityDetailAction(
           onPressed: disabled
               ? null
               : () => onAction(SessionControlAction.loopResume),
-          icon: const Icon(Icons.play_arrow, size: 18),
-          label: const Text('Resume loop'),
+          icon: Icons.play_arrow,
+          label: 'Resume loop',
         ),
-      if (loop.status != SessionLoopStatus.done)
-        TextButton.icon(
+      if (actions.contains(SessionControlAction.loopStop))
+        ActivityDetailAction(
           onPressed: disabled
               ? null
               : () => onAction(SessionControlAction.loopStop),
-          icon: const Icon(Icons.stop, size: 18),
-          label: const Text('Stop loop'),
+          icon: Icons.stop,
+          label: 'Stop loop',
         ),
     ],
   );
@@ -319,6 +251,7 @@ class _LoopSection extends StatelessWidget {
 
 class _HeartbeatSection extends StatelessWidget {
   final SessionHeartbeat heartbeat;
+  final List<SessionControlAction> actions;
   final bool disabled;
   final Future<void> Function(SessionControlAction) onAction;
   final Future<void> Function() onClear;
@@ -326,6 +259,7 @@ class _HeartbeatSection extends StatelessWidget {
   const _HeartbeatSection({
     required this.heartbeat,
     required this.disabled,
+    required this.actions,
     required this.onAction,
     required this.onClear,
   });
@@ -340,26 +274,26 @@ class _HeartbeatSection extends StatelessWidget {
       '${heartbeat.fireCount} runs',
     ],
     actions: [
-      if (heartbeat.status == SessionHeartbeatStatus.active)
-        TextButton.icon(
+      if (actions.contains(SessionControlAction.heartbeatPause))
+        ActivityDetailAction(
           onPressed: disabled
               ? null
               : () => onAction(SessionControlAction.heartbeatPause),
-          icon: const Icon(Icons.pause, size: 18),
-          label: const Text('Pause heartbeat'),
+          icon: Icons.pause,
+          label: 'Pause heartbeat',
         ),
-      if (heartbeat.status == SessionHeartbeatStatus.paused)
-        TextButton.icon(
+      if (actions.contains(SessionControlAction.heartbeatResume))
+        ActivityDetailAction(
           onPressed: disabled
               ? null
               : () => onAction(SessionControlAction.heartbeatResume),
-          icon: const Icon(Icons.play_arrow, size: 18),
-          label: const Text('Resume heartbeat'),
+          icon: Icons.play_arrow,
+          label: 'Resume heartbeat',
         ),
-      TextButton.icon(
+      ActivityDetailAction(
         onPressed: disabled ? null : onClear,
-        icon: const Icon(Icons.clear, size: 18),
-        label: const Text('Clear heartbeat'),
+        icon: Icons.clear,
+        label: 'Clear heartbeat',
       ),
     ],
   );
@@ -371,6 +305,7 @@ class _WorkSection extends StatelessWidget {
   final String prompt;
   final List<String> details;
   final List<Widget> actions;
+  final Widget? timing;
 
   const _WorkSection({
     required this.icon,
@@ -378,139 +313,155 @@ class _WorkSection extends StatelessWidget {
     required this.prompt,
     required this.details,
     required this.actions,
+    this.timing,
   });
 
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 8),
-    child: Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(icon, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    title,
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            SelectableText(
-              prompt.trim().isEmpty ? 'No prompt provided' : prompt,
-            ),
-            const SizedBox(height: 6),
-            Wrap(
-              spacing: 10,
-              runSpacing: 4,
-              children: [for (final detail in details) Text(detail)],
-            ),
-            if (actions.isNotEmpty)
-              Wrap(spacing: 4, runSpacing: 2, children: actions),
-          ],
-        ),
+  Widget build(BuildContext context) => ActivityDetailsCard(
+    children: [
+      ActivityDetailSection(
+        leading: Icon(icon, size: 16),
+        block: ToolDetailBlock(label: 'Prompt', text: prompt, copyable: true),
+        facts: details,
       ),
-    ),
+      ActivityDetailStatus(label: title, icon: icon, actions: actions),
+      ?timing,
+    ],
   );
 }
 
 class _ProcessTile extends StatelessWidget {
   final GatewayProcessActivity process;
   final bool stopping;
+  final bool confirmed;
   final String? error;
   final Future<void> Function() onStop;
   final VoidCallback onDismiss;
 
   const _ProcessTile({
+    super.key,
     required this.process,
     required this.stopping,
+    required this.confirmed,
     required this.error,
     required this.onStop,
     required this.onDismiss,
   });
 
   @override
-  Widget build(BuildContext context) => AnchoredExpansionTile(
+  Widget build(BuildContext context) => CompactActivityRow(
     key: ValueKey(('process', process.id)),
-    minTileHeight: 44,
-    tilePadding: EdgeInsets.zero,
-    childrenPadding: const EdgeInsets.only(left: 12, right: 4, bottom: 8),
+    icon: Icon(
+      Icons.terminal_rounded,
+      color: WingTokens.of(context).muted,
+      size: 16,
+    ),
     title: Text(
       process.command,
-      style: WingTokens.of(context).typography.mono,
       maxLines: 2,
       overflow: TextOverflow.ellipsis,
+      style: WingTokens.of(context).typography.mono,
     ),
-    subtitle: Text(_processStatus(process)),
-    children: [
-      if (process.cwd case final cwd?)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: SelectableText(
-            'Folder: $cwd',
-            style: WingTokens.of(context).typography.mono,
-          ),
-        ),
-      if (process.pid case final pid?)
-        Align(alignment: Alignment.centerLeft, child: Text('PID $pid')),
-      if (process.detached || process.notifyOnComplete)
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            [
-              if (process.detached) 'Detached',
-              if (process.notifyOnComplete) 'Completion notice enabled',
-            ].join(' · '),
-          ),
-        ),
-      if (process.outputTail case final output?) ...[
-        const SizedBox(height: 6),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: Text(
-            'Recent output',
-            style: Theme.of(context).textTheme.labelLarge,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(8),
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          child: SelectableText(
-            output,
-            style: WingTokens.of(context).typography.mono,
-          ),
-        ),
-      ],
-      if (error case final message?)
-        Align(alignment: Alignment.centerLeft, child: StudioError(message)),
-      Align(
-        alignment: Alignment.centerRight,
-        child: process.isRunning
-            ? TextButton.icon(
-                onPressed: stopping ? null : onStop,
-                icon: stopping
-                    ? const SizedBox.square(
-                        dimension: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.stop, size: 18),
-                label: const Text('Stop process'),
-              )
-            : TextButton.icon(
-                onPressed: onDismiss,
-                icon: const Icon(Icons.close, size: 18),
-                label: const Text('Dismiss'),
+    lines: [
+      Text(
+        process.isRunning && !confirmed
+            ? 'Last seen running'
+            : _processStatus(process),
+        style: WingTokens.of(context).typography.label,
+      ),
+    ],
+    time: const ActivityTime(subject: 'Process'),
+    details: [
+      ActivityDetailsCard(
+        children: [
+          if (process.commandSource case final command?)
+            ActivityDetailSection(
+              block: ToolDetailBlock(
+                label: 'Command',
+                role: ToolDetailRole.command,
+                language: 'bash',
+                text: command,
+                copyable: true,
+                format: ToolDetailFormat.source,
               ),
+              facts: [
+                if (process.cwd case final cwd?) 'Folder: $cwd',
+                if (process.pid case final pid?) 'PID $pid',
+                if (process.detached) 'Detached',
+                if (process.notifyOnComplete) 'Completion notice enabled',
+              ],
+            ),
+          if (process.outputTail case final output? when output.isNotEmpty)
+            ActivityDetailSection(
+              block: ToolDetailBlock(
+                label: 'Recent output',
+                role: ToolDetailRole.output,
+                text: output,
+                copyable: true,
+                format: ToolDetailFormat.source,
+              ),
+              facts: const [
+                'Latest received output; not a complete transcript',
+              ],
+            ),
+          if (process.outputTail?.isEmpty == true)
+            const ActivityDetailFacts(
+              facts: ['Latest received output is empty'],
+            ),
+          if (process.commandSource == null &&
+              (process.cwd != null ||
+                  process.pid != null ||
+                  process.detached ||
+                  process.notifyOnComplete))
+            ActivityDetailFacts(
+              facts: [
+                if (process.cwd case final cwd?) 'Folder: $cwd',
+                if (process.pid case final pid?) 'PID $pid',
+                if (process.detached) 'Detached',
+                if (process.notifyOnComplete) 'Completion notice enabled',
+              ],
+            ),
+          if (error case final message?)
+            Padding(
+              padding: const EdgeInsets.all(WingSpacing.sm),
+              child: StudioError(message),
+            ),
+          ActivityDetailStatus(
+            working: confirmed && process.isRunning,
+            label: process.isRunning
+                ? (confirmed ? 'Running' : 'Last seen running')
+                : process.exitCode != null && process.exitCode != 0
+                ? 'Failed'
+                : process.exitCode == null
+                ? 'Exited'
+                : 'Completed',
+            error:
+                !process.isRunning &&
+                process.exitCode != null &&
+                process.exitCode != 0,
+            icon: process.isRunning
+                ? Icons.terminal_rounded
+                : process.exitCode != null && process.exitCode != 0
+                ? Icons.error_outline
+                : Icons.check_circle_outline,
+            contextFacts: [
+              if (!process.isRunning)
+                process.exitCode == null
+                    ? 'Process exited; exit code not supplied'
+                    : 'Exit ${process.exitCode}',
+            ],
+            actions: [
+              ActivityDetailAction(
+                label: process.isRunning ? 'Stop process' : 'Dismiss',
+                icon: process.isRunning ? Icons.stop : Icons.close,
+                busy: stopping,
+                onPressed: process.isRunning
+                    ? (confirmed ? onStop : null)
+                    : onDismiss,
+              ),
+            ],
+          ),
+        ],
       ),
     ],
   );
@@ -527,7 +478,11 @@ class _ErrorRow extends StatelessWidget {
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
       Expanded(child: StudioError(message)),
-      TextButton(onPressed: onRetry, child: const Text('Retry')),
+      ActivityDetailAction(
+        label: 'Retry',
+        icon: Icons.refresh,
+        onPressed: onRetry,
+      ),
     ],
   );
 }
@@ -555,14 +510,6 @@ String _loopRunCount(SessionLoop loop) {
     return '${loop.ticksFired}/${loop.maxTicks} tick budget';
   }
   return '${loop.ticksFired} runs';
-}
-
-String _serverTime(BuildContext context, num epochSeconds) {
-  final date = DateTime.fromMillisecondsSinceEpoch(
-    (epochSeconds * 1000).round(),
-  ).toLocal();
-  final localizations = MaterialLocalizations.of(context);
-  return '${localizations.formatShortDate(date)} ${localizations.formatTimeOfDay(TimeOfDay.fromDateTime(date))}';
 }
 
 String _duration(num seconds) {

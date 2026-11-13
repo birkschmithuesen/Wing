@@ -1,257 +1,336 @@
+import '../../widgets/selection_viewport.dart' show viewportSelection;
+import '../../widgets/studio_error.dart';
+import '../../widgets/studio_form_actions.dart';
+import 'package:wing/core/theme/wing_theme.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import 'dart:async';
+
 import 'package:flutter/material.dart';
-import '../../models/hermes_profile.dart';
-import '../../services/administration_repository.dart';
+
+import '../../services/profiles_management_session.dart';
 import 'admin_widgets.dart';
 
+enum ProfileManagementEntry { rename, delete }
+
 class AdminProfilesPage extends StatefulWidget {
-  final AdministrationRepository server;
-  final Future<bool> Function(String name) onOpenProfile;
   const AdminProfilesPage({
     super.key,
-    required this.server,
-    required this.onOpenProfile,
+    required this.createSession,
+    this.initialProfile,
+    this.initialAction,
   });
+  final ProfilesManagementSession Function() createSession;
+  final String? initialProfile;
+  final ProfileManagementEntry? initialAction;
   @override
   State<AdminProfilesPage> createState() => _AdminProfilesPageState();
 }
 
 class _AdminProfilesPageState extends State<AdminProfilesPage> {
-  bool _busy = false;
-  String? _error;
-  Future<String?> _name(
-    String title, {
-    String initial = '',
-    bool displayOnly = false,
-  }) => showDialog<String>(
-    context: context,
-    builder: (context) => _ProfileNameDialog(
-      title: title,
-      initial: initial,
-      displayOnly: displayOnly,
-    ),
-  );
+  late final ProfilesManagementSession _session;
+  int? _announced;
 
-  Future<void> _create(VoidCallback refresh, [String? source]) async {
-    final name = await _name(
-      source == null ? 'Create profile' : 'Clone $source',
-    );
-    if (name == null || !mounted) return;
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final result = await widget.server.write('POST', 'profiles', {
-        'name': name,
-        'clone_from': ?source,
-        'clone_all': false,
-        'clone_channels': false,
-      });
-      final created = result['name'];
-      if (created is! String ||
-          (await widget.server.discover()).named(created) == null) {
-        throw const AdministrationFailure(
-          'Creation could not be confirmed. Refresh before trying again.',
-        );
-      }
-      if (mounted) {
-        adminMessage(
-          context,
-          source == null
-              ? 'Profile created. Open it to configure access and defaults.'
-              : 'Profile cloned. Check inherited access and defaults before using it.',
-        );
-      }
-      refresh();
-    } catch (e) {
-      if (mounted) _error = administrationError(e, writing: true);
-    }
-    if (mounted) setState(() => _busy = false);
+  @override
+  void initState() {
+    super.initState();
+    _session = widget.createSession();
+    _session.addListener(_changed);
+    unawaited(_enter());
   }
 
-  Future<void> _change(
-    HermesProfile profile,
-    String action,
-    VoidCallback refresh,
-  ) async {
-    String? name;
-    if (action == 'rename') {
-      name = await _name(
-        'Rename ${profile.label}',
-        initial: profile.isDefault ? profile.label : profile.name,
-        displayOnly: profile.isDefault,
-      );
-      if (name == null || !mounted) return;
+  Future<void> _enter() async {
+    await _session.reload();
+    if (!mounted || widget.initialProfile == null) return;
+    final intent = switch (widget.initialAction) {
+      ProfileManagementEntry.rename => _session.beginRename(
+        widget.initialProfile!,
+      ),
+      ProfileManagementEntry.delete => _session.beginDelete(
+        widget.initialProfile!,
+      ),
+      null => null,
+    };
+    if (intent != null) await _edit(intent);
+  }
+
+  void _changed() {
+    if (!mounted) return;
+    final outcome = _session.state.outcome;
+    if (outcome != null &&
+        outcome.announcesSuccess &&
+        outcome.sequence != _announced) {
+      _announced = outcome.sequence;
+      adminMessage(context, outcome.message);
     }
-    if (!mounted ||
-        !await adminConfirm(
-          context,
-          action == 'delete'
-              ? 'Delete ${profile.label}?'
-              : 'Rename ${profile.label}?',
-          action == 'delete'
-              ? 'This removes the profile and its retained data. A running profile gateway may be stopped.'
-              : profile.isDefault
-              ? 'Only the display name changes. The default profile keeps its identity.'
-              : 'A running profile gateway may be stopped. Open editors will keep their original target.',
-          action: action == 'delete' ? 'Delete profile' : 'Rename',
-        )) {
-      return;
-    }
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      final result = await widget.server.write(
-        action == 'delete' ? 'DELETE' : 'PATCH',
-        'profiles/${Uri.encodeComponent(profile.name)}',
-        action == 'rename' ? {'new_name': name} : {},
-      );
-      final after = await widget.server.discover();
-      final verified = action == 'delete'
-          ? after.named(profile.name) == null
-          : profile.isDefault
-          ? after.named('default')?.displayName == name
-          : result['name'] is String && after.named(result['name']) != null;
-      if (!verified) {
-        throw const AdministrationFailure(
-          'The change could not be confirmed. Refresh before retrying.',
-        );
-      }
-      refresh();
-      if (mounted) {
-        adminMessage(
-          context,
-          action == 'delete' ? 'Profile deleted.' : 'Profile renamed.',
-        );
-      }
-    } catch (e) {
-      if (mounted) _error = administrationError(e, writing: true);
-    }
-    if (mounted) setState(() => _busy = false);
+    setState(() {});
   }
 
   @override
-  Widget build(BuildContext context) => AdminPage(
-    title: 'Profiles',
-    scope: widget.server.connectionLabel,
-    child: AdminLoad(
-      load: () => widget.server.read('profiles'),
-      builder: (context, data, refresh) {
-        final profiles = administrationRows(
-          data['profiles'],
-        ).map(HermesProfile.fromJson);
-        return ListView(
+  void dispose() {
+    _session.removeListener(_changed);
+    _session.dispose();
+    super.dispose();
+  }
+
+  Future<void> _edit(ProfilesManagementIntent? intent) async {
+    if (intent == null) return;
+    var draft = _session.state.draft;
+    if (draft == null) return;
+    if (draft.needsName) {
+      final continued = await showDialog<bool>(
+        context: context,
+        builder: (_) => _ProfileNameDialog(session: _session, intent: intent),
+      );
+      if (!mounted) return;
+      if (continued != true) _session.cancel(intent);
+      return;
+    }
+    draft = _session.state.draft;
+    if (draft == null) return;
+    if (draft.needsConfirmation) {
+      final confirmed = await adminConfirm(
+        context,
+        draft.confirmationTitle,
+        draft.confirmationDetail,
+        action: draft.confirmationAction,
+
+        actionIcon: draft.needsName ? Icons.check : Icons.delete_outline,
+        destructive: !draft.needsName,
+      );
+      if (!mounted) return;
+      if (!confirmed) {
+        _session.cancel(intent);
+        return;
+      }
+    }
+    await _session.submit(intent);
+  }
+
+  Future<void> _open(String name) async {
+    final opened = await _session.open(name);
+    if (mounted && opened) Navigator.pop(context);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _session.state;
+    final pending = _session.pendingIntent;
+    return AdminPage(
+      title: 'Profiles',
+      scope: state.scope,
+      child: StudioLoadingRegion(
+        available: state.hasObservation,
+        busy: state.loading || state.busy,
+        label: 'Loading profiles',
+        child: ListView(
           padding: const EdgeInsets.all(16),
           children: [
-            if (_busy) const LinearProgressIndicator(),
-            if (_error != null) AdminNotice.error(_error!),
+            if (state.error != null) AdminNotice.error(state.error!),
+            for (final settlement in state.settlements) ...[
+              AdminNotice(settlement.message),
+              viewportSelection(SelectableText(settlement.manualGuidance!)),
+              const SizedBox(height: 12),
+            ],
+            if (!state.busy &&
+                state.error != null &&
+                pending != null &&
+                state.draft != null)
+              Wrap(
+                spacing: 8,
+                children: [
+                  if (state.draft!.canSubmit)
+                    StudioButtonPress(
+                      child: TextButton(
+                        onPressed: () => unawaited(_session.submit(pending)),
+                        child: const Text('Try again'),
+                      ),
+                    ),
+                  if (state.draft!.canCancel)
+                    StudioButtonPress(
+                      child: IconButton(
+                        tooltip: 'Cancel profile change',
+                        onPressed: () => _session.cancel(pending),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                ],
+              ),
             Align(
               alignment: Alignment.centerLeft,
-              child: FilledButton.icon(
-                onPressed: _busy ? null : () => _create(refresh),
-                icon: const Icon(Icons.add),
-                label: const Text('Create profile'),
+              child: StudioButtonPress(
+                child: IconButton.filled(
+                  tooltip: 'Create profile',
+                  onPressed: state.canCreate
+                      ? () => unawaited(_edit(_session.beginCreate()))
+                      : null,
+                  icon: const Icon(Icons.add),
+                ),
               ),
             ),
             const SizedBox(height: 16),
             AdminGroup(
               children: [
-                for (final profile in profiles)
-                  ListTile(
-                    title: Text(profile.label),
-                    subtitle: Text(profile.description ?? profile.name),
-                    onTap: _busy
-                        ? null
-                        : () async {
-                            final opened = await widget.onOpenProfile(
-                              profile.name,
-                            );
-                            if (context.mounted && opened) {
-                              Navigator.pop(context);
-                            }
-                          },
-                    trailing: PopupMenuButton<String>(
-                      enabled: !_busy,
-                      tooltip: 'Manage ${profile.label}',
-                      itemBuilder: (_) => [
-                        const PopupMenuItem(
-                          value: 'clone',
-                          child: Text('Clone configuration'),
-                        ),
-                        const PopupMenuItem(
-                          value: 'rename',
-                          child: Text('Rename'),
-                        ),
-                        if (!profile.isDefault)
-                          const PopupMenuItem(
-                            value: 'delete',
-                            child: Text('Delete'),
+                for (final row in state.rows)
+                  StudioButtonPress(
+                    child: ListTile(
+                      title: Text(row.title),
+                      subtitle: Text(row.subtitle),
+                      onTap: state.canOpen
+                          ? () => unawaited(_open(row.name))
+                          : null,
+                      trailing: StudioButtonPress(
+                        child: PopupMenuButton<String>(
+                          enabled:
+                              row.canClone || row.canRename || row.canDelete,
+                          tooltip: 'Manage ${row.title}',
+                          itemBuilder: (_) => [
+                            if (row.canClone)
+                              const StudioPopupMenuItem(
+                                value: 'clone',
+                                child: Text('Clone configuration'),
+                              ),
+                            if (row.canRename)
+                              const StudioPopupMenuItem(
+                                value: 'rename',
+                                child: Text('Rename'),
+                              ),
+                            if (row.canDelete)
+                              const StudioPopupMenuItem(
+                                value: 'delete',
+                                child: Text('Delete'),
+                              ),
+                          ],
+                          onSelected: (action) => unawaited(
+                            _edit(switch (action) {
+                              'clone' => _session.beginClone(row.name),
+                              'rename' => _session.beginRename(row.name),
+                              'delete' => _session.beginDelete(row.name),
+                              _ => null,
+                            }),
                           ),
-                      ],
-                      onSelected: (value) => value == 'clone'
-                          ? _create(refresh, profile.name)
-                          : _change(profile, value, refresh),
+                        ),
+                      ),
                     ),
                   ),
               ],
             ),
-            TextButton(
-              onPressed: _busy ? null : refresh,
-              child: const Text('Refresh'),
+            StudioButtonPress(
+              child: TextButton(
+                onPressed: state.canRefresh
+                    ? () => unawaited(_session.reload())
+                    : null,
+                child: const Text('Refresh'),
+              ),
             ),
           ],
-        );
-      },
-    ),
-  );
+        ),
+      ),
+    );
+  }
 }
 
 class _ProfileNameDialog extends StatefulWidget {
-  final String title;
-  final String initial;
-  final bool displayOnly;
-  const _ProfileNameDialog({
-    required this.title,
-    required this.initial,
-    this.displayOnly = false,
-  });
+  const _ProfileNameDialog({required this.session, required this.intent});
+  final ProfilesManagementSession session;
+  final ProfilesManagementIntent intent;
   @override
   State<_ProfileNameDialog> createState() => _ProfileNameDialogState();
 }
 
 class _ProfileNameDialogState extends State<_ProfileNameDialog> {
-  late String _name = widget.initial;
+  late final _openingTitle = widget.session.state.draft!.title;
+  late final _name = TextEditingController(
+    text: widget.session.state.draft!.initialName,
+  );
+  bool _pending = false;
   @override
-  Widget build(BuildContext context) => AlertDialog(
-    scrollable: true,
-    title: Text(widget.title),
-    content: TextFormField(
-      initialValue: widget.initial,
-      autofocus: true,
-      decoration: InputDecoration(
-        labelText: 'Name',
-        helperMaxLines: 4,
-        helperText: widget.displayOnly
-            ? 'Display name. The default identity stays unchanged.'
-            : 'Lowercase letters, numbers, hyphens or underscores.',
-      ),
-      onChanged: (v) => setState(() => _name = v.trim()),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancel'),
-      ),
-      FilledButton(
-        onPressed: widget.displayOnly
-            ? (_name.isEmpty ? null : () => Navigator.pop(context, _name))
-            : !HermesProfile.isCanonicalName(_name) || _name == 'current'
-            ? null
-            : () => Navigator.pop(context, _name),
-        child: const Text('Continue'),
-      ),
-    ],
+  void dispose() {
+    _name.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_pending) return;
+    final draft = widget.session.state.draft;
+    if (draft == null || !draft.canSubmit) return;
+    if (draft.needsConfirmation) {
+      final confirmed = await adminConfirm(
+        context,
+        draft.confirmationTitle,
+        draft.confirmationDetail,
+        action: draft.confirmationAction,
+        actionIcon: Icons.check,
+        destructive: false,
+      );
+      if (!mounted || !confirmed) return;
+    }
+    setState(() => _pending = true);
+    final outcome = await widget.session.submit(widget.intent);
+    if (!mounted) return;
+    setState(() => _pending = false);
+    if (outcome?.announcesSuccess == true) Navigator.pop(context, true);
+  }
+
+  @override
+  Widget build(BuildContext context) => AnimatedBuilder(
+    animation: widget.session,
+    builder: (context, _) {
+      final state = widget.session.state;
+      final draft = state.draft;
+      final busy = _pending || state.busy;
+      return PopScope(
+        canPop: !busy,
+        child: StudioDialog(
+          scrollable: true,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 24,
+          ),
+          title: Text(_openingTitle),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                viewportSelection(
+                  TextFormField(
+                    controller: _name,
+                    enabled: !busy && draft?.canCancel == true,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      labelText: 'Name',
+                      helperMaxLines: 4,
+                      helperText: draft?.help,
+                      errorText: draft?.validationError,
+                    ),
+                    onChanged: (value) =>
+                        widget.session.updateName(widget.intent, value),
+                  ),
+                ),
+                if (state.error case final error?) ...[
+                  const SizedBox(height: 12),
+                  StudioError(error),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            StudioFormActions(
+              confirmKey: const ValueKey('profile-name-save'),
+              onCancel: busy ? null : () => Navigator.pop(context, false),
+              cancelLabel: draft?.canCancel == false
+                  ? 'Close editor'
+                  : 'Cancel',
+              onConfirm: !busy && draft?.canSubmit == true ? _save : null,
+              confirmLabel: draft?.needsConfirmation == true
+                  ? 'Save profile name'
+                  : draft?.title ?? 'Save profile',
+              busy: busy,
+              progressLabel: 'Saving profile',
+            ),
+          ],
+        ),
+      );
+    },
   );
 }

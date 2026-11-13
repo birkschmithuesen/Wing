@@ -1,3 +1,4 @@
+import 'package:wing/core/models/settings_edit.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/screens/administration/admin_settings_page.dart';
@@ -39,7 +40,7 @@ void main() {
       await tester.pump();
       (fixture.configs['personal']!['memory'] as Map)['memory_char_limit'] =
           4000;
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.byTooltip('Save changes'));
       await tester.pumpAndSettle();
       expect(find.text('Current server value: 4000'), findsOneWidget);
       expect(fixture.requests.where((r) => r.$1 == 'PUT'), isEmpty);
@@ -48,7 +49,7 @@ void main() {
       await tester.pumpAndSettle();
       (fixture.configs['personal']!['memory'] as Map)['memory_char_limit'] =
           5000;
-      await tester.tap(find.text('Save'));
+      await tester.tap(find.byTooltip('Save changes'));
       await tester.pumpAndSettle();
       expect(find.text('Current server value: 5000'), findsOneWidget);
       expect(fixture.requests.where((r) => r.$1 == 'PUT'), isEmpty);

@@ -30,38 +30,61 @@ void main() {
         return {'current': 'client-work', 'active': 'default'};
       });
 
-      final result = await repository.probe();
+      final result = await repository.discover();
 
-      expect(result.capability, ProfilesCapability.supported);
       expect(requested, ['profiles', 'profiles/active']);
-      expect(result.discovery!.serverPreferred.name, 'client-work');
-      expect(result.discovery!.profiles.last.label, 'Client Work');
+      expect(result.serverPreferred.name, 'client-work');
+      expect(result.profiles.last.label, 'Client Work');
     },
   );
 
-  test('classifies authentication failures without falling back', () async {
-    final repository = ProfilesRepository((_) async {
-      throw const DashboardHttpException(401, 'profiles');
-    });
+  test(
+    'preserves authentication failures without making a fallback request',
+    () async {
+      final requested = <String>[];
+      final repository = ProfilesRepository((endpoint) async {
+        requested.add(endpoint);
+        throw const DashboardHttpException(401, 'profiles');
+      });
 
-    final result = await repository.probe();
+      await expectLater(
+        repository.discover(),
+        throwsA(
+          isA<DashboardHttpException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            401,
+          ),
+        ),
+      );
+      expect(requested, ['profiles']);
+    },
+  );
 
-    expect(result.capability, ProfilesCapability.authenticationRequired);
-    expect(result.discovery, isNull);
-  });
+  test(
+    'preserves an absent modern endpoint without making a fallback request',
+    () async {
+      final requested = <String>[];
+      final repository = ProfilesRepository((endpoint) async {
+        requested.add(endpoint);
+        throw const DashboardHttpException(404, 'profiles');
+      });
 
-  test('classifies an absent modern endpoint as unsupported', () async {
-    final repository = ProfilesRepository((_) async {
-      throw const DashboardHttpException(404, 'profiles');
-    });
+      await expectLater(
+        repository.discover(),
+        throwsA(
+          isA<DashboardHttpException>().having(
+            (error) => error.statusCode,
+            'statusCode',
+            404,
+          ),
+        ),
+      );
+      expect(requested, ['profiles']);
+    },
+  );
 
-    final result = await repository.probe();
-
-    expect(result.capability, ProfilesCapability.unsupported);
-    expect(result.message, contains('modern profile API'));
-  });
-
-  test('fails closed on duplicate or malformed profile identities', () async {
+  test('fails closed on duplicate profile identities', () async {
     final payload = profilesPayload();
     (payload['profiles'] as List).add({
       'name': 'default',
@@ -72,9 +95,24 @@ void main() {
       return {'current': 'default', 'active': 'default'};
     });
 
-    final result = await repository.probe();
-
-    expect(result.capability, ProfilesCapability.malformed);
-    expect(result.discovery, isNull);
+    await expectLater(repository.discover(), throwsFormatException);
   });
+
+  for (final malformed in [
+    <String, dynamic>{'display_name': 'Missing identity'},
+    <String, dynamic>{'name': 42},
+    <String, dynamic>{'name': ''},
+  ]) {
+    test('rejects malformed profile identity $malformed', () async {
+      final repository = ProfilesRepository((endpoint) async {
+        if (endpoint == 'profiles') {
+          return {
+            'profiles': [malformed],
+          };
+        }
+        return {'current': 'default', 'active': 'default'};
+      });
+      await expectLater(repository.discover(), throwsFormatException);
+    });
+  }
 }

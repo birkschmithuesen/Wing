@@ -1,16 +1,16 @@
 import 'dart:async';
 
-import '../core/services/profile_workspace_controller.dart';
-
 /// Successful turn completions with their final reply text, for hands-free
 /// read-aloud. Emitted once per settled turn; failures and stops are skipped.
+///
+/// The chat is an opaque [Object] so this file does not import the controller
+/// (which owns it); the voice driver casts it back to its ProfileChat.
 class CompletedReplies {
-  final _controller =
-      StreamController<({ProfileChat chat, String text})>.broadcast();
+  final _controller = StreamController<({Object chat, String text})>.broadcast();
 
-  Stream<({ProfileChat chat, String text})> get stream => _controller.stream;
+  Stream<({Object chat, String text})> get stream => _controller.stream;
 
-  void offer(ProfileChat chat, String text) {
+  void offer(Object chat, String text) {
     _controller.add((chat: chat, text: text));
   }
 

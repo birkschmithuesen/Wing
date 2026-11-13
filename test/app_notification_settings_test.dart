@@ -1,10 +1,13 @@
+import 'package:wing/core/models/app_preferences.dart';
+import 'package:wing/core/services/voice_preferences_session.dart';
+import 'package:wing/core/services/android_voice.dart';
+import 'package:wing/core/services/app_preferences.dart';
 import 'package:flutter/material.dart';
 import 'package:wing/core/widgets/compact_switch.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/screens/app_settings_content.dart';
-import 'package:wing/core/services/turn_notification_service.dart';
 
 void main() {
   setUp(() {
@@ -23,12 +26,21 @@ void main() {
   ) async {
     SharedPreferences.setMockInitialValues({});
     final preferences = await SharedPreferences.getInstance();
+    final appPreferences = AppPreferences(preferences);
+    addTearDown(appPreferences.dispose);
     var permissionRequests = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: AppSettingsContent(
-            preferences: preferences,
+            pluginServer: null,
+            preferences: appPreferences,
+            createVoiceSession: () => VoicePreferencesSession(
+              preferences: appPreferences,
+              device: AndroidVoice.instance,
+              hermesProfileLabel: null,
+              openHermesSettings: null,
+            ),
             onChanged: () {},
             enableNotifications: () async {
               permissionRequests++;
@@ -47,7 +59,10 @@ void main() {
     expect(completion.hitTestable(), findsOneWidget);
     await tester.tap(completion);
     await tester.pumpAndSettle();
-    expect(preferences.getBool(completionNotificationsKey), isFalse);
+    expect(
+      preferences.getBool(AppPreferenceField.completedNotifications.storageKey),
+      isFalse,
+    );
     expect(
       tester
           .widget<CompactSwitchListTile>(
@@ -67,7 +82,10 @@ void main() {
     expect(tester.widget<CompactSwitchListTile>(previews).value, isTrue);
     await tester.tap(previews);
     await tester.pumpAndSettle();
-    expect(preferences.getBool(notificationPreviewsKey), isFalse);
+    expect(
+      preferences.getBool(AppPreferenceField.notificationPreviews.storageKey),
+      isFalse,
+    );
     final permission = find.text('Test notification');
     await tester.scrollUntilVisible(permission, 250);
     await tester.pumpAndSettle();
@@ -75,6 +93,9 @@ void main() {
     await tester.tap(permission);
     await tester.pumpAndSettle();
     expect(permissionRequests, 1);
-    expect(preferences.getBool(completionNotificationsKey), isFalse);
+    expect(
+      preferences.getBool(AppPreferenceField.completedNotifications.storageKey),
+      isFalse,
+    );
   });
 }

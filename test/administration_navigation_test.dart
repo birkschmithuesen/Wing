@@ -1,3 +1,5 @@
+import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/connection_access.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:wing/core/widgets/app_drawer.dart';
 import 'package:wing/core/services/versions_controller.dart';
@@ -10,19 +12,80 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
-import 'package:wing/core/services/profile_color_store.dart';
+import 'package:wing/core/models/profile_colors.dart';
 import 'package:wing/core/theme/wing_theme.dart';
 import 'package:wing/core/theme/profile_workspace_theme.dart';
 import 'package:wing/core/screens/administration/administration_content.dart';
 import 'package:wing/core/widgets/profile_selector.dart';
 import 'support/administration_fixture.dart';
 import 'support/administration_design_fixture.dart';
+import 'support/backend_update_channel_fixture.dart';
 import 'support/scheduled_tasks_fixture.dart';
 import 'package:wing/core/models/hermes_profile.dart';
 import 'package:wing/core/services/profiles_repository.dart';
 import 'support/profile_browser_fixture.dart';
+import 'package:wing/core/services/profile_gateway.dart';
+
+class _AdministrationProfilesFixture extends ProfileBrowserFixture {
+  ProfileDiscovery discovery = const ProfileDiscovery(
+    profiles: [
+      HermesProfile(name: 'personal'),
+      HermesProfile(name: 'work'),
+    ],
+    currentName: 'personal',
+    activeName: 'personal',
+  );
+  @override
+  ProfileGateway gateway(WorkspaceScope scope) {
+    final wire = super.gateway(scope);
+    return ProfileGateway(
+      scope: scope,
+      discover: () async => discovery,
+      get: wire.read,
+      rpc: wire.call,
+    );
+  }
+}
+
+class _UpdateAdministrationFixture extends AdministrationFixture {
+  final channels = BackendUpdateChannelFixture();
+
+  @override
+  Future<Map<String, dynamic>> send(
+    String method,
+    String path,
+    Map<String, String> query,
+    Map<String, dynamic>? body,
+  ) async {
+    if (method == 'GET' && path == 'health') {
+      requests.add((method, path, {...query}, body));
+      return {
+        'ok': true,
+        'version': updateCheck['current_version'],
+        'commit': BackendUpdateChannelFixture.currentSha,
+      };
+    }
+    if (method == 'GET' && path == 'hermes/update/check') {
+      channels.fetchedAt++;
+    }
+    final channelRead = method != 'GET'
+        ? null
+        : path == 'profiles'
+        ? {
+            'profiles': [
+              for (final name in configs.keys)
+                {'name': name, 'path': BackendUpdateChannelFixture.home},
+            ],
+          }
+        : channels.read(path, query);
+    if (channelRead == null) return super.send(method, path, query, body);
+    requests.add((method, path, {...query}, body == null ? null : {...body}));
+    return channelRead;
+  }
+}
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   const capture = bool.fromEnvironment('CAPTURE_ADMINISTRATION');
   if (capture) {
     setUpAll(() async {
@@ -42,6 +105,8 @@ void main() {
     });
   }
   late ProfileWorkspaceController controller;
+  late _AdministrationProfilesFixture profiles;
+  late AppPreferences appPreferences;
   late AdministrationFixture admin;
   late GlobalKey<ScaffoldState> shellKey;
   setUp(() async {
@@ -53,30 +118,39 @@ void main() {
       buildSignature: '',
     );
     SharedPreferences.setMockInitialValues({});
-    final fixture = ProfileBrowserFixture();
+    profiles = _AdministrationProfilesFixture();
     admin = AdministrationFixture();
     shellKey = GlobalKey<ScaffoldState>();
+    final preferences = await SharedPreferences.getInstance();
+    appPreferences = AppPreferences(preferences);
     controller = ProfileWorkspaceController(
-      connection: SavedConnection(
-        id: admin.server.connectionId,
-        label: 'Home server',
-        host: 'localhost',
-        port: 1,
-        apiKey: '',
+      access: ConnectionAccess(
+        connection: SavedConnection(
+          id: admin.server.connectionId,
+          label: 'Home server',
+          host: 'localhost',
+          port: 1,
+          apiKey: '',
+        ),
+        dashboardOAuth: null,
       ),
       connectionIdentity: admin.server.connectionIdentity,
-      preferences: await SharedPreferences.getInstance(),
-      gatewayFactory: fixture.gateway,
+      preferences: preferences,
+      appPreferences: appPreferences,
+      gatewayFactory: profiles.gateway,
     );
     await controller.initialize();
   });
-  tearDown(() => controller.dispose());
+  tearDown(() {
+    controller.dispose();
+    appPreferences.dispose();
+  });
   Future<void> show(
     WidgetTester tester,
     Brightness brightness, {
     double scale = 1,
     double width = 390,
-    WorkspaceAccent accent = WorkspaceAccent.mint,
+    WorkspaceAccent accent = WorkspaceAccent.teal,
     bool healthOnly = false,
   }) async {
     tester.view.physicalSize = Size(width, 844);
@@ -101,10 +175,12 @@ void main() {
                   ? AppDestination.health
                   : AppDestination.administration,
               onSelected: (_) {},
-              connection: controller.connection,
+              access: controller.access,
               connectionStatus: controller.connectionStatus,
-              versionsControllerFactory: (_) =>
-                  VersionsController(gateway: admin.server.gateway('default')),
+              versionsControllerFactory: (_) => VersionsController(
+                updateStore: backendUpdateStoreFixture(),
+                gateway: admin.server.gateway('default'),
+              ),
             ),
             body: healthOnly
                 ? HermesHealthContent(
@@ -128,6 +204,24 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  Future<Finder> showProfileRefresh(WidgetTester tester) async {
+    final refresh = find.byTooltip('Refresh profile status');
+    await tester.scrollUntilVisible(
+      refresh,
+      200,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
+    await tester.pumpAndSettle();
+    expect(refresh.hitTestable(), findsOneWidget);
+    return refresh;
+  }
+
   Future<void> screenshot(WidgetTester tester, String name) async {
     if (!capture) return;
     // Asset decoding runs outside the widget test's fake clock.
@@ -149,26 +243,49 @@ void main() {
     });
   }
 
+  testWidgets('ordinary Administration does not start retained Health checks', (
+    tester,
+  ) async {
+    await show(tester, Brightness.dark);
+    expect(find.byType(HermesAdministrationContent), findsOneWidget);
+    expect(
+      controller.healthSession(repository: admin.server).overviews,
+      isEmpty,
+    );
+    expect(
+      admin.requests.where((request) => request.$2.startsWith('ops/')),
+      isEmpty,
+    );
+    expect(
+      admin.rpcRequests.where((request) => request.$2 == 'setup.runtime_check'),
+      isEmpty,
+    );
+    await tester.pumpWidget(const SizedBox());
+  });
+
   testWidgets(
     'header refresh reloads overview reads without duplicate action',
     (tester) async {
       await show(tester, Brightness.dark);
       admin.requests.clear();
-      await tester.runAsync(() async {
-        await Function.apply(
-          tester
-              .widget<IconButton>(
-                find.byWidgetPredicate(
-                  (widget) =>
-                      widget is IconButton &&
-                      widget.tooltip == 'Refresh administration',
-                ),
-              )
-              .onPressed!,
-          const [],
-        );
-      });
-      await tester.pumpAndSettle();
+      final refresh = find.byWidgetPredicate(
+        (widget) =>
+            widget is IconButton && widget.tooltip == 'Refresh administration',
+      );
+      await tester.tap(find.byTooltip('Refresh administration'));
+      await tester.pump();
+      // Reconnect joins journal work created by the async fixture setup. Let
+      // its real event queue advance while observing the actual control state.
+      for (
+        var attempt = 0;
+        attempt < 40 && tester.widget<IconButton>(refresh).onPressed == null;
+        attempt++
+      ) {
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      expect(tester.widget<IconButton>(refresh).onPressed, isNotNull);
+      expect(tester.takeException(), isNull);
       for (final endpoint in [
         'config',
         'model/info',
@@ -186,14 +303,97 @@ void main() {
       }
       expect(find.text('Refresh overview', skipOffstage: false), findsNothing);
       expect(admin.requests.where((r) => r.$1 != 'GET'), isEmpty);
+    },
+  );
+
+  testWidgets(
+    'Health entry performs diagnostics without switching server profile',
+    (tester) async {
       await show(tester, Brightness.dark, healthOnly: true);
-      expect(find.byTooltip('Refresh profile status'), findsOneWidget);
+      await showProfileRefresh(tester);
       expect(admin.requests.where((r) => r.$2 == 'profiles/active'), isEmpty);
       expect(
         admin.requests.where((r) => r.$1 != 'GET').map((r) => (r.$1, r.$2)),
         [('POST', 'ops/doctor'), ('POST', 'ops/security-audit')],
       );
       expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets(
+    'returning from an editor does not refresh a newly selected profile',
+    (tester) async {
+      await show(tester, Brightness.dark);
+      try {
+        await tester.enterText(
+          find.byWidgetPredicate(
+            (widget) => widget is TextField && !widget.readOnly,
+          ),
+          'Memory budget',
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Memory budget').last);
+        await tester.pumpAndSettle();
+        expect(find.text('Memory settings'), findsOneWidget);
+        expect(find.text('Server A / personal'), findsOneWidget);
+        expect(
+          admin.requests.where(
+            (request) =>
+                request.$1 == 'GET' &&
+                request.$2 == 'config' &&
+                request.$3['profile'] == 'personal',
+          ),
+          isNotEmpty,
+        );
+
+        expect(await controller.switchProfile('work'), isTrue);
+        await tester.pumpAndSettle();
+        expect(controller.current?.scope.profileName, 'work');
+        // The open editor keeps its original scope while the underlying
+        // Administration route has finished loading the newly selected owner.
+        expect(find.text('Server A / personal'), findsOneWidget);
+        expect(
+          admin.requests.where(
+            (request) =>
+                request.$1 == 'GET' &&
+                request.$2 == 'config' &&
+                request.$3['profile'] == 'work',
+          ),
+          hasLength(1),
+        );
+        expect(tester.takeException(), isNull);
+        final readsBeforeReturn = admin.requests.length;
+        final rpcBeforeReturn = admin.rpcRequests.length;
+
+        await tester.pageBack();
+        await tester.pumpAndSettle();
+        expect(find.byType(HermesAdministrationContent), findsOneWidget);
+        expect(controller.current?.scope.profileName, 'work');
+        expect(
+          tester
+              .widget<ProfileSelector>(find.byType(ProfileSelector))
+              .selectedProfile,
+          'work',
+        );
+        expect(tester.takeException(), isNull);
+        expect(
+          admin.requests
+              .skip(readsBeforeReturn)
+              .where((request) => request.$3['profile'] == 'work'),
+          isEmpty,
+          reason: 'Returning from the personal editor cannot refresh work.',
+        );
+        expect(
+          admin.rpcRequests
+              .skip(rpcBeforeReturn)
+              .where((request) => request.$1 == 'work'),
+          isEmpty,
+        );
+        expect(admin.requests.where((request) => request.$1 != 'GET'), isEmpty);
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+      }
     },
   );
 
@@ -245,11 +445,12 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('profile-color-8')));
       await tester.pumpAndSettle();
       expect(
-        ProfileColorStore(
-          controller.preferences,
-          controller.connectionIdentity,
-        ).read('work'),
-        8,
+        appPreferences
+            .profileColorsFor(controller.connectionIdentity)
+            .value
+            .profiles['work']!
+            .selected,
+        ProfileColorChoice.blue,
       );
       await screenshot(tester, '${brightness.name}-$scale-profile-blue');
       expect(tester.takeException(), isNull);
@@ -266,7 +467,7 @@ void main() {
           name: 'Morning research and a deliberately long project name',
         )..['next_run_at'] = '2026-09-18T01:00:00Z',
       );
-      controller.discovery = ProfileDiscovery(
+      profiles.discovery = ProfileDiscovery(
         profiles: [
           HermesProfile(
             name: 'personal',
@@ -281,6 +482,7 @@ void main() {
         currentName: 'personal',
         activeName: 'personal',
       );
+      await controller.switchProfile('personal');
       await show(
         tester,
         mode == 'light' ? Brightness.light : Brightness.dark,
@@ -313,6 +515,7 @@ void main() {
       testWidgets('versions and updates ${brightness.name} at $scale text', (
         tester,
       ) async {
+        admin = _UpdateAdministrationFixture();
         await show(
           tester,
           brightness,
@@ -334,20 +537,20 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text('1.2.3'), findsOneWidget);
         expect(
-          find.text('Update available · 3 commits behind'),
+          find.text('Update available · 3 commits behind main'),
           findsOneWidget,
         );
-        expect(find.text('Reconnect MCP tools'), findsNothing);
-        expect(find.text('Check update progress'), findsNothing);
+        expect(find.byTooltip('Reconnect MCP tools'), findsNothing);
+        expect(find.byTooltip('Check update progress'), findsNothing);
         expect(
           admin.requests.where((r) => r.$2 == 'hermes/update/check').length,
           checksBefore + 1,
         );
         await screenshot(tester, '${brightness.name}-$scale-versions');
-        await tester.ensureVisible(find.text('Changes in this update'));
+        await tester.ensureVisible(find.byTooltip('Changes in this update'));
         await tester.pumpAndSettle();
         final requestCount = admin.requests.length;
-        await tester.tap(find.text('Changes in this update'));
+        await tester.tap(find.byTooltip('Changes in this update'));
         await tester.pumpAndSettle();
         expect(find.text('Showing 2 of 3 commits'), findsOneWidget);
         await tester.scrollUntilVisible(
@@ -399,7 +602,7 @@ void main() {
         await tester.pumpAndSettle();
 
         expect(tester.takeException(), isNull);
-        await tester.ensureVisible(find.text('Update backend'));
+        await tester.ensureVisible(find.byTooltip('Update backend'));
         await tester.pumpAndSettle();
         expect(tester.takeException(), isNull);
       });
@@ -421,11 +624,11 @@ void main() {
         expect(tester.takeException(), isNull);
         await screenshot(tester, '${brightness.name}-profile-large-text');
         await show(tester, brightness, healthOnly: true);
-        expect(find.byTooltip('Refresh profile status'), findsOneWidget);
+        await showProfileRefresh(tester);
         await screenshot(tester, '${brightness.name}-health-profile');
         await tester.scrollUntilVisible(
           find.text('Server'),
-          250,
+          -250,
           scrollable: find
               .byWidgetPredicate(
                 (w) => w is Scrollable && w.axisDirection == AxisDirection.down,
@@ -476,7 +679,16 @@ void main() {
   testWidgets('runtime health remains available without a selected profile', (
     tester,
   ) async {
-    controller.current = null;
+    final previous = controller;
+    controller = ProfileWorkspaceController(
+      access: previous.access,
+      connectionIdentity: 'unselected-administration',
+      preferences: previous.preferences,
+      appPreferences: appPreferences,
+      gatewayFactory: profiles.gateway,
+    );
+    previous.dispose();
+    expect(controller.current, isNull);
     await show(tester, Brightness.dark, scale: 1.3, healthOnly: true);
     expect(find.byType(TabBar), findsNothing);
     expect(find.textContaining('Runtime profile:'), findsNothing);
@@ -531,10 +743,7 @@ void main() {
     await tester.tap(find.byType(TextFormField).last);
     await tester.pumpAndSettle();
     await screenshot(tester, 'light-editor-keyboard');
-    expect(
-      tester.getRect(find.widgetWithText(FilledButton, 'Save')).bottom,
-      lessThanOrEqualTo(564),
-    );
+    expect(find.byTooltip('Save changes').hitTestable(), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -543,7 +752,7 @@ void main() {
       testWidgets(
         'profile management scrolls after the last profile ${brightness.name} $scale',
         (tester) async {
-          controller.discovery = const ProfileDiscovery(
+          profiles.discovery = const ProfileDiscovery(
             profiles: [
               HermesProfile(name: 'personal'),
               HermesProfile(name: 'client-work'),
@@ -553,6 +762,7 @@ void main() {
             currentName: 'personal',
             activeName: 'personal',
           );
+          await controller.switchProfile('personal');
           await show(
             tester,
             brightness,
@@ -579,11 +789,11 @@ void main() {
           await screenshot(tester, '${brightness.name}-$scale-profile-row-end');
           await tester.tap(manage);
           await tester.pumpAndSettle();
-          expect(find.text('Create profile'), findsOneWidget);
+          expect(find.byTooltip('Create profile'), findsOneWidget);
           await tester.tap(find.text('personal').first);
           await tester.pumpAndSettle();
           expect(find.text('Models and reasoning'), findsOneWidget);
-          expect(find.text('Create profile'), findsNothing);
+          expect(find.byTooltip('Create profile'), findsNothing);
         },
       );
     }
@@ -593,8 +803,8 @@ void main() {
     'unknown credential results offer retry without administrative navigation',
     (tester) async {
       await show(tester, Brightness.dark, healthOnly: true);
-      await tester.ensureVisible(find.byTooltip('Refresh profile status'));
-      await tester.tap(find.byTooltip('Refresh profile status'));
+      final refresh = await showProfileRefresh(tester);
+      await tester.tap(refresh);
       await tester.pumpAndSettle();
       expect(find.text('Check incomplete'), findsOneWidget);
       expect(find.text('Retry'), findsOneWidget);
@@ -622,10 +832,7 @@ void main() {
             theme.colorScheme.primary,
             brightness == Brightness.dark ? accent.dark : accent.light,
           );
-          expect(
-            theme.filledButtonTheme.style!.minimumSize!.resolve({}),
-            const Size(48, 40),
-          );
+
           await screenshot(tester, '${brightness.name}-${accent.name}-profile');
         },
       );

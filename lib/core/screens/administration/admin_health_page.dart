@@ -1,14 +1,22 @@
+import '../../widgets/studio_error.dart';
+import 'package:wing/core/widgets/studio_loading.dart';
+import '../../models/profile_session_key.dart';
+import '../../models/health_finding.dart';
 import 'package:flutter/material.dart';
 import '../../services/administration_repository.dart';
 import '../../services/administration_health.dart';
 import '../../services/profile_workspace_controller.dart';
 import '../../theme/wing_theme.dart';
 import '../../widgets/profile_diagnostics_panel.dart';
+import '../../services/profile_diagnostics_controller.dart';
 import 'admin_widgets.dart';
+import 'admin_health_alerts.dart';
 import 'admin_runtime_health.dart';
+import 'admin_host_health.dart';
+import '../../services/host_resources_session.dart';
 import 'admin_health_section.dart';
 import 'admin_providers_page.dart';
-import 'admin_connectors_page.dart';
+import 'admin_connector_routes.dart';
 
 Color administrationHealthColor(
   BuildContext context,
@@ -23,15 +31,29 @@ Color administrationHealthColor(
   };
 }
 
+StudioErrorSeverity? _findingSeverity(AdministrationHealthFinding finding) {
+  if (finding.readFailed ||
+      finding.status == AdministrationHealthStatus.failure) {
+    return StudioErrorSeverity.error;
+  }
+  return finding.status == AdministrationHealthStatus.warning
+      ? StudioErrorSeverity.noResult
+      : null;
+}
+
 class AdminHealthContent extends StatelessWidget {
-  final AdministrationRepository server;
   final AdministrationHealth health;
+  final HostResourcesSession hostResources;
   final String? persistenceError;
   final ProfileAdministration? profile;
   final ProfileDiagnosticsController? Function() accessChecks;
   final VoidCallback? onConnections;
   final Future<void> Function() onRefresh;
   final Future<void> Function()? onCheckProfile;
+  final Future<void> Function(
+    Future<void> Function(ProfileAdministration profile) openEditor,
+  )?
+  onReviewAccess;
   final bool checkingProfile;
   final DateTime? profileCheckedAt;
   final Future<void> Function(String destination) onOpenDestination;
@@ -39,8 +61,8 @@ class AdminHealthContent extends StatelessWidget {
   final Future<void> Function(ProfileSessionKey)? onOpenSession;
   const AdminHealthContent({
     super.key,
-    required this.server,
     required this.health,
+    required this.hostResources,
     this.persistenceError,
     required this.profile,
     required this.onRefresh,
@@ -49,6 +71,7 @@ class AdminHealthContent extends StatelessWidget {
     this.checkingProfile = false,
     this.profileCheckedAt,
     required this.accessChecks,
+    required this.onReviewAccess,
     this.onConnections,
     this.chatController,
     this.onOpenSession,
@@ -57,7 +80,9 @@ class AdminHealthContent extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final findings = health.profileFindings;
-    return RefreshIndicator(
+    return StudioRefresh(
+      available: true,
+      label: 'Refreshing health',
       onRefresh: onRefresh,
       child: ListView(
         key: const PageStorageKey('administration-health-findings'),
@@ -65,31 +90,28 @@ class AdminHealthContent extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
         children: [
           if (persistenceError case final message?) AdminNotice.error(message),
+          const AdminHealthAlerts(),
+          AdminHostHealth(resources: hostResources),
+          const SizedBox(height: 16),
           AdminRuntimeHealth(
             health: health,
             chatController: chatController,
             onOpenSession: onOpenSession,
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 16),
           AdminHealthSectionHeading(
             title: 'Profile',
             checkedAt: profileCheckedAt,
             checking: checkingProfile,
             incomplete: health.profileCheckIncomplete,
-            refresh: IconButton(
-              tooltip: 'Refresh profile status',
-              onPressed: profile == null || checkingProfile
-                  ? null
-                  : onCheckProfile,
-              icon: checkingProfile
-                  ? const SizedBox.square(
-                      dimension: 24,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        semanticsLabel: 'Refreshing profile status',
-                      ),
-                    )
-                  : const Icon(Icons.refresh),
+            refresh: StudioButtonPress(
+              child: IconButton(
+                tooltip: 'Refresh profile status',
+                onPressed: profile == null || checkingProfile
+                    ? null
+                    : onCheckProfile,
+                icon: const Icon(Icons.refresh),
+              ),
             ),
           ),
           if (profile == null)
@@ -97,15 +119,15 @@ class AdminHealthContent extends StatelessWidget {
           else ...[
             AdminGroup(
               children: [
-                if (accessChecks() case final checks?)
+                if (accessChecks() case final checks?
+                    when onReviewAccess != null)
                   ProfileModelAccessRow(
                     controller: checks,
-                    modelObservation: health.overview?.observations['model'],
-                    refreshing:
-                        health.overview?.observations['model']?.loading == true,
+                    modelObservation: health.modelAccess,
+                    refreshing: health.modelAccess.loading,
                     onRetry: () => onCheckProfile?.call(),
                     onManageConnections: onConnections,
-                    onFixAccess: () => _fixAccess(context, checks),
+                    onFixAccess: () => _fixAccess(context),
                   )
                 else
                   const AdminNotice(
@@ -131,10 +153,12 @@ class AdminHealthContent extends StatelessWidget {
             ),
             Align(
               alignment: Alignment.centerLeft,
-              child: TextButton.icon(
-                onPressed: () => showHealthCheckExplanation(context),
-                icon: const Icon(Icons.info_outline, size: 18),
-                label: const Text('What’s checked?'),
+              child: StudioButtonPress(
+                child: IconButton(
+                  tooltip: 'What’s checked?',
+                  onPressed: () => showHealthCheckExplanation(context),
+                  icon: const Icon(Icons.info_outline, size: 18),
+                ),
               ),
             ),
           ],
@@ -149,70 +173,91 @@ class AdminHealthContent extends StatelessWidget {
     AdministrationHealthFinding? finding,
     IconData icon,
     VoidCallback onTap,
-  ) => ListTile(
-    contentPadding: const EdgeInsets.symmetric(horizontal: 12),
-    minTileHeight: 64,
-    minVerticalPadding: 8,
-    leading: Icon(
-      finding?.status == AdministrationHealthStatus.failure ||
-              finding?.status == AdministrationHealthStatus.warning
-          ? Icons.error_outline
-          : icon,
-      color: finding == null
-          ? Theme.of(context).colorScheme.onSurfaceVariant
-          : administrationHealthColor(context, finding.status),
-      size: 22,
-    ),
-    title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-    subtitle: Text(
-      finding?.detail ?? 'Not checked',
-      style: Theme.of(context).textTheme.bodySmall,
-    ),
-    trailing: finding?.status == AdministrationHealthStatus.healthy
-        ? null
-        : const Icon(Icons.chevron_right, size: 20),
-    onTap: finding?.status == AdministrationHealthStatus.healthy ? null : onTap,
-  );
+  ) {
+    final severity = finding == null ? null : _findingSeverity(finding);
+    final healthy = finding?.status == AdministrationHealthStatus.healthy;
+    final tile = StudioButtonPress(
+      child: ListTile(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+        minTileHeight: 64,
+        minVerticalPadding: severity == null ? 8 : 12,
+        leading: severity != null
+            ? null
+            : Icon(
+                icon,
+                color: finding == null
+                    ? Theme.of(context).colorScheme.onSurfaceVariant
+                    : administrationHealthColor(context, finding.status),
+                size: 22,
+              ),
+        title: severity != null
+            ? StudioError(
+                title,
+                detail: finding!.detail,
+                framed: false,
+                severity: severity,
+              )
+            : Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: severity != null
+            ? null
+            : Text(
+                finding?.detail ?? 'Not checked',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+        trailing: healthy ? null : const Icon(Icons.chevron_right, size: 20),
+        onTap: healthy ? null : onTap,
+      ),
+    );
+    return severity == null
+        ? tile
+        : StudioErrorFrame(severity: severity, child: tile);
+  }
 
   Widget _observation(
     BuildContext context,
     AdministrationHealthFinding finding,
-  ) => Padding(
-    padding: const EdgeInsets.all(16),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(
-              switch (finding.status) {
-                AdministrationHealthStatus.healthy => Icons.info_outline,
-                AdministrationHealthStatus.unknown => Icons.help_outline,
-                _ => Icons.error_outline,
-              },
-              color: administrationHealthColor(context, finding.status),
-              size: 22,
+  ) {
+    final severity = _findingSeverity(finding);
+    return Padding(
+      padding: severity == null ? const EdgeInsets.all(16) : EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (severity != null)
+            StudioError(finding.detail, severity: severity)
+          else
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(
+                  switch (finding.status) {
+                    AdministrationHealthStatus.healthy => Icons.info_outline,
+                    AdministrationHealthStatus.unknown => Icons.help_outline,
+                    _ => Icons.error_outline,
+                  },
+                  color: administrationHealthColor(context, finding.status),
+                  size: 22,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    finding.detail,
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                finding.detail,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
+          if (finding.checkedAt case final at?) ...[
+            const SizedBox(height: 8),
+            Text(
+              'Checked ${TimeOfDay.fromDateTime(at).format(context)}',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
           ],
-        ),
-        if (finding.checkedAt case final at?) ...[
-          const SizedBox(height: 8),
-          Text(
-            'Checked ${TimeOfDay.fromDateTime(at).format(context)}',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
         ],
-      ],
-    ),
-  );
+      ),
+    );
+  }
 
   Future<void> _detail(BuildContext context, String title, String source) =>
       adminPushProfile(
@@ -232,8 +277,11 @@ class AdminHealthContent extends StatelessWidget {
               child: ListView(
                 padding: const EdgeInsets.all(16),
                 children: [
-                  if (finding != null)
-                    AdminGroup(children: [_observation(context, finding)])
+                  if (finding case final finding?)
+                    if (_findingSeverity(finding) == null)
+                      AdminGroup(children: [_observation(context, finding)])
+                    else
+                      _observation(context, finding)
                   else
                     const AdminNotice(
                       'Not checked. Return to Health and check this profile.',
@@ -255,7 +303,7 @@ class AdminHealthContent extends StatelessWidget {
                                   context,
                                   profile,
                                   (context, profile) =>
-                                      AdminConnectorsPage(profile: profile),
+                                      profileConnectorsPage(profile),
                                 )
                               : onOpenDestination(destination),
                         ),
@@ -268,16 +316,12 @@ class AdminHealthContent extends StatelessWidget {
         ),
       );
 
-  Future<void> _fixAccess(
-    BuildContext context,
-    ProfileDiagnosticsController checks,
-  ) async {
-    await adminPushProfile(
-      context,
-      profile!,
-      (context, profile) => AdminProvidersPage(profile: profile),
-    );
-    checks.invalidate();
-    if (context.mounted) await onCheckProfile?.call();
-  }
+  Future<void> _fixAccess(BuildContext context) =>
+      onReviewAccess!((profile) async {
+        await adminPushProfile(
+          context,
+          profile,
+          (context, profile) => AdminProvidersPage(profile: profile),
+        );
+      });
 }
