@@ -105,7 +105,13 @@ void main() {
       status.accessAvailable();
       expect(status.phase, ServerConnectionPhase.connected);
       controller.networkUnavailable();
-      expect(controller.current!.reconnectScheduled, isTrue);
+      // Fork (Wing Voice): Q7=A network gate
+      // probe moved: upstream API rename 894b389e
+      expect(controller.current!.reconnectScheduled, isFalse);
+      final attempts = host.connectCalls; // probe moved: upstream API rename 894b389e
+      controller.networkRestored(); // probe moved: upstream API rename 894b389e
+      await controller.resumeConnection(networkChanged: true); // probe moved: upstream API rename 894b389e
+      expect(host.connectCalls, greaterThan(attempts)); // probe moved: upstream API rename 894b389e
       expect(host.disconnectCalls, greaterThan(disconnects));
     },
   );

@@ -288,9 +288,10 @@ void main() {
       await idle.initialize();
       // Q7=A: a lost device-network gate withholds retry timers, so the
       // recovery is provoked by an access failure with the gate open.
-      idle.connectionStatus.accessFailed(
-        const SocketException('Network unavailable'),
-      );
+      // probe moved: upstream API rename 894b389e
+      hosts[idle.connectionIdentity]!.gateways['a']!.onConnectionChanged!(
+        false,
+      ); // probe moved: upstream API rename 894b389e
       expect(idle.recovering, isTrue);
       final replacement = connection.copyWith(host: 'replacement');
       await registry.reconcileConnections([replacement]);
