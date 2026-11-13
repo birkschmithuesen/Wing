@@ -2609,6 +2609,15 @@
       "selector": "main"
     },
     {
+      "id": "host-test-test/backend_update_store_test.dart",
+      "kind": "host-test",
+      "path": "test/backend_update_store_test.dart",
+      "purpose": "Explicit test/driver entry; environment flags and owned target prerequisites apply",
+      "source": "internal/docs/TESTING.md; test/backend_update_store_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
       "id": "host-test-test/backend_version_card_test.dart",
       "kind": "host-test",
       "path": "test/backend_version_card_test.dart",
@@ -6980,6 +6989,24 @@
       "selector": [
         "recommendedTextTimeout"
       ]
+    },
+    {
+      "id": "host-test-test/unread_runtime_repro_test.dart",
+      "kind": "host-test",
+      "path": "test/unread_runtime_repro_test.dart",
+      "purpose": "Visible saved answers acknowledge shared read status while runtime attachment is held or refused; actual Chats and Recents controls",
+      "source": "docs/features/conversation.md; test/unread_runtime_repro_test.dart",
+      "status": "supported",
+      "selector": "main"
+    },
+    {
+      "id": "device-or-live-test-integration_test/unread_runtime_native_test.dart",
+      "kind": "device-or-live-test",
+      "path": "integration_test/unread_runtime_native_test.dart",
+      "purpose": "Visible saved answers acknowledge shared read status while runtime attachment is held or refused; actual Chats and Recents controls",
+      "source": "docs/features/conversation.md; integration_test/unread_runtime_native_test.dart",
+      "status": "supported",
+      "selector": "main"
     }
   ],
   "files": [
@@ -10244,6 +10271,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/services/backend_update_store.dart",
+      "area": "lib",
+      "provenance": "tracked"
+    },
+    {
       "path": "lib/core/services/background_monitoring_service.dart",
       "area": "lib",
       "provenance": "tracked"
@@ -12480,6 +12512,11 @@
     },
     {
       "path": "test/backend_update_model_test.dart",
+      "area": "test",
+      "provenance": "tracked"
+    },
+    {
+      "path": "test/backend_update_store_test.dart",
       "area": "test",
       "provenance": "tracked"
     },
@@ -17297,6 +17334,16 @@
       "path": "website/workspaces.html",
       "area": "website",
       "provenance": "tracked"
+    },
+    {
+      "path": "test/unread_runtime_repro_test.dart",
+      "area": "test",
+      "provenance": "intentional-untracked"
+    },
+    {
+      "path": "integration_test/unread_runtime_native_test.dart",
+      "area": "integration_test",
+      "provenance": "intentional-untracked"
     }
   ],
   "direct_dependencies": {
@@ -17360,6 +17407,7 @@
         "lib/core/screens/administration/admin_defaults_page.dart",
         "lib/core/screens/administration/admin_doctor_diagnosis.dart",
         "lib/core/screens/administration/admin_fallback_page.dart",
+        "lib/core/screens/administration/admin_health_alerts.dart",
         "lib/core/screens/administration/admin_health_page.dart",
         "lib/core/screens/administration/admin_health_section.dart",
         "lib/core/screens/administration/admin_identity_page.dart",
@@ -17424,6 +17472,7 @@
         "lib/core/services/android_voice.dart",
         "lib/core/services/app_preferences.dart",
         "lib/core/services/backend_update_controller.dart",
+        "lib/core/services/backend_update_store.dart",
         "lib/core/services/background_monitoring_service.dart",
         "lib/core/services/backup_session.dart",
         "lib/core/services/chat_browser_data.dart",
@@ -17524,7 +17573,6 @@
         "lib/core/widgets/health_alerts/health_alert_bell.dart",
         "lib/core/widgets/health_alerts/health_alert_dialog.dart",
         "lib/core/widgets/health_alerts/health_alert_notice.dart",
-        "lib/core/screens/administration/admin_health_alerts.dart",
         "lib/core/widgets/health_alerts/health_alerts_scope.dart",
         "lib/core/widgets/image_paste_menu.dart",
         "lib/core/widgets/installed_app_version_card.dart",
@@ -17664,6 +17712,7 @@
         "test/health_details_design_test.dart",
         "test/helpers/journey_controls.dart",
         "test/helpers/pump_markdown_widget.dart",
+        "test/hermes023_administration_test.dart",
         "test/home_config_restore_test.dart",
         "test/home_group_navigation_test.dart",
         "test/home_share_review_test.dart",
@@ -17942,6 +17991,7 @@
         "integration_test/slash_completion_native_test.dart",
         "lib/core/services/administration_health_session.dart",
         "lib/core/services/app_preferences.dart",
+        "lib/core/services/backend_update_store.dart",
         "lib/core/services/chat_notification_coordinator.dart",
         "lib/core/services/composer_draft_store.dart",
         "lib/core/services/connection_manager.dart",
@@ -17982,6 +18032,10 @@
         "test/app_settings_design_test.dart",
         "test/app_shell_navigation_test.dart",
         "test/attachment_image_lifetime_test.dart",
+        "test/backend_update_controller_test.dart",
+        "test/backend_update_store_test.dart",
+        "test/backend_version_card_test.dart",
+        "test/backend_version_identity_test.dart",
         "test/background_monitoring_activity_test.dart",
         "test/background_monitoring_service_test.dart",
         "test/background_monitoring_settings_test.dart",
@@ -18022,9 +18076,11 @@
         "test/device_preference_test.dart",
         "test/doctor_chat_test.dart",
         "test/doctor_diagnostic_page_test.dart",
+        "test/drawer_versions_test.dart",
         "test/gateway_approval_panel_test.dart",
         "test/health_alerts_test.dart",
         "test/health_alerts_ui_test.dart",
+        "test/hermes023_administration_test.dart",
         "test/home_config_restore_test.dart",
         "test/home_group_navigation_test.dart",
         "test/home_share_review_test.dart",
@@ -18126,6 +18182,7 @@
         "test/streaming_presentation_test.dart",
         "test/streaming_work_budget_test.dart",
         "test/studio_layout_test.dart",
+        "test/support/backend_update_channel_fixture.dart",
         "test/support/composer_fixture.dart",
         "test/support/health_alerts_fixture.dart",
         "test/text_size_preference_test.dart",
@@ -18223,6 +18280,7 @@
       "import_consumers": [
         "lib/core/controllers/voice_input_controller.dart",
         "lib/core/controllers/voice_output_controller.dart",
+        "lib/core/services/backend_update_controller.dart",
         "lib/core/services/connection_manager.dart",
         "lib/core/services/hermes_cloud.dart"
       ],
@@ -18237,6 +18295,7 @@
         "lib/core/models/profile_skills.dart",
         "lib/core/services/app_preferences.dart",
         "lib/core/services/backend_update_channels.dart",
+        "lib/core/services/backend_update_store.dart",
         "lib/core/services/hermes_cloud.dart",
         "lib/core/services/profile_connection_identity.dart",
         "lib/core/services/turn_notification_service.dart",
@@ -18514,6 +18573,7 @@
         "test/attachment_preview_source_test.dart",
         "test/backend_update_controller_test.dart",
         "test/backend_update_model_test.dart",
+        "test/backend_update_store_test.dart",
         "test/backend_version_card_test.dart",
         "test/backend_version_identity_test.dart",
         "test/background_markdown_content_test.dart",
@@ -18628,6 +18688,7 @@
         "test/health_details_design_test.dart",
         "test/helpers/journey_controls.dart",
         "test/helpers/pump_markdown_widget.dart",
+        "test/hermes023_administration_test.dart",
         "test/hermes_cloud_test.dart",
         "test/hermes_profile_test.dart",
         "test/hermes_voice_test.dart",
@@ -18940,6 +19001,8 @@
         "test/app_preferences_settings_test.dart",
         "test/app_preferences_test.dart",
         "test/app_preferences_workspace_entry_test.dart",
+        "test/backend_update_controller_test.dart",
+        "test/backend_update_store_test.dart",
         "test/backup_restore_outcomes_test.dart",
         "test/browser_menu_captured_owner_test.dart",
         "test/browser_preferences_persistence_test.dart",

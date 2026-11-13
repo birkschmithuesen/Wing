@@ -1,7 +1,11 @@
+import 'dart:convert';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'dart:async';
+import 'package:http/http.dart' as http;
+import 'package:wing/core/services/server_connection_status.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -30,14 +34,27 @@ void main() {
   final navigator = GlobalKey<NavigatorState>();
 
   setUpAll(() async {
-    if (!_captureRecovery) return;
+    // Use the production font metrics for enlarged recovery messages in every
+    // run; Ahem's square glyphs make the ordinary Retry control unreachable.
+    final configFile = File('.dart_tool/package_config.json');
+    final config =
+        jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+    final flutter = (config['packages'] as List)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((entry) => entry['name'] == 'flutter');
+    final root = Directory.fromUri(
+      configFile.uri.resolve(flutter['rootUri'] as String),
+    );
+    final fonts = root.parent.parent.uri.resolve(
+      'bin/cache/artifacts/material_fonts/',
+    );
     for (final entry in {
-      'Roboto': 'build/studio-roboto.ttf',
-      'MaterialIcons': 'build/studio-icons.otf',
-      'WingIcons': 'assets/fonts/wing-icons.ttf',
+      'Roboto': fonts.resolve('Roboto-Regular.ttf'),
+      'MaterialIcons': fonts.resolve('MaterialIcons-Regular.otf'),
+      'WingIcons': File('assets/fonts/wing-icons.ttf').absolute.uri,
     }.entries) {
       await (FontLoader(entry.key)..addFont(
-            File(entry.value).readAsBytes().then(ByteData.sublistView),
+            File.fromUri(entry.value).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
     }
@@ -67,6 +84,49 @@ void main() {
     appPreferences.dispose();
   });
 
+  test(
+    'background HTTP failure leaves a healthy chat out of recovery',
+    () async {
+      final status = controller.connectionStatus;
+      expect(status.live, ConnectionAvailability.available);
+      final connects = host.connectCalls;
+      final disconnects = host.disconnectCalls;
+      await expectLater(
+        status.observeAccess(() async {
+          throw http.ClientException('Background session read failed');
+        }),
+        throwsA(isA<http.ClientException>()),
+      );
+      expect(status.phase, ServerConnectionPhase.limited);
+      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(controller.recovering, isFalse);
+      expect(host.connectCalls, connects);
+      expect(host.disconnectCalls, disconnects);
+      status.accessAvailable();
+      expect(status.phase, ServerConnectionPhase.connected);
+      controller.networkUnavailable();
+      expect(controller.current!.reconnectScheduled, isTrue);
+      expect(host.disconnectCalls, greaterThan(disconnects));
+    },
+  );
+
+  test('network route changes preserve a responsive live connection', () async {
+    final connects = host.connectCalls;
+    final disconnects = host.disconnectCalls;
+    final phases = <ServerConnectionPhase>[];
+    controller.connectionStatus.addListener(
+      () => phases.add(controller.connectionStatus.phase),
+    );
+    for (var change = 0; change < 3; change++) {
+      await controller.resumeConnection(networkChanged: true);
+    }
+    expect(host.connectCalls, connects);
+    expect(host.disconnectCalls, disconnects);
+    expect(phases, everyElement(ServerConnectionPhase.connected));
+    expect(controller.recovering, isFalse);
+    expect(chat.composer.observation.text, 'Keep my draft');
+  });
+
   for (final failed in [false, true]) {
     test(
       'network change during recovery awaits ${failed ? 'failed' : 'successful'} replacement',
@@ -78,6 +138,7 @@ void main() {
         final recovery = controller.reconnect(chat.key.workspace);
         await host.heldHistoryStarted!.future;
 
+        host.activeListDelay = Completer<void>();
         final networkRecovery = controller.resumeConnection(
           networkChanged: true,
         );
@@ -86,6 +147,15 @@ void main() {
         if (failed) {
           host.connectError = StateError('Replacement connection failed');
         }
+        host.activeListDelay!.completeError(
+          JsonRpcError(
+            'session.active_list',
+            'Old route stopped responding',
+            reason: 'request_timeout',
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        host.activeListDelay = null;
         history.complete();
         await Future.wait([recovery, networkRecovery, refresh]);
 
@@ -303,6 +373,119 @@ void main() {
             isEmpty,
           );
           await capture('settled');
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'pending chat Retry shows recovery through history ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final preferences = await SharedPreferences.getInstance();
+          await preferences.setStringList('profile_pending_v2_focus-recovery', [
+            jsonEncode(chat.key.toJson()),
+          ]);
+          final access = controller.access;
+          controller.dispose();
+          host.resumeError = JsonRpcError(
+            'session.resume',
+            'session not found',
+            code: 4007,
+          );
+          controller = ProfileWorkspaceController(
+            access: access,
+            connectionIdentity: 'focus-recovery',
+            preferences: preferences,
+            appPreferences: appPreferences,
+            gatewayFactory: host.gateway,
+          );
+          await controller.initialize();
+          final frame = GlobalKey();
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: scale == 2,
+                ),
+                child: RepaintBoundary(key: frame, child: child!),
+              ),
+              home: ProfileWorkspaceScreen(
+                initialDestination: AppDestination.activity,
+                controller: controller,
+                createBotsSession: () => BotsSession((_) async => []),
+              ),
+            ),
+          );
+          await settleRecovery(tester);
+          expect(controller.error, isNotNull);
+          final resume = Completer<void>();
+          final history = Completer<void>();
+          addTearDown(() {
+            if (!resume.isCompleted) resume.complete();
+            if (!history.isCompleted) history.complete();
+          });
+          host
+            ..resumeError = null
+            ..resumeStarted = Completer<void>()
+            ..resumeDelay = resume
+            ..heldHistoryStarted = Completer<void>()
+            ..heldHistoryDelay = history;
+          await tester.tap(find.text('Retry').first);
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(StudioLoading), findsOneWidget);
+          await host.resumeStarted!.future;
+          resume.complete();
+          await settleRecovery(tester);
+          await host.heldHistoryStarted!.future;
+          expect(find.byType(StudioLoading), findsOneWidget);
+          if (_captureRecovery) {
+            await tester.runAsync(() async {
+              final boundary =
+                  frame.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary;
+              final bitmap = await boundary.toImage();
+              final bytes = await bitmap.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final directory = Directory(
+                'build/design-previews/connection-recovery',
+              )..createSync(recursive: true);
+              await File(
+                '${directory.path}/pending-${brightness.name}-$scale.png',
+              ).writeAsBytes(bytes!.buffer.asUint8List());
+              bitmap.dispose();
+            });
+          }
+          history.complete();
+          for (
+            var attempt = 0;
+            attempt < 30 && controller.recovering;
+            attempt++
+          ) {
+            await settleRecovery(tester);
+          }
+          await tester.pump();
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(controller.error, isNull);
+          expect(
+            preferences.getStringList('profile_pending_v2_focus-recovery'),
+            isEmpty,
+          );
+          expect(
+            host.calls.where((call) => call.$2 == 'prompt.submit'),
+            isEmpty,
+          );
+          expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         },
       );

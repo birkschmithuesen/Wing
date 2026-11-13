@@ -429,12 +429,6 @@ void main() {
         }
         expect(chat.reading.historyError, isNull);
         expect(chat.runtime.offline, isFalse);
-        expect(cancelled, isNot(contains(seedSink.shown.first.id)));
-        await tester.drag(
-          find.byKey(const ValueKey('profile-transcript')),
-          const Offset(0, -700),
-        );
-        await tester.pumpAndSettle();
         expect(cancelled, contains(seedSink.shown.first.id));
         expect(controller.visible, isTrue);
         await tester.tap(find.byTooltip('Attach file'));

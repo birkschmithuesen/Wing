@@ -1,3 +1,4 @@
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -122,6 +123,7 @@ Future<void> _snapshot(WidgetTester tester, String name) async {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   setUpAll(() async {
     if (!_capture) return;
     for (final (family, path) in [
@@ -373,6 +375,7 @@ void main() {
           };
           final gateway = fixture.server.profile('personal').gateway;
           final versions = VersionsController(
+            updateStore: backendUpdateStoreFixture(),
             gateway: gateway,
             cloudManaged: true,
           );

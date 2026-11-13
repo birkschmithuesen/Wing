@@ -268,14 +268,25 @@ class BackgroundMarkdownContentState extends State<BackgroundMarkdownContent>
     }
   }
 
+  Rect? _contentBounds() {
+    if (!mounted || _failed || _renderedSource != widget.data) return null;
+    final content = context.findRenderObject();
+    if (content is! RenderBox || !content.attached || !content.hasSize) {
+      return null;
+    }
+    return content.localToGlobal(Offset.zero) & content.size;
+  }
+
   @override
   Widget build(BuildContext context) {
     final row = context.findAncestorRenderObjectOfType<TranscriptAnchorBox>();
     if (!identical(row, _loadingRow)) {
       _loadingRow?.setContentPending(this, false);
+      _loadingRow?.setContentBounds(this, null);
       _loadingRow = row;
     }
     _loadingRow?.setContentPending(this, _segments == null && !_failed);
+    _loadingRow?.setContentBounds(this, _contentBounds);
     final child = _segments == null
         ? const SizedBox.shrink()
         : widget.builder(_renderedSource!, _segments!);
@@ -300,6 +311,7 @@ class BackgroundMarkdownContentState extends State<BackgroundMarkdownContent>
     // Release before the parent lays out a replacement child. Disposal happens
     // after layout; a reparented state acquires its new row on the next build.
     _loadingRow?.setContentPending(this, false);
+    _loadingRow?.setContentBounds(this, null);
     _loadingRow = null;
     super.deactivate();
   }

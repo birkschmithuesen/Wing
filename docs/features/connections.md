@@ -13,6 +13,15 @@ Feature ID: `connections`.
   replacing its open chat, draft or connection.
 - `connections.recover` — Recover temporary connection and conversation failures automatically, with retry delays capped at 30 seconds. Foreground return, network changes and Retry bypass the delay. Authentication or configuration failures remain actionable; setup can be cancelled safely.
 
+A failed HTTP GET gets one immediate transport retry before changing the shared
+connection indicator. Cancellation, timeouts and writes are not replayed. If both
+reads fail, HTTP access remains visibly limited while a healthy live chat stays
+connected; that background failure does not start conversation recovery. Actual
+socket loss and Android network loss still trigger recovery.
+When Android changes its default network, Wing checks the existing live socket
+before replacing it. A responsive socket stays connected without flashing the
+recovery indicator; an unresponsive socket follows normal recovery.
+
 ## How to get to it (user POV)
 
 Open connection setup at first launch or use Hermes instances to add or edit an instance. Use Next or swipe left/right between address, sign-in and name/save. Cards follow the swipe and settle into place; an unfinished swipe returns without changing the step. Next stays in a fixed footer. The normal phone layout fits on one screen, with scrolling retained for enlarged text and the keyboard. Check connection stays on sign-in with its results; Next or a forward swipe opens name/save after all checks pass. Completed results remain available across all three cards for five minutes from completion, unless connection details change. Returning within that window allows forward swipes without checking again. Save explicitly, or import a shared connection, then reopen it.
@@ -66,18 +75,34 @@ Recovery continues while the saved connection is retained, including when the
 server returns after the first five attempts. A healthy socket alone does not
 finish conversation recovery. Newer live updates can supersede a resume snapshot;
 Wing reads again without treating that race as a connection-settings failure.
+Saved pending chats from a previous app process join this same recovery loop.
+A temporary resume or history failure retries automatically; Retry and foreground
+return immediately reattempt restoration, including chats that have not opened
+yet. A newer live observation triggers a fresh read. Recovery finishes only after
+the saved chat, draft and history are restored; already submitted prompts are
+not sent again. A permanent refusal remains actionable and keeps its saved owner.
+
 The existing header Wing shows recovery while history and drafts remain usable.
 The icon-only Retry action remains available between automatic attempts and
 disables while a recovery request is running.
 Leaving a notification opening or disposing its workspace cancels its retries.
 
 ```sh
-flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
 ```
 
 These regressions cover live-update and overlapping-read races, prolonged
 startup/chat/notification outages, capped delays, immediate manual/foreground
 recovery, permanent failures, disposal and avoiding duplicate submissions.
+`connection_manager_test.dart` also covers the bounded read retry and its
+cancellation/write boundaries; `profile_focus_recovery_test.dart` verifies that
+an exhausted background HTTP failure leaves healthy chat recovery idle and that
+subsequent network loss still recovers.
+It also covers responsive route changes and failed live checks during an
+overlapping conversation recovery.
+`profile_empty_history_test.dart` verifies that an HTTP history failure remains
+visible and retryable while the live socket stays connected, and that an explicit
+history retry clears the limited status without starting chat recovery.
 
 A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.
 

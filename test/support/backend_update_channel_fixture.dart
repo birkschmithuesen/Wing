@@ -3,9 +3,16 @@ import 'dart:convert';
 
 import 'package:crypto/crypto.dart';
 import 'package:wing/core/models/backend_update.dart';
+import 'package:wing/core/services/backend_update_store.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+BackendUpdateStore backendUpdateStoreFixture([
+  String key = 'backend-update-test',
+]) => BackendUpdateStore(SharedPreferences.getInstance(), key);
 
 /// Stock profile, source-check cache and sparse config PUT responses.
 class BackendUpdateChannelFixture {
+  late final updates = backendUpdateStoreFixture();
   static const root = '/opt/hermes';
   static const home = '/state/work';
   static const currentSha = '1111111111111111111111111111111111111111';

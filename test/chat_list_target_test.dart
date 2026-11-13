@@ -20,6 +20,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/models/chat_list_view.dart';
+import 'package:wing/core/models/chat_browser_preferences.dart';
 import 'package:wing/core/models/session_visibility.dart';
 import 'package:wing/core/models/profile_live_activity.dart';
 import 'package:wing/core/screens/profile_workspace_browser.dart';
@@ -37,6 +38,7 @@ import 'support/profile_browser_fixture.dart';
 class TargetFixture extends ProfileBrowserFixture {
   final rowUpdates = <String, Map<String, dynamic>>{};
   final tokenInputs = <int, num>{};
+  final projectSessionIds = <String, List<String>>{};
 
   // Activity rows without a runtime profile require one actual stored owner.
   final exclusiveOwners = <String, String>{};
@@ -78,9 +80,9 @@ class TargetFixture extends ProfileBrowserFixture {
             (i > 3 ? ' $i' : ''),
         'path': '/p$i',
         'lastActive': now - i * 3600,
-        'sessionIds': [
-          for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j',
-        ],
+        'sessionIds':
+            projectSessionIds['$profile/p$i'] ??
+            [for (var j = i * 6; j < (i + 1) * 6 && j < 12; j++) 'session-$j'],
       },
   ];
 }
@@ -321,6 +323,118 @@ void main() {
 
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'opened chat metadata is local and survives return $brightness $scale',
+        (tester) async {
+          await appPreferences.chooseBrowserPreferences(
+            'target',
+            BrowserPreferenceIntent.exclusiveProfile('personal'),
+          );
+          fixture.rowUpdates['personal/session-0'] = {'title': null};
+          fixture.projectSessionIds['personal/p0'] = [
+            for (var i = 1; i < 6; i++) 'session-$i',
+          ];
+          fixture.exclusiveOwners['session-0'] = 'personal';
+          await show(
+            tester,
+            brightness: brightness,
+            scale: scale,
+            workspace: true,
+          );
+          final row = find.byKey(const ValueKey('chat-personal-session-0'));
+          expect(
+            find.descendant(of: row, matching: find.text('Untitled chat')),
+            findsOneWidget,
+          );
+          await screenshot(
+            tester,
+            'opened-metadata-before-${brightness.name}-$scale',
+          );
+
+          fixture.rowUpdates['personal/session-0'] = {
+            'title': 'Cairns planning',
+          };
+          fixture.projectSessionIds['personal/p0']!.insert(0, 'session-0');
+          controller.setGroupNotificationsForeground(false);
+          controller.current!.gateway.onEvent!(
+            StreamEvent(type: 'sessions.changed', data: const {}),
+          );
+          await tester.ensureVisible(row);
+          await tester.tap(
+            find.descendant(of: row, matching: find.text('Untitled chat')),
+          );
+          await tester.pumpAndSettle();
+          final chat = controller.current!.chat!;
+          expect(chat.key.sessionId, 'session-0');
+          expect(controller.chatProject(chat)?.id, 'p0');
+          int catalogReads() => fixture.reads
+              .where(
+                (read) => read.$1 == 'sessions' && read.$2['limit'] == '100',
+              )
+              .length;
+          final reads = catalogReads();
+          fixture.rowUpdates['personal/session-0'] = {
+            'title': 'Plan Cairns flights',
+          };
+          emitChatEvent(controller, chat, 'session.title', {
+            'session_id': 'session-0',
+            'title': 'Plan Cairns flights',
+          });
+          controller.current!.gateway.onEvent!(
+            StreamEvent(type: 'sessions.changed', data: const {}),
+          );
+          await tester.pumpAndSettle();
+          expect(chat.title, 'Plan Cairns flights');
+          expect(
+            catalogReads(),
+            reads,
+            reason: 'Only the opened chat receives metadata; no list scan',
+          );
+          expect(find.byType(ProfileWorkspaceBrowser), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-conversation-${brightness.name}-$scale',
+          );
+
+          final held = Completer<void>();
+          fixture.delays['personal'] = held;
+          addTearDown(() {
+            if (!held.isCompleted) held.complete();
+          });
+          await tester.binding.handlePopRoute();
+          await tester.pump();
+          await tester.pump(const Duration(milliseconds: 100));
+          expect(find.byType(ProfileWorkspaceBrowser), findsOneWidget);
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.text('Plan Cairns flights'),
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('Untitled chat'), findsNothing);
+          expect(find.text('< personal >'), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-return-held-${brightness.name}-$scale',
+          );
+          held.complete();
+          await tester.pumpAndSettle();
+          expect(
+            find.descendant(
+              of: row,
+              matching: find.text('Plan Cairns flights'),
+            ),
+            findsOneWidget,
+          );
+          expect(find.text('< personal >'), findsNothing);
+          await screenshot(
+            tester,
+            'opened-metadata-after-${brightness.name}-$scale',
+          );
+        },
+      );
+
       testWidgets('canonical Bot Chat avatar ${brightness.name} $scale', (
         tester,
       ) async {
@@ -581,6 +695,49 @@ void main() {
       expect(find.text('Status 2'), findsNothing);
     },
   );
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets('startup sort is immediate in $brightness at $scale', (
+        tester,
+      ) async {
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.exclusiveProfile('personal'),
+        );
+        await appPreferences.chooseBrowserPreferences(
+          'target',
+          BrowserPreferenceIntent.ordering(ChatOrdering.updated),
+        );
+        fixture.rowUpdates['personal/session-1'] = {
+          'last_active': fixture.now + 100,
+        };
+        fixture.rowUpdates['personal/session-11'] = {'pinned': false};
+        final held = Completer<void>();
+        fixture.delays['work'] = held;
+        addTearDown(() {
+          if (!held.isCompleted) held.complete();
+        });
+        await show(tester, brightness: brightness, scale: scale, settle: false);
+        await tester.pump(const Duration(milliseconds: 100));
+        final first = find.byKey(const ValueKey('chat-personal-session-0'));
+        final newest = find.byKey(const ValueKey('chat-personal-session-1'));
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+        // The other profile is still loading: no refresh or sort-menu action
+        // is needed to put the already loaded project's newest chat first.
+        expect(held.isCompleted, isFalse);
+        await screenshot(tester, 'startup-${brightness.name}-$scale');
+        held.complete();
+        await tester.pumpAndSettle();
+        expect(
+          tester.getTopLeft(newest).dy,
+          lessThan(tester.getTopLeft(first).dy),
+        );
+      });
+    }
+  }
   for (final boundary in ['refresh', 'return', 'order by']) {
     testWidgets('live updates keep chat positions until $boundary', (
       tester,

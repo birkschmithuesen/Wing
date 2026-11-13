@@ -7,6 +7,9 @@ Feature ID: `chat-browser`.
 ## Sub-features
 
 - `chat-browser.find` — Search and filter chats and projects.
+  The saved grouping and sort order apply immediately as the initial chat list
+  loads. Once loaded, live updates keep rows in place until a refresh, return
+  to Chats or explicit sort choice establishes a new order.
   Working status includes detached child tasks and background processes known
   to the connected gateway. Recents uses the same captured profile and saved
   conversation when opening that work; discovery does not attach the chat.
@@ -25,6 +28,10 @@ Feature ID: `chat-browser`.
   Project names and icons stay visible while invalidated metadata refreshes or
   a project read fails. A successful refresh applies reassignment or removal to
   both opened and unopened chats.
+  The opened chat's confirmed title updates its cached row without fetching
+  the chat catalog. Returning to Chats immediately uses that title and its known
+  project for the initial preview; the normal entry read then confirms grouping.
+  Global session-change signals do not refresh unopened chats or rescan the list.
   Once the workspace is ready, Wing prepares Recents quietly in the background.
   Opening it reuses the shared catalog or joins preparation already underway;
   an early visit retains loading feedback until the initial read settles.
@@ -68,12 +75,23 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart test/app_shell_navigation_test.dart
   flutter test --no-pub test/profile_recents_visibility_test.dart
   flutter test --no-pub test/profile_pagination_browser_test.dart
+  flutter test --no-pub test/chat_browser_data_test.dart test/chat_list_target_test.dart
   flutter test --no-pub test/project_picker_design_test.dart
   flutter test --no-pub test/server_files_repository_test.dart test/profile_project_management_test.dart test/profile_project_actions_test.dart test/project_folder_picker_test.dart test/project_icon_picker_test.dart
   ```
 
   Pagination checks count browser and startup Recents reads separately, keeping
   both bounded while preserving unique pinned rows.
+  Startup ordering checks cover every initial snapshot and the production Chats
+  route with another profile held, in both themes at normal and doubled text.
+  Live-update checks preserve row stability after the initial read settles.
+  `chat_browser_mutations_test.dart` asserts zero catalog requests for confirmed
+  titles and global signals, title retention through an older held read and
+  suspension, and fresh catalog authority over an opened chat's cached preview.
+  The `opened chat metadata is local` cases in `chat_list_target_test.dart` open
+  the conversation and return through Android Back in both themes at normal and
+  doubled text size. They hold the normal entry read while checking that the
+  confirmed title and project are already visible.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

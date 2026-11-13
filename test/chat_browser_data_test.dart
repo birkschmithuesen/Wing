@@ -144,6 +144,62 @@ void main() {
     appPreferences.dispose();
   });
 
+  for (final coldLaunch in [false, true]) {
+    test(
+      'startup snapshots immediately use saved ordering (cold: $coldLaunch)',
+      () async {
+        if (coldLaunch) {
+          data.dispose();
+          final connection = controller.connection;
+          controller.dispose();
+          controller = ProfileWorkspaceController(
+            access: ConnectionAccess(
+              connection: connection,
+              dashboardOAuth: null,
+            ),
+            connectionIdentity: 'test',
+            preferences: await SharedPreferences.getInstance(),
+            appPreferences: appPreferences,
+            gatewayFactory: fixture.gateway,
+          );
+        }
+        // The browser renders before its first connection-wide read. A later row
+        // in the server page is newer than the controller's initial preview.
+        await appPreferences.chooseBrowserPreferences(
+          'test',
+          BrowserPreferenceIntent.ordering(ChatOrdering.created),
+        );
+        await appPreferences.chooseBrowserPreferences(
+          'test',
+          BrowserPreferenceIntent.ordering(ChatOrdering.updated),
+        );
+        data.dispose();
+        data = ChatBrowserData(
+          controller,
+          readBotAppearances: fixture.botAppearances,
+        );
+        data.project('');
+        fixture.rowUpdates[('personal', 'chat-50')] = {
+          'last_active': fixture.now + 100,
+        };
+        final snapshots = <ChatBrowserProjection>[];
+        data.addListener(() => snapshots.add(data.project('')));
+        data.start();
+        if (coldLaunch) await controller.initialize();
+        await data.refresh(archivedOnly: false);
+        expect(snapshots, isNotEmpty);
+        for (final snapshot in snapshots) {
+          for (final group in snapshot.groups) {
+            final actual = group.entries
+                .map((entry) => entry.updatedAt)
+                .toList();
+            expect(actual, [...actual]..sort((a, b) => b.compareTo(a)));
+          }
+        }
+      },
+    );
+  }
+
   test(
     'suspended search resumes without retaining a late blocked failure',
     () async {

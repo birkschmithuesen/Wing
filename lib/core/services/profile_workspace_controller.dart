@@ -1070,7 +1070,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (!_closed &&
           _initialized &&
           _notificationTarget == null &&
-          resource != null) {
+          resource != null &&
+          !connectionStatus.liveAvailable(resource.scope.profileName)) {
         _scheduleReconnect(resource);
         _changed();
       }
@@ -1287,8 +1288,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
   final _readAcknowledgements = Expando<int>();
   final _readingAcknowledgementsPending = <ProfileChat>{};
 
-  /// Called with the message reached by the shared viewport's user-scroll rule.
-  /// Stock Hermes accepts a timestamp acknowledgement, not a message ID. The
+  /// Saved reading acknowledges sidebar metadata independently of live runtime
+  /// attachment. Stock Hermes accepts a timestamp, not a message ID. The
   /// in-memory watermark remains authoritative for detecting newer unseen IDs.
   Future<void> acknowledgeVisibleReading(
     ProfileChat chat,
@@ -1298,8 +1299,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
         !_closed &&
         visible &&
         identical(_current?.chat, chat) &&
-        !chat.runtime.opening &&
-        !chat.runtime.offline &&
         !chat.reading.historyLoading &&
         chat.reading.historyError == null;
     if (!admitted() ||
@@ -2525,6 +2524,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   // to the connection label must remain eligible for recovery.
   bool _needsLiveRecovery(ProfileWorkspaceData resource) =>
       resource._loaded ||
+      _unrestoredPending.any((key) => key.workspace == resource.scope) ||
       resource._chats.values.any(
         (chat) =>
             chat.runtime.blocksTurnAdmission ||
@@ -2766,21 +2766,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'notification_opening': _notificationTarget != null,
       },
     );
-    if (networkChanged) {
-      // A socket associated with the previous mobile route can look connected
-      // until its next timeout. Re-open it when Android reports a new route.
-      for (final resource in _resources.values) {
-        if (connectionStatus.liveAvailable(resource.scope.profileName)) {
-          // The shared recovery may already be reading history over the old
-          // route. Its borrowers must await a fresh pass on the new socket.
-          if (resource._reconnectFuture != null) {
-            resource._restartReconnect = true;
-          }
-          resource.gateway.disconnect();
-          resource.gateway.onConnectionChanged?.call(false);
-        }
-      }
-    }
     if (_notificationTarget != null) {
       await _resumeNotification();
     } else if (!_initialized) {
@@ -2790,9 +2775,37 @@ class ProfileWorkspaceController extends ChangeNotifier {
       await Future.wait(
         _resources.values
             .where(_needsLiveRecovery)
-            .map((resource) => reconnect(resource.scope)),
+            .map(
+              (resource) =>
+                  _resumeResource(resource, networkChanged: networkChanged),
+            ),
       );
     }
+  }
+
+  Future<void> _resumeResource(
+    ProfileWorkspaceData resource, {
+    required bool networkChanged,
+  }) async {
+    if (networkChanged &&
+        connectionStatus.liveAvailable(resource.scope.profileName)) {
+      // A default-route change does not retire sockets on a still-working
+      // network. Verify the existing socket before restoring its conversations.
+      // The gateway's bounded RPC failure path retires an unresponsive socket.
+      try {
+        await resource.gateway.call('session.active_list');
+        if (_closed || !resource._recovering) return;
+      } catch (_) {
+        if (_closed) return;
+        // Borrowers of an in-flight restoration must await a fresh pass if its
+        // transport stopped responding while it was reading history.
+        if (resource._reconnectFuture != null &&
+            !connectionStatus.liveAvailable(resource.scope.profileName)) {
+          resource._restartReconnect = true;
+        }
+      }
+    }
+    if (!_closed) await reconnect(resource.scope);
   }
 
   void _adoptDiscovery(ProfileDiscovery discovered) {
@@ -7077,7 +7090,40 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   void _hydrateTitle(ProfileChat chat, Object? title) {
-    if (title is String && title.trim().isNotEmpty) chat._title = title.trim();
+    if (title is! String || title.trim().isEmpty) return;
+    final confirmed = title.trim();
+    var changed = chat._title != confirmed;
+    chat._title = confirmed;
+    // A later Chats visit starts from these cached rows. Retain the confirmed
+    // title there too, so its initial frame does not restore the old name.
+    final resource = _resources[chat.key.workspace];
+    List<Map<String, dynamic>> retitled(List<Map<String, dynamic>> rows) {
+      if (!rows.any(
+        (row) => row['id'] == chat.key.sessionId && row['title'] != confirmed,
+      )) {
+        return rows;
+      }
+      changed = true;
+      return _readonlyWorkspaceRows([
+        for (final row in rows)
+          row['id'] == chat.key.sessionId ? {...row, 'title': confirmed} : row,
+      ]);
+    }
+
+    if (resource != null) {
+      resource._sessions = retitled(resource._sessions);
+      resource._projectSessions = retitled(resource._projectSessions);
+    }
+    if (!changed) return;
+    // Resume/info/title receipts already contain the confirmed title. Publish
+    // it locally; the caller owns notification and no catalog read is needed.
+    if (!_closed) {
+      _browserMutations.value = SessionTitleObservation(
+        chat.key.workspace,
+        chat.key.sessionId,
+        confirmed,
+      );
+    }
   }
 
   ModelChoice? modelObservation(ProfileChat chat) {
@@ -10518,7 +10564,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
       await resource.gateway.connect();
       if (_closed || resource._restartReconnect) return;
       for (final chat in resource._chats.values.toList()) {
-        if (resource.blocksSession(chat._key.sessionId)) continue;
+        if (resource.blocksSession(chat._key.sessionId) ||
+            _unrestoredPending.contains(chat._key)) {
+          continue;
+        }
         if (!chat.runtime.blocksTurnAdmission &&
             chat != resource.chat &&
             chat.composer.observation.queue.isEmpty) {
@@ -10573,6 +10622,19 @@ class ProfileWorkspaceController extends ChangeNotifier {
           _notifyRecoveredResult(chat);
         }
         if (applied) resumedChats.add(chat);
+      }
+      resumedChats.addAll(await _restorePendingForResource(resource));
+      if (_closed || resource._restartReconnect) return;
+      if (_unrestoredPending.any(
+        (key) =>
+            key.workspace == resource.scope &&
+            !resource.blocksSession(key.sessionId),
+      )) {
+        throw JsonRpcError(
+          'session.resume',
+          'A newer conversation observation superseded pending restoration.',
+          reason: 'snapshot_superseded',
+        );
       }
       await _journal();
       await _refreshSessions(resource);
@@ -11082,67 +11144,67 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   Future<void> _restorePending() async {
     _seedPendingOwners();
-    // Keep every unresolved owner in subsequent journal snapshots, even if its
-    // profile is unavailable while another profile starts or settles a turn.
-    for (final key in _unrestoredPending.toList()) {
-      try {
-        final resource = _resource(key.workspace.profileName);
-        if (resource.blocksSession(key.sessionId)) continue;
-        final existing = resource._chats[key.sessionId];
-        if (existing != null && !existing.runtime.offline) {
-          _unrestoredPending.remove(key);
-          continue;
-        }
-        final read = existing == null
-            ? null
-            : _captureResume(resource, existing);
-        await resource.gateway.connect();
-        final title = await _pendingChatTitle(resource, key.sessionId);
-        if (_closed || resource.blocksSession(key.sessionId)) {
-          continue;
-        }
-        final result = await resource.gateway.resume(key.sessionId);
-        if (_closed ||
-            !identical(_resources[key.workspace], resource) ||
-            resource.blocksSession(key.sessionId)) {
-          continue;
-        }
-        final concurrent = resource._chats[key.sessionId];
-        if (!identical(concurrent, existing)) {
-          if (concurrent != null && !concurrent.runtime.offline) {
-            _unrestoredPending.remove(key);
-          }
-          continue;
-        }
-        if (read != null && !read.current()) continue;
-        final chat =
-            existing ??
-            _createChatRecord(
-              key: key,
-              runtimeId: result['session_id'] as String,
-              title: title,
-            );
-        resource._chats[key.sessionId] = chat;
-        chat._runtime.beginRecovery();
-        _hydrate(chat, result);
-        final continuation = _captureResume(resource, chat, startRead: false);
-        await _restoreDraft(chat);
-        if (!continuation.current()) continue;
-        await refreshHistory(chat);
-        if (!continuation.current()) continue;
-        chat._runtime.recovered();
-        await _drainQueuedPrompts(chat);
-        _unrestoredPending.remove(key);
-        if (!chat.runtime.blocksTurnAdmission) {
-          _notifyRecoveredResult(chat);
-        }
-      } catch (_) {
-        _error =
-            'Some pending chats could not be restored. No prompts were resent.';
+    // Pending owners borrow the same profile recovery as live conversations.
+    // Its retry timer, diagnostics and status must cover the whole restoration.
+    final scopes = _unrestoredPending.map((key) => key.workspace).toSet();
+    await Future.wait([
+      for (final scope in scopes) reconnect(_resource(scope.profileName).scope),
+    ]);
+  }
+
+  Future<List<ProfileChat>> _restorePendingForResource(
+    ProfileWorkspaceData resource,
+  ) async {
+    final restored = <ProfileChat>[];
+    for (final key
+        in _unrestoredPending
+            .where((key) => key.workspace == resource.scope)
+            .toList()) {
+      if (resource.blocksSession(key.sessionId)) continue;
+      final existing = resource._chats[key.sessionId];
+      final read = existing == null ? null : _captureResume(resource, existing);
+      final title = await _pendingChatTitle(resource, key.sessionId);
+      if (_closed || resource._restartReconnect) return restored;
+      if (resource.blocksSession(key.sessionId)) continue;
+      final result = await resource.gateway.resume(key.sessionId);
+      if (_closed || resource._restartReconnect) return restored;
+      if (!identical(_resources[key.workspace], resource) ||
+          resource.blocksSession(key.sessionId)) {
+        continue;
       }
+      final concurrent = resource._chats[key.sessionId];
+      if (!identical(concurrent, existing)) {
+        if (concurrent != null && !concurrent.runtime.offline) {
+          _unrestoredPending.remove(key);
+        }
+        continue;
+      }
+      if (read != null && !read.current()) continue;
+      final chat =
+          existing ??
+          _createChatRecord(
+            key: key,
+            runtimeId: result['session_id'] as String,
+            title: title,
+          );
+      resource._chats[key.sessionId] = chat;
+      chat._runtime.beginRecovery();
+      _hydrate(chat, result);
+      final continuation = _captureResume(resource, chat, startRead: false);
+      await _restoreDraft(chat);
+      if (_closed || resource._restartReconnect) return restored;
+      if (!continuation.current()) continue;
+      await refreshHistory(chat, propagateFailure: true);
+      if (_closed || resource._restartReconnect) return restored;
+      if (!continuation.current()) continue;
+      chat._runtime.recovered();
+      _unrestoredPending.remove(key);
+      if (!chat.runtime.blocksTurnAdmission) {
+        _notifyRecoveredResult(chat);
+      }
+      restored.add(chat);
     }
-    await _journal();
-    _changed();
+    return restored;
   }
 
   @override

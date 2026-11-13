@@ -164,7 +164,7 @@ def tap(resource=None, text=None):
 
 
 def scroll_through_answer(answer):
-    """Use the actual reading gesture; opening a reply is deliberately not read."""
+    """Scroll a visible answer toward newer messages."""
     until(lambda: any(answer in (node.get('text'), node.get('content-desc'))
                       for node in nodes()), 'The exact answer is not visible')
     width, height = map(int, re.findall(r'(\d+)x(\d+)', adb('shell', 'wm', 'size'))[-1])
@@ -609,14 +609,12 @@ def check_reply_read(output):
     tap(text=answer)
     until(lambda: state()['chat_visible'] and state()['read_guards']['selected_is_target'],
           'Reply tap did not open its exact owner')
-    assert len(state()['read_acks']) == reads_before, 'Opening alone acknowledged the answer'
-    assert any(v['result'] is not None for k, v in json.loads(state()['notices']).items()
-               if json.loads(k)['profile'] == 'a'), 'Opening alone marked the answer read'
-    scroll_through_answer(answer)
-    until(lambda: all(v['result'] is None for k, v in json.loads(state()['notices']).items() if json.loads(k)['profile'] == 'a'), 'Reading the latest answer did not clear its notification')
+    until(lambda: any(answer in (node.get('text'), node.get('content-desc'))
+                      for node in nodes()), 'The exact answer is not visible')
+    until(lambda: all(v['result'] is None for k, v in json.loads(state()['notices']).items() if json.loads(k)['profile'] == 'a'), 'Seeing the latest answer did not clear its notification')
     assert state()['read_acks'][reads_before:] == [{'profile': 'a', 'session': 'same'}]
     assert not state()['mark_read_failed']
-    print('PASS: opening preserves unread reply; user scrolling acknowledges its exact owner and clears the result', flush=True)
+    print('PASS: seeing the latest answer acknowledges its exact owner and clears the result', flush=True)
 
 
 def check_direct_actions(output):

@@ -161,9 +161,19 @@ class _BackendVersionCardState extends State<BackendVersionCard>
           (check == null ||
               (check.updateAvailable != true &&
                   !(check.updateAvailable == false && check.behind == 0)));
+      final showAvailability =
+          !controller.requestOutstanding &&
+          (check != null ||
+              !const {
+                BackendUpdatePhase.succeeded,
+                BackendUpdatePhase.partial,
+                BackendUpdatePhase.failed,
+                BackendUpdatePhase.refused,
+              }.contains(controller.phase));
       final connectionLabel = widget.connectionLabel ?? 'Hermes backend';
       final busy =
           checking ||
+          controller.trackingLoading ||
           controller.versionLoading ||
           controller.channelSaving ||
           controller.starting ||
@@ -180,19 +190,22 @@ class _BackendVersionCardState extends State<BackendVersionCard>
         _refreshRotation.value = 0;
       }
       final showUpdate =
+          controller.requestOutstanding ||
           (controller.updateAttempt > 0 &&
               controller.phase != BackendUpdatePhase.refused) ||
           status != null ||
           controller.statusLoading;
       final lines = status?.lines ?? const <String>[];
       return StudioPageLoading(
-        active: busy,
+        active: busy || controller.requestOutstanding,
         label: controller.channelSaving
             ? 'Saving update channel'
             : controller.starting
             ? 'Starting backend update'
             : controller.statusLoading
             ? 'Checking update progress'
+            : controller.requestOutstanding
+            ? 'Following backend update'
             : controller.versionLoading && !checking
             ? 'Loading server version'
             : 'Checking for updates',
@@ -297,7 +310,7 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                   const Divider(height: WingSpacing.lg),
                   if (checkMessage != null)
                     StudioError(checkMessage)
-                  else
+                  else if (showAvailability)
                     Visibility(
                       visible: !hideAvailability,
                       maintainSize: true,
@@ -332,7 +345,8 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                         ],
                       ),
                     ),
-                  if (!hideAvailability &&
+                  if (showAvailability &&
+                      !hideAvailability &&
                       checkMessage == null &&
                       channel?.name == 'main' &&
                       check?.updateAvailable == true &&
@@ -464,14 +478,17 @@ class _BackendVersionCardState extends State<BackendVersionCard>
                           ),
                         StudioButtonPress(
                           child: IconButton(
-                            tooltip: controller.requestOutstanding
+                            tooltip:
+                                controller.requestOutstanding ||
+                                    controller.trackingLoading
                                 ? 'Check update progress'
                                 : controller.cloudManaged
                                 ? 'Refresh server version'
                                 : 'Check for updates',
                             onPressed: busy
                                 ? null
-                                : controller.requestOutstanding
+                                : controller.requestOutstanding ||
+                                      controller.trackingLoading
                                 ? controller.refreshStatus
                                 : controller.checkForUpdate,
                             icon: RotationTransition(
@@ -528,8 +545,8 @@ String _checkStatus(
 String _phaseLabel(BackendUpdatePhase phase) => switch (phase) {
   BackendUpdatePhase.idle => 'Update availability unknown.',
   BackendUpdatePhase.ready => 'Update check complete',
-  BackendUpdatePhase.starting => 'Starting backend update…',
-  BackendUpdatePhase.running => 'Backend update running',
+  BackendUpdatePhase.starting => 'Starting update…',
+  BackendUpdatePhase.running => 'Update ongoing',
   BackendUpdatePhase.succeeded => 'Backend update succeeded',
   BackendUpdatePhase.partial => 'Backend update partially completed',
   BackendUpdatePhase.refused => 'Backend update refused',

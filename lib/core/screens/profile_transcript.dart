@@ -107,6 +107,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
   bool _readingFrameScheduled = false;
   bool _userScrolling = false;
   bool _readScrollPending = false;
+  (Object, int)? _visibleAnswerReported;
   final _mountedRows = <TranscriptAnchorBox, ({Object id, int? readId})>{};
   final _mountedAnchors = <TranscriptAnchorBox>{};
   final _centerSliver = GlobalKey();
@@ -139,26 +140,50 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       if (!_canObserveReading || !_scroll.hasClients) return;
       final viewport = _viewport.currentContext?.findRenderObject();
       if (viewport is! RenderBox || !viewport.hasSize) return;
-      final top = viewport.localToGlobal(Offset.zero).dy;
-      final bottom = top + viewport.size.height;
+      final bounds = viewport.localToGlobal(Offset.zero) & viewport.size;
+      final top = bounds.top;
+      final bottom = bounds.bottom;
+      final bodyStyle = Theme.of(context).textTheme.bodyLarge!;
+      final lineHeight =
+          MediaQuery.textScalerOf(context).scale(bodyStyle.fontSize!) *
+          (bodyStyle.height ?? 1);
+      final latestAnswer = widget.presentation.timeline.entries.reversed
+          .where(
+            (entry) =>
+                !entry.suppressed &&
+                !entry.streaming &&
+                entry.role == 'assistant' &&
+                (entry.message.kind == TranscriptMessageKind.dialogue ||
+                    entry.message.kind == TranscriptMessageKind.discussion),
+          )
+          .firstOrNull
+          ?.id;
       TranscriptBookmark? bookmark;
       double? firstTop;
       int? read;
+      int? visibleLatestAnswer;
       for (final entry in _mountedRows.entries) {
         final box = entry.key;
         if (!box.attached || !box.hasSize || box.contentPending) continue;
         final y = box.localToGlobal(Offset.zero).dy;
         final end = y + box.size.height;
         if (box.size.height <= 0) continue;
-        // Only a user scroll towards newer messages can advance read-through.
-        // The newest reply cannot leave the top: reaching its end at the bottom
-        // through that same gesture is its terminal equivalent.
+        // Seeing the latest saved answer is enough. Older messages retain the
+        // scroll-through rule, and pending/hidden content cannot count as read.
         final passed =
             end <= top + .5 || _latestDistance <= .5 && end <= bottom + .5;
         final readId = entry.value.readId;
-        if (scrolledPast &&
+        final visibleAnswer =
             readId != null &&
-            passed &&
+            readId == latestAnswer &&
+            box.contentVisible(bounds, lineHeight);
+        if (visibleAnswer) visibleLatestAnswer = readId;
+        final freshVisibleAnswer =
+            visibleAnswer &&
+            _visibleAnswerReported !=
+                (widget.presentation.readingIdentity, readId);
+        if (readId != null &&
+            (freshVisibleAnswer || scrolledPast && passed) &&
             (read == null || readId > read)) {
           read = readId;
         }
@@ -174,22 +199,28 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
       }
       if (bookmark == null && _latestDistance > 24 && read == null) return;
       _departureBookmark = bookmark;
-      if (widget.openingContent != null ||
-          widget.presentation.history.loading ||
+      if (widget.presentation.history.loading ||
           widget.presentation.history.error != null) {
         read = null;
+        visibleLatestAnswer = null;
       }
       widget.presentation.recordReading(
         _latestDistance <= 24 ? null : bookmark,
         readThrough: read,
       );
+      if (read != null && read == latestAnswer) {
+        _visibleAnswerReported = (widget.presentation.readingIdentity, read);
+      }
       // Owners coalesce receipts. A later scroll can clear explicit unread
       // even when the user reaches the same saved message again.
       if (read != null) {
         widget.onReadThrough?.call(read);
       }
+      // A new notice can name an answer this retained viewport already read.
+      // Settle it from current visibility without issuing another shared read.
+      final observedRead = read ?? visibleLatestAnswer;
       final target = widget.notificationReading?.notificationReadTarget;
-      if (read != null && target?.kind == 'answer') {
+      if (observedRead != null && target?.kind == 'answer') {
         final presentation =
             timeline_facts.TranscriptTimeline.notificationAnswerPresentation(
               widget.notificationReading!.messages,
@@ -200,7 +231,7 @@ class _ProfileTranscriptState extends State<ProfileTranscript>
             .where((entry) => entry.presentationId == presentation)
             .firstOrNull
             ?.id;
-        if (answerId is int && read >= answerId) {
+        if (answerId is int && observedRead >= answerId) {
           widget.onAnswerRead?.call(target);
         }
       }

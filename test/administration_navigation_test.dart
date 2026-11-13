@@ -85,6 +85,7 @@ class _UpdateAdministrationFixture extends AdministrationFixture {
 }
 
 void main() {
+  setUp(() => SharedPreferences.setMockInitialValues({}));
   const capture = bool.fromEnvironment('CAPTURE_ADMINISTRATION');
   if (capture) {
     setUpAll(() async {
@@ -176,8 +177,10 @@ void main() {
               onSelected: (_) {},
               access: controller.access,
               connectionStatus: controller.connectionStatus,
-              versionsControllerFactory: (_) =>
-                  VersionsController(gateway: admin.server.gateway('default')),
+              versionsControllerFactory: (_) => VersionsController(
+                updateStore: backendUpdateStoreFixture(),
+                gateway: admin.server.gateway('default'),
+              ),
             ),
             body: healthOnly
                 ? HermesHealthContent(

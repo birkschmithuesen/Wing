@@ -8,7 +8,7 @@ Feature ID: `notifications`.
 
 - `notifications.route` — Open the exact notification owner. Reply alerts show the beginning of the answer, including answers longer than the screen, after formatted content settles.
 - `notifications.act` — Answer a supported request without duplication, retaining its exact request and turn identity. Command review uses the same exact-command and request-details content as normal, bot and group chats, while keeping the selected notification approval scope explicit.
-- `notifications.settle` — Keep read dismissed and restored notices consistent.
+- `notifications.settle` — Seeing a saved answer clears a newly recorded reply notice even when that viewport already recorded its read receipt. Keep read, dismissed and restored notices consistent.
 - `notifications.monitor` — Watch ongoing work in a compact summary of up to
   three chats or discussions, followed by the remaining count. Unnamed sessions
   include a short session ID. A single watched conversation opens directly;
@@ -53,8 +53,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   was answered and completed.
 
   Long-answer cases verify the first line is visible after Markdown settles,
-  in both themes at 390 dp/100% and 320 dp/200%. Opening alone does not mark
-  the answer read; scrolling retains the existing read acknowledgement.
+  in both themes at 390 dp/100% and 320 dp/200%. A visible latest saved
+  answer is acknowledged without an extra scroll once a prepared body line is
+  visible. Avatars and clipped leading space cannot acknowledge an unseen answer.
+  Hidden/background readers,
+  failed history and model-only rows cannot acknowledge an unseen answer.
 
   For monitoring summaries and outage recovery, run:
 

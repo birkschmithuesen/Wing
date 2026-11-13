@@ -1191,6 +1191,11 @@
       "feature": "versions-updates",
       "library": "lib/core/services/backend_update_controller.dart"
     },
+    "lib/core/services/backend_update_store.dart": {
+      "role": "data",
+      "feature": "versions-updates",
+      "library": "lib/core/services/backend_update_store.dart"
+    },
     "lib/core/services/background_monitoring_service.dart": {
       "role": "platform",
       "feature": "notifications",

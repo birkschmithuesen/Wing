@@ -10,6 +10,7 @@ import 'package:wing/core/screens/profile_transcript.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 import 'support/profile_history_fixture.dart';
 
 void main() {
@@ -154,13 +155,28 @@ void main() {
   }
 
   test(
-    'temporary HTTP failure recovers without a history error banner',
+    'temporary HTTP failure retries history without reconnecting live chat',
     () async {
       httpError = 500;
       final chat = await controller.createChat(canDispatch: () => true);
       expect(chat.reading.historyUnavailable, isTrue);
-      expect(controller.recovering, isTrue);
+      expect(controller.recovering, isFalse);
+      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(controller.connectionStatus.liveAvailable('personal'), isTrue);
+      expect(controller.connectionStatus.phase, ServerConnectionPhase.limited);
       expect(chat.reading.historyLoading, isFalse);
+      expect(runtimeReads, isEmpty);
+
+      httpError = null;
+      await controller.refreshHistory(chat);
+      expect(chat.reading.historyUnavailable, isFalse);
+      expect(chat.reading.historyError, isNull);
+      expect(controller.recovering, isFalse);
+      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.connected,
+      );
       expect(runtimeReads, isEmpty);
     },
   );

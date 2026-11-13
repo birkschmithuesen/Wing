@@ -143,19 +143,17 @@ def main():
         command('shell', 'input', 'tap', str((x1 + x2) // 2), str((y1 + y2) // 2))
         native.until(lambda: ready()['chat_visible'] and ready()['read_guards']['selected_is_target'],
                      'Restored notification did not open its exact owner')
-        opened = ready()
-        assert opened['read_acks'] == [], 'Opening alone acknowledged the restored answer'
-        assert any(value['result'] is not None for value in json.loads(opened['notices']).values()), \
-            'Opening alone marked the restored answer read'
-        native.scroll_through_answer(answer)
+        native.until(lambda: any(answer in (node.get('text'), node.get('content-desc'))
+                                 for node in native.nodes()),
+                     'The exact restored answer is not visible')
         def read_completed():
             current = ready()
             return (all(value['result'] is None for value in json.loads(current['notices']).values())
                     and current['read_acks'] == [{'profile': 'a', 'session': 'same'}]
                     and not current['mark_read_failed'])
-        native.until(read_completed, 'Scrolling did not acknowledge the restored answer')
+        native.until(read_completed, 'Visible restored answer was not acknowledged')
         assert identifier not in notices(only_answer=False), 'Read notification is still posted'
-        print('PASS: tap preserves unread answer; scrolling acknowledges its exact owner and clears the result', flush=True)
+        print('PASS: seeing the restored answer acknowledges its exact owner and clears the result', flush=True)
         command('shell', 'am', 'force-stop', PACKAGE)
         command('shell', 'am', 'start', '-n', ACTIVITY)
         ready()

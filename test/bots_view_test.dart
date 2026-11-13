@@ -3471,7 +3471,7 @@ void main() {
               expect(find.byType(StudioLoading), findsNothing);
               expect(
                 controller.current!.chat!.reading.readingPosition.readThrough,
-                isNull,
+                30,
               );
               await _capture(
                 tester,

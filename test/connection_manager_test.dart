@@ -13,6 +13,8 @@ import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/dashboard_authentication.dart';
 import 'package:wing/core/services/ws_client.dart';
+import 'package:wing/core/services/dashboard_read_transport.dart';
+import 'package:wing/core/services/server_connection_status.dart';
 
 /// Case-insensitive request header lookup — package:http normalises header
 /// names when sending, so tests should not assume a particular casing.
@@ -368,6 +370,70 @@ void main() {
   });
 
   group('DashboardClient', () {
+    test(
+      'a failed background GET retries without publishing an outage',
+      () async {
+        var requests = 0;
+        final client = DashboardClient(
+          host: 'fixture.local',
+          proxied: true,
+          httpClient: MockClient((request) async {
+            requests++;
+            if (requests == 1) {
+              throw http.ClientException(
+                'Connection closed before full header was received',
+              );
+            }
+            return http.Response('{"sessions":[]}', 200);
+          }),
+        );
+        addTearDown(client.close);
+        final status = ServerConnectionStatus('Server')
+          ..accessAvailable()
+          ..liveChanged('default', true);
+        addTearDown(status.dispose);
+        final phases = <ServerConnectionPhase>[];
+        status.addListener(() => phases.add(status.phase));
+        expect(await status.observeAccess(() => client.apiGet('sessions')), {
+          'sessions': [],
+        });
+        expect(requests, 2);
+        expect(phases, everyElement(ServerConnectionPhase.connected));
+      },
+    );
+
+    for (final mode in ['persistent', 'cancelled', 'closed', 'write']) {
+      test('HTTP retry is bounded and respects $mode', () async {
+        var requests = 0;
+        late DashboardReadTransport transport;
+        final client = MockClient((request) async {
+          requests++;
+          if (mode == 'closed') transport.close();
+          if (mode == 'cancelled') {
+            throw http.RequestAbortedException(request.url);
+          }
+          throw http.ClientException('Read failed');
+        });
+        transport = DashboardReadTransport(
+          client,
+          timeout: const Duration(seconds: 1),
+        );
+        addTearDown(() {
+          transport.close();
+          client.close();
+        });
+        await expectLater(
+          transport.request(
+            mode == 'write' ? 'POST' : 'GET',
+            Uri.parse('http://fixture.local/api/sessions'),
+            headers: {},
+          ),
+          throwsA(isA<http.ClientException>()),
+        );
+        expect(requests, mode == 'persistent' ? 2 : 1);
+      });
+    }
+
     for (final passwordAuth in [false, true]) {
       test(
         'closing a ${passwordAuth ? 'password' : 'token'} requester does not strand another reader',

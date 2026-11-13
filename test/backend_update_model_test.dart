@@ -2,6 +2,43 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/models/backend_update.dart';
 
 void main() {
+  test('only a valid finished receipt establishes a terminal outcome', () {
+    for (final outcome in [
+      'running',
+      'success',
+      'partial',
+      'failed',
+      'refused',
+      'unknown',
+    ]) {
+      for (final finished in [null, '2026-11-13T05:00:00Z']) {
+        final receipt = BackendUpdateReceipt.fromJson({
+          'action_id': 'accepted-action',
+          'outcome': outcome,
+          'finished_at': finished,
+        });
+        expect(receipt, isNotNull);
+        expect(receipt!.actionId, 'accepted-action');
+        expect(receipt.pid, isNull);
+        expect(
+          receipt.terminal,
+          finished != null &&
+              ['success', 'partial', 'failed', 'refused'].contains(outcome),
+        );
+      }
+    }
+    for (final finished in ['', 'invalid', 42]) {
+      expect(
+        BackendUpdateReceipt.fromJson({
+          'action_id': 'accepted-action',
+          'outcome': 'success',
+          'finished_at': finished,
+        }),
+        isNull,
+      );
+    }
+  });
+
   test('invalid counts cannot grant update eligibility', () {
     for (final count in [null, -2, '2', 2.5, double.nan, true]) {
       final check = BackendUpdateCheck.fromJson({
