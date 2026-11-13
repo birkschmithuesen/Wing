@@ -376,7 +376,7 @@ void main() {
     },
   );
 
-  testWidgets('Cancel ends the conversation and the microphone stays closed', (
+  testWidgets('Cancel discards the recording and the conversation keeps listening', (
     tester,
   ) async {
     await h.conversationMode(true);
@@ -388,11 +388,13 @@ void main() {
     expect(h.starts(), 2);
     await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
-    // A later reply in this chat must not reopen the microphone.
-    h.gatewayEvent('message.start');
-    await h.completeReply(tester, 'Late reply.');
-    expect(h.starts(), 2);
-    expect(h.device.recording, isNull);
+    // Birk 2026-11-13 ledger L26: the loop stays on, a new round started.
+    expect(h.starts(), 3);
+    expect(h.device.recording, isNotNull);
+    expect(h.prompts(), 1);
+    await h.conversationMode(false);
+    await tester.tap(find.byTooltip('Cancel recording'));
+    await h.settle(tester);
   });
 
   for (final failure in ['error', 'no speech']) {

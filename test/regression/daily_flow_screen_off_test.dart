@@ -44,6 +44,16 @@ void main() {
       expect(h.background.holds, [true]);
       await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
+      // Birk 2026-11-13 ledger L26: Cancel keeps the conversation loop
+      expect(h.background.holds, [true]);
+      // Birk 2026-11-13 ledger L26: Cancel keeps the conversation loop
+      expect(h.vadStarts(), 2);
+      // Birk 2026-11-13 ledger L26: Cancel keeps the conversation loop
+      await h.conversationMode(false);
+      // Birk 2026-11-13 ledger L26: Cancel keeps the conversation loop
+      await tester.tap(find.byTooltip('Cancel recording'));
+      // Birk 2026-11-13 ledger L26: Cancel keeps the conversation loop
+      await h.settle(tester);
       expect(h.background.holds, [true, false]);
     });
 

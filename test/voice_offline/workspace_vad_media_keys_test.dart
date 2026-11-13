@@ -216,6 +216,13 @@ void main() {
     expect(h.device.keepScreenOnCalls, [true]);
     await tester.tap(find.byTooltip('Cancel recording'));
     await h.settle(tester);
+    // Cancel keeps the loop: the screen stays on, a new round started.
+    expect(h.device.keepScreenOnCalls, [true]);
+    expect(h.starts(), 2);
+    // The loop ends when the mode is off and the next Cancel cannot continue.
+    await h.conversationMode(false);
+    await tester.tap(find.byTooltip('Cancel recording'));
+    await h.settle(tester);
     expect(h.device.keepScreenOnCalls, [true, false]);
   });
 

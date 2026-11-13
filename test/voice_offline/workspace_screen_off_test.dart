@@ -42,6 +42,13 @@ void main() {
       expect(h.background.holds, [true]);
       await tester.tap(find.byTooltip('Cancel recording'));
       await h.settle(tester);
+      // Cancel keeps the loop: still held, a new round started.
+      expect(h.background.holds, [true]);
+      expect(h.vadStarts(), 2);
+      // The loop ends when the mode is off and the next Cancel cannot continue.
+      await h.conversationMode(false);
+      await tester.tap(find.byTooltip('Cancel recording'));
+      await h.settle(tester);
       expect(h.background.holds, [true, false]);
     });
 
