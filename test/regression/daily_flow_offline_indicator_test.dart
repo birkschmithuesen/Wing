@@ -103,7 +103,8 @@ void main() {
         // Mirrors ProfileWorkspaceRegistry.recoverConnections(), which always
         // marks the network restored before asking a controller to reconnect.
         controller.networkRestored();
-        await controller.reconnect(chat.key.workspace);
+        // probe moved: upstream API rename e8a4089c
+        await controller.resumeConnection(networkChanged: true);
 
         expect(chat.composer.observation.queue, isEmpty);
         expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));

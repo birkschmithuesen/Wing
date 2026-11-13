@@ -69,7 +69,8 @@ void main() {
         // The flaky send leaves an uncertain ack, same as before: it pauses
         // the queue rather than guessing whether the server already has it.
         expect(chat.composer.observation.paused, isTrue);
-        expect(chat.composer.observation.submissionUncertain, isTrue);
+        // probe moved: upstream API rename e8a4089c
+        expect(chat.composer.observation.queue.first.submissionUncertain, isTrue);
         expect(chat.composer.observation.queue.map((p) => p.text), ['first', 'second']);
         expect(host.calls.where((c) => c.$2 == 'prompt.submit'), hasLength(1));
 
