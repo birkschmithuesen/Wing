@@ -3256,11 +3256,15 @@ void main() {
           );
           expect(canonical, isNull);
         }
+        // 'b' is already unserved from the roster refusal above, so the
+        // shared unserved cache short-circuits every browse attempt here
+        // without even sending session.list - a stronger outcome than the
+        // at-most-one bound connect/list/roster share by contract.
         expect(
           host.calls.where(
             (c) => c.$2 == 'session.list' && c.$3['profile'] == 'b',
-          ),
-          hasLength(1),
+          ).length,
+          lessThanOrEqualTo(1),
         );
 
         expect(controller.isProfileServed('b'), isFalse);
@@ -3273,6 +3277,33 @@ void main() {
           host.calls.where((c) => c.$2 == 'prompt.submit' && c.$1 == 'a'),
           hasLength(1),
         );
+      },
+    );
+
+    test(
+      'browserCanonicalBotChat marks a profile unserved on its own FINAL '
+      'session.list refusal, independent of the roster path',
+      () async {
+        host.refusedProfiles['b'] = JsonRpcError(
+          'session.list',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        for (var attempt = 0; attempt < 3; attempt++) {
+          final canonical = await controller.browserCanonicalBotChat(
+            'b',
+            canRead: () => true,
+          );
+          expect(canonical, isNull);
+        }
+        expect(
+          host.calls.where(
+            (c) => c.$2 == 'session.list' && c.$3['profile'] == 'b',
+          ),
+          hasLength(1),
+        );
+        expect(controller.isProfileServed('b'), isFalse);
       },
     );
 
