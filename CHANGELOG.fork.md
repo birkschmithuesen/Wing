@@ -37,8 +37,8 @@ the README feature list current for every future change.
 - **Ledger L26 (Birk 2026-11-13):** Cancel on the recording screen discards only the current recording; in
   conversation mode the loop stays active and the microphone reopens for the next turn (upstream's chrome ended
   the loop). Regression test R9 (`test/regression/daily_flow_cancel_keeps_loop_test.dart`).
-- **Upstream refresh:** not merged yet (upstream/main moved to 7a9992c4 with 15 commits after e8a4089c; needs
-  Birk's go, only 4 were authorized).
+- **Upstream refresh:** merged upstream/main 7a9992c4 (15 commits after e8a4089c) in `79ed5cb1`; only conflict
+  was the census list `tools/architecture/roots.json` (union).
 - **Merge:** `116d82f4` · **Card:** t_d1d49ff1
 
 ## 2026-11-12
