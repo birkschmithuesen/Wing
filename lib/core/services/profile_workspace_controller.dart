@@ -1064,7 +1064,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (!_closed &&
           _initialized &&
           _notificationTarget == null &&
-          resource != null) {
+          resource != null &&
+          !connectionStatus.liveAvailable(resource.scope.profileName)) {
         _scheduleReconnect(resource);
         _changed();
       }
@@ -2748,21 +2749,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'notification_opening': _notificationTarget != null,
       },
     );
-    if (networkChanged) {
-      // A socket associated with the previous mobile route can look connected
-      // until its next timeout. Re-open it when Android reports a new route.
-      for (final resource in _resources.values) {
-        if (connectionStatus.liveAvailable(resource.scope.profileName)) {
-          // The shared recovery may already be reading history over the old
-          // route. Its borrowers must await a fresh pass on the new socket.
-          if (resource._reconnectFuture != null) {
-            resource._restartReconnect = true;
-          }
-          resource.gateway.disconnect();
-          resource.gateway.onConnectionChanged?.call(false);
-        }
-      }
-    }
     if (_notificationTarget != null) {
       await _resumeNotification();
     } else if (!_initialized) {
@@ -2772,9 +2758,37 @@ class ProfileWorkspaceController extends ChangeNotifier {
       await Future.wait(
         _resources.values
             .where(_needsLiveRecovery)
-            .map((resource) => reconnect(resource.scope)),
+            .map(
+              (resource) =>
+                  _resumeResource(resource, networkChanged: networkChanged),
+            ),
       );
     }
+  }
+
+  Future<void> _resumeResource(
+    ProfileWorkspaceData resource, {
+    required bool networkChanged,
+  }) async {
+    if (networkChanged &&
+        connectionStatus.liveAvailable(resource.scope.profileName)) {
+      // A default-route change does not retire sockets on a still-working
+      // network. Verify the existing socket before restoring its conversations.
+      // The gateway's bounded RPC failure path retires an unresponsive socket.
+      try {
+        await resource.gateway.call('session.active_list');
+        if (_closed || !resource._recovering) return;
+      } catch (_) {
+        if (_closed) return;
+        // Borrowers of an in-flight restoration must await a fresh pass if its
+        // transport stopped responding while it was reading history.
+        if (resource._reconnectFuture != null &&
+            !connectionStatus.liveAvailable(resource.scope.profileName)) {
+          resource._restartReconnect = true;
+        }
+      }
+    }
+    if (!_closed) await reconnect(resource.scope);
   }
 
   void _adoptDiscovery(ProfileDiscovery discovered) {

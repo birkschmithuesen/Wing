@@ -2,6 +2,9 @@ import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/bots_session.dart';
 import 'dart:async';
+import 'package:http/http.dart' as http;
+import 'package:wing/core/services/server_connection_status.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 
@@ -67,6 +70,49 @@ void main() {
     appPreferences.dispose();
   });
 
+  test(
+    'background HTTP failure leaves a healthy chat out of recovery',
+    () async {
+      final status = controller.connectionStatus;
+      expect(status.live, ConnectionAvailability.available);
+      final connects = host.connectCalls;
+      final disconnects = host.disconnectCalls;
+      await expectLater(
+        status.observeAccess(() async {
+          throw http.ClientException('Background session read failed');
+        }),
+        throwsA(isA<http.ClientException>()),
+      );
+      expect(status.phase, ServerConnectionPhase.limited);
+      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(controller.recovering, isFalse);
+      expect(host.connectCalls, connects);
+      expect(host.disconnectCalls, disconnects);
+      status.accessAvailable();
+      expect(status.phase, ServerConnectionPhase.connected);
+      controller.networkUnavailable();
+      expect(controller.current!.reconnectScheduled, isTrue);
+      expect(host.disconnectCalls, greaterThan(disconnects));
+    },
+  );
+
+  test('network route changes preserve a responsive live connection', () async {
+    final connects = host.connectCalls;
+    final disconnects = host.disconnectCalls;
+    final phases = <ServerConnectionPhase>[];
+    controller.connectionStatus.addListener(
+      () => phases.add(controller.connectionStatus.phase),
+    );
+    for (var change = 0; change < 3; change++) {
+      await controller.resumeConnection(networkChanged: true);
+    }
+    expect(host.connectCalls, connects);
+    expect(host.disconnectCalls, disconnects);
+    expect(phases, everyElement(ServerConnectionPhase.connected));
+    expect(controller.recovering, isFalse);
+    expect(chat.composer.observation.text, 'Keep my draft');
+  });
+
   for (final failed in [false, true]) {
     test(
       'network change during recovery awaits ${failed ? 'failed' : 'successful'} replacement',
@@ -78,6 +124,7 @@ void main() {
         final recovery = controller.reconnect(chat.key.workspace);
         await host.heldHistoryStarted!.future;
 
+        host.activeListDelay = Completer<void>();
         final networkRecovery = controller.resumeConnection(
           networkChanged: true,
         );
@@ -86,6 +133,15 @@ void main() {
         if (failed) {
           host.connectError = StateError('Replacement connection failed');
         }
+        host.activeListDelay!.completeError(
+          JsonRpcError(
+            'session.active_list',
+            'Old route stopped responding',
+            reason: 'request_timeout',
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        host.activeListDelay = null;
         history.complete();
         await Future.wait([recovery, networkRecovery, refresh]);
 

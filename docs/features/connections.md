@@ -13,6 +13,15 @@ Feature ID: `connections`.
   replacing its open chat, draft or connection.
 - `connections.recover` — Recover temporary connection and conversation failures automatically, with retry delays capped at 30 seconds. Foreground return, network changes and Retry bypass the delay. Authentication or configuration failures remain actionable; setup can be cancelled safely.
 
+A failed HTTP GET gets one immediate transport retry before changing the shared
+connection indicator. Cancellation, timeouts and writes are not replayed. If both
+reads fail, HTTP access remains visibly limited while a healthy live chat stays
+connected; that background failure does not start conversation recovery. Actual
+socket loss and Android network loss still trigger recovery.
+When Android changes its default network, Wing checks the existing live socket
+before replacing it. A responsive socket stays connected without flashing the
+recovery indicator; an unresponsive socket follows normal recovery.
+
 ## How to get to it (user POV)
 
 Open connection setup at first launch or use Hermes instances to add or edit an instance. Use Next or swipe left/right between address, sign-in and name/save. Cards follow the swipe and settle into place; an unfinished swipe returns without changing the step. Next stays in a fixed footer. The normal phone layout fits on one screen, with scrolling retained for enlarged text and the keyboard. Check connection stays on sign-in with its results; Next or a forward swipe opens name/save after all checks pass. Completed results remain available across all three cards for five minutes from completion, unless connection details change. Returning within that window allows forward swipes without checking again. Save explicitly, or import a shared connection, then reopen it.
@@ -78,6 +87,12 @@ flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_works
 These regressions cover live-update and overlapping-read races, prolonged
 startup/chat/notification outages, capped delays, immediate manual/foreground
 recovery, permanent failures, disposal and avoiding duplicate submissions.
+`connection_manager_test.dart` also covers the bounded read retry and its
+cancellation/write boundaries; `profile_focus_recovery_test.dart` verifies that
+an exhausted background HTTP failure leaves healthy chat recovery idle and that
+subsequent network loss still recovers.
+It also covers responsive route changes and failed live checks during an
+overlapping conversation recovery.
 
 A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.
 

@@ -31,6 +31,36 @@ class DashboardReadTransport {
     String? body,
     int? maxBytes,
   }) async {
+    for (var attempt = 0; ; attempt++) {
+      try {
+        return await _request(
+          method,
+          uri,
+          headers: headers,
+          body: body,
+          maxBytes: maxBytes,
+        );
+      } on http.ClientException catch (failure) {
+        // A pooled HTTP connection can fail independently of the live chat.
+        // Retry an idempotent read once before publishing an access failure.
+        // Cancellation belongs to the caller and must never restart its I/O.
+        if (method != 'GET' ||
+            attempt != 0 ||
+            _closed ||
+            failure is http.RequestAbortedException) {
+          rethrow;
+        }
+      }
+    }
+  }
+
+  Future<http.Response> _request(
+    String method,
+    Uri uri, {
+    required Map<String, String> headers,
+    String? body,
+    int? maxBytes,
+  }) async {
     if (_closed) throw http.RequestAbortedException(uri);
     final abort = Completer<void>();
     _pending.add(abort);
