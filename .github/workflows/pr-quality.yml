@@ -105,14 +105,6 @@ jobs:
             cp tools/architecture/baseline.json build/architecture-baseline-reference.json
           fi
 
-      # Fork (Wing Voice): diagnostics only. The vServer cannot download logs but can read
-      # annotations; the mandatory gate below stays a single plain command.
-      - name: Annotate source contract findings
-        continue-on-error: true
-        run: |
-          python3 scripts/check_commit_linters.py --dart-only --baseline-reference "build/architecture-baseline-reference.json" > /tmp/contracts_output.txt 2>&1 || grep -E '\[[A-Z_]+\]|failed|rror|Traceback|Exception' /tmp/contracts_output.txt | head -40 | cut -c1-300 | paste -d"~" - - - - | while IFS= read -r line; do printf '::error::CONTRACT: %s\n' "$line"; done
-          exit 0
-
       - name: Check all Dart source contracts
         run: python3 scripts/check_commit_linters.py --dart-only --baseline-reference "build/architecture-baseline-reference.json"
 
@@ -138,35 +130,12 @@ jobs:
           flutter analyze --no-pub --fatal-infos 2>&1 | tee analyze_output.txt
           exit ${PIPESTATUS[0]}
 
-      # Fork (Wing Voice): diagnostics only; annotations are readable from the vServer, logs are not.
-      - name: Annotate analyzer findings
-        if: always()
-        continue-on-error: true
-        run: |
-          grep -E '^\s+(error|warning|info) • ' analyze_output.txt | awk -F' • ' '{print $3" "substr($2,1,100)}' | sort -u | head -90 | paste -d"~" - - - - - - - - - | while IFS= read -r line; do printf '::error::AN: %s\n' "$line"; done
-          exit 0
-
       # ── Step 2: Run tests ────────────────────────────────
       - name: Run product tests and required checker proofs
         id: test
         env:
           TEST_BASE_REF: ${{ github.event.pull_request.base.sha || github.event.before }}
         run: python3 scripts/test.py --changed-since "$TEST_BASE_REF" --skip-linters
-
-      # Fork (Wing Voice): diagnostics only; annotations are readable from the vServer, logs are not.
-      - name: Annotate test failures
-        if: always()
-        continue-on-error: true
-        run: |
-          f="$(ls -dt /tmp/wing-host-tests-* 2>/dev/null | head -1)/tests.jsonl"
-          if [ -f "$f" ]; then
-            jq -nRr '[inputs|fromjson?] as $a | ($a|map(select(.type=="testStart")|{key:(.test.id|tostring),value:.test.name})|from_entries) as $n | ($a|map(select(.type=="print"))|group_by(.testID)|map({key:(.[0].testID|tostring),value:(map(.message)|join(" ")|gsub("\n";" ")|split("When the exception was thrown")[0]|.[-900:])})|from_entries) as $p | [$a[]|select(.type=="error")|{n:($n[(.testID|tostring)] // "?"),t:.}]|group_by(.n|split(" ")[0])|map(.[0:3])|add|.[]|"\(.n) :: \($p[(.t.testID|tostring)] // "") :: \(.t.error|gsub("\n";" ")|.[0:300])"' "$f" | head -24 | paste -d"~" - - - | while IFS= read -r line; do printf '::error::TF: %s\n' "$line"; done
-          fi
-          d="$(ls -dt /tmp/wing-host-tests-* 2>/dev/null | head -1)"
-          for n in planning.stderr tests.stderr proof-compilation.stderr; do
-            if [ -s "$d/$n" ]; then tail -n 40 "$d/$n" | cut -c1-300 | paste -d"~" - - - - - - - - - | while IFS= read -r line; do printf '::error::TF-%s: %s\n' "$n" "$line"; done; fi
-          done
-          exit 0
 
       - name: Test opt-in performance measurements
         run: flutter test --no-pub --dart-define=WING_PERF_INSTRUMENTATION=true test/performance_instrumentation_test.dart test/markdown_inline_parser_test.dart test/markdown_parse_worker_test.dart test/background_markdown_content_test.dart test/background_markdown_message_test.dart

@@ -87,8 +87,6 @@ void main() {
       expect(
         controller.connectionStatus.phase,
         ServerConnectionPhase.connected,
-        reason:
-            'access=${controller.connectionStatus.access} live=${controller.connectionStatus.live} a=${controller.connectionStatus.liveAvailable('a')} obs=${['a','b','default','personal'].map((n) => '$n:${controller.connectionStatus.hasLiveObservation(n)}/${controller.connectionStatus.liveAvailable(n)}').toList()} recovering=${controller.recovering} disconnects=${host.disconnectsByProfile} calls=${host.calls.map((c) => '${c.$1}:${c.$2}').toList()}',
       );
     },
   );
@@ -126,12 +124,7 @@ void main() {
       // "first" was never actually delivered, so it's resent; "second"
       // waits its turn until that resend's own turn finishes.
       expect(chat.composer.observation.paused, isFalse);
-      expect(
-        chat.composer.observation.queue.map((p) => p.text),
-        ['second'],
-        reason:
-            'submits=${host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']).toList()} blocks=${chat.runtime.blocksTurnAdmission} exec=${chat.runtime.execution} queue=${chat.composer.observation.queue.map((q) => '${q.text}/${q.serverOwned}').toList()} text=${chat.composer.observation.text}',
-      );
+      expect(chat.composer.observation.queue.map((p) => p.text), ['second']);
       expect(
         host.calls.where((c) => c.$2 == 'prompt.submit').map((c) => c.$3['text']),
         ['first', 'first'],
