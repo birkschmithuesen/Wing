@@ -710,6 +710,38 @@ class ColdActionPreferenceReadTest(unittest.TestCase):
                 driver.saved_notification_decisions()
 
 
+class ReplyReadVisibilityTest(unittest.TestCase):
+    def test_visible_answer_acknowledges_without_an_extra_scroll(self):
+        opened = False
+        read_acks = []
+        notice_key = json.dumps({'profile': 'a'})
+
+        def state(path='', body=None):
+            return {
+                'ready': True, 'lifecycle': 'paused', 'chat_visible': opened,
+                'read_guards': {'selected_is_target': opened},
+                'read_acks': list(read_acks), 'mark_read_failed': False,
+                'notices': json.dumps({notice_key: {'result': None if opened else 'answer'}}),
+            }
+
+        def open_answer(**kwargs):
+            nonlocal opened
+            opened = True
+            read_acks.append({'profile': 'a', 'session': 'same'})
+
+        with patch.object(driver, 'state', side_effect=state), \
+             patch.object(driver, 'adb'), patch.object(driver, 'shade'), \
+             patch.object(driver, 'screenshot'), \
+             patch.object(driver, 'tap', side_effect=open_answer), \
+             patch.object(driver, 'nodes', return_value=[ET.Element('node', {
+                 'text': 'The mobile layout is ready. Read the result before publishing.',
+             })]), \
+             patch.object(driver, 'scroll_through_answer') as scroll:
+            driver.check_reply_read(Path('unused'))
+        scroll.assert_not_called()
+        self.assertEqual(read_acks, [{'profile': 'a', 'session': 'same'}])
+
+
 class RestoredFixtureLifecycleTest(unittest.TestCase):
     def test_list_preparation_foregrounds_a_fixture_frozen_by_the_shade(self):
         path = Path(__file__).resolve().parents[2] / 'scripts/test_native_notification_restore.py'
