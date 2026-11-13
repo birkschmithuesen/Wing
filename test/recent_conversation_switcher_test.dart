@@ -4883,6 +4883,7 @@ void main() {
           addTearDown(() {
             if (!refreshDelay.isCompleted) refreshDelay.complete();
           });
+          final acknowledgementsBeforeReturn = acknowledgedSessions.length;
           await _chatGesture(tester, pinch: false);
           for (var frame = 0; frame < 12; frame++) {
             await tester.pump(const Duration(milliseconds: 120));
@@ -4940,23 +4941,13 @@ void main() {
           expect(restored.selection.baseOffset, 6);
           expect(controller.visible, isTrue);
           if (brightness == Brightness.dark && scale == 1) {
-            expect(
-              reads,
-              isEmpty,
-              reason: 'Revealing cached reading does not read the answer',
-            );
-            expect(acknowledgedSessions, isEmpty);
-            // Return restores the reading point, not the newest edge. Read
-            // through the reply before expecting its acknowledgement.
-            for (var pass = 0; pass < 10 && reads.isEmpty; pass++) {
-              await tester.drag(
-                find.byKey(const ValueKey('profile-transcript')),
-                const Offset(0, -300),
-              );
-              await _finishFrames(tester);
-            }
             expect(reads, ['answer:3']);
-            expect(acknowledgedSessions, [first.key]);
+            expect(acknowledgedSessions, contains(first.key));
+            expect(
+              acknowledgedSessions.skip(acknowledgementsBeforeReturn),
+              isEmpty,
+              reason: 'The same saved answer already has its shared receipt',
+            );
             expect(first.markReadFailed, isFalse);
           }
           await _chatGesture(tester);
