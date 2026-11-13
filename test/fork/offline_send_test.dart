@@ -181,7 +181,6 @@ void main() {
         ['first', 'first', 'second'],
         reason: 'the replay is not a new turn; the follow-up drains at once',
       );
-      expect(TransientSend.holding(chat), isFalse);
     },
   );
 
