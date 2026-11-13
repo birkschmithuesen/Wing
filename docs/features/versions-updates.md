@@ -28,8 +28,12 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 - **Host boundary:** run the focused suites below; their supplied transport/platform responses limit the proof.
 
   ```sh
-  flutter test --no-pub test/backend_update_controller_test.dart test/backend_update_store_test.dart test/backend_version_card_test.dart test/backend_update_model_test.dart test/backend_version_identity_test.dart test/drawer_versions_test.dart test/studio_selection_test.dart
+  flutter test --no-pub test/backend_update_controller_test.dart test/backend_update_store_test.dart test/backend_version_card_test.dart test/backend_update_model_test.dart test/backend_version_identity_test.dart test/drawer_versions_test.dart test/gateway_headers_transport_test.dart test/studio_selection_test.dart
   ```
+
+  The gateway transport suite supplies an empty device-preferences store and a
+  local HTTP server, then verifies that profile readers and repeated Versions
+  openings share one password sign-in.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

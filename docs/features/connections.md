@@ -81,7 +81,7 @@ disables while a recovery request is running.
 Leaving a notification opening or disposing its workspace cancels its retries.
 
 ```sh
-flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
 ```
 
 These regressions cover live-update and overlapping-read races, prolonged
@@ -93,6 +93,9 @@ an exhausted background HTTP failure leaves healthy chat recovery idle and that
 subsequent network loss still recovers.
 It also covers responsive route changes and failed live checks during an
 overlapping conversation recovery.
+`profile_empty_history_test.dart` verifies that an HTTP history failure remains
+visible and retryable while the live socket stays connected, and that an explicit
+history retry clears the limited status without starting chat recovery.
 
 A continuous backward swipe can cross both earlier setup cards. The chosen card stays visible after release; returning to the address retains completed results younger than five minutes and preserves entered fields. Navigation never extends that window; expired results require another check before advancing or saving. Leaving during a pending check still cancels it.
 

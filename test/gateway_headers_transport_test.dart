@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/administration_repository.dart';
@@ -211,6 +212,7 @@ void main() {
   );
 
   test('profile and Versions readers reuse one password sign-in', () async {
+    SharedPreferences.setMockInitialValues({});
     var logins = 0;
     final host = await HttpServer.bind(InternetAddress.loopbackIPv4, 0);
     host.listen((request) async {
