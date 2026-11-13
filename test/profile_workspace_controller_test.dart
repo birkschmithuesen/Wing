@@ -3218,9 +3218,20 @@ void main() {
         // Six reconciliation ticks stand in for a simulated 60s cadence; an
         // external watcher owns that cadence in production (see
         // reconcileNotificationRequests), so the test drives it directly.
-        for (var tick = 0; tick < 6; tick++) {
-          await controller.reconcileNotificationRequests({});
+        // The first tick's detached-work read is unawaited internally, so
+        // wait for it to actually settle before firing the next tick -
+        // otherwise two ticks can race the same still-served profile.
+        await controller.reconcileNotificationRequests({});
+        for (
+          var attempt = 0;
+          attempt < 50 && controller.isProfileServed('b');
+          attempt++
+        ) {
           await Future<void>.delayed(Duration.zero);
+        }
+        expect(controller.isProfileServed('b'), isFalse);
+        for (var tick = 0; tick < 5; tick++) {
+          await controller.reconcileNotificationRequests({});
           await Future<void>.delayed(Duration.zero);
         }
         expect(

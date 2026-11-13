@@ -7,7 +7,12 @@ import 'package:wing/core/services/workspace_connection_failure.dart';
 void main() {
   test('final gateway refusals are never retryable, by reason', () {
     for (final reason in finalGatewayRefusalReasons) {
-      final error = JsonRpcError('session.list', 'Refused', reason: reason);
+      final error = JsonRpcError(
+        'session.list',
+        'Refused',
+        code: 4001,
+        reason: reason,
+      );
       expect(isFinalGatewayRefusal(error), isTrue, reason: reason);
       expect(isRetryableGatewayRefusal(error), isFalse, reason: reason);
       expect(isTemporaryWorkspaceFailure(error), isFalse, reason: reason);
