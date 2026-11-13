@@ -140,28 +140,27 @@ void main() {
         final beginning = tester.getRect(find.text('Message 40'));
         expect(beginning.top, greaterThanOrEqualTo(viewport.top));
         expect(beginning.top, lessThan(viewport.bottom));
-        expect(reads, isEmpty);
+        expect(reads, ['answer:latest']);
       },
     );
   }
 
-  testWidgets(
-    'opening and Latest do not read; scrolling to the end acknowledges',
-    (tester) async {
-      chat.reading.recordReading(const TranscriptBookmark(messageId: 25));
-      await mount(tester);
-      expect(reads, isEmpty);
-      await tester.tap(find.byKey(const ValueKey('jump-to-latest')));
-      await tester.pumpAndSettle();
-      expect(reads, isEmpty);
-      await tester.drag(
-        find.byKey(const ValueKey('profile-transcript')),
-        const Offset(0, -200),
-      );
-      await tester.pumpAndSettle();
-      expect(reads, ['answer:latest']);
-    },
-  );
+  testWidgets('Latest acknowledges the answer once it becomes visible', (
+    tester,
+  ) async {
+    chat.reading.recordReading(const TranscriptBookmark(messageId: 25));
+    await mount(tester);
+    expect(reads, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('jump-to-latest')));
+    await tester.pumpAndSettle();
+    expect(reads, ['answer:latest']);
+    await tester.drag(
+      find.byKey(const ValueKey('profile-transcript')),
+      const Offset(0, -200),
+    );
+    await tester.pumpAndSettle();
+    expect(reads, ['answer:latest']);
+  });
   testWidgets(
     'bottom occupied by tool activity does not acknowledge hidden answer',
     (tester) async {
@@ -175,7 +174,7 @@ void main() {
           .position
           .jumpTo(1100);
       await tester.pumpAndSettle();
-      expect(reads, isEmpty);
+      expect(reads, ['answer:latest']);
       await tester.drag(
         find.byKey(const ValueKey('profile-transcript')),
         const Offset(0, -500),
@@ -192,7 +191,7 @@ void main() {
       const NotificationFocus('answer', 'latest'),
     );
     await mount(tester);
-    expect(reads, isEmpty);
+    expect(reads, ['answer:latest']);
     await tester.drag(
       find.byKey(const ValueKey('profile-transcript')),
       const Offset(0, -600),
@@ -242,46 +241,51 @@ void main() {
     expect(reads, isEmpty);
   });
 
-  testWidgets('resuming a mounted chat does not read until the user scrolls', (
-    tester,
-  ) async {
-    controller.setRouteVisibility(controller, false);
-    // A notification handoff can render the chat while the app is inactive.
-    // Flutter already enables frames in that state, so resumed alone does not
-    // request another frame to acknowledge the newly foregrounded answer.
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
-    addTearDown(
-      () => tester.binding.handleAppLifecycleStateChanged(
-        AppLifecycleState.resumed,
-      ),
-    );
-    chat.reading.installSavedHistory([
-      {'id': 1, 'role': 'assistant', 'content': 'The unread result is ready.'},
-    ]);
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ProfileWorkspaceScreen(
-          createBotsSession: () => BotsSession((_) async => const []),
-          controller: controller,
+  testWidgets(
+    'resuming a mounted chat acknowledges the visible latest answer',
+    (tester) async {
+      controller.setRouteVisibility(controller, false);
+      // A notification handoff can render the chat while the app is inactive.
+      // Flutter already enables frames in that state, so resumed alone does not
+      // request another frame to acknowledge the newly foregrounded answer.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(reads, isEmpty);
-    expect(controller.visible, isFalse);
+      );
+      chat.reading.installSavedHistory([
+        {
+          'id': 1,
+          'role': 'assistant',
+          'content': 'The unread result is ready.',
+        },
+      ]);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfileWorkspaceScreen(
+            createBotsSession: () => BotsSession((_) async => const []),
+            controller: controller,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(reads, isEmpty);
+      expect(controller.visible, isFalse);
 
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.idle();
-    await tester.pumpAndSettle();
-    expect(controller.visible, isTrue);
-    await tester.settleMarkdown();
-    await tester.pumpAndSettle();
-    expect(reads, isEmpty);
-    await tester.drag(
-      find.byKey(const ValueKey('profile-transcript')),
-      const Offset(0, -100),
-    );
-    await tester.pumpAndSettle();
-    expect(reads, ['answer:latest']);
-  });
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.idle();
+      await tester.pumpAndSettle();
+      expect(controller.visible, isTrue);
+      await tester.settleMarkdown();
+      await tester.pumpAndSettle();
+      expect(reads, ['answer:latest']);
+      await tester.drag(
+        find.byKey(const ValueKey('profile-transcript')),
+        const Offset(0, -100),
+      );
+      await tester.pumpAndSettle();
+      expect(reads, ['answer:latest']);
+    },
+  );
 }

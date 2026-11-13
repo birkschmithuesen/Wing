@@ -65,7 +65,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   `message_timestamp_test.dart` also covers notification layout in Bot Chats.
 
   The reading-position suite covers thread departure, covered conversations,
-  app return and local prompts becoming saved history. Reopened chats also
+  app return and local prompts becoming saved history. The row-action suite
+  opens a saved answer without an extra swipe, holds its read receipt, then
+  checks the cleared unread state through Chats and Recents in both themes
+  at normal and doubled text size. Reopened chats also
   load older pages when a swipe reaches the start of a short loaded page;
   later replies stay available below the remembered reading position. The
   paging cases hold the read, complete it and continue scrolling into the
@@ -167,7 +170,7 @@ claiming the workspace is a clean Git repository. The host suites
 `git_review_test.dart` and `git_review_screen_test.dart` cover read ownership,
 late replies, comparisons, copy references, pending feedback and recovery.
 
-Opening or tapping Latest does not mark a message read. Saved reading positions last until Wing restarts. Long-history host tests cover paging beyond the small Android fixture.
+Seeing the latest saved answer in the active conversation marks the chat read, including after opening, returning or tapping Latest. Older-history and passive previews do not acknowledge an unseen latest answer. Saved reading positions last until Wing restarts. Long-history host tests cover paging beyond the small Android fixture.
 Pending-input navigation stays outside the form: below it at normal height,
 or in a separate side gutter on short keyboard-open screens. The form and
 composer retain scrollable access to their full action targets.

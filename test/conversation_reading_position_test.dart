@@ -253,15 +253,17 @@ void main() {
     );
   }
 
-  testWidgets('opening latest does not read; actively reaching its end does', (
+  testWidgets('seeing the latest answer acknowledges it without a scroll', (
     tester,
   ) async {
     install(100);
     await mount(tester);
     expect(message(100), findsOneWidget);
     expect(reader.readingPosition.resume, isNull);
-    expect(reader.readingPosition.readThrough, isNull);
-    expect(read, isEmpty);
+    expect(reader.readingPosition.readThrough, 100);
+    expect(read, [100]);
+    await tester.pumpAndSettle();
+    expect(read, [100], reason: 'Visibility emits one automatic receipt');
     await tester.drag(viewport, const Offset(0, -120));
     await tester.pumpAndSettle();
     expect(reader.readingPosition.readThrough, 100);
@@ -277,7 +279,7 @@ void main() {
         {'id': 2, 'role': 'user', 'content': 'Thanks'},
       ]);
       await mount(tester, height: 70);
-      expect(reader.readingPosition.readThrough, isNull);
+      expect(reader.readingPosition.readThrough, 1);
       await tester.drag(viewport, const Offset(0, -100));
       await tester.pumpAndSettle();
       expect(reader.readingPosition.readThrough, 2);
@@ -318,7 +320,7 @@ void main() {
       await latest;
       expect(message(1020), findsOneWidget);
       expect(reader.readingPosition.resume, isNull);
-      expect(reader.readingPosition.readThrough, 100);
+      expect(reader.readingPosition.readThrough, 1020);
       await tester.drag(viewport, const Offset(0, -120));
       await tester.pumpAndSettle();
       expect(reader.readingPosition.readThrough, 1020);
@@ -514,7 +516,7 @@ void main() {
       final view = tester.getRect(viewport);
       expect(replyTop, greaterThanOrEqualTo(view.top - 1));
       expect(replyTop, lessThan(view.bottom));
-      expect(read, isEmpty);
+      expect(read.last, 3);
     });
   }
 
@@ -559,7 +561,7 @@ void main() {
         final view = tester.getRect(viewport);
         expect(replyTop, greaterThanOrEqualTo(view.top - 1));
         expect(replyTop, lessThan(view.bottom));
-        expect(read, isEmpty);
+        expect(read.last, 3);
       });
     }
   }
@@ -593,6 +595,6 @@ void main() {
     await mount(tester);
     expect(message(20), findsOneWidget);
     expect(reader.readingPosition.resume, isNull);
-    expect(reader.readingPosition.readThrough, isNull);
+    expect(reader.readingPosition.readThrough, 20);
   });
 }

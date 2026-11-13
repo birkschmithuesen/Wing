@@ -15,6 +15,9 @@ The opened chat keeps its confirmed title and project when you return to Chats.
 Title updates use the information Hermes already sent. Returning to the list or
 refreshing it reads the latest catalog; background chat changes do not rescan it.
 
+Seeing the latest answer in the open chat marks it as read in Chats and Recents.
+You do not need an extra swipe.
+
 Tapping a chat in Recents opens its screen immediately; loading and any retry
 stay there. Back returns to Recents even while the chat is loading.
 

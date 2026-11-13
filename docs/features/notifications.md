@@ -53,8 +53,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   was answered and completed.
 
   Long-answer cases verify the first line is visible after Markdown settles,
-  in both themes at 390 dp/100% and 320 dp/200%. Opening alone does not mark
-  the answer read; scrolling retains the existing read acknowledgement.
+  in both themes at 390 dp/100% and 320 dp/200%. A visible latest saved
+  answer is acknowledged without an extra scroll. Hidden/background readers,
+  failed history and model-only rows cannot acknowledge an unseen answer.
 
   For monitoring summaries and outage recovery, run:
 

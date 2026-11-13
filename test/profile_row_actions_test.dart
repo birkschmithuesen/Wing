@@ -811,16 +811,28 @@ void main() {
   for (final brightness in Brightness.values) {
     for (final scale in [1.0, 2.0]) {
       testWidgets(
-        'automatic read failure logs without a conversation warning ${brightness.name} $scale',
+        'seeing the latest answer clears Chats and Recents unread ${brightness.name} $scale',
         (tester) async {
           tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
           tester.view.devicePixelRatio = 1;
           addTearDown(tester.view.reset);
           await tester.runAsync(loadNewestUnread);
-          host.failMutation = true;
+          final now = DateTime.now().millisecondsSinceEpoch / 1000;
           host.titleHistory = [
-            {'id': 2, 'role': 'assistant', 'content': 'Viewed reply'},
+            for (var id = 1; id <= 20; id++)
+              {
+                'id': id,
+                'role': 'assistant',
+                'content': id == 20
+                    ? 'Latest saved reply'
+                    : 'Earlier reply $id',
+                'timestamp': now - 20 + id,
+              },
           ];
+          final gate = host.mutationDelay = Completer<void>();
+          addTearDown(() {
+            if (!gate.isCompleted) gate.complete();
+          });
           host.mutationStarted = Completer<void>();
           final chat = (await tester.runAsync(
             () => controller.openSession(key()),
@@ -845,19 +857,129 @@ void main() {
           );
           await tester.pumpAndSettle();
           await tester.settleMarkdown();
-          expect(find.text('Viewed reply'), findsOneWidget);
-          expect(host.updates, isEmpty);
+          expect(chat.reading.readingPosition.readThrough, 20);
+          await tester.runAsync(
+            () => host.mutationStarted!.future.timeout(
+              const Duration(seconds: 3),
+            ),
+          );
+          expect(host.updates, hasLength(1));
+          expect(
+            controller.current!.sessions.firstWhere(
+              (row) => row['id'] == 'newest',
+            )['unread'],
+            isTrue,
+            reason: 'Keep unread until the receipt succeeds',
+          );
+          gate.complete();
+          await tester.pumpAndSettle();
+          expect(
+            controller.current!.sessions.firstWhere(
+              (row) => row['id'] == 'newest',
+            )['unread'],
+            isFalse,
+          );
+          expect(
+            controller
+                .recentChats()
+                .singleWhere((row) => row.key == key())
+                .unread,
+            isFalse,
+          );
+          expect(chat.markReadFailed, isFalse);
+          await captureFormFamily(
+            tester,
+            'bottom-read-${brightness.name}-$scale',
+          );
+          await tester.tap(find.byTooltip('Open navigation menu'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Chats').last);
+          await tester.pumpAndSettle();
+          final row = find.byKey(const ValueKey('chat-personal-newest'));
+          await tester.scrollUntilVisible(
+            row,
+            240,
+            scrollable: find
+                .descendant(
+                  of: find.byKey(const ValueKey('chat-list-false')),
+                  matching: find.byType(Scrollable),
+                )
+                .first,
+          );
+          await tester.ensureVisible(row);
+          await tester.pumpAndSettle();
+          expect(row.hitTestable(), findsOneWidget);
+          expect(
+            tester
+                .widget<ChatStatusDot>(
+                  find.descendant(
+                    of: row,
+                    matching: find.byType(ChatStatusDot),
+                  ),
+                )
+                .status,
+            isNot(ChatListStatus.unread),
+          );
+          await captureFormFamily(
+            tester,
+            'bottom-read-chats-${brightness.name}-$scale',
+          );
+          await tester.tap(find.byTooltip('Open navigation menu'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Recents').last);
+          await tester.pumpAndSettle();
+          expect(find.text('Latest saved reply'), findsWidgets);
+          expect(find.text('New answer'), findsNothing);
+          await captureFormFamily(
+            tester,
+            'bottom-read-recents-${brightness.name}-$scale',
+          );
+          expect(tester.takeException(), isNull);
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+      testWidgets(
+        'automatic read failure logs without a conversation warning ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          await tester.runAsync(loadNewestUnread);
+          host.failMutation = true;
+          host.titleHistory = [
+            {'id': 2, 'role': 'assistant', 'content': 'Viewed reply'},
+          ];
+          host.mutationStarted = Completer<void>();
+          final chat = (await tester.runAsync(
+            () => controller.openSession(key()),
+          ))!;
           final previousPrint = debugPrint;
           final logs = <String>[];
           debugPrint = (message, {wrapWidth}) {
             if (message != null) logs.add(message);
           };
           try {
-            await tester.drag(
-              find.byKey(const ValueKey('profile-transcript')),
-              const Offset(0, -120),
+            await tester.pumpWidget(
+              RepaintBoundary(
+                key: formFamilyCapture,
+                child: MaterialApp(
+                  theme: wingTheme(brightness),
+                  builder: (context, child) => MediaQuery(
+                    data: MediaQuery.of(
+                      context,
+                    ).copyWith(textScaler: TextScaler.linear(scale)),
+                    child: child!,
+                  ),
+                  home: ProfileWorkspaceScreen(
+                    controller: controller,
+                    createBotsSession: () => BotsSession((_) async => const []),
+                  ),
+                ),
+              ),
             );
             await tester.pumpAndSettle();
+            await tester.settleMarkdown();
+            expect(find.text('Viewed reply'), findsOneWidget);
             expect(chat.reading.readingPosition.readThrough, 2);
             await tester.runAsync(
               () => host.mutationStarted!.future.timeout(
