@@ -84,6 +84,7 @@ import '../models/voice_processing_settings.dart';
 import 'connection_manager.dart';
 import 'connection_access.dart';
 import 'profile_gateway.dart';
+import 'gateway_refusal.dart';
 import '../models/chat_runtime.dart';
 import 'chat_runtime.dart' as execution;
 import '../models/profile_selection.dart';
@@ -706,6 +707,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Map<String, String> _detachedWorkErrors = const {};
   Future<void>? _detachedWorkRefresh;
   int _detachedWorkGeneration = 0;
+  // A profile that answered session.list or subagent.roster with a FINAL
+  // refusal (profile_mismatch, 4064 profile_unavailable, ...) is not served
+  // by this gateway connection. Remembering it stops the retry storm from
+  // polling the same refusal every reconciliation tick; only a discovery
+  // change or an explicit refresh clears it (see _clearUnservedProfiles).
+  final _unservedProfiles = <String>{};
+  bool isProfileServed(String name) => !_unservedProfiles.contains(name);
+  void _markProfileUnserved(String name) => _unservedProfiles.add(name);
+  void _clearUnservedProfiles() => _unservedProfiles.clear();
   Map<String, String> _activityProfileErrors = const {};
   bool _activityLoading = false;
   bool get activityLoading => _activityLoading;
@@ -2381,11 +2391,18 @@ class ProfileWorkspaceController extends ChangeNotifier {
     required bool Function() canRead,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
+    if (!isProfileServed(name)) return null;
     final reader = _factory(browserResource(name).scope);
     try {
       await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       return await reader.canonicalBotChat();
+    } on JsonRpcError catch (error) {
+      if (isFinalGatewayRefusal(error)) {
+        _markProfileUnserved(name);
+        return null;
+      }
+      rethrow;
     } finally {
       reader.close();
     }
@@ -2589,6 +2606,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   Future<void> _initialize() async {
+    _clearUnservedProfiles();
     connectionStatus.beginRecovery('initialization');
     logConnectionDiagnostic(
       'workspace.initialization_started',
@@ -2961,6 +2979,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (_closed) return Future.value();
     final pending = _workspaceRefreshFuture;
     if (pending != null) return pending;
+    _clearUnservedProfiles();
     final request = _refreshWorkspace().whenComplete(() {
       _workspaceRefreshFuture = null;
       _changed();
@@ -3033,55 +3052,66 @@ class ProfileWorkspaceController extends ChangeNotifier {
           final next = <ProfileSessionKey, ProfileLiveActivity>{};
           final uncertain = <ProfileSessionKey>{};
           var failed = false;
-          try {
-            final rows = DetachedWork.parseRoster(
-              await source.gateway.detachedWorkRoster(profile.name),
-            );
-            final running = rows.where((row) => row.isRunning).toList();
-            for (var offset = 0; offset < running.length; offset += 4) {
-              await Future.wait(
-                running.skip(offset).take(4).map((row) async {
-                  final key = ProfileSessionKey(scope, row.sessionId);
-                  try {
-                    final metadata = await resource.gateway.sessionMetadata(
-                      row.sessionId,
-                    );
-                    if (metadata == null) return;
-                    final title = metadata['title'];
-                    final sourceName = metadata['source'];
-                    final lastActive = metadata['last_active'];
-                    final shortId = row.sessionId.length <= 8
-                        ? row.sessionId
-                        : row.sessionId.substring(row.sessionId.length - 8);
-                    next[key] = ProfileLiveActivity(
-                      workspace: scope,
-                      runtimeId: null,
-                      sessionId: row.sessionId,
-                      title: title is String && title.trim().isNotEmpty
-                          ? title.trim()
-                          : 'Hermes session · $shortId',
-                      source: sourceName is String ? sourceName : null,
-                      lastActive: lastActive is num && lastActive.isFinite
-                          ? lastActive.toDouble()
-                          : 0,
-                      state: ProfileLiveActivityState.running,
-                    );
-                  } catch (_) {
-                    failed = true;
-                    final previous = prior[key];
-                    if (previous != null) {
-                      next[key] = previous;
-                      uncertain.add(key);
-                    }
-                  }
-                }),
+          if (!isProfileServed(profile.name)) {
+            // A prior session.list or subagent.roster call already answered
+            // a FINAL refusal for this profile on this connection; polling it
+            // again on every reconciliation tick is exactly the retry storm
+            // this cache exists to prevent (see _markProfileUnserved).
+          } else {
+            try {
+              final rows = DetachedWork.parseRoster(
+                await source.gateway.detachedWorkRoster(profile.name),
               );
-              if (_closed || generation != _detachedWorkGeneration) return;
+              final running = rows.where((row) => row.isRunning).toList();
+              for (var offset = 0; offset < running.length; offset += 4) {
+                await Future.wait(
+                  running.skip(offset).take(4).map((row) async {
+                    final key = ProfileSessionKey(scope, row.sessionId);
+                    try {
+                      final metadata = await resource.gateway.sessionMetadata(
+                        row.sessionId,
+                      );
+                      if (metadata == null) return;
+                      final title = metadata['title'];
+                      final sourceName = metadata['source'];
+                      final lastActive = metadata['last_active'];
+                      final shortId = row.sessionId.length <= 8
+                          ? row.sessionId
+                          : row.sessionId.substring(row.sessionId.length - 8);
+                      next[key] = ProfileLiveActivity(
+                        workspace: scope,
+                        runtimeId: null,
+                        sessionId: row.sessionId,
+                        title: title is String && title.trim().isNotEmpty
+                            ? title.trim()
+                            : 'Hermes session · $shortId',
+                        source: sourceName is String ? sourceName : null,
+                        lastActive: lastActive is num && lastActive.isFinite
+                            ? lastActive.toDouble()
+                            : 0,
+                        state: ProfileLiveActivityState.running,
+                      );
+                    } catch (_) {
+                      failed = true;
+                      final previous = prior[key];
+                      if (previous != null) {
+                        next[key] = previous;
+                        uncertain.add(key);
+                      }
+                    }
+                  }),
+                );
+                if (_closed || generation != _detachedWorkGeneration) return;
+              }
+            } catch (error) {
+              if (isFinalGatewayRefusal(error)) {
+                _markProfileUnserved(profile.name);
+              } else {
+                failed = true;
+                next.addAll(prior);
+                uncertain.addAll(prior.keys);
+              }
             }
-          } catch (_) {
-            failed = true;
-            next.addAll(prior);
-            uncertain.addAll(prior.keys);
           }
           if (_closed || generation != _detachedWorkGeneration) return;
           // Publish this profile as soon as it settles. Another profile's
@@ -3115,6 +3145,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   Future<void> refreshActivity() async {
     final generation = ++_activityGeneration;
     Future<void>? detachedRefresh;
+    _clearUnservedProfiles();
     _activityLoading = true;
     _activityProfileErrors = const {};
     _changed();

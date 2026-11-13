@@ -229,6 +229,8 @@ class Host {
   int connectFailures = 0;
   Object? connectError;
   Object? rosterFailure;
+  final refusedProfiles = <String, Object>{};
+  bool resumeCwdRejected = false;
   Object? resumeError;
   int connectCalls = 0;
   int disconnectCalls = 0;
@@ -489,9 +491,23 @@ class Host {
         calls.add((name, method, params));
         if (method == 'process.list') return {'processes': <Object>[]};
         if (method == 'config.set') return {'value': params['value']};
+        if ({'subagent.roster', 'session.list'}.contains(method)) {
+          final refusal = refusedProfiles[params['profile']];
+          if (refusal != null) throw refusal;
+        }
         if (method == 'subagent.roster') {
           if (rosterFailure != null) throw rosterFailure!;
           return {'sessions': <Object>[]};
+        }
+        if (method == 'session.list') return {'sessions': <Object>[]};
+        if (method == 'session.resume' && resumeCwdRejected) {
+          throw JsonRpcError(
+            method,
+            'must be an absolute path to an existing directory',
+            code: 4001,
+            reason: 'invalid_params',
+            data: {'field': 'cwd'},
+          );
         }
         if (method == 'session.active_list') {
           await activeListDelay?.future;
@@ -3184,6 +3200,130 @@ void main() {
         'approval.respond',
         'session.interrupt',
       ]),
+    );
+  });
+
+  group('FINAL gateway refusals stop the retry storm (t_8cdd1adb)', () {
+    test(
+      'a FINAL profile_mismatch refusal stops repeated session.list and '
+      'subagent.roster polling for that profile; the served profile keeps '
+      'working',
+      () async {
+        host.refusedProfiles['b'] = JsonRpcError(
+          'subagent.roster',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        // Six reconciliation ticks stand in for a simulated 60s cadence; an
+        // external watcher owns that cadence in production (see
+        // reconcileNotificationRequests), so the test drives it directly.
+        for (var tick = 0; tick < 6; tick++) {
+          await controller.reconcileNotificationRequests({});
+          await Future<void>.delayed(Duration.zero);
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(
+          host.calls.where(
+            (c) => c.$2 == 'subagent.roster' && c.$3['profile'] == 'b',
+          ),
+          hasLength(1),
+        );
+
+        for (var attempt = 0; attempt < 3; attempt++) {
+          final canonical = await controller.browserCanonicalBotChat(
+            'b',
+            canRead: () => true,
+          );
+          expect(canonical, isNull);
+        }
+        expect(
+          host.calls.where(
+            (c) => c.$2 == 'session.list' && c.$3['profile'] == 'b',
+          ),
+          hasLength(1),
+        );
+
+        expect(controller.isProfileServed('b'), isFalse);
+        expect(controller.isProfileServed('a'), isTrue);
+
+        final chat = await controller.createChat(canDispatch: () => true);
+        chat.composer.editText('hello');
+        await controller.send(chat);
+        expect(
+          host.calls.where((c) => c.$2 == 'prompt.submit' && c.$1 == 'a'),
+          hasLength(1),
+        );
+      },
+    );
+
+    test(
+      'a profile refused with 4001 runtime_draining is retried with the '
+      'existing backoff, not treated as FINAL',
+      () async {
+        host.connectError = JsonRpcError(
+          'connect',
+          'Profile is still starting',
+          code: 4001,
+          reason: 'runtime_draining',
+        );
+        expect(await controller.switchProfile('b'), isFalse);
+        expect(controller.browserResource('b').reconnectScheduled, isTrue);
+      },
+    );
+
+    test(
+      'a profile refused with FINAL profile_mismatch is never retried',
+      () async {
+        host.connectError = JsonRpcError(
+          'connect',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        expect(await controller.switchProfile('b'), isFalse);
+        expect(controller.browserResource('b').reconnectScheduled, isFalse);
+      },
+    );
+
+    test(
+      'resume refused with invalid_params field=cwd never exceeds 2 frames '
+      'for that session',
+      () async {
+        host.resumeCwdRejected = true;
+        await expectLater(
+          controller.current!.gateway.resume('same', cwd: '/phone/path'),
+          throwsA(
+            isA<JsonRpcError>().having(
+              (e) => e.reason,
+              'reason',
+              'invalid_params',
+            ),
+          ),
+        );
+        final resumes = host.calls
+            .where((c) => c.$1 == 'a' && c.$2 == 'session.resume')
+            .toList();
+        expect(resumes, hasLength(2));
+        expect(resumes[0].$3['cwd'], '/phone/path');
+        expect(resumes[1].$3.containsKey('cwd'), isFalse);
+      },
+    );
+
+    test(
+      'resume refused with invalid_params field=cwd never retries when no '
+      'cwd was sent',
+      () async {
+        host.resumeCwdRejected = true;
+        await expectLater(
+          controller.current!.gateway.resume('same'),
+          throwsA(isA<JsonRpcError>()),
+        );
+        final resumes = host.calls
+            .where((c) => c.$1 == 'a' && c.$2 == 'session.resume')
+            .toList();
+        expect(resumes, hasLength(1));
+      },
     );
   });
 
