@@ -384,7 +384,7 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
       conversation = null;
       return;
     }
-    if (wasActive && !_voiceInput.finishedOnItsOwn && !carSend) {
+    if (wasActive && !_voiceInput.finishedOnItsOwn && carSend) {
       _reopenAfterCancel();
     }
   }

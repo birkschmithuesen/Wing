@@ -2755,7 +2755,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// Foreground entry also recovers a workspace that never finished loading.
   Future<void> resumeConnection({bool networkChanged = false}) async {
     if (_closed) return;
-    if (!networkChanged) connectionStatus.networkRestored();
+    if (networkChanged) connectionStatus.networkRestored();
     logConnectionDiagnostic(
       'workspace.resume',
       details: {
