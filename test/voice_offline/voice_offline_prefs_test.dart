@@ -116,6 +116,22 @@ void main() {
     expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadDebugKey, 'on'), isTrue);
   });
 
+  test('conversation start cue: defaults on, persists and rejects unknown values', () async {
+    final prefs = await SharedPreferences.getInstance();
+    const key = VoiceOfflinePrefs.conversationStartCueKey;
+    expect(VoiceOfflinePrefs.read(prefs).conversationStartCue, isTrue);
+    expect(VoiceOfflinePrefs.keys, contains(key));
+    expect(VoiceOfflinePrefs.accepts(key, 'on'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(key, 'off'), isTrue);
+    expect(VoiceOfflinePrefs.accepts(key, 'maybe'), isFalse);
+    await saveDevicePreference(prefs, key, 'off');
+    await prefs.reload();
+    expect(VoiceOfflinePrefs.read(prefs).conversationStartCue, isFalse);
+    await saveDevicePreference(prefs, key, 'on');
+    await prefs.reload();
+    expect(VoiceOfflinePrefs.read(prefs).conversationStartCue, isTrue);
+  });
+
   test('vad pause accepts 4 s and 5 s for longer thinking pauses', () async {
     expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '4000'), isTrue);
     expect(VoiceOfflinePrefs.accepts(VoiceOfflinePrefs.vadPauseKey, '5000'), isTrue);

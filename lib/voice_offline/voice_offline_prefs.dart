@@ -34,6 +34,7 @@ class VoiceOfflinePrefs {
   static const listenMinSpeechKey = 'voice.listen_min_speech_ms';
   static const bargeInPlaybackKey = 'voice.barge_in_playback';
   static const micRouteKey = 'voice.mic_route';
+  static const conversationStartCueKey = 'voice.conversation_start_cue';
   static const keys = {
     localEngineKey,
     autoSpeakKey,
@@ -50,6 +51,7 @@ class VoiceOfflinePrefs {
     listenMinSpeechKey,
     bargeInPlaybackKey,
     micRouteKey,
+    conversationStartCueKey,
   };
   static const vadPauseChoices = [
     '1000',
@@ -86,6 +88,7 @@ class VoiceOfflinePrefs {
           value == 'phone' ||
           value == 'bluetooth' ||
           value == 'wired',
+    conversationStartCueKey => value == 'on' || value == 'off',
     _ => false,
   };
 
@@ -122,6 +125,12 @@ class VoiceOfflinePrefs {
   /// Microphone for vad rounds (dictation, conversation loop re-opens).
   final VoiceMicRoute micRoute;
 
+  /// Short "ready" cue when a conversation listen round opens the mic for
+  /// the user's turn after read-aloud has fully ended. Never plays for a
+  /// round that opens during or around playback (barge-in/steer rounds),
+  /// regardless of this setting.
+  final bool conversationStartCue;
+
   const VoiceOfflinePrefs({
     this.autoSpeak = false,
     this.conversation = false,
@@ -134,6 +143,7 @@ class VoiceOfflinePrefs {
     this.bargeInPlayback = false,
     this.micRoute = VoiceMicRoute.auto,
     this.localEngine = VoiceLocalEngine.system,
+    this.conversationStartCue = true,
   });
 
   /// Never throws: an unknown stored value falls back to its default.
@@ -182,6 +192,8 @@ class VoiceOfflinePrefs {
       localEngine: preferences.getString(localEngineKey) == 'parakeet'
           ? VoiceLocalEngine.parakeet
           : VoiceLocalEngine.system,
+      conversationStartCue:
+          preferences.getString(conversationStartCueKey) != 'off',
     );
   }
 
