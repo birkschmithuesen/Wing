@@ -89,149 +89,175 @@ void main() {
     connectionIdentity: 'mutations',
   );
 
-  Future<void> settleCatalog() async {
-    // Let the signal's scheduled read start, then await its observable finish.
-    for (var n = 0; n < 100; n++) {
-      await Future<void>.delayed(Duration.zero);
-      if (!data.state.loading) return;
-    }
-    fail('The automatic catalog read did not settle');
-  }
+  Future<void> settleObservations() => Future<void>.delayed(Duration.zero);
 
+  int catalogReads() => host.reads
+      .where((read) => read.$1 == 'sessions' && read.$2['limit'] == '100')
+      .length;
+  int catalogPasses() => host.reads
+      .where(
+        (read) =>
+            read.$1 == 'sessions' &&
+            read.$2['limit'] == '100' &&
+            read.$2['offset'] == '0',
+      )
+      .length;
+  int projectReads() =>
+      host.wireCalls.where((call) => call == 'projects.tree').length;
   void catalogChanged() => controller.current!.gateway.onEvent!(
     StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
   );
 
-  test('saved chat signal replaces untitled and unassigned metadata', () async {
-    host.changes['personal'] = {
-      'newest': {'title': null},
-    };
-    await controller.switchProfile('personal');
-    await data.refresh(archivedOnly: false);
-    expect(row('newest').title, isEmpty);
-    expect(row('newest').project, isNull);
-
-    host.changes['personal']!['newest'] = {
-      'title': 'Plan Cairns flights',
-      'cwd': '/Mobile app',
-    };
-    catalogChanged();
-    await settleCatalog();
-    expect(row('newest').title, 'Plan Cairns flights');
-    expect(row('newest').project?.id, 'p2');
-    expect(controller.current!.chat, isNull, reason: 'No reopen is required');
-
-    host.resumeOverrides = {
-      'info': {'profile_name': 'personal', 'title': 'Plan Cairns flights'},
-    };
-    final chat = await controller.openSession(key('newest'));
-    await settleCatalog();
-    expect(chat!.title, row('newest').title);
-    expect(chat.projectId, row('newest').project?.id);
-  });
-
   test(
-    'canonical title publishes while an older catalog read is held',
+    'canonical title updates the opened chat without catalog reads',
     () async {
       final chat = (await controller.openSession(key('newest')))!;
-      await settleCatalog();
-      final held = Completer<void>();
-      host.pageDelays[('personal', 0)] = held;
-      addTearDown(() {
-        if (!held.isCompleted) held.complete();
-      });
-      final refresh = data.refresh(archivedOnly: false);
-      await Future<void>.delayed(Duration.zero);
+      await settleObservations();
+      final reads = catalogReads();
+      final projects = projectReads();
       emitChatEvent(controller, chat, 'session.title', {
         'session_id': 'newest',
         'title': 'Plan Cairns flights',
       });
+      await settleObservations();
       expect(chat.title, 'Plan Cairns flights');
       expect(row('newest').title, chat.title);
       expect(data.project('cairns').entries.map((entry) => entry.id), [
         'newest',
       ]);
-
-      host.changes['personal'] = {
-        'newest': {'title': 'Plan Cairns flights'},
-      };
-      held.complete();
-      await refresh;
-      expect(row('newest').title, chat.title);
-      expect(
-        host.updates,
-        isEmpty,
-        reason: 'Observations never rename on Hermes',
-      );
-    },
-  );
-
-  test(
-    'catalog signals during a held read request fresh project membership',
-    () async {
-      final held = Completer<void>();
-      host.pageDelays[('personal', 0)] = held;
-      addTearDown(() {
-        if (!held.isCompleted) held.complete();
-      });
-      final refresh = data.refresh(archivedOnly: false);
-      await Future<void>.delayed(Duration.zero);
-      host.changes['personal'] = {
-        'newest': {'title': 'Plan Cairns flights', 'cwd': '/Mobile app'},
-      };
-      catalogChanged();
-      catalogChanged();
-      held.complete();
-      await refresh;
-      expect(row('newest').title, 'Plan Cairns flights');
-      expect(row('newest').project?.id, 'p2');
+      expect(catalogReads(), reads);
+      expect(projectReads(), projects);
       expect(host.updates, isEmpty);
-      expect(host.moves, isEmpty);
     },
   );
 
-  test('inactive browser defers catalog signals until it resumes', () async {
-    data.setReadActive(false);
-    final reads = host.reads.length;
+  test('global session signals leave unopened chats alone', () async {
+    final reads = catalogReads();
+    final projects = projectReads();
+    final previous = row('newest').title;
     host.changes['personal'] = {
       'newest': {'title': 'Plan Cairns flights', 'cwd': '/Mobile app'},
     };
     catalogChanged();
-    await settleCatalog();
-    expect(host.reads.length, reads);
-    expect(row('newest').title, isNot('Plan Cairns flights'));
-    data.setReadActive(true);
-    await settleCatalog();
+    catalogChanged();
+    await settleObservations();
+    expect(catalogReads(), reads);
+    expect(projectReads(), projects);
+    expect(row('newest').title, previous);
+    await data.refresh(archivedOnly: false);
     expect(row('newest').title, 'Plan Cairns flights');
     expect(row('newest').project?.id, 'p2');
   });
 
   test(
-    'catalog metadata updates preserve order until explicit refresh',
+    'title during a held catalog read does not schedule another scan',
     () async {
-      await data.chooseView(
-        const BrowserPreferenceIntent.grouping(ChatGrouping.profile),
+      final chat = (await controller.openSession(key('newest')))!;
+      await settleObservations();
+      final held = Completer<void>();
+      host.pageDelays[('personal', 0)] = held;
+      addTearDown(() {
+        if (!held.isCompleted) held.complete();
+      });
+      final passes = catalogPasses();
+      final refresh = data.refresh(archivedOnly: false);
+      await settleObservations();
+      emitChatEvent(controller, chat, 'session.title', {
+        'session_id': 'newest',
+        'title': 'Plan Cairns flights',
+      });
+      expect(row('newest').title, chat.title);
+      held.complete();
+      await refresh;
+      // The held response predates the title, so keep the confirmed row overlay.
+      expect(row('newest').title, 'Plan Cairns flights');
+      expect(
+        catalogPasses() - passes,
+        2,
+        reason: 'One explicit pass per profile, without a repeat',
       );
-      List<String> order() => data
-          .project('')
-          .groups
-          .singleWhere((group) => group.key == 'personal')
-          .entries
-          .map((entry) => entry.id)
-          .toList();
-      final before = order();
+    },
+  );
+
+  test('paused title observation remains local after resume', () async {
+    final chat = (await controller.openSession(key('newest')))!;
+    await settleObservations();
+    data.setReadActive(false);
+    final reads = catalogReads();
+    final projects = projectReads();
+    emitChatEvent(controller, chat, 'session.title', {
+      'session_id': 'newest',
+      'title': 'Plan Cairns flights',
+    });
+    await settleObservations();
+    expect(row('newest').title, chat.title);
+    data.setReadActive(true);
+    await settleObservations();
+    expect(catalogReads(), reads);
+    expect(projectReads(), projects);
+  });
+
+  test(
+    'list entry reads the opened chat title and project after save',
+    () async {
       host.changes['personal'] = {
-        'extra-100': {
-          'last_active': host.now + 100,
-          'title': 'Plan Cairns flights',
-        },
+        'newest': {'title': null},
+      };
+      await controller.switchProfile('personal');
+      await data.refresh(archivedOnly: false);
+      expect(row('newest').title, isEmpty);
+      expect(row('newest').project, isNull);
+      host.changes['personal']!['newest'] = {
+        'title': 'Plan Cairns flights',
+        'cwd': '/Mobile app',
+      };
+      host.resumeOverrides = {
+        'info': {'profile_name': 'personal', 'title': 'Plan Cairns flights'},
       };
       catalogChanged();
-      await settleCatalog();
-      expect(row('extra-100').title, 'Plan Cairns flights');
-      expect(order(), before);
+      final chat = (await controller.openSession(key('newest')))!;
+      await settleObservations();
+      expect(chat.title, 'Plan Cairns flights');
+      expect(chat.projectId, 'p2');
+      final reads = catalogReads();
+      catalogChanged();
+      await settleObservations();
+      expect(catalogReads(), reads);
+      controller.showList();
       await data.refresh(archivedOnly: false);
-      expect(order().indexOf('extra-100'), lessThan(order().indexOf('newest')));
+      expect(row('newest').title, chat.title);
+      expect(row('newest').project?.id, chat.projectId);
+    },
+  );
+
+  test(
+    'fresh catalog supersedes opened chat preview without reopening it',
+    () async {
+      host.changes['personal'] = {
+        'newest': {'title': 'Cairns planning', 'cwd': '/Mobile app'},
+      };
+      host.resumeOverrides = {
+        'info': {'profile_name': 'personal', 'title': 'Cairns planning'},
+      };
+      catalogChanged();
+      final chat = (await controller.openSession(key('newest')))!;
+      await settleObservations();
+      data.dispose();
+      data = ChatBrowserData(controller);
+      expect(row('newest').title, 'Cairns planning');
+      expect(row('newest').project?.id, 'p2');
+      host.changes['personal']!['newest'] = {
+        'title': 'Updated itinerary',
+        'cwd': '/personal/default',
+      };
+      await data.refresh(archivedOnly: false);
+      expect(row('newest').title, 'Updated itinerary');
+      expect(row('newest').project, isNull);
+      expect(
+        chat.title,
+        'Cairns planning',
+        reason: 'Cached runtime does not overwrite fresh list data',
+      );
     },
   );
 

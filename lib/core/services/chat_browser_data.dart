@@ -770,22 +770,20 @@ final class ChatBrowserData extends ChangeNotifier {
   void _mutationChanged() {
     if (_disposed) return;
     switch (_controller.browserMutations.value) {
-      case ProfileBrowserInvalidation():
-        // The existing coalesced read below replaces titles and membership
-        // together; a change signal carries no row facts to overlay.
-        break;
-      case SessionBrowserMutation mutation:
-        final key = ProfileSessionKey(mutation.owner, mutation.id);
-        final previous = _sessionMutations[key];
-        _sessionMutations[key] = SessionBrowserMutation(
-          mutation.owner,
-          mutation.id,
-          changes: {...?previous?.changes, ...mutation.changes},
-          projectId: mutation.changes.containsKey('cwd')
-              ? mutation.projectId
-              : mutation.projectId ?? previous?.projectId,
-          deleted: mutation.deleted,
+      case SessionTitleObservation observation:
+        _recordSessionMutation(
+          SessionBrowserMutation(
+            observation.owner,
+            observation.id,
+            changes: {'title': observation.title},
+          ),
         );
+        // This observation is complete. Keep it over an older in-flight
+        // snapshot without starting or repeating any catalog reads.
+        _changed();
+        return;
+      case SessionBrowserMutation mutation:
+        _recordSessionMutation(mutation);
       case ProjectBrowserMutation mutation:
         _projectMutations[(mutation.owner.profileName, mutation.id)] = mutation;
       case null:
@@ -801,6 +799,20 @@ final class ChatBrowserData extends ChangeNotifier {
         unawaited(_startRefresh(archivedOnly: _archived, failedOnly: false));
       }
     });
+  }
+
+  void _recordSessionMutation(SessionBrowserMutation mutation) {
+    final key = ProfileSessionKey(mutation.owner, mutation.id);
+    final previous = _sessionMutations[key];
+    _sessionMutations[key] = SessionBrowserMutation(
+      mutation.owner,
+      mutation.id,
+      changes: {...?previous?.changes, ...mutation.changes},
+      projectId: mutation.changes.containsKey('cwd')
+          ? mutation.projectId
+          : mutation.projectId ?? previous?.projectId,
+      deleted: mutation.deleted,
+    );
   }
 
   List<Map<String, dynamic>> _projectRows(String profile) {
@@ -1140,10 +1152,6 @@ final class ChatBrowserData extends ChangeNotifier {
         _archived != archivedOnly) {
       return;
     }
-    // Explicit refresh/return admits a new order. Automatic catalog signals
-    // replace row facts without shuffling an already loaded list.
-    _arrangement.reset();
-    _changed();
     if (!_disposed) unawaited(_controller.refreshActivity());
   }
 
@@ -1367,6 +1375,7 @@ final class ChatBrowserData extends ChangeNotifier {
     if (valid()) {
       _loading = false;
       _initialReadSettled = true;
+      if (!failedOnly) _arrangement.reset();
       _changed();
       if (valid()) await _refreshBotAppearances(valid);
     }
@@ -1567,6 +1576,11 @@ final class ChatBrowserData extends ChangeNotifier {
         }
         if (!merged.containsKey(chat.key.sessionId)) {
           _localEntries.add(chat.key);
+        }
+        // Before this visit has read project membership, seed its preview
+        // from the opened chat. A fresh catalog always owns later grouping.
+        if (_localEntries.contains(chat.key) ||
+            !_projects.containsKey(profile.name)) {
           final project = effectiveProjects
               .where((project) => project['id'] == chat.projectId)
               .firstOrNull;

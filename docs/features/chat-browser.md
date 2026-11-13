@@ -28,10 +28,10 @@ Feature ID: `chat-browser`.
   Project names and icons stay visible while invalidated metadata refreshes or
   a project read fails. A successful refresh applies reassignment or removal to
   both opened and unopened chats.
-  Saved chat changes update titles and project grouping automatically. A newly
-  saved project chat leaves the default group when its membership is confirmed;
-  generated titles also update the retained list before a follow-up read finishes.
-  These background reads keep usable content quiet and preserve row ordering.
+  The opened chat's confirmed title updates its cached row without fetching
+  the chat catalog. Returning to Chats immediately uses that title and its known
+  project for the initial preview; the normal entry read then confirms grouping.
+  Global session-change signals do not refresh unopened chats or rescan the list.
   Once the workspace is ready, Wing prepares Recents quietly in the background.
   Opening it reuses the shared catalog or joins preparation already underway;
   an early visit retains loading feedback until the initial read settles.
@@ -85,11 +85,13 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   Startup ordering checks cover every initial snapshot and the production Chats
   route with another profile held, in both themes at normal and doubled text.
   Live-update checks preserve row stability after the initial read settles.
-  `chat_browser_mutations_test.dart` covers saved-chat signals, generated titles
-  during held reads, repeated signals, suspended readers and stable ordering.
-  The `saved metadata refreshes retained Chats` cases in `chat_list_target_test.dart`
-  exercise the production route in both themes at normal and doubled text size,
-  holding the automatic read before confirming the title and project group.
+  `chat_browser_mutations_test.dart` asserts zero catalog requests for confirmed
+  titles and global signals, title retention through an older held read and
+  suspension, and fresh catalog authority over an opened chat's cached preview.
+  The `opened chat metadata is local` cases in `chat_list_target_test.dart` open
+  the conversation and return through Android Back in both themes at normal and
+  doubled text size. They hold the normal entry read while checking that the
+  confirmed title and project are already visible.
 
 - **Android `journeys`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

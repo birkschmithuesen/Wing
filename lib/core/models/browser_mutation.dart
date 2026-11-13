@@ -6,9 +6,11 @@ sealed class BrowserMutation {
   final WorkspaceScope owner;
 }
 
-/// Stock Hermes reports a catalog change without supplying replacement rows.
-class ProfileBrowserInvalidation extends BrowserMutation {
-  const ProfileBrowserInvalidation(super.owner);
+/// A pushed or resumed title is complete metadata; it needs no follow-up read.
+class SessionTitleObservation extends BrowserMutation {
+  const SessionTitleObservation(super.owner, this.id, this.title);
+  final String id;
+  final String title;
 }
 
 class SessionBrowserMutation extends BrowserMutation {

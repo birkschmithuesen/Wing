@@ -7057,15 +7057,36 @@ class ProfileWorkspaceController extends ChangeNotifier {
   void _hydrateTitle(ProfileChat chat, Object? title) {
     if (title is! String || title.trim().isEmpty) return;
     final confirmed = title.trim();
-    if (chat._title == confirmed) return;
+    var changed = chat._title != confirmed;
     chat._title = confirmed;
-    // Resume/info/title receipts are confirmed metadata, just like a rename.
-    // Publish before follow-up reads; the caller owns workspace notification.
+    // A later Chats visit starts from these cached rows. Retain the confirmed
+    // title there too, so its initial frame does not restore the old name.
+    final resource = _resources[chat.key.workspace];
+    List<Map<String, dynamic>> retitled(List<Map<String, dynamic>> rows) {
+      if (!rows.any(
+        (row) => row['id'] == chat.key.sessionId && row['title'] != confirmed,
+      )) {
+        return rows;
+      }
+      changed = true;
+      return _readonlyWorkspaceRows([
+        for (final row in rows)
+          row['id'] == chat.key.sessionId ? {...row, 'title': confirmed} : row,
+      ]);
+    }
+
+    if (resource != null) {
+      resource._sessions = retitled(resource._sessions);
+      resource._projectSessions = retitled(resource._projectSessions);
+    }
+    if (!changed) return;
+    // Resume/info/title receipts already contain the confirmed title. Publish
+    // it locally; the caller owns notification and no catalog read is needed.
     if (!_closed) {
-      _browserMutations.value = SessionBrowserMutation(
+      _browserMutations.value = SessionTitleObservation(
         chat.key.workspace,
         chat.key.sessionId,
-        changes: {'title': confirmed},
+        confirmed,
       );
     }
   }
@@ -9296,7 +9317,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (event.type == 'sessions.changed') {
       if (onAttention != null) unawaited(_groupNotifications.refresh());
       _invalidateProjectMembership(resource);
-      _browserMutated(ProfileBrowserInvalidation(resource.scope));
       unawaited(_scheduleNotificationReconciliation(resource));
       return;
     }

@@ -11,9 +11,9 @@ choices per connection and applies them as soon as the initial list loads.
 After loading, live updates keep rows in place; refreshing or choosing a sort
 again updates their order.
 
-Saved titles and project assignments update automatically in Chats. A new chat
-appears under its project once Hermes confirms its membership, and its generated
-title replaces the temporary name without a manual refresh.
+The opened chat keeps its confirmed title and project when you return to Chats.
+Title updates use the information Hermes already sent. Returning to the list or
+refreshing it reads the latest catalog; background chat changes do not rescan it.
 
 Tapping a chat in Recents opens its screen immediately; loading and any retry
 stay there. Back returns to Recents even while the chat is loading.
