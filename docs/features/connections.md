@@ -75,6 +75,13 @@ Recovery continues while the saved connection is retained, including when the
 server returns after the first five attempts. A healthy socket alone does not
 finish conversation recovery. Newer live updates can supersede a resume snapshot;
 Wing reads again without treating that race as a connection-settings failure.
+Saved pending chats from a previous app process join this same recovery loop.
+A temporary resume or history failure retries automatically; Retry and foreground
+return immediately reattempt restoration, including chats that have not opened
+yet. A newer live observation triggers a fresh read. Recovery finishes only after
+the saved chat, draft and history are restored; already submitted prompts are
+not sent again. A permanent refusal remains actionable and keeps its saved owner.
+
 The existing header Wing shows recovery while history and drafts remain usable.
 The icon-only Retry action remains available between automatic attempts and
 disables while a recovery request is running.

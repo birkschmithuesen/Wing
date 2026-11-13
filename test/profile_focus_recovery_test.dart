@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/bots_session.dart';
@@ -33,14 +34,27 @@ void main() {
   final navigator = GlobalKey<NavigatorState>();
 
   setUpAll(() async {
-    if (!_captureRecovery) return;
+    // Use the production font metrics for enlarged recovery messages in every
+    // run; Ahem's square glyphs make the ordinary Retry control unreachable.
+    final configFile = File('.dart_tool/package_config.json');
+    final config =
+        jsonDecode(await configFile.readAsString()) as Map<String, dynamic>;
+    final flutter = (config['packages'] as List)
+        .cast<Map<String, dynamic>>()
+        .singleWhere((entry) => entry['name'] == 'flutter');
+    final root = Directory.fromUri(
+      configFile.uri.resolve(flutter['rootUri'] as String),
+    );
+    final fonts = root.parent.parent.uri.resolve(
+      'bin/cache/artifacts/material_fonts/',
+    );
     for (final entry in {
-      'Roboto': 'build/studio-roboto.ttf',
-      'MaterialIcons': 'build/studio-icons.otf',
-      'WingIcons': 'assets/fonts/wing-icons.ttf',
+      'Roboto': fonts.resolve('Roboto-Regular.ttf'),
+      'MaterialIcons': fonts.resolve('MaterialIcons-Regular.otf'),
+      'WingIcons': File('assets/fonts/wing-icons.ttf').absolute.uri,
     }.entries) {
       await (FontLoader(entry.key)..addFont(
-            File(entry.value).readAsBytes().then(ByteData.sublistView),
+            File.fromUri(entry.value).readAsBytes().then(ByteData.sublistView),
           ))
           .load();
     }
@@ -359,6 +373,119 @@ void main() {
             isEmpty,
           );
           await capture('settled');
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+      );
+    }
+  }
+
+  for (final brightness in Brightness.values) {
+    for (final scale in [1.0, 2.0]) {
+      testWidgets(
+        'pending chat Retry shows recovery through history ${brightness.name} $scale',
+        (tester) async {
+          tester.view.physicalSize = Size(scale == 1 ? 390 : 320, 844);
+          tester.view.devicePixelRatio = 1;
+          addTearDown(tester.view.reset);
+          final preferences = await SharedPreferences.getInstance();
+          await preferences.setStringList('profile_pending_v2_focus-recovery', [
+            jsonEncode(chat.key.toJson()),
+          ]);
+          final access = controller.access;
+          controller.dispose();
+          host.resumeError = JsonRpcError(
+            'session.resume',
+            'session not found',
+            code: 4007,
+          );
+          controller = ProfileWorkspaceController(
+            access: access,
+            connectionIdentity: 'focus-recovery',
+            preferences: preferences,
+            appPreferences: appPreferences,
+            gatewayFactory: host.gateway,
+          );
+          await controller.initialize();
+          final frame = GlobalKey();
+          await tester.pumpWidget(
+            MaterialApp(
+              debugShowCheckedModeBanner: false,
+              theme: wingTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(
+                  textScaler: TextScaler.linear(scale),
+                  disableAnimations: scale == 2,
+                ),
+                child: RepaintBoundary(key: frame, child: child!),
+              ),
+              home: ProfileWorkspaceScreen(
+                initialDestination: AppDestination.activity,
+                controller: controller,
+                createBotsSession: () => BotsSession((_) async => []),
+              ),
+            ),
+          );
+          await settleRecovery(tester);
+          expect(controller.error, isNotNull);
+          final resume = Completer<void>();
+          final history = Completer<void>();
+          addTearDown(() {
+            if (!resume.isCompleted) resume.complete();
+            if (!history.isCompleted) history.complete();
+          });
+          host
+            ..resumeError = null
+            ..resumeStarted = Completer<void>()
+            ..resumeDelay = resume
+            ..heldHistoryStarted = Completer<void>()
+            ..heldHistoryDelay = history;
+          await tester.tap(find.text('Retry').first);
+          await tester.pump();
+          await tester.pump();
+          expect(find.byType(StudioLoading), findsOneWidget);
+          await host.resumeStarted!.future;
+          resume.complete();
+          await settleRecovery(tester);
+          await host.heldHistoryStarted!.future;
+          expect(find.byType(StudioLoading), findsOneWidget);
+          if (_captureRecovery) {
+            await tester.runAsync(() async {
+              final boundary =
+                  frame.currentContext!.findRenderObject()!
+                      as RenderRepaintBoundary;
+              final bitmap = await boundary.toImage();
+              final bytes = await bitmap.toByteData(
+                format: ui.ImageByteFormat.png,
+              );
+              final directory = Directory(
+                'build/design-previews/connection-recovery',
+              )..createSync(recursive: true);
+              await File(
+                '${directory.path}/pending-${brightness.name}-$scale.png',
+              ).writeAsBytes(bytes!.buffer.asUint8List());
+              bitmap.dispose();
+            });
+          }
+          history.complete();
+          for (
+            var attempt = 0;
+            attempt < 30 && controller.recovering;
+            attempt++
+          ) {
+            await settleRecovery(tester);
+          }
+          await tester.pump();
+          expect(find.byType(StudioLoading), findsNothing);
+          expect(controller.error, isNull);
+          expect(
+            preferences.getStringList('profile_pending_v2_focus-recovery'),
+            isEmpty,
+          );
+          expect(
+            host.calls.where((call) => call.$2 == 'prompt.submit'),
+            isEmpty,
+          );
+          expect(tester.takeException(), isNull);
           await tester.pumpWidget(const SizedBox.shrink());
         },
       );

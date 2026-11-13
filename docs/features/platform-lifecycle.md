@@ -50,3 +50,18 @@ Live voice uses a microphone/media foreground service and a separate retained-en
 ## Gotchas
 
 Owner recreation is not OS process death. Battery exemption, Android permissions and OEM background rules are separate boundaries. Never drive an existing physical phone for a disposable recipe.
+
+Saved pending chats use the connection's shared recovery after process restart.
+Temporary restore failures and superseded reads retry automatically; foreground
+return and Retry bypass the delay. The journal retains incomplete restores,
+including a failed history read after runtime attachment, without replaying an
+already submitted prompt. Permanent refusals remain available for manual retry.
+
+```sh
+flutter test --no-pub test/profile_workspace_controller_test.dart test/profile_resume_freshness_test.dart test/profile_focus_recovery_test.dart test/profile_live_history_test.dart
+```
+
+These cases cover pending restore failures, concurrent resume/live-history races,
+manual/foreground/automatic recovery and no repeated submission. The focus
+recovery suite drives the Retry control through held resume and history reads in
+both themes at normal and enlarged text, including reduced motion.

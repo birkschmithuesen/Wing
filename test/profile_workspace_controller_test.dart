@@ -5199,6 +5199,192 @@ void main() {
     expect(saved.any((value) => value.contains('"profile":"a"')), isFalse);
   });
 
+  Future<void> restorePendingFixture() async {
+    final key = ProfileSessionKey(controller.current!.scope, 'same');
+    await preferences.setStringList('profile_pending_v2_original-settings', [
+      jsonEncode(key.toJson()),
+    ]);
+    final connection = controller.connection;
+    controller.dispose();
+    controller = ProfileWorkspaceController(
+      connectionIdentity: 'original-settings',
+      access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+      preferences: preferences,
+      appPreferences: appPreferences,
+      gatewayFactory: host.gateway,
+    );
+    host.calls.clear();
+    await controller.initialize();
+  }
+
+  testWidgets(
+    'pending restoration retries an overlapping superseded snapshot',
+    (tester) async {
+      final delay = Completer<void>();
+      host
+        ..running = false
+        ..resumeStarted = Completer<void>()
+        ..resumeDelay = delay;
+      final restoring = restorePendingFixture();
+      await host.resumeStarted!.future;
+      await controller.current!.gateway.resume('same');
+      delay.complete();
+      await restoring;
+      expect(controller.error, isNull);
+      expect(controller.current!.reconnectScheduled, isTrue);
+      await tester.pump(const Duration(seconds: 1));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.connected,
+      );
+      expect(controller.current!.chats['same']!.reading.messages, isNotEmpty);
+      expect(
+        preferences.getStringList('profile_pending_v2_original-settings'),
+        isEmpty,
+      );
+      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+    },
+  );
+
+  testWidgets('pending restoration keeps failed history recoverable', (
+    tester,
+  ) async {
+    final delay = Completer<void>();
+    host
+      ..running = false
+      ..heldHistoryStarted = Completer<void>()
+      ..heldHistoryDelay = delay
+      ..heldHistoryFailure = TimeoutException('History unavailable');
+    final restoring = restorePendingFixture();
+    await host.heldHistoryStarted!.future;
+    delay.complete();
+    await restoring;
+    expect(
+      preferences.getStringList('profile_pending_v2_original-settings'),
+      isNotEmpty,
+    );
+    expect(controller.current!.reconnectScheduled, isTrue);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(controller.current!.chats['same']!.reading.historyError, isNull);
+    expect(controller.current!.chats['same']!.reading.messages, isNotEmpty);
+    expect(controller.connectionStatus.phase, ServerConnectionPhase.connected);
+    expect(
+      preferences.getStringList('profile_pending_v2_original-settings'),
+      isEmpty,
+    );
+    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+  });
+
+  testWidgets('pending restoration retries history superseded by live work', (
+    tester,
+  ) async {
+    final delay = Completer<void>();
+    host
+      ..running = false
+      ..heldHistoryStarted = Completer<void>()
+      ..heldHistoryDelay = delay;
+    final restoring = restorePendingFixture();
+    await host.heldHistoryStarted!.future;
+    host.event('a', 'message.start');
+    delay.complete();
+    await restoring;
+    expect(controller.current!.reconnectScheduled, isTrue);
+    await tester.pump(const Duration(seconds: 1));
+    await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+    await tester.pump();
+    expect(controller.error, isNull);
+    expect(
+      preferences.getStringList('profile_pending_v2_original-settings'),
+      isEmpty,
+    );
+    expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+  });
+
+  testWidgets(
+    'pending restoration retains a permanent refusal until manual retry',
+    (tester) async {
+      host
+        ..running = false
+        ..resumeError = JsonRpcError(
+          'session.resume',
+          'session not found',
+          code: 4007,
+        );
+      await restorePendingFixture();
+      expect(controller.error, isNotNull);
+      expect(controller.current!.reconnectScheduled, isFalse);
+      expect(
+        preferences.getStringList('profile_pending_v2_original-settings'),
+        isNotEmpty,
+      );
+      final attempts = host.calls
+          .where((call) => call.$2 == 'session.resume')
+          .length;
+      await tester.pump(const Duration(seconds: 60));
+      expect(
+        host.calls.where((call) => call.$2 == 'session.resume'),
+        hasLength(attempts),
+      );
+      host.resumeError = null;
+      await controller.retry();
+      expect(controller.error, isNull);
+      expect(
+        preferences.getStringList('profile_pending_v2_original-settings'),
+        isEmpty,
+      );
+      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+    },
+  );
+
+  for (final recovery in ['retry', 'foreground', 'automatic']) {
+    testWidgets('failed pending chat restoration recovers on $recovery', (
+      tester,
+    ) async {
+      const journalKey = 'profile_pending_v2_original-settings';
+      final saved = [
+        jsonEncode(
+          ProfileSessionKey(controller.current!.scope, 'same').toJson(),
+        ),
+      ];
+      await preferences.setStringList(journalKey, saved);
+      final connection = controller.connection;
+      controller.dispose();
+      host
+        ..running = false
+        ..resumeFailures = 1;
+      controller = ProfileWorkspaceController(
+        connectionIdentity: 'original-settings',
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      host.calls.clear();
+      await controller.initialize();
+      expect(preferences.getStringList(journalKey), saved);
+      if (recovery == 'retry') {
+        await controller.retry();
+      } else if (recovery == 'foreground') {
+        await controller.resumeConnection();
+      } else {
+        await tester.pump(const Duration(seconds: 1));
+        await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+        await tester.pump();
+      }
+      expect(controller.error, isNull);
+      expect(preferences.getStringList(journalKey), isEmpty);
+      expect(
+        controller.connectionStatus.phase,
+        ServerConnectionPhase.connected,
+      );
+      expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
+    });
+  }
+
   test(
     'stock batched clarification routes the unanswered question ID',
     () async {
