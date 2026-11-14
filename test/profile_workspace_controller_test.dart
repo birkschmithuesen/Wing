@@ -924,32 +924,6 @@ class Host {
   }
 }
 
-/// Records every `refresh` call's arguments instead of running the real
-/// (heavy) catalog/activity refresh, so a test can drive
-/// WorkspaceRecentsSession's real 30s Timer.periodic poll and observe what
-/// it calls without also exercising -- and risking a hang in -- the full
-/// refresh/prepareAppearances pipeline.
-class _SpyRecentsSession extends WorkspaceRecentsSession {
-  _SpyRecentsSession(
-    super.controller,
-    super.bots, {
-    required super.foreground,
-  });
-
-  // Tuple shape: (force, retryFailures, automatic).
-  final refreshCalls = <(bool, bool, bool)>[];
-
-  @override
-  Future<void> refresh({
-    bool force = false,
-    bool retryFailures = false,
-    bool automatic = false,
-  }) {
-    refreshCalls.add((force, retryFailures, automatic));
-    return Future.value();
-  }
-}
-
 void main() {
   final binding = _AttachmentTestBinding();
   setUpAll(() async {
@@ -3443,12 +3417,18 @@ void main() {
     );
 
     testWidgets(
-      'WorkspaceRecentsSession\'s own 30s Timer.periodic poll calls refresh '
-      'through automatic=true on every tick, not the explicit-refresh '
-      'surface (t_78c09092)',
+      'WorkspaceRecentsSession\'s own 30s poll tick does not re-query a '
+      'FINAL-refused profile (t_78c09092)',
       (tester) async {
+        host.calls.clear();
+        host.refusedProfiles['b'] = JsonRpcError(
+          'subagent.roster',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
         final bots = BotsSession((_) async => []);
-        final recents = _SpyRecentsSession(
+        final recents = WorkspaceRecentsSession(
           controller,
           bots,
           foreground: true,
@@ -3457,57 +3437,26 @@ void main() {
           recents.dispose();
           bots.dispose();
         });
-
-        // Becoming visible starts the poll and fires its own first refresh,
-        // through the explicit (non-automatic) surface. Settle generously;
-        // this checks presence/content, not an exact call count, since other
-        // listener-driven refreshes are not this test's concern.
-        recents.setVisible(tester, true);
-        for (var attempt = 0; attempt < 50; attempt++) {
-          await tester.pump(const Duration(milliseconds: 1));
-        }
-        expect(
-          recents.refreshCalls,
-          isNotEmpty,
-          reason: 'becoming visible must trigger a refresh',
-        );
-        expect(
-          recents.refreshCalls.any((call) => call.$3),
-          isFalse,
-          reason:
-              'no refresh before the first poll tick may use automatic=true; '
-              'recorded: ${recents.refreshCalls}',
-        );
-
-        // The first 30s tick must call refresh(force: true, automatic: true).
-        await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        for (var attempt = 0; attempt < 50; attempt++) {
-          await tester.pump(const Duration(milliseconds: 1));
-        }
-        expect(
-          recents.refreshCalls.any((call) => call.$1 && call.$3),
-          isTrue,
-          reason:
-              'the 30s poll tick must call refresh(force: true, automatic: '
-              'true); recorded: ${recents.refreshCalls}',
-        );
-
-        // A second 30s tick must call it again -- across multiple ticks, not
-        // just once.
-        final afterFirstTick = recents.refreshCalls
-            .where((call) => call.$1 && call.$3)
+        int rosterCallsForB() => host.calls
+            .where((c) => c.$2 == 'subagent.roster' && c.$3['profile'] == 'b')
             .length;
+
+        // Mirrors the already-covered "Recents suspends retained and late
+        // readers until the app resumes" sequence in profile_recents_test.dart
+        // (setVisible -> pump -> explicit refresh) to settle the activation
+        // refresh deterministically instead of guessing at a wait bound.
+        recents.setVisible(tester, true);
+        await tester.pump();
+        await recents.refresh();
+        expect(controller.isProfileServed('b'), isFalse);
+        expect(rosterCallsForB(), 1);
+
+        // One 30s poll tick -- not an explicit refresh or a new connection --
+        // must not clear the unserved mark or re-query the refused profile.
+        await tester.pump();
         await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        for (var attempt = 0; attempt < 50; attempt++) {
-          await tester.pump(const Duration(milliseconds: 1));
-        }
-        expect(
-          recents.refreshCalls.where((call) => call.$1 && call.$3).length,
-          greaterThan(afterFirstTick),
-          reason:
-              'a second 30s poll tick must also call refresh(force: true, '
-              'automatic: true); recorded: ${recents.refreshCalls}',
-        );
+        expect(controller.isProfileServed('b'), isFalse);
+        expect(rosterCallsForB(), 1);
       },
     );
   });
