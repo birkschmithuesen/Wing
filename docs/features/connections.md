@@ -81,11 +81,15 @@ return immediately reattempt restoration, including chats that have not opened
 yet. A newer live observation triggers a fresh read. Recovery finishes only after
 the saved chat, draft and history are restored; already submitted prompts are
 not sent again. A permanent refusal remains actionable and keeps its saved owner.
-A gateway's own canonical refusal (profile mismatch, unavailable, not found,
-invalid parameters, permission denied, unsupported, retired) is never retried
-on the same frame; a profile still starting up or temporary storage
-unavailability keeps the capped automatic backoff above. A resume refused for
-an invalid working directory retries at most once without it, never in a loop.
+A gateway's own canonical refusal is never retried on the same frame unless it
+is a profile still starting up or temporary storage unavailability, which keep
+the capped automatic backoff above; this covers every canonical refusal reason
+(profile mismatch, unavailable, not found, invalid parameters, permission
+denied, unsupported, retired and any other reason the gateway returns), not
+just a fixed list, so a profile the connected gateway does not serve for
+shared discussions stops reconnecting on its first refusal too. A resume
+refused for an invalid working directory retries at most once without it,
+never in a loop.
 
 The existing header Wing shows recovery while history and drafts remain usable.
 The icon-only Retry action remains available between automatic attempts and

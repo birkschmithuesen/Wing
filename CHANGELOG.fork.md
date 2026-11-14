@@ -13,6 +13,27 @@ the README feature list current for every future change.
 
 ## 2026-11-14
 
+### The group-notification "default" profile and subagent.roster stop retrying a FINAL gateway refusal
+- **What:** `isFinalGatewayRefusal` now treats any RPC code 4001 refusal that is not RETRYABLE as
+  FINAL instead of matching a fixed reason allowlist, so a real-world 4001 with an unlisted reason
+  (seen on `subagent.roster` for a served profile) is no longer retried forever on every
+  `sessions.changed` event. Shared-discussion monitoring (`GroupNotificationSession`'s hardcoded
+  "default" profile) now shares the connection's existing remembered-refusal cache
+  (`isProfileServed`/`_markProfileUnserved`) in its `read`/`command` callbacks instead of calling
+  `gateway.connect()` unconditionally on every poll, so a gateway that does not serve "default"
+  stops reconnecting for it after the first refusal, even though `BotsSession`'s 10s background
+  poll keeps calling `activateGroupNotifications()` every cycle.
+- **Why:** After the connect/`session.list` and detached-work retry-storm fixes (t_8cdd1adb,
+  t_0076f7aa, t_78c09092), a phone install still showed the unserved "default" profile
+  reconnecting every 2-5s and `subagent.roster` tight-looping against the served profile, with the
+  header stuck on "Reconnecting" as a symptom of the resulting repeated beginRecovery/failRecovery
+  churn.
+- **Fork files touched:** `lib/core/services/gateway_refusal.dart` (fork-only file, classifier
+  broadened), `lib/core/services/profile_workspace_controller.dart` (upstream file, `read`/
+  `command` callbacks guarded).
+- **Merge:** pending (branch `wt/t_361e1de7`, not yet merged to `voice-offline`) · **Card:**
+  t_361e1de7 (parent t_78c09092)
+
 ### Chats no longer offers a profile the gateway permanently refused
 - **What:** A profile whose connect/`session.list`/`subagent.roster` answer is a FINAL gateway
   refusal (profile mismatch or unavailable) is remembered as not served for the life of the
