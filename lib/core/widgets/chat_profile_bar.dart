@@ -105,7 +105,7 @@ class _ChatProfileBarState extends State<ChatProfileBar> {
                         return Semantics(
                           button: true,
                           selected: selected,
-                          enabled: served,
+                          enabled: served ? null : false,
                           label: profile.label,
                           hint: served
                               ? '$hint. Long press to open Bot chat'

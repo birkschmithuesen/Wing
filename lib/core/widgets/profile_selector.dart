@@ -343,7 +343,7 @@ class _ProfileSelectorState extends State<ProfileSelector> {
                                       : null,
                                   selected:
                                       widget.selectedProfile == profile.name,
-                                  enabled: served,
+                                  enabled: served ? null : false,
                                   child: Text(
                                     profile.label,
                                     style: const TextStyle(
