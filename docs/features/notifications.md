@@ -85,7 +85,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   explicit refresh or a new gateway connection. See the `connections`
   feature's `profile_workspace_controller_test.dart` and
   `workspace_connection_failure_test.dart` coverage for the retry-storm
-  suppression and its retryable/permanent split.
+  suppression and its retryable/permanent split. The same status also hides
+  the profile from being a selectable chat filter; see `chat-browser.find`
+  in [chat-browser](chat-browser.md) for the disabled picker treatment.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

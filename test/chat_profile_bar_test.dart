@@ -237,6 +237,45 @@ void main() {
     );
   });
 
+  testWidgets('an unserved profile is shown but not tappable', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final owner = AppPreferences(await SharedPreferences.getInstance());
+    addTearDown(owner.dispose);
+    String? selected;
+    final opened = <String>[];
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: wingTheme(Brightness.dark),
+        home: Scaffold(
+          body: ChatProfileBar(
+            onOpenBotChat: opened.add,
+            profiles: const [
+              HermesProfile(name: 'default'),
+              HermesProfile(name: 'work'),
+            ],
+            selectedProfiles: const {},
+            unservedProfiles: const {'work'},
+            createColors: () => ProfileColorsSession(
+              preferences: owner,
+              connectionIdentity: 'connection-a',
+            ),
+            onSelected: (name) => selected = name,
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('chat-profile-work')));
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+    await tester.longPress(find.byKey(const ValueKey('chat-profile-work')));
+    await tester.pumpAndSettle();
+    expect(opened, isEmpty);
+    await tester.tap(find.byKey(const ValueKey('chat-profile-default')));
+    expect(selected, 'default');
+  });
+
   test('profile colors match desktop, including unsigned hash overflow', () {
     expect(desktopProfileColor('default'), isNull);
     for (final (name, hue) in [

@@ -11,6 +11,25 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-14
+
+### Chats no longer offers a profile the gateway permanently refused
+- **What:** A profile whose connect/`session.list`/`subagent.roster` answer is a FINAL gateway
+  refusal (profile mismatch or unavailable) is remembered as not served for the life of the
+  connection: Wing stops polling it for detached work and canonical-chat discovery (parent card),
+  and the Chats profile picker row and the header's chat profile filter now show it disabled with
+  a "not served by this gateway" hint instead of a tappable choice. A served profile is
+  unaffected; the status clears only on an explicit refresh or a new gateway connection.
+- **Why:** The parent card stopped a retry storm against a permanently-refusing profile on the
+  backend only; this card closes its acceptance criterion 1 by surfacing the same status in the
+  UI, so the user is not invited to keep retapping a profile Wing already knows the gateway will
+  refuse.
+- **Fork edits of upstream files:** `lib/core/widgets/profile_selector.dart`,
+  `lib/core/widgets/chat_profile_bar.dart`, `lib/core/models/browser_actions.dart`,
+  `lib/core/services/chat_browser_data.dart`, `lib/core/screens/profile_workspace_browser.dart`.
+- **Merge:** pending (branch `wt/t_0076f7aa`, not yet merged to `voice-offline`) · **Card:**
+  t_0076f7aa (parent t_8cdd1adb)
+
 ## 2026-11-12 (upstream merge)
 
 ### Upstream merge: tarkilhk/Wing e8a4089c (806 commits) into the fork

@@ -15,6 +15,7 @@ class ChatProfileBar extends StatefulWidget {
     required this.onSelected,
     required this.onOpenBotChat,
     required this.createColors,
+    this.unservedProfiles = const <String>{},
   });
 
   final List<HermesProfile> profiles;
@@ -22,6 +23,10 @@ class ChatProfileBar extends StatefulWidget {
   final ValueChanged<String> onSelected;
   final ValueChanged<String> onOpenBotChat;
   final ProfileColorsSession Function() createColors;
+
+  /// Profile names the connected gateway permanently refused; shown disabled
+  /// instead of selectable.
+  final Set<String> unservedProfiles;
 
   @override
   State<ChatProfileBar> createState() => _ChatProfileBarState();
@@ -80,6 +85,9 @@ class _ChatProfileBarState extends State<ChatProfileBar> {
                   for (final profile in ordered)
                     Builder(
                       builder: (context) {
+                        final served = !widget.unservedProfiles.contains(
+                          profile.name,
+                        );
                         final selected = widget.selectedProfiles.contains(
                           profile.name,
                         );
@@ -89,21 +97,31 @@ class _ChatProfileBarState extends State<ChatProfileBar> {
                               state.profiles[profile.name]?.displayChoice,
                             ) ??
                             tokens.muted;
-                        final hint = selected
+                        final hint = !served
+                            ? 'Not served by this gateway'
+                            : selected
                             ? 'Clear profile filter'
                             : 'Filter chats by ${profile.label}';
                         return Semantics(
                           button: true,
                           selected: selected,
+                          enabled: served,
                           label: profile.label,
-                          hint: '$hint. Long press to open Bot chat',
+                          hint: served
+                              ? '$hint. Long press to open Bot chat'
+                              : hint,
                           excludeSemantics: true,
-                          onTap: () => widget.onSelected(profile.name),
-                          onLongPress: () => widget.onOpenBotChat(profile.name),
+                          onTap: served
+                              ? () => widget.onSelected(profile.name)
+                              : null,
+                          onLongPress: served
+                              ? () => widget.onOpenBotChat(profile.name)
+                              : null,
                           child: Tooltip(
                             triggerMode: TooltipTriggerMode.manual,
-                            message:
-                                '${profile.label} · $hint · Long press to open Bot chat',
+                            message: served
+                                ? '${profile.label} · $hint · Long press to open Bot chat'
+                                : '${profile.label} · $hint',
                             child: StudioButtonPress(
                               child: TextButton(
                                 key: ValueKey('chat-profile-${profile.name}'),
@@ -121,12 +139,14 @@ class _ChatProfileBarState extends State<ChatProfileBar> {
                                     borderRadius: WingRadius.control,
                                   ),
                                 ),
-                                onPressed: () =>
-                                    widget.onSelected(profile.name),
-                                onLongPress: () =>
-                                    widget.onOpenBotChat(profile.name),
+                                onPressed: served
+                                    ? () => widget.onSelected(profile.name)
+                                    : null,
+                                onLongPress: served
+                                    ? () => widget.onOpenBotChat(profile.name)
+                                    : null,
                                 child: Opacity(
-                                  opacity: selected ? 1 : .55,
+                                  opacity: !served ? .3 : (selected ? 1 : .55),
                                   child: Container(
                                     width: 20,
                                     height: 20,

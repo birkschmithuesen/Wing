@@ -111,6 +111,45 @@ void main() {
     },
   );
 
+  testWidgets('an unserved profile is shown but not tappable', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final preferences = await SharedPreferences.getInstance();
+    final owner = AppPreferences(preferences);
+    addTearDown(owner.dispose);
+    String? selected;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: wingTheme(Brightness.light),
+        home: Scaffold(
+          body: ProfileSelector(
+            profiles: const [
+              HermesProfile(name: 'default'),
+              HermesProfile(name: 'work', displayName: 'Work'),
+            ],
+            selectedProfile: 'default',
+            unservedProfiles: const {'work'},
+            onSelected: (name) => selected = name,
+            createColors: () => ProfileColorsSession(
+              preferences: owner,
+              connectionIdentity: 'connection-a',
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey('profile-work')));
+    await tester.pumpAndSettle();
+    expect(selected, isNull);
+    final button = tester.widget<TextButton>(
+      find.byKey(const ValueKey('profile-work')),
+    );
+    expect(button.onPressed, isNull);
+    await tester.tap(find.byKey(const ValueKey('profile-default')));
+    expect(selected, 'default');
+  });
+
   testWidgets('selected profile is visible without moving the enclosing page', (
     tester,
   ) async {
