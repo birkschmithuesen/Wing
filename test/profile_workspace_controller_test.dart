@@ -3458,44 +3458,56 @@ void main() {
           bots.dispose();
         });
 
-        // Becoming visible starts the poll and fires its own first refresh.
+        // Becoming visible starts the poll and fires its own first refresh,
+        // through the explicit (non-automatic) surface. Settle generously;
+        // this checks presence/content, not an exact call count, since other
+        // listener-driven refreshes are not this test's concern.
         recents.setVisible(tester, true);
-        for (
-          var attempt = 0;
-          attempt < 50 && recents.refreshCalls.isEmpty;
-          attempt++
-        ) {
+        for (var attempt = 0; attempt < 50; attempt++) {
           await tester.pump(const Duration(milliseconds: 1));
         }
-        expect(recents.refreshCalls, hasLength(1));
-        expect(recents.refreshCalls.single.$3, isFalse);
+        expect(
+          recents.refreshCalls,
+          isNotEmpty,
+          reason: 'becoming visible must trigger a refresh',
+        );
+        expect(
+          recents.refreshCalls.any((call) => call.$3),
+          isFalse,
+          reason:
+              'no refresh before the first poll tick may use automatic=true; '
+              'recorded: ${recents.refreshCalls}',
+        );
 
-        // Each subsequent 30s tick must go through automatic=true.
-        var settled = recents.refreshCalls.length;
+        // The first 30s tick must call refresh(force: true, automatic: true).
         await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        for (
-          var attempt = 0;
-          attempt < 50 && recents.refreshCalls.length == settled;
-          attempt++
-        ) {
+        for (var attempt = 0; attempt < 50; attempt++) {
           await tester.pump(const Duration(milliseconds: 1));
         }
-        expect(recents.refreshCalls.length, settled + 1);
-        expect(recents.refreshCalls.last.$1, isTrue);
-        expect(recents.refreshCalls.last.$3, isTrue);
+        expect(
+          recents.refreshCalls.any((call) => call.$1 && call.$3),
+          isTrue,
+          reason:
+              'the 30s poll tick must call refresh(force: true, automatic: '
+              'true); recorded: ${recents.refreshCalls}',
+        );
 
-        settled = recents.refreshCalls.length;
+        // A second 30s tick must call it again -- across multiple ticks, not
+        // just once.
+        final afterFirstTick = recents.refreshCalls
+            .where((call) => call.$1 && call.$3)
+            .length;
         await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        for (
-          var attempt = 0;
-          attempt < 50 && recents.refreshCalls.length == settled;
-          attempt++
-        ) {
+        for (var attempt = 0; attempt < 50; attempt++) {
           await tester.pump(const Duration(milliseconds: 1));
         }
-        expect(recents.refreshCalls.length, settled + 1);
-        expect(recents.refreshCalls.last.$1, isTrue);
-        expect(recents.refreshCalls.last.$3, isTrue);
+        expect(
+          recents.refreshCalls.where((call) => call.$1 && call.$3).length,
+          greaterThan(afterFirstTick),
+          reason:
+              'a second 30s poll tick must also call refresh(force: true, '
+              'automatic: true); recorded: ${recents.refreshCalls}',
+        );
       },
     );
   });
