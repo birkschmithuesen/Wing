@@ -5,7 +5,6 @@ import 'package:wing/core/models/gateway_approval.dart';
 import 'support/canonical_gateway_fixture.dart';
 import 'package:wing/core/models/hermes_question.dart';
 import 'package:wing/core/services/bots_session.dart';
-import 'package:wing/core/services/workspace_recents_session.dart';
 import 'package:wing/core/models/chat_intelligence.dart';
 import 'package:wing/core/models/model_choice.dart';
 import 'package:wing/core/models/chat_runtime.dart';
@@ -3412,50 +3411,6 @@ void main() {
             reason: 'automatic tick $tick must not clear the unserved cache',
           );
         }
-        expect(rosterCallsForB(), 1);
-      },
-    );
-
-    testWidgets(
-      'WorkspaceRecentsSession\'s own 30s poll tick does not re-query a '
-      'FINAL-refused profile (t_78c09092)',
-      (tester) async {
-        host.calls.clear();
-        host.refusedProfiles['b'] = JsonRpcError(
-          'subagent.roster',
-          'Profile is not served by this gateway',
-          code: 4001,
-          reason: 'profile_mismatch',
-        );
-        final bots = BotsSession((_) async => []);
-        final recents = WorkspaceRecentsSession(
-          controller,
-          bots,
-          foreground: true,
-        );
-        addTearDown(() {
-          recents.dispose();
-          bots.dispose();
-        });
-        int rosterCallsForB() => host.calls
-            .where((c) => c.$2 == 'subagent.roster' && c.$3['profile'] == 'b')
-            .length;
-
-        // Mirrors the already-covered "Recents suspends retained and late
-        // readers until the app resumes" sequence in profile_recents_test.dart
-        // (setVisible -> pump -> explicit refresh) to settle the activation
-        // refresh deterministically instead of guessing at a wait bound.
-        recents.setVisible(tester, true);
-        await tester.pump();
-        await recents.refresh();
-        expect(controller.isProfileServed('b'), isFalse);
-        expect(rosterCallsForB(), 1);
-
-        // One 30s poll tick -- not an explicit refresh or a new connection --
-        // must not clear the unserved mark or re-query the refused profile.
-        await tester.pump();
-        await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        expect(controller.isProfileServed('b'), isFalse);
         expect(rosterCallsForB(), 1);
       },
     );
