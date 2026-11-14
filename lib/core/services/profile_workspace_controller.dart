@@ -1602,14 +1602,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
           );
   }
 
-  Future<void> refreshRecents() {
+  Future<void> refreshRecents({bool automatic = false}) {
     if (_recentsRefresh case final pending?) return pending;
     final completion = Completer<void>();
     // Install the shared operation before publishing Loading to observers.
     _recentsRefresh = completion.future;
     unawaited(() async {
       try {
-        await _refreshRecents();
+        await _refreshRecents(automatic: automatic);
         completion.complete();
       } catch (error, stack) {
         completion.completeError(error, stack);
@@ -1620,11 +1620,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
     return completion.future;
   }
 
-  Future<void> _refreshRecents() async {
+  Future<void> _refreshRecents({bool automatic = false}) async {
     final generation = ++_recentsGeneration;
     _recentsLoading = true;
     _changed();
-    final liveRefresh = refreshActivity();
+    final liveRefresh = refreshActivity(automatic: automatic);
     try {
       final profiles = await _resource('default').gateway.discover();
       final cutoff = DateTime.now().millisecondsSinceEpoch / 1000 - 86400;
@@ -3142,10 +3142,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
   }
 
-  Future<void> refreshActivity() async {
+  // The Recents screen's own 30s background poll (WorkspaceRecentsSession's
+  // Timer.periodic) reaches this through automatic=true. It is neither an
+  // explicit refresh nor a new connection, so it must not clear a profile a
+  // prior FINAL refusal already marked unserved (see _clearUnservedProfiles) -
+  // doing so would resume the retry storm that cache exists to stop.
+  Future<void> refreshActivity({bool automatic = false}) async {
     final generation = ++_activityGeneration;
     Future<void>? detachedRefresh;
-    _clearUnservedProfiles();
+    if (!automatic) _clearUnservedProfiles();
     _activityLoading = true;
     _activityProfileErrors = const {};
     _changed();
