@@ -1167,6 +1167,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser>
                 selectedProfile: workspace.scope?.profileName,
                 createColors: widget.createColors,
                 padding: EdgeInsets.zero,
+                unservedProfiles: workspace.unservedProfiles,
                 onSelected: workspace.repairBusy
                     ? null
                     : (name) => unawaited(
@@ -1242,6 +1243,7 @@ class _ProfileWorkspaceBrowserState extends State<ProfileWorkspaceBrowser>
                   profiles: workspace.profiles,
                   createColors: widget.createColors,
                   selectedProfiles: _profiles,
+                  unservedProfiles: workspace.unservedProfiles,
                   onOpenBotChat: widget.onOpenBotChat,
                   onSelected: (name) => _chooseView(
                     BrowserPreferenceIntent.exclusiveProfile(name),

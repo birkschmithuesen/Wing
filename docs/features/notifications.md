@@ -78,6 +78,16 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   transport reuse, overlap, failed versus empty rosters, metadata isolation,
   late responses and obsolete connection retention. It also opens the
   production Recents row in both themes at normal and enlarged text.
+  A profile the connected gateway permanently refuses (profile mismatch or
+  unavailable) is remembered as not served and stops being polled for
+  detached work or browsed for its canonical chat on every reconciliation
+  tick; a served profile keeps polling normally. Retried only after an
+  explicit refresh or a new gateway connection. See the `connections`
+  feature's `profile_workspace_controller_test.dart` and
+  `workspace_connection_failure_test.dart` coverage for the retry-storm
+  suppression and its retryable/permanent split. The same status also hides
+  the profile from being a selectable chat filter; see `chat-browser.find`
+  in [chat-browser](chat-browser.md) for the disabled picker treatment.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

@@ -1285,15 +1285,34 @@ class ProfileGateway {
   }
 
   final _resumeVersions = <String, int>{};
-  Future<Map<String, dynamic>> resume(String durableId) async {
+  Future<Map<String, dynamic>> resume(String durableId, {String? cwd}) async {
     final version = (_resumeVersions[durableId] ?? 0) + 1;
     _resumeVersions[durableId] = version;
     await requireProfile();
-    final result = await call('session.resume', {
-      'session_id': durableId,
-      'display_projection': true,
-      'source': ?(wingSourceAdvertised ? wingSessionSource : null),
-    });
+    Future<Map<String, dynamic>> attempt(String? attemptCwd) => call(
+      'session.resume',
+      {
+        'session_id': durableId,
+        'display_projection': true,
+        'source': ?(wingSourceAdvertised ? wingSessionSource : null),
+        'cwd': ?attemptCwd,
+      },
+    );
+    Map<String, dynamic> result;
+    try {
+      result = await attempt(cwd);
+    } on JsonRpcError catch (error) {
+      // invalid_params field=cwd refuses the exact frame that carried it
+      // (spec §4.3, FINAL). Retrying the identical frame can never succeed;
+      // one retry without cwd is the only recovery, never a loop.
+      if (cwd != null &&
+          error.reason == 'invalid_params' &&
+          error.data['field'] == 'cwd') {
+        result = await attempt(null);
+      } else {
+        rethrow;
+      }
+    }
     if (_resumeVersions[durableId] != version) {
       throw JsonRpcError(
         'session.resume',

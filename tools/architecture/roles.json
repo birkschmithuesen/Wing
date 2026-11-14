@@ -1446,6 +1446,11 @@
       "feature": "connections",
       "library": "lib/core/services/gateway_endpoint.dart"
     },
+    "lib/core/services/gateway_refusal.dart": {
+      "role": "utility",
+      "feature": "connections",
+      "library": "lib/core/services/gateway_refusal.dart"
+    },
     "lib/core/services/git_review_session.dart": {
       "role": "application",
       "feature": "conversation",

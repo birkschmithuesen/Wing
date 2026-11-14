@@ -36,6 +36,11 @@ Feature ID: `chat-browser`.
   Opening it reuses the shared catalog or joins preparation already underway;
   an early visit retains loading feedback until the initial read settles.
   Hidden Recents does not poll, and warm-up does not repeat on every app resume.
+  A profile the connected gateway permanently refuses (profile mismatch or
+  unavailable) shows disabled, with a "not served by this gateway" hint, in
+  both the profile picker row and the header's chat profile filter instead of
+  being a selectable choice; see `notifications` for how that status is
+  tracked for the life of the connection.
 - `chat-browser.open` — Enter the captured row immediately.
 - `chat-browser.organize` — Change a chat or project and retain browser state. The current-project card in Move to project has an icon-only cross to remove a chat from its project. Confirmation moves it to the captured profile's default folder, keeping messages and drafts. New projects start in the captured profile's default folder and propose a kebab-case subfolder as the name changes; typing or choosing a location keeps that override.
 
@@ -72,6 +77,7 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
 
   ```sh
   flutter test --no-pub test/chat_browser_transport_test.dart test/profile_workspace_browser_test.dart test/profile_row_actions_test.dart
+  flutter test --no-pub test/profile_selector_test.dart test/chat_profile_bar_test.dart
   flutter test --no-pub test/workspace_activity_filters_test.dart test/profile_recents_test.dart test/app_shell_navigation_test.dart
   flutter test --no-pub test/profile_recents_visibility_test.dart
   flutter test --no-pub test/profile_pagination_browser_test.dart
@@ -156,6 +162,9 @@ verify that its inherited icon styling cannot fade the filled confirmation glyph
 The project-action suite also supplies an automatic root-folder group alongside
 a saved project, verifies its chats remain unassigned in the browser and header,
 and excludes the generated group from project actions and move destinations.
+The profile selector and chat profile bar widget suites check that a profile
+name listed as unserved renders disabled and does not invoke its tap/long-press
+callbacks, while a served profile alongside it stays selectable.
 
 ## Gotchas
 

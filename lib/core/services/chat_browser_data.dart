@@ -408,6 +408,10 @@ final class ChatBrowserData extends ChangeNotifier {
     return BrowserWorkspaceState(
       initialized: _controller.initialized,
       profiles: _controller.discovery?.profiles ?? const [],
+      unservedProfiles: {
+        for (final profile in _controller.discovery?.profiles ?? const [])
+          if (!_controller.isProfileServed(profile.name)) profile.name,
+      },
       scope: _controller.current?.scope,
       switching: _controller.switching,
       repairRequired: _controller.requiresProfileSelectionRepair,

@@ -17,6 +17,7 @@ class ProfileSelector extends StatefulWidget {
     required this.createColors,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
     this.trailing,
+    this.unservedProfiles = const <String>{},
   });
 
   final List<HermesProfile> profiles;
@@ -25,6 +26,10 @@ class ProfileSelector extends StatefulWidget {
   final ProfileColorsSession Function() createColors;
   final EdgeInsetsGeometry padding;
   final Widget? trailing;
+
+  /// Profile names the connected gateway permanently refused; shown disabled
+  /// instead of selectable.
+  final Set<String> unservedProfiles;
 
   @override
   State<ProfileSelector> createState() => _ProfileSelectorState();
@@ -269,66 +274,90 @@ class _ProfileSelectorState extends State<ProfileSelector> {
                 padding: const EdgeInsets.only(right: 8),
                 child: Center(
                   child: Builder(
-                    builder: (anchor) => GestureDetector(
-                      onLongPress: () => _chooseColor(anchor, profile),
-                      child: StudioButtonPress(
-                        child: TextButton(
-                          key: ValueKey('profile-${profile.name}'),
-                          style:
-                              TextButton.styleFrom(
-                                minimumSize: const Size(48, 36),
-                                tapTargetSize: MaterialTapTargetSize.padded,
-                                visualDensity: VisualDensity.standard,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                ),
-                                foregroundColor: _profileColor(profile.name),
-                                backgroundColor: _profileColor(profile.name)
-                                    .withValues(
-                                      alpha:
-                                          widget.selectedProfile == profile.name
-                                          ? 0.22
-                                          : 0.09,
+                    builder: (anchor) {
+                      final served = !widget.unservedProfiles.contains(
+                        profile.name,
+                      );
+                      return Tooltip(
+                        message: served
+                            ? profile.label
+                            : '${profile.label} · not served by this gateway',
+                        child: GestureDetector(
+                          onLongPress: () => _chooseColor(anchor, profile),
+                          child: Opacity(
+                            opacity: served ? 1 : .45,
+                            child: StudioButtonPress(
+                              child: TextButton(
+                                key: ValueKey('profile-${profile.name}'),
+                                style:
+                                    TextButton.styleFrom(
+                                      minimumSize: const Size(48, 36),
+                                      tapTargetSize:
+                                          MaterialTapTargetSize.padded,
+                                      visualDensity: VisualDensity.standard,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                      ),
+                                      foregroundColor: _profileColor(
+                                        profile.name,
+                                      ),
+                                      backgroundColor: _profileColor(
+                                        profile.name,
+                                      ).withValues(
+                                        alpha:
+                                            widget.selectedProfile ==
+                                                profile.name
+                                            ? 0.22
+                                            : 0.09,
+                                      ),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: WingRadius.control,
+                                      ),
+                                    ).copyWith(
+                                      side: WidgetStateProperty.resolveWith((
+                                        states,
+                                      ) {
+                                        if (states.contains(
+                                          WidgetState.focused,
+                                        )) {
+                                          return BorderSide(
+                                            color: Theme.of(
+                                              context,
+                                            ).colorScheme.primary,
+                                            width: 3,
+                                          );
+                                        }
+                                        return BorderSide(
+                                          color: _profileColor(
+                                            profile.name,
+                                          ).withValues(alpha: 0.28),
+                                        );
+                                      }),
                                     ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: WingRadius.control,
+                                onPressed: widget.onSelected == null || !served
+                                    ? null
+                                    : () => widget.onSelected!(profile.name),
+                                child: Semantics(
+                                  key: widget.selectedProfile == profile.name
+                                      ? _selected
+                                      : null,
+                                  selected:
+                                      widget.selectedProfile == profile.name,
+                                  enabled: served ? null : false,
+                                  child: Text(
+                                    profile.label,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 14,
+                                    ),
+                                  ),
                                 ),
-                              ).copyWith(
-                                side: WidgetStateProperty.resolveWith((states) {
-                                  if (states.contains(WidgetState.focused)) {
-                                    return BorderSide(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
-                                      width: 3,
-                                    );
-                                  }
-                                  return BorderSide(
-                                    color: _profileColor(
-                                      profile.name,
-                                    ).withValues(alpha: 0.28),
-                                  );
-                                }),
-                              ),
-                          onPressed: widget.onSelected == null
-                              ? null
-                              : () => widget.onSelected!(profile.name),
-                          child: Semantics(
-                            key: widget.selectedProfile == profile.name
-                                ? _selected
-                                : null,
-                            selected: widget.selectedProfile == profile.name,
-                            child: Text(
-                              profile.label,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 14,
                               ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
               ),

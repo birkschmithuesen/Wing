@@ -52,8 +52,13 @@ final class BrowserWorkspaceState {
     required this.visibilityNotice,
     required this.visibilityError,
     required this.canChooseVisibility,
+    this.unservedProfiles = const <String>{},
   }) : profiles = List.unmodifiable(profiles);
   final List<HermesProfile> profiles;
+
+  /// Profile names the connected gateway permanently refused; not served
+  /// by this connection's life ([ProfileWorkspaceController.isProfileServed]).
+  final Set<String> unservedProfiles;
   final WorkspaceScope? scope;
   final bool initialized,
       switching,
