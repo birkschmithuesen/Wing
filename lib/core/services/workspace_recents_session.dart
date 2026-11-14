@@ -126,7 +126,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
       });
       _poll = Timer.periodic(
         refreshInterval,
-        (_) => unawaited(refresh(force: true)),
+        (_) => unawaited(refresh(force: true, automatic: true)),
       );
     } else {
       _poll?.cancel();
@@ -147,7 +147,11 @@ class WorkspaceRecentsSession extends ChangeNotifier
   }
 
   @override
-  Future<void> refresh({bool force = false, bool retryFailures = false}) {
+  Future<void> refresh({
+    bool force = false,
+    bool retryFailures = false,
+    bool automatic = false,
+  }) {
     if (_closed) return Future.value();
     if (_refreshing case final pending?) {
       _retryFailuresRequested |= retryFailures;
@@ -167,7 +171,7 @@ class WorkspaceRecentsSession extends ChangeNotifier
       try {
         var retriedFailures = retryFailures;
         await Future.wait([
-          controller.refreshRecents(),
+          controller.refreshRecents(automatic: automatic),
           bots.refresh(retryFailures: retryFailures),
         ]);
         // Metadata and admitted image reads can outlive the catalog reads.

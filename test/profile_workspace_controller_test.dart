@@ -3375,6 +3375,45 @@ void main() {
         expect(resumes, hasLength(1));
       },
     );
+
+    test(
+      'refreshActivity(automatic: true) -- the surface the Recents 30s poll '
+      'uses -- never re-clears a FINAL-refused profile across several '
+      'simulated ticks (t_78c09092)',
+      () async {
+        for (var settle = 0; settle < 10; settle++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        host.calls.clear();
+        host.refusedProfiles['b'] = JsonRpcError(
+          'subagent.roster',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        int rosterCallsForB() => host.calls
+            .where((c) => c.$2 == 'subagent.roster' && c.$3['profile'] == 'b')
+            .length;
+
+        // A plain (non-automatic) refreshActivity -- initialize()/explicit
+        // refresh's own surface -- marks 'b' unserved from its FINAL refusal.
+        await controller.refreshActivity();
+        expect(controller.isProfileServed('b'), isFalse);
+        expect(rosterCallsForB(), 1);
+
+        // The Recents poll's automatic=true surface must never clear that
+        // mark, so a still-refused profile is never re-queried on any tick.
+        for (var tick = 0; tick < 3; tick++) {
+          await controller.refreshActivity(automatic: true);
+          expect(
+            controller.isProfileServed('b'),
+            isFalse,
+            reason: 'automatic tick $tick must not clear the unserved cache',
+          );
+        }
+        expect(rosterCallsForB(), 1);
+      },
+    );
   });
 
   test(
