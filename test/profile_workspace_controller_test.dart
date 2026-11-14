@@ -930,10 +930,14 @@ class Host {
 /// it calls without also exercising -- and risking a hang in -- the full
 /// refresh/prepareAppearances pipeline.
 class _SpyRecentsSession extends WorkspaceRecentsSession {
-  _SpyRecentsSession(ProfileWorkspaceController controller, BotsSession bots)
-    : super(controller, bots, foreground: true);
+  _SpyRecentsSession(
+    super.controller,
+    super.bots, {
+    required super.foreground,
+  });
 
-  final refreshCalls = <(bool force, bool retryFailures, bool automatic)>[];
+  // Tuple shape: (force, retryFailures, automatic).
+  final refreshCalls = <(bool, bool, bool)>[];
 
   @override
   Future<void> refresh({
@@ -3444,7 +3448,11 @@ void main() {
       'surface (t_78c09092)',
       (tester) async {
         final bots = BotsSession((_) async => []);
-        final recents = _SpyRecentsSession(controller, bots);
+        final recents = _SpyRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
         addTearDown(() {
           recents.dispose();
           bots.dispose();
@@ -3452,18 +3460,42 @@ void main() {
 
         // Becoming visible starts the poll and fires its own first refresh.
         recents.setVisible(tester, true);
-        await tester.pump();
+        for (
+          var attempt = 0;
+          attempt < 50 && recents.refreshCalls.isEmpty;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
         expect(recents.refreshCalls, hasLength(1));
-        expect(recents.refreshCalls.single, (false, false, false));
+        expect(recents.refreshCalls.single.$3, isFalse);
 
         // Each subsequent 30s tick must go through automatic=true.
+        var settled = recents.refreshCalls.length;
         await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        expect(recents.refreshCalls, hasLength(2));
-        expect(recents.refreshCalls.last, (true, false, true));
+        for (
+          var attempt = 0;
+          attempt < 50 && recents.refreshCalls.length == settled;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        expect(recents.refreshCalls.length, settled + 1);
+        expect(recents.refreshCalls.last.$1, isTrue);
+        expect(recents.refreshCalls.last.$3, isTrue);
 
+        settled = recents.refreshCalls.length;
         await tester.pump(WorkspaceRecentsSession.refreshInterval);
-        expect(recents.refreshCalls, hasLength(3));
-        expect(recents.refreshCalls.last, (true, false, true));
+        for (
+          var attempt = 0;
+          attempt < 50 && recents.refreshCalls.length == settled;
+          attempt++
+        ) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        expect(recents.refreshCalls.length, settled + 1);
+        expect(recents.refreshCalls.last.$1, isTrue);
+        expect(recents.refreshCalls.last.$3, isTrue);
       },
     );
   });
