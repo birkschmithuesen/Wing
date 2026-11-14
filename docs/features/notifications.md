@@ -88,6 +88,11 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   suppression and its retryable/permanent split. The same status also hides
   the profile from being a selectable chat filter; see `chat-browser.find`
   in [chat-browser](chat-browser.md) for the disabled picker treatment.
+  Shared-discussion monitoring reads a dedicated profile for group chats,
+  independent of which profile is connected; the same remembered-refusal
+  cache applies, so a gateway that does not serve that profile stops
+  reconnecting for it after the first refusal instead of reopening a socket
+  on every background poll.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 

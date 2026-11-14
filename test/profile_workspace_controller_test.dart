@@ -229,6 +229,7 @@ class Host {
   int connectFailures = 0;
   Object? connectError;
   Object? rosterFailure;
+  Object? groupsListError;
   final refusedProfiles = <String, Object>{};
   bool resumeCwdRejected = false;
   Object? resumeError;
@@ -491,6 +492,10 @@ class Host {
         calls.add((name, method, params));
         if (method == 'process.list') return {'processes': <Object>[]};
         if (method == 'config.set') return {'value': params['value']};
+        if (method == 'groups.list') {
+          if (groupsListError != null) throw groupsListError!;
+          return {'rooms': <Object>[], 'next_offset': null};
+        }
         if ({'subagent.roster', 'session.list'}.contains(method)) {
           final refusal = refusedProfiles[params['profile']];
           if (refusal != null) throw refusal;
@@ -3277,6 +3282,31 @@ void main() {
           host.calls.where((c) => c.$2 == 'prompt.submit' && c.$1 == 'a'),
           hasLength(1),
         );
+      },
+    );
+
+    test(
+      'a FINAL refusal of the group-notification "default" profile stops '
+      'BotsSession\'s background poll from replaying the exact refused frame',
+      () async {
+        host.calls.clear();
+        host.groupsListError = JsonRpcError(
+          'groups.list',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        await controller.activateGroupNotifications();
+        expect(controller.isProfileServed('default'), isFalse);
+        expect(host.calls.where((c) => c.$2 == 'groups.list'), hasLength(1));
+        // BotsSession's 10s background poll calls activateGroupNotifications()
+        // again on every cycle (see bots_connection_source.dart); it must not
+        // reconnect or replay the already-refused "default" profile read.
+        for (var tick = 0; tick < 5; tick++) {
+          await controller.activateGroupNotifications();
+        }
+        expect(host.calls.where((c) => c.$2 == 'groups.list'), hasLength(1));
+        expect(controller.isProfileServed('a'), isTrue);
       },
     );
 
