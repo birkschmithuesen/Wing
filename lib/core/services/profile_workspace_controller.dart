@@ -1044,16 +1044,46 @@ class ProfileWorkspaceController extends ChangeNotifier {
       ),
       instance: connection.label,
       preferences: preferences,
+      // 'default' is not necessarily served by this connection (it is the
+      // shared-group owner, not the connected profile). A prior FINAL
+      // refusal here is remembered the same way as session.list/subagent.
+      // roster below, so BotsSession's 10s background poll reactivating
+      // this session cannot resume the retry storm that cache exists to
+      // stop (see _markProfileUnserved).
       read: (method, params) async {
+        if (!isProfileServed('default')) {
+          throw JsonRpcError(
+            method,
+            'Profile is not served',
+            reason: 'profile_mismatch',
+          );
+        }
         final gateway = _resource('default').gateway;
-        await gateway.connect();
-        return gateway.call(method, params);
+        try {
+          await gateway.connect();
+          return await gateway.call(method, params);
+        } on JsonRpcError catch (error) {
+          if (isFinalGatewayRefusal(error)) _markProfileUnserved('default');
+          rethrow;
+        }
       },
       command: (method, params) async {
+        if (!isProfileServed('default')) {
+          throw JsonRpcError(
+            method,
+            'Profile is not served',
+            reason: 'profile_mismatch',
+          );
+        }
         final gateway = _resource('default').gateway;
-        await gateway.connect();
-        if (_closed) throw StateError('Connection retired');
-        return gateway.call(method, params);
+        try {
+          await gateway.connect();
+          if (_closed) throw StateError('Connection retired');
+          return await gateway.call(method, params);
+        } on JsonRpcError catch (error) {
+          if (isFinalGatewayRefusal(error)) _markProfileUnserved('default');
+          rethrow;
+        }
       },
       publishInputs: (inputs) async {
         if (onGroupInputs == null) {

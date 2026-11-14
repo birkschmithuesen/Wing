@@ -48,6 +48,22 @@ void main() {
     expect(isTemporaryWorkspaceFailure(storage), isTrue);
   });
 
+  test(
+    '4001 refusals with a reason outside the known list are still FINAL, '
+    'not retried forever as neither final nor retryable',
+    () {
+      final unlistedReason = JsonRpcError(
+        'subagent.roster',
+        'Capability unavailable for this profile',
+        code: 4001,
+        reason: 'capability_unavailable',
+      );
+      expect(isFinalGatewayRefusal(unlistedReason), isTrue);
+      expect(isRetryableGatewayRefusal(unlistedReason), isFalse);
+      expect(isTemporaryWorkspaceFailure(unlistedReason), isFalse);
+    },
+  );
+
   test('unknown method refusal is neither final nor retryable', () {
     final unknownMethod = JsonRpcError(
       'session.exotic',
