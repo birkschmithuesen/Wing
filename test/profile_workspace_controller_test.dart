@@ -5,6 +5,7 @@ import 'package:wing/core/models/gateway_approval.dart';
 import 'support/canonical_gateway_fixture.dart';
 import 'package:wing/core/models/hermes_question.dart';
 import 'package:wing/core/services/bots_session.dart';
+import 'package:wing/core/services/workspace_recents_session.dart';
 import 'package:wing/core/models/chat_intelligence.dart';
 import 'package:wing/core/models/model_choice.dart';
 import 'package:wing/core/models/chat_runtime.dart';
@@ -3373,6 +3374,68 @@ void main() {
             .where((c) => c.$1 == 'a' && c.$2 == 'session.resume')
             .toList();
         expect(resumes, hasLength(1));
+      },
+    );
+
+    testWidgets(
+      'the Recents 30s automatic poll never re-clears a FINAL-refused '
+      'profile; only initialize() or an explicit refresh does (t_78c09092)',
+      (tester) async {
+        for (var settle = 0; settle < 10; settle++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        host.calls.clear();
+        host.refusedProfiles['b'] = JsonRpcError(
+          'subagent.roster',
+          'Profile is not served by this gateway',
+          code: 4001,
+          reason: 'profile_mismatch',
+        );
+        final bots = BotsSession((_) async => []);
+        final recents = WorkspaceRecentsSession(
+          controller,
+          bots,
+          foreground: true,
+        );
+        addTearDown(() {
+          recents.dispose();
+          bots.dispose();
+        });
+        int rosterCallsForB() => host.calls
+            .where((c) => c.$2 == 'subagent.roster' && c.$3['profile'] == 'b')
+            .length;
+        int sessionListCallsForB() => host.calls
+            .where((c) => c.$2 == 'session.list' && c.$3['profile'] == 'b')
+            .length;
+
+        // Becoming visible starts the poll and runs its own first refresh;
+        // let that settle. It is the sole clear besides initialize()/explicit
+        // refresh that this test does not scrutinize.
+        recents.setVisible(tester, true);
+        for (var attempt = 0; attempt < 50 && controller.isProfileServed('b');
+            attempt++) {
+          await tester.pump(const Duration(milliseconds: 1));
+        }
+        expect(controller.isProfileServed('b'), isFalse);
+        expect(rosterCallsForB(), 1);
+
+        // Drive the 30s automatic poll timer across several ticks. None of
+        // them is an explicit refresh or a new connection, so none of them
+        // may clear the unserved cache or re-send roster/session.list for
+        // the still-refused profile.
+        for (var tick = 0; tick < 4; tick++) {
+          await tester.pump(WorkspaceRecentsSession.refreshInterval);
+          for (var i = 0; i < 30; i++) {
+            await tester.pump();
+          }
+          expect(
+            controller.isProfileServed('b'),
+            isFalse,
+            reason: 'poll tick $tick must not clear the unserved cache',
+          );
+        }
+        expect(rosterCallsForB(), 1);
+        expect(sessionListCallsForB(), lessThanOrEqualTo(1));
       },
     );
   });
