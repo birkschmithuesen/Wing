@@ -48,6 +48,11 @@ class _RecentsFixture extends ProfileBrowserFixture {
   Completer<void>? heldRead;
   bool failRead = false;
   final readWatermarks = <String, double>{};
+  // Beyond-every-page "ancient" filler: lets a test force the "personal"
+  // session list past several pages so a pinned, recent row's back-fill
+  // repeat (see sessions() below) can be observed on a page with no other
+  // recent data.
+  int extraAncientSessions = 0;
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
     final delegate = super.gateway(scope);
@@ -134,6 +139,11 @@ class _RecentsFixture extends ProfileBrowserFixture {
           'profile': profile,
           'last_active': now - i * 60,
           'pinned': i == 0,
+          // Desktop-created sessions report no session_key; Wing's chat list
+          // keys and dedupes by id, never session_key (see
+          // _refreshRecents/recentChats), so a null key here must not hide
+          // the row next to one that has a key set.
+          'session_key': i == 0 ? null : 'agent:birk:local:dm:recent-$i',
         },
     if (!hiddenChat)
       {
@@ -152,6 +162,23 @@ class _RecentsFixture extends ProfileBrowserFixture {
       'last_active': now - 90000,
       'pinned': true,
     },
+    if (profile == 'personal' && extraAncientSessions > 0)
+      {
+        // Just inside the 24h cutoff.
+        'id': 'boundary-in',
+        'title': 'Right at the cutoff',
+        'profile': profile,
+        'last_active': now - 86400 + 1,
+        'session_key': null,
+      },
+    if (profile == 'personal')
+      for (var i = 0; i < extraAncientSessions; i++)
+        {
+          'id': 'ancient-$i',
+          'title': 'Ancient conversation $i',
+          'profile': profile,
+          'last_active': now - 200000 - i,
+        },
   ];
 }
 
@@ -2634,6 +2661,63 @@ void main() {
         ),
         isTrue,
       );
+    },
+  );
+
+  test(
+    'a pinned recent chat does not force a scan of the full session history',
+    () async {
+      // Hermes re-appends every pinned row to each page so a pin is never
+      // lost deep in history (confirmed against the real gateway: a pinned,
+      // recent session reappears on every page past the first). "personal"
+      // has a pinned, recent "recent-0" plus enough ancient filler for a
+      // third page that holds nothing but that repeat and genuinely old
+      // rows. The server-side session_key mix (null on some desktop-style
+      // rows, set on others) and a chat landing just inside the 24h cutoff
+      // ("boundary-in") exercise the real-world shape without changing
+      // which rows should be visible: Wing keys recent chats by id, never
+      // session_key.
+      fixture.extraAncientSessions = 250;
+      await controller.refreshRecents();
+
+      // "work" (one session, one page) also reads through the same shared
+      // fixture.reads log, so offsets are checked for presence, not an exact
+      // count that would conflate the two profiles' requests.
+      final sessionReads = fixture.reads
+          .where((read) => read.$1 == 'sessions')
+          .toList();
+      expect(
+        sessionReads.where((read) => read.$2['offset'] == '0'),
+        isNotEmpty,
+      );
+      expect(
+        sessionReads.where((read) => read.$2['offset'] == '100'),
+        isNotEmpty,
+        reason: 'the second page still holds unseen recent rows (boundary-in)',
+      );
+      expect(
+        sessionReads.where((read) => read.$2['offset'] == '200'),
+        isNotEmpty,
+        reason: 'must check once more to confirm nothing newer remains',
+      );
+      expect(
+        sessionReads.where((read) => read.$2['offset'] == '300'),
+        isEmpty,
+        reason:
+            'the third page holds only the already-seen pinned repeat and '
+            'ancient filler, not unseen recent data; paging into it on '
+            "every refresh is exactly the full-history scan that's being "
+            'fixed',
+      );
+
+      final ids = controller
+          .recentChats()
+          .map((item) => item.key.sessionId)
+          .toSet();
+      expect(ids.contains('recent-0'), isTrue);
+      expect(ids.contains('boundary-in'), isTrue);
+      expect(ids.any((id) => id.startsWith('ancient-')), isFalse);
+      expect(ids.contains('old'), isFalse);
     },
   );
 

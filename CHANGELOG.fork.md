@@ -11,6 +11,35 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-15
+
+### Recents stops scanning a profile's entire session history on every refresh when a recent chat is pinned
+- **What:** `_refreshRecents`'s per-page pagination loop only treats a session row as evidence of
+  more unseen recent data the first time it sees that row's id. Hermes's `/sessions` endpoint
+  re-appends every pinned row to each page it would otherwise be missing from (`include_pinned`
+  back-fill), so a pin is never lost deep in history; a reappearing pin on a later page used to be
+  treated identically to a genuinely new recent row, which keeps the "there might be more recent
+  rows ahead" flag true forever and forces a full scan of the profile's entire session history on
+  every refresh instead of stopping once a page holds nothing new. Confirmed against the real
+  gateway: a pinned, recent chat reappeared on all but the first of 15 pages across a 1489-row
+  account, turning a refresh that should read one page into fifteen.
+- **Why:** Investigated as t_1cda51c3 (parent t_41381cc9): birk's newest desktop sessions
+  (`__MASTER 2` / `20261114_141335_b2a261` and siblings from 2026-11-13..15) were reported missing
+  from Wing's Recents/chat list although `SessionDB.list_sessions_rich`, `/api/sessions` and
+  `tui_gateway.project_tree.build_tree` all returned them correctly on the server. An independent
+  raw-JSON repro against the real gateway (read-only, same query shape Wing sends) confirmed the
+  data is clean and already on the account's first page, and disproved the originally suspected
+  `session_key = NULL` dedup collision: Wing keys and dedupes recents by session `id`, never by
+  `session_key`, everywhere the visible chat list is built. This pagination defect is the one
+  concretely confirmed, fixable client-side cause found during that investigation: a recent pinned
+  chat (present on birk's account) makes every Recents refresh scan the full session history
+  instead of the single page it should, directly matching the symptom of a stale, days-old list
+  that never visibly updates. A further root-cause note (why the refresh never catches up on some
+  accounts despite this fix) is tracked on the parent card.
+- **Fork edits of upstream files:** `lib/core/services/profile_workspace_controller.dart`.
+- **Merge:** pending (branch `wt/t_1cda51c3`, not yet merged to `voice-offline`) · **Card:**
+  t_1cda51c3 (parent t_41381cc9)
+
 ## 2026-11-14
 
 ### The group-notification "default" profile and subagent.roster stop retrying a FINAL gateway refusal
