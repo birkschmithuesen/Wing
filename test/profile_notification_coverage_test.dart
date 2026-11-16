@@ -479,6 +479,32 @@ void main() {
     },
   );
 
+  for (final marker in ['NO_REPLY', '[SILENT]', 'SILENT']) {
+    test(
+      'live reply that is a pure "$marker" silence marker never alerts a '
+      'non-bot-mode session',
+      () async {
+        final chat = await controller.createChat(canDispatch: () => true);
+        await controller.refreshRecents();
+        host.workingProfiles.add('a');
+        await controller.reconnect(chat.key.workspace);
+        chat.composer.editText('Heartbeat probe');
+        await controller.send(chat);
+        host.startTurn('a', chat.runtime.runtimeId);
+        host.history = [
+          {'id': 1, 'role': 'user', 'content': 'Heartbeat probe'},
+          {'id': 2, 'role': 'assistant', 'content': marker},
+        ];
+        host.completeTurn('a', chat.runtime.runtimeId, marker);
+        await Future<void>.delayed(Duration.zero);
+        expect(chat.source, isNot('bot_room'));
+        expect(chat.title, isNot('Bot Chat'));
+        expect(alerts, isEmpty);
+        expect(previews, isEmpty);
+      },
+    );
+  }
+
   test(
     'resume durable identity requires the canonical stored identity without mutation',
     () {

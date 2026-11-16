@@ -11,6 +11,31 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-16
+
+### Wing no longer pushes a full chat notification for a NO_REPLY/silence-marker heartbeat reply
+- **What:** `_settleTurn` now recognizes a final assistant reply whose entire text is a silence
+  marker (`NO_REPLY`, `[SILENT]`, `SILENT`, `NO REPLY` and the CJK forms, trimmed of surrounding
+  whitespace/punctuation, case-insensitive, new `isSilenceMarkerReply` in
+  `answer_versions.dart`, hand-kept in sync with the Hermes
+  `inbox_writer` plugin's `SILENT_MARKERS`/`_is_silence_marker`) and never builds
+  `ChatNotificationContent.reply(...)` or calls `_deliverNotification` for it, regardless of the
+  session's bot-mode title or whether the triggering message matches the `agent_message` envelope.
+  `_notifyRecoveredResult`'s reconnect-recovery path excludes the same silence-marker-only text
+  from counting as "the answer" so a missed-then-recovered silence reply does not alert either.
+  Previously, suppression only applied to `bot_room` sessions or when the last user message
+  matched the bot envelope regex (`_isBotExchangeReply`); a standby-heartbeat injection (not an
+  `agent_message` envelope, not a `bot_room`/"Bot Chat" session) whose turn ended in a bare
+  silence marker fell through both checks and pushed a normal OS notification.
+- **Why:** Standby heartbeat probes intentionally reply with a silence marker when there is
+  nothing to report; that convention already suppresses a note from the `inbox_writer` plugin
+  server-side, but Wing's own notification gate did not know about it and alerted on every
+  heartbeat tick regardless of bot-mode or envelope match.
+- **Fork edits of upstream files:** `lib/core/models/answer_versions.dart`,
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Merge:** pending (branch `wt/t_86202f78`, not yet merged to `voice-offline`) · **Card:**
+  t_86202f78
+
 ## 2026-11-15
 
 ### Recents stops scanning a profile's entire session history on every refresh when a recent chat is pinned

@@ -131,6 +131,59 @@ String _structuredText(Map part, {bool displayImages = false}) {
 String answerMessageInspectionText(Map<String, dynamic> message) =>
     _answerText(message['content'] ?? message['text'], displayImages: true);
 
+/// Mirror of hermes-agent/gateway/response_filters.py LIVE_GATEWAY_SILENT_MARKERS
+/// and the inbox_writer plugin's `SILENT_MARKERS`/`_is_silence_marker` (Hermes
+/// repo, profiles/birk/plugins/inbox_writer/__init__.py). Wing cannot import
+/// that Python; keep this set and algorithm in sync with it by hand.
+const _silenceMarkers = {
+  '[SILENT]',
+  'SILENT',
+  'NO_REPLY',
+  'NO REPLY',
+  '[静默]',
+  '静默',
+  '[沉默]',
+  '沉默',
+};
+const _silenceMarkerMaxChars = 64;
+final _silencePunctuation = RegExp(r'\p{P}', unicode: true);
+final _silenceWhitespace = RegExp(r'\s+');
+
+bool _isSilenceEdgePunctuation(String char) {
+  if (char == '[' || char == ']') return false;
+  return _silencePunctuation.hasMatch(char);
+}
+
+/// True only when the whole reply is a silence marker (after trimming
+/// whitespace and edge punctuation like `.NO_REPLY` / `*NO_REPLY*`,
+/// case-insensitive). Prose that mentions a marker is not one.
+bool isSilenceMarkerReply(String text) {
+  final stripped = text.trim();
+  if (stripped.isEmpty || stripped.length > _silenceMarkerMaxChars) {
+    return false;
+  }
+  var start = 0;
+  var end = stripped.length;
+  while (start < end &&
+      _isSilenceEdgePunctuation(stripped.substring(start, start + 1))) {
+    start++;
+  }
+  while (end > start &&
+      _isSilenceEdgePunctuation(stripped.substring(end - 1, end))) {
+    end--;
+  }
+  final core = stripped.substring(start, end).trim();
+  for (final form in {stripped, core}) {
+    final normalized = form
+        .toUpperCase()
+        .split(_silenceWhitespace)
+        .where((part) => part.isNotEmpty)
+        .join(' ');
+    if (_silenceMarkers.contains(normalized)) return true;
+  }
+  return false;
+}
+
 bool isBranchMessage(Map<String, dynamic> message) =>
     {'user', 'assistant'}.contains(message['role']) &&
     answerMessageInspectionText(message).trim().isNotEmpty;

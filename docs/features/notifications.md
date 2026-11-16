@@ -6,7 +6,7 @@ Feature ID: `notifications`.
 
 ## Sub-features
 
-- `notifications.route` — Open the exact notification owner. Reply alerts show the beginning of the answer, including answers longer than the screen, after formatted content settles.
+- `notifications.route` — Open the exact notification owner. Reply alerts show the beginning of the answer, including answers longer than the screen, after formatted content settles. A turn whose entire final reply is a silence marker (`NO_REPLY`, `[SILENT]` and the plugin's other mirrored forms) never raises a reply alert, live or recovered, independent of bot-mode title or envelope detection on the triggering message.
 - `notifications.act` — Answer a supported request without duplication, retaining its exact request and turn identity. Command review uses the same exact-command and request-details content as normal, bot and group chats, while keeping the selected notification approval scope explicit.
 - `notifications.settle` — Seeing a saved answer clears a newly recorded reply notice even when that viewport already recorded its read receipt. Keep read, dismissed and restored notices consistent.
 - `notifications.monitor` — Watch ongoing work in a compact summary of up to
