@@ -788,6 +788,42 @@ void main() {
     },
   );
 
+  testWidgets(
+    'a backgrounded active group polls no faster than 60s, not the foreground cadence',
+    (tester) async {
+      final session = GroupNotificationSession(
+        observations: GroupObservations(scope),
+        scope: scope,
+        instance: 'Host',
+        preferences: prefs,
+        read: host.read,
+        command: (_, _) async => {'approved': true},
+        publishInputs: (_) async {},
+        publish: (_) async {},
+        clearRead: (_, _) async {},
+      );
+      addTearDown(session.dispose);
+      await session.activate();
+      await session.beginSend('one', 'Group one', 'stuck-send');
+      session.setForeground(false);
+      expect(session.hasActiveGroups, isTrue);
+      final before = host.calls.where((m) => m == 'groups.list').length;
+      await tester.pump(const Duration(seconds: 59));
+      await tester.pump();
+      expect(
+        host.calls.where((m) => m == 'groups.list').length,
+        before,
+        reason: 'a backgrounded active group must not poll faster than 60s',
+      );
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pump();
+      expect(
+        host.calls.where((m) => m == 'groups.list').length,
+        greaterThan(before),
+      );
+    },
+  );
+
   test(
     'new group replies replace one stable slot; room activity never becomes an answer',
     () async {

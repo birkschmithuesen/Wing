@@ -18,7 +18,9 @@ class DashboardOAuthSession {
     this._grant, {
     this.persist,
     http.Client Function()? createClient,
-  }) : _createClient = createClient ?? http.Client.new;
+    DateTime Function()? now,
+  }) : _createClient = createClient ?? http.Client.new,
+       _now = now ?? DateTime.now;
 
   DashboardOAuthGrant _grant;
   DashboardOAuthGrant get currentGrant => _grant;
@@ -30,9 +32,15 @@ class DashboardOAuthSession {
 
   Future<void> Function()? persist;
   final http.Client Function() _createClient;
+  final DateTime Function() _now;
   Future<void>? _refreshing;
   bool _needsSave = false;
   bool _retired = false;
+  static const _refreshLookahead = Duration(seconds: 30);
+  static const _initialRefreshCooldown = Duration(seconds: 2);
+  static const _maxRefreshCooldown = Duration(seconds: 60);
+  Duration _refreshCooldown = _initialRefreshCooldown;
+  DateTime? _nextRefreshAllowedAt;
 
   bool get isActive => !_retired;
 
@@ -65,9 +73,7 @@ class DashboardOAuthSession {
       _needsSave = false;
     }
     _requireActive();
-    if (!_grant.expiresAt.isAfter(
-      DateTime.now().add(const Duration(seconds: 30)),
-    )) {
+    if (!_grant.expiresAt.isAfter(_now().add(_refreshLookahead))) {
       final pending = _refreshing ??= _refresh();
       try {
         await pending;
@@ -81,6 +87,12 @@ class DashboardOAuthSession {
 
   Future<void> _refresh() async {
     _requireActive();
+    final blockedUntil = _nextRefreshAllowedAt;
+    if (blockedUntil != null && _now().isBefore(blockedUntil)) {
+      throw const CloudAccessException(
+        'Hermes Cloud is renewing this sign-in too frequently. Try again shortly.',
+      );
+    }
     final client = _createClient();
     try {
       final request =
@@ -128,6 +140,20 @@ class DashboardOAuthSession {
       _needsSave = true;
       await persist?.call();
       _needsSave = false;
+      // A server clock skew or a bad expiry parse can rotate in a token that
+      // is already due for renewal; retrying it immediately would rotate the
+      // single-use refresh token in a tight loop. Back off exponentially
+      // until a rotation yields a token that is actually usable for a while.
+      if (expiry.isAfter(_now().add(_refreshLookahead))) {
+        _refreshCooldown = _initialRefreshCooldown;
+        _nextRefreshAllowedAt = null;
+      } else {
+        _nextRefreshAllowedAt = _now().add(_refreshCooldown);
+        final doubled = _refreshCooldown * 2;
+        _refreshCooldown = doubled > _maxRefreshCooldown
+            ? _maxRefreshCooldown
+            : doubled;
+      }
     } on CloudAccessException {
       rethrow;
     } catch (_) {

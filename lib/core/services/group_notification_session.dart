@@ -55,6 +55,7 @@ class GroupNotificationSession extends ChangeNotifier {
     required this.command,
     required this.clearRead,
     this.pollInterval = const Duration(seconds: 5),
+    this.backgroundPollInterval = const Duration(seconds: 60),
   }) {
     final saved = preferences.getString(_storageKey);
     if (saved != null) {
@@ -96,6 +97,12 @@ class GroupNotificationSession extends ChangeNotifier {
   final Future<void> Function(GroupInputNotification) publishInputs;
   final Future<void> Function(GroupNotificationTarget, int) clearRead;
   final Duration pollInterval;
+  /// Used instead of [pollInterval] whenever the app is not in the
+  /// foreground: each tick reconnects the shared gateway (which
+  /// re-authenticates it) and re-reads the room list, so the fast foreground
+  /// cadence would otherwise repeat that reconnect/re-auth every few seconds
+  /// while backgrounded.
+  final Duration backgroundPollInterval;
   final _groups = <String, _WatchedGroup>{};
   final _cursors = <String, int>{};
   String get _storageKey =>
@@ -131,7 +138,10 @@ class GroupNotificationSession extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     if (_activated && (_foreground || hasActiveGroups)) {
-      _timer = Timer(pollInterval, () => unawaited(refresh()));
+      _timer = Timer(
+        _foreground ? pollInterval : backgroundPollInterval,
+        () => unawaited(refresh()),
+      );
     }
     notifyListeners();
   }
