@@ -9811,6 +9811,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
       chat.composer.recordRuntimeFailure();
     }
     final finalText = chat.reading.completionText(completion);
+    // A silence-marker-only reply (e.g. a heartbeat NO_REPLY) is a turn with
+    // nothing to say, independent of bot-mode title or envelope detection on
+    // the triggering message. Never push it as a full chat notification.
+    final silenceOnlyReply =
+        !failed && !cancelled && isSilenceMarkerReply(finalText);
     final excerptStarted = CompletionDiagnostics.enabled
         ? CompletionDiagnostics.start()
         : 0;
@@ -9820,6 +9825,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
               : ChatNotificationContent.failure(turnFailure)
         : cancelled
         ? ChatNotificationContent.stopped
+        : silenceOnlyReply
+        ? ChatNotificationContent.updated
         : ChatNotificationContent.reply(finalText);
     if (CompletionDiagnostics.enabled) {
       CompletionDiagnostics.finish(
@@ -9878,10 +9885,11 @@ class ProfileWorkspaceController extends ChangeNotifier {
         'unread': true,
       };
     }
-    if (failed ||
-        cancelled ||
-        chat.composer.observation.queue.isEmpty ||
-        chat.composer.observation.paused) {
+    if (!silenceOnlyReply &&
+        (failed ||
+            cancelled ||
+            chat.composer.observation.queue.isEmpty ||
+            chat.composer.observation.paused)) {
       _deliverNotification(chat, notification);
     }
     if (CompletionDiagnostics.enabled) {
@@ -9985,7 +9993,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
           (row) =>
               row['role'] == 'assistant' &&
               !isHiddenAnswerMessage(row) &&
-              answerMessageText(row).trim().isNotEmpty,
+              answerMessageText(row).trim().isNotEmpty &&
+              !isSilenceMarkerReply(answerMessageText(row)),
         )
         .firstOrNull;
     if (answer == null) {
