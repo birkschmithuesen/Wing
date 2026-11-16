@@ -6,6 +6,7 @@ import 'package:wing/core/models/profile_session_key.dart';
 import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/models/chat_list_status.dart';
+import 'package:wing/core/models/chat_notification_content.dart';
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -1085,6 +1086,51 @@ void main() {
       expect(chat.reading.messages.single['content'], 'Recovered answer');
     },
   );
+
+  for (final marker in ['NO_REPLY', '[SILENT]', 'SILENT']) {
+    test(
+      'idle snapshot recovery for a pure "$marker" silence marker never '
+      'posts it as a reply notification for a non-bot-mode session',
+      () async {
+        final chat = await controller.createChat(canDispatch: () => true);
+        host.gateways['a']!.onEvent!(
+          StreamEvent(
+            type: 'message.start',
+            sessionId: chat.runtime.runtimeId,
+            data: stockChatReply(host.gateways['a']!, 'message.start', {}),
+          ),
+        );
+        expect(chat.runtime.blocksTurnAdmission, isTrue);
+        final alertsBefore = alerts.length;
+        final previewsBefore = previews.length;
+        host.history = [
+          {'id': 1, 'role': 'user', 'content': 'Heartbeat probe'},
+          {'id': 2, 'role': 'assistant', 'content': marker},
+        ];
+        host.active = [row(chat.runtime.runtimeId, chat.key.sessionId, 'idle')];
+        host.changed();
+        await waitForReads(host, 1);
+        expect(chat.runtime.blocksTurnAdmission, isFalse);
+        expect(chat.reading.messages.last['content'], marker);
+        expect(chat.source, isNot('bot_room'));
+        expect(chat.title, isNot('Bot Chat'));
+        expect(
+          alerts.skip(alertsBefore),
+          [
+            (
+              profile: 'a',
+              session: chat.key.sessionId,
+              input: ChatNotificationContent.updated.needsAttention,
+            ),
+          ],
+        );
+        expect(
+          previews.skip(previewsBefore),
+          [ChatNotificationContent.updated.preview],
+        );
+      },
+    );
+  }
 
   test(
     'desktop resolution clears loaded question state from the chat list',
