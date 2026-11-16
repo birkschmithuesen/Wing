@@ -56,7 +56,8 @@ class GroupNotificationSession extends ChangeNotifier {
     required this.clearRead,
     this.pollInterval = const Duration(seconds: 5),
     this.backgroundPollInterval = const Duration(seconds: 60),
-  }) {
+    Timer Function(Duration, void Function())? scheduleTimer,
+  }) : _scheduleTimer = scheduleTimer ?? Timer.new {
     final saved = preferences.getString(_storageKey);
     if (saved != null) {
       try {
@@ -103,6 +104,7 @@ class GroupNotificationSession extends ChangeNotifier {
   /// cadence would otherwise repeat that reconnect/re-auth every few seconds
   /// while backgrounded.
   final Duration backgroundPollInterval;
+  final Timer Function(Duration, void Function()) _scheduleTimer;
   final _groups = <String, _WatchedGroup>{};
   final _cursors = <String, int>{};
   String get _storageKey =>
@@ -138,7 +140,7 @@ class GroupNotificationSession extends ChangeNotifier {
     _timer?.cancel();
     _timer = null;
     if (_activated && (_foreground || hasActiveGroups)) {
-      _timer = Timer(
+      _timer = _scheduleTimer(
         _foreground ? pollInterval : backgroundPollInterval,
         () => unawaited(refresh()),
       );
