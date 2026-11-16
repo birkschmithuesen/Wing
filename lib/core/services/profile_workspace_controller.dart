@@ -1691,13 +1691,17 @@ class ProfileWorkspaceController extends ChangeNotifier {
               for (final row in page.rows) {
                 final time = row['last_active'];
                 if (time is! num || !time.isFinite || time < cutoff) continue;
+                // Hermes re-appends every pinned row to each page so a pin
+                // is never lost deep in history. A row already seen on an
+                // earlier page is that repeat, not evidence of more unseen
+                // recent data below it; treating it as such scans a
+                // profile's full session history on every refresh whenever
+                // a pinned chat is recent.
+                if (!checkedSessions.add(row['id'] as String)) continue;
                 hasRecent = true;
-                if (!SessionVisibility.chats.includes(
+                if (SessionVisibility.chats.includes(
                   row['source'] as String?,
                 )) {
-                  continue;
-                }
-                if (checkedSessions.add(row['id'] as String)) {
                   candidates.add(row);
                 }
               }
