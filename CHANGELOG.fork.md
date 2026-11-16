@@ -11,6 +11,49 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-16
+
+### A backgrounded active group discussion stops reconnecting/re-authenticating every 5 seconds
+- **What:** `GroupNotificationSession` polled an active group discussion on the same fixed
+  `pollInterval` (5s) whether the app was foreground or backgrounded. Each poll tick calls
+  `read`/`command`, which call `gateway.connect()` directly; when the shared gateway socket is
+  down, `connect()` performs a full `open()` (mints a fresh WebSocket ticket/OAuth bearer and
+  re-reads `session.list`) with no backoff of its own, bypassing the exponential backoff
+  `ProfileWorkspaceController._scheduleReconnect` already applies to its own reconnect path. A
+  group discussion left active overnight (an unacknowledged send, or a still-"working" bot) kept
+  this 5s cycle running the whole time the screen was off, repeating the full reconnect/re-auth
+  handshake roughly twelve times a minute. Backgrounded polling now uses a separate
+  `backgroundPollInterval` (default 60s) whenever the app is not foreground, keeping the
+  foreground cadence unchanged.
+- **Why:** Measured on Birk's Xperia 5 IV, 2026-11-16: Wing received 41/40/46/22 MB per 2h
+  netstats bucket between 01:00-09:00 while backgrounded and not chatting (255 MB mobile + 76 MB
+  Wi-Fi that day), batterystats blamed 284 mAh on Wing (second after tethering), and
+  `BackgroundMonitoringService` was started 16x. A fixed-cadence background reconnect loop with no
+  backoff, independent of whether the previous attempt had already failed, accounts for both the
+  repeated bulk `session.list`/`groups.list`/`groups.state` transfers and (together with the
+  `DashboardOAuthSession` fix below) most of the same night's token-refresh burst.
+- **Fork edits of upstream files:** `lib/core/services/group_notification_session.dart`.
+- **Merge:** pending (branch `wt/t_16567fa4`, not yet merged to `voice-offline`) · **Card:**
+  t_16567fa4
+
+### Hermes Cloud sign-in no longer rotates its refresh token in a tight loop against a buggy expiry
+- **What:** `DashboardOAuthSession.bearerFor` refreshes the bearer whenever the current grant's
+  `expiresAt` is not safely in the future; `_refresh()` had no protection against a server response
+  that rotates in a replacement token whose own `expires_at` is already due for renewal (a clock
+  skew or a bad expiry parse on the server), so every call needing a bearer re-triggered
+  `POST /auth/native/refresh` immediately. `_refresh()` now tracks an exponential cooldown
+  (2s, doubling to a 60s cap) that only advances when a rotation lands a token that is actually
+  usable for a while; a renewal attempted before that cooldown elapses fails closed with
+  `CloudAccessException` instead of rotating the single-use refresh token again.
+- **Why:** The server's auth log recorded 5,698 `refresh_success` events from the phone on
+  2026-11-16, all between 05:00-08:59 (peak 2,519 in hour 06, ≈40/min) versus 0 on prior days —
+  consistent with a renewed token being judged already-expired on its very next use and refreshed
+  again immediately, in a loop bounded only by how often something on the phone needed a bearer
+  (see the `GroupNotificationSession` fix above for the dominant caller while backgrounded).
+- **Fork edits of upstream files:** `lib/core/services/dashboard_oauth_session.dart`.
+- **Merge:** pending (branch `wt/t_16567fa4`, not yet merged to `voice-offline`) · **Card:**
+  t_16567fa4
+
 ## 2026-11-15
 
 ### Recents stops scanning a profile's entire session history on every refresh when a recent chat is pinned

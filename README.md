@@ -14,6 +14,8 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Offline behaviour](docs/CAR_MODE.md)
 - [Conversation mode releases its microphone wakelock when the loop ends](CHANGELOG.fork.md#backgroundvoiceservice-now-releases-its-wakelock-when-the-conversation-loop-ends)
 - [Optional "ready" beep when conversation listening starts](docs/VOICE_BARGE_IN.md#settings)
+- [A backgrounded active group discussion polls at most once a minute instead of reconnecting every 5 seconds](CHANGELOG.fork.md#a-backgrounded-active-group-discussion-stops-reconnectingre-authenticating-every-5-seconds)
+- [Hermes Cloud sign-in backs off instead of looping against a buggy token expiry](CHANGELOG.fork.md#hermes-cloud-sign-in-no-longer-rotates-its-refresh-token-in-a-tight-loop-against-a-buggy-expiry)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

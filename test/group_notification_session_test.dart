@@ -789,6 +789,41 @@ void main() {
   );
 
   test(
+    'a backgrounded active group schedules its next poll at 60s, not the foreground cadence',
+    () async {
+      final scheduled = <Duration>[];
+      final session = GroupNotificationSession(
+        observations: GroupObservations(scope),
+        scope: scope,
+        instance: 'Host',
+        preferences: prefs,
+        read: host.read,
+        command: (_, _) async => {'approved': true},
+        publishInputs: (_) async {},
+        publish: (_) async {},
+        clearRead: (_, _) async {},
+        scheduleTimer: (delay, callback) {
+          scheduled.add(delay);
+          // Never actually fire: this proves the *chosen interval*, not a
+          // real/fake-timer wait, so the test cannot hang on either clock.
+          return Timer(const Duration(days: 1), callback);
+        },
+      );
+      addTearDown(session.dispose);
+      await session.activate();
+      expect(scheduled.last, const Duration(seconds: 5));
+      await session.beginSend('one', 'Group one', 'stuck-send');
+      session.setForeground(false);
+      expect(session.hasActiveGroups, isTrue);
+      expect(
+        scheduled.last,
+        const Duration(seconds: 60),
+        reason: 'a backgrounded active group must not poll faster than 60s',
+      );
+    },
+  );
+
+  test(
     'new group replies replace one stable slot; room activity never becomes an answer',
     () async {
       await watch.activate();

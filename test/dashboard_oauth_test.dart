@@ -40,10 +40,12 @@ DashboardOAuthSession _session({
   bool expired = true,
   http.Client Function()? client,
   Future<void> Function()? persist,
+  DateTime Function()? now,
 }) => DashboardOAuthSession(
   _grant(expired: expired),
   createClient: client,
   persist: persist,
+  now: now,
 );
 
 /// Hold delivery of a real completed bearer at the public auth boundary.
@@ -155,6 +157,50 @@ void main() {
       );
       expect(exchanges, 1);
       expect(saves, 2);
+    },
+  );
+
+  test(
+    'a refresh that returns an already-expired token backs off instead of looping',
+    () async {
+      var exchanges = 0;
+      var now = DateTime.now();
+      final session = _session(
+        now: () => now,
+        client: () => MockClient((_) async {
+          exchanges++;
+          return http.Response(
+            jsonEncode({
+              'provider': 'nous',
+              'access_token': 'new-access',
+              'refresh_token': 'new-refresh',
+              // A clock-skew or expiry-parse bug on the server can rotate in
+              // a token that is already due for renewal on arrival.
+              'expires_at': now.millisecondsSinceEpoch ~/ 1000 - 10,
+            }),
+            200,
+          );
+        }),
+        persist: () async {},
+      );
+      for (var i = 0; i < 20; i++) {
+        try {
+          await session.bearerFor(session.currentGrant.baseUrl);
+        } catch (_) {
+          // Fail-closed while backed off is expected; only the exchange
+          // count below proves the refresh endpoint was not hammered.
+        }
+      }
+      expect(exchanges, 1);
+      now = now.add(const Duration(seconds: 90));
+      for (var i = 0; i < 20; i++) {
+        try {
+          await session.bearerFor(session.currentGrant.baseUrl);
+        } catch (_) {
+          // See above.
+        }
+      }
+      expect(exchanges, lessThanOrEqualTo(2));
     },
   );
 

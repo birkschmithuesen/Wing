@@ -92,7 +92,10 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   independent of which profile is connected; the same remembered-refusal
   cache applies, so a gateway that does not serve that profile stops
   reconnecting for it after the first refusal instead of reopening a socket
-  on every background poll.
+  on every background poll. While backgrounded, an active group discussion
+  is polled at most once a minute instead of the 5-second foreground
+  cadence, since each poll reconnects (and re-authenticates) the shared
+  gateway whenever its socket is down.
 
 - **Android `notification-actions`:** the owned-emulator driver exercises its named production-control scenarios. Require the strict receipt and [shared proof rules](../FEATURE_MAP.md#driving-and-proof); read the completed names to establish which paths ran.
 
