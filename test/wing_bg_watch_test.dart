@@ -1,45 +1,23 @@
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:wing/core/services/wing_bg_watch.dart';
 
-class _ManualTimer implements Timer {
-  _ManualTimer(this.callback);
-  final void Function(Timer) callback;
-  @override
-  bool isActive = true;
-  @override
-  int tick = 0;
-  void fire() {
-    if (isActive) {
-      tick++;
-      callback(this);
-    }
-  }
-
-  @override
-  void cancel() {
-    isActive = false;
-  }
-}
-
 void main() {
-  late _ManualTimer timer;
+  late DateTime now;
   late List<String> logs;
   late WingBgWatch watch;
 
   setUp(() {
+    now = DateTime(2026, 11, 17);
     logs = [];
-    watch = WingBgWatch(
-      scheduleTimer: (duration, callback) => timer = _ManualTimer(callback),
-      log: logs.add,
-    );
+    watch = WingBgWatch(now: () => now, log: logs.add);
   });
 
   test('wake-ups while foreground are never counted or reported', () {
     for (var i = 0; i < 200; i++) {
       watch.recordWakeup('Noisy');
     }
+    now = now.add(const Duration(minutes: 2));
+    watch.recordWakeup('Noisy');
     expect(logs, isEmpty);
   });
 
@@ -48,16 +26,19 @@ void main() {
     for (var i = 0; i < WingBgWatch.wakeupThreshold; i++) {
       watch.recordWakeup('Quiet');
     }
-    timer.fire();
+    now = now.add(const Duration(minutes: 1));
+    watch.recordWakeup('Quiet');
     expect(logs, isEmpty);
   });
 
-  test('a component over the threshold is logged once per report window', () {
+  test('a component over the threshold is logged once the window rolls over', () {
     watch.setForeground(false);
     for (var i = 0; i < WingBgWatch.wakeupThreshold + 5; i++) {
       watch.recordWakeup('Noisy');
     }
-    timer.fire();
+    expect(logs, isEmpty, reason: 'the window has not elapsed yet');
+    now = now.add(const Duration(minutes: 1));
+    watch.recordWakeup('Noisy');
     expect(logs, hasLength(1));
     expect(logs.single, contains('WingBgWatch'));
     expect(logs.single, contains('Noisy=${WingBgWatch.wakeupThreshold + 5}'));
@@ -68,10 +49,16 @@ void main() {
     for (var i = 0; i < WingBgWatch.wakeupThreshold + 1; i++) {
       watch.recordWakeup('Noisy');
     }
-    timer.fire();
+    now = now.add(const Duration(minutes: 1));
+    watch.recordWakeup('Noisy');
     expect(logs, hasLength(1));
-    timer.fire();
-    expect(logs, hasLength(1), reason: 'no new wake-ups, no new log line');
+    now = now.add(const Duration(minutes: 1));
+    watch.recordWakeup('Noisy');
+    expect(
+      logs,
+      hasLength(1),
+      reason: 'only one wake-up in the new window, no new log line',
+    );
   });
 
   test('going foreground clears counters without logging', () {
@@ -81,10 +68,17 @@ void main() {
     }
     watch.setForeground(true);
     expect(logs, isEmpty);
-    expect(timer.isActive, false);
+    watch.setForeground(false);
+    now = now.add(const Duration(minutes: 1));
+    watch.recordWakeup('Noisy');
+    expect(
+      logs,
+      isEmpty,
+      reason: 'the cleared count has not reached the threshold again',
+    );
   });
 
-  test('multiple offenders are all named in one line', () {
+  test('multiple offenders in the same window are all named in one line', () {
     watch.setForeground(false);
     for (var i = 0; i < WingBgWatch.wakeupThreshold + 10; i++) {
       watch.recordWakeup('A');
@@ -92,7 +86,10 @@ void main() {
     for (var i = 0; i < WingBgWatch.wakeupThreshold + 1; i++) {
       watch.recordWakeup('B');
     }
-    timer.fire();
+    now = now.add(const Duration(minutes: 1));
+    // The window check runs before this call's own increment, so trigger the
+    // flush on a component that already cleared the bar in the loops above.
+    watch.recordWakeup('A');
     expect(logs.single, contains('A=${WingBgWatch.wakeupThreshold + 10}'));
     expect(logs.single, contains('B=${WingBgWatch.wakeupThreshold + 1}'));
   });
