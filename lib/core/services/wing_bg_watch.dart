@@ -69,12 +69,4 @@ class WingBgWatch {
     }
     _counts.clear();
   }
-
-  @visibleForTesting
-  void resetForTest() {
-    _report?.cancel();
-    _report = null;
-    _counts.clear();
-    _foreground = true;
-  }
 }
