@@ -60,6 +60,7 @@ import 'core/services/profile_gateway.dart';
 import 'core/models/hermes_profile.dart';
 import 'core/services/microphone_permission.dart';
 import 'core/services/background_monitoring_service.dart';
+import 'core/services/wing_bg_watch.dart';
 import 'core/services/notification_delivery_ledger.dart';
 import 'core/services/native_notification_sink.dart';
 import 'core/services/chat_notification_coordinator.dart';
@@ -516,6 +517,7 @@ class WingAppState extends State<WingApp> with WidgetsBindingObserver {
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    WingBgWatch.instance.setForeground(state == AppLifecycleState.resumed);
     _profileControllers.setForeground(state == AppLifecycleState.resumed);
     logConnectionDiagnostic('app.lifecycle', details: {'state': state.name});
     if (state == AppLifecycleState.resumed) {
