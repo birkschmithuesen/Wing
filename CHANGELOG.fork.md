@@ -11,6 +11,50 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-17
+
+### Scheduled-tasks admin timers stop ticking on pause instead of only gating their callback, plus a background wake-up watchdog
+- **What:** `ScheduledTasksObservation` and `ScheduledTaskDetailSession` (the admin
+  Scheduled tasks list and a task's detail page) each create a single
+  `Timer.periodic` in their constructor and never touch it again; `resumed(false)`
+  only skipped the refresh *inside* the callback, so the Timer itself kept firing
+  every 30s/8s and waking the main isolate for as long as either admin page stayed
+  open in the background — a standing violation of "no component may wake the main
+  isolate more than once per 60s while paused". Both classes now cancel and
+  recreate their timer through a `resumed()`-driven `_reschedule()`, matching the
+  `setVisible`/`setActive`/`setForeground` pattern already used by every other
+  `Timer.periodic` in `lib/` (`BotGroupSession`, `BotScreenSession`, `BotsSession`,
+  `SubagentSupervisionDetail`, `ChatNotificationApplication`,
+  `WorkspaceRecentsSession`). Added `WingBgWatch`: a cheap, always-on counter that
+  tracks timer/poll wake-ups per component while the app is not foreground and logs
+  one `WingBgWatch component=count` line per minute when any component exceeds
+  60/min, wired into the same `didChangeAppLifecycleState` in `main.dart` that
+  drives every other foreground/background fan-out, and called from every
+  background-eligible poll timer above (not from the three timers that only run
+  during an active voice session or car mode, the agreed exceptions to the budget).
+- **Why:** Investigating a reported 25-45% single-core CPU spin with the screen off
+  and no rendering/network (`gfxinfo` frame count unchanged, Wing traffic ~0,
+  `am force-stop` + relaunch returns CPU to 0 ticks/10s — a state the app drifts
+  into, not one present from launch). The release build is unsymbolized, so an
+  on-device profiler can only show `Looper.pollOnce`/epoll and unsymbolized AOT
+  frames, not a component name. A static audit of every `Timer.periodic`,
+  `Stream.periodic`, `AnimationController`/`Ticker` and
+  `didChangeAppLifecycleState` in `lib/` found exactly one site where the Timer is
+  never actually stopped on pause (the two classes above); every other timer
+  already cancels through a visibility/foreground choke point. `WingBgWatch` exists
+  because that audit is manual and release builds can't be profiled on-device: it
+  is the cheap, always-on net for whatever regression the next change introduces.
+- **Fork edits of upstream files:** `lib/core/services/scheduled_task_detail_session.dart`,
+  `lib/main.dart`, `lib/core/services/bot_group_session.dart`,
+  `lib/core/services/bot_screen_session.dart`, `lib/core/services/bots_session.dart`,
+  `lib/core/services/chat_notification_application.dart`,
+  `lib/core/services/chat_notification_coordinator.dart`,
+  `lib/core/services/profile_supervision_session.dart`,
+  `lib/core/services/workspace_recents_session.dart`.
+- **New fork files:** `lib/core/services/wing_bg_watch.dart`.
+- **Merge:** pending (branch `wing/t_5ba4ca8d-wing-main-isolate-spins-at-25-45-cpu-whi`,
+  not yet merged to `voice-offline`) · **Card:** t_5ba4ca8d
+
 ## 2026-11-16
 
 ### A backgrounded active group discussion stops reconnecting/re-authenticating every 5 seconds
