@@ -19,7 +19,9 @@ class WingBgWatch {
     Duration reportInterval = const Duration(minutes: 1),
     DateTime Function()? now,
     void Function(String)? log,
-  }) : _reportInterval = reportInterval,
+  }) : // The named default is an injectable public seam.
+       // ignore: prefer_initializing_formals
+       _reportInterval = reportInterval,
        _now = now ?? DateTime.now,
        _log = log ?? debugPrint;
 
