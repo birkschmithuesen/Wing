@@ -21,6 +21,7 @@ import 'profile_workspace_registry.dart';
 import 'native_notification_sink.dart';
 import 'notification_delivery_ledger.dart';
 import 'background_monitoring_service.dart';
+import 'wing_bg_watch.dart';
 
 part 'chat_notification_application.dart';
 

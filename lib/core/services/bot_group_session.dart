@@ -19,6 +19,7 @@ import '../models/composer_reference.dart';
 import '../models/recent_conversation.dart';
 import 'hermes_voice.dart';
 import 'recent_conversation_snapshots.dart';
+import 'wing_bg_watch.dart';
 import 'ws_client.dart';
 
 /// Canonical member appearance observations, shared by live and passive views.
@@ -786,10 +787,10 @@ class BotGroupSession extends ChangeNotifier {
     _poll?.cancel();
     if (visible) {
       unawaited(refresh(explicit: false));
-      _poll = Timer.periodic(
-        const Duration(seconds: 3),
-        (_) => unawaited(refresh(explicit: false)),
-      );
+      _poll = Timer.periodic(const Duration(seconds: 3), (_) {
+        WingBgWatch.instance.recordWakeup('BotGroupSession');
+        unawaited(refresh(explicit: false));
+      });
     }
   }
 

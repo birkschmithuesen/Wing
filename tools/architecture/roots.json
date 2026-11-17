@@ -11011,6 +11011,11 @@
       "provenance": "tracked"
     },
     {
+      "path": "lib/core/services/wing_bg_watch.dart",
+      "area": "lib",
+      "provenance": "task-authored"
+    },
+    {
       "path": "lib/core/services/wing_plugin_releases.dart",
       "area": "lib",
       "provenance": "intentional-untracked"
@@ -15429,6 +15434,11 @@
       "path": "test/web_preview_test.dart",
       "area": "test",
       "provenance": "tracked"
+    },
+    {
+      "path": "test/wing_bg_watch_test.dart",
+      "area": "test",
+      "provenance": "task-authored"
     },
     {
       "path": "test/wing_plugin_settings_test.dart",

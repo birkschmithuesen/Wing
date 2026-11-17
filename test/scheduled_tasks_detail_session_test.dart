@@ -169,4 +169,50 @@ void main() {
       expect(timer.isActive, false);
     },
   );
+
+  test(
+    'automatic list poll stops ticking while paused, not just its callback',
+    () async {
+      late _ManualTimer timer;
+      final observation = ScheduledTasksObservation(
+        controller,
+        isVisible: () => true,
+        timer: (duration, callback) => timer = _ManualTimer(callback),
+      );
+      addTearDown(observation.dispose);
+      expect(timer.isActive, true);
+      observation.resumed(false);
+      expect(
+        timer.isActive,
+        false,
+        reason:
+            'a paused session must stop its own timer, not just skip the '
+            'refresh inside a callback that keeps waking the isolate',
+      );
+    },
+  );
+
+  test(
+    'detail history poll stops ticking while paused, not just its callback',
+    () async {
+      late _ManualTimer timer;
+      final session = ScheduledTaskDetailSession(
+        controller,
+        controller.task('morning')!,
+        isVisible: () => true,
+        onOpenSession: (_) async {},
+        timer: (duration, callback) => timer = _ManualTimer(callback),
+      );
+      addTearDown(session.dispose);
+      expect(timer.isActive, true);
+      session.resumed(false);
+      expect(
+        timer.isActive,
+        false,
+        reason:
+            'a paused session must stop its own timer, not just skip the '
+            'refresh inside a callback that keeps waking the isolate',
+      );
+    },
+  );
 }

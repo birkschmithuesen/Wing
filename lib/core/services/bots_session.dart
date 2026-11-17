@@ -17,6 +17,7 @@ import 'bot_screen_session.dart';
 import 'bot_group_read_state.dart';
 import 'bot_group_session.dart';
 import 'recent_conversation_snapshots.dart';
+import 'wing_bg_watch.dart';
 
 part 'bot_avatar_cache.dart';
 
@@ -747,10 +748,10 @@ class BotsSession extends ChangeNotifier implements BotGroupAppearanceSource {
     _poll = null;
     if (visible) {
       unawaited(refresh(explicit: false));
-      _poll = Timer.periodic(
-        const Duration(seconds: 10),
-        (_) => unawaited(refresh(explicit: false)),
-      );
+      _poll = Timer.periodic(const Duration(seconds: 10), (_) {
+        WingBgWatch.instance.recordWakeup('BotsSession');
+        unawaited(refresh(explicit: false));
+      });
     }
   }
 

@@ -5,6 +5,7 @@ import '../models/bots.dart';
 import '../models/bot_display.dart';
 import 'bots_repository.dart';
 import 'bot_display_client.dart';
+import 'wing_bg_watch.dart';
 
 /// Owns the visible stream, connection-bound viewer and confirmed control lease.
 /// Background/disconnection keeps the human lease; an explicit exit releases it.
@@ -83,10 +84,10 @@ class BotScreenSession extends ChangeNotifier {
       _dropStream();
     } else {
       unawaited(refresh());
-      _poll = Timer.periodic(
-        const Duration(seconds: 2),
-        (_) => unawaited(refresh()),
-      );
+      _poll = Timer.periodic(const Duration(seconds: 2), (_) {
+        WingBgWatch.instance.recordWakeup('BotScreenSession');
+        unawaited(refresh());
+      });
     }
     _changed();
   }

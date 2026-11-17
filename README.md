@@ -16,6 +16,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Optional "ready" beep when conversation listening starts](docs/VOICE_BARGE_IN.md#settings)
 - [A backgrounded active group discussion polls at most once a minute instead of reconnecting every 5 seconds](CHANGELOG.fork.md#a-backgrounded-active-group-discussion-stops-reconnectingre-authenticating-every-5-seconds)
 - [Hermes Cloud sign-in backs off instead of looping against a buggy token expiry](CHANGELOG.fork.md#hermes-cloud-sign-in-no-longer-rotates-its-refresh-token-in-a-tight-loop-against-a-buggy-expiry)
+- [Scheduled-tasks admin pages stop polling while backgrounded; a watchdog logs any component that keeps waking the app](CHANGELOG.fork.md#scheduled-tasks-admin-timers-stop-ticking-on-pause-instead-of-only-gating-their-callback-plus-a-background-wake-up-watchdog)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

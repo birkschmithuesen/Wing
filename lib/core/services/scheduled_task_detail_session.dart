@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../models/scheduled_task.dart';
 import 'scheduled_tasks_controller.dart';
 import 'profile_workspace_controller.dart';
+import 'wing_bg_watch.dart';
 
 typedef TaskPollTimer = Timer Function(Duration, void Function(Timer));
 
@@ -68,24 +69,37 @@ class ScheduledTasksObservation {
     this.controller, {
     required this.isVisible,
     TaskPollTimer? timer,
-  }) {
-    _timer = (timer ?? Timer.periodic)(const Duration(seconds: 30), (_) {
-      if (!_disposed &&
-          _resumed &&
-          isVisible() &&
-          !controller.loading &&
-          controller.error == null) {
-        unawaited(controller.refresh());
-      }
-    });
+  }) : _scheduleTimer = timer ?? Timer.periodic {
+    _reschedule();
   }
   final ScheduledTasksController controller;
   final bool Function() isVisible;
-  late final Timer _timer;
+  final TaskPollTimer _scheduleTimer;
+  Timer? _timer;
   bool _resumed = true, _disposed = false;
+
+  // Pausing must stop the timer itself, not only the work inside its
+  // callback: an always-ticking Timer.periodic keeps waking the main
+  // isolate even while every check inside the callback is false.
+  void _reschedule() {
+    _timer?.cancel();
+    _timer = _disposed || !_resumed
+        ? null
+        : _scheduleTimer(const Duration(seconds: 30), (_) {
+            WingBgWatch.instance.recordWakeup('ScheduledTasksObservation');
+            if (!_disposed &&
+                isVisible() &&
+                !controller.loading &&
+                controller.error == null) {
+              unawaited(controller.refresh());
+            }
+          });
+  }
+
   void resumed(bool value) {
-    if (_disposed) return;
+    if (_disposed || _resumed == value) return;
     _resumed = value;
+    _reschedule();
     if (value && isVisible() && !controller.loading) {
       unawaited(controller.refresh());
     }
@@ -97,7 +111,8 @@ class ScheduledTasksObservation {
 
   void dispose() {
     _disposed = true;
-    _timer.cancel();
+    _timer?.cancel();
+    _timer = null;
   }
 }
 
@@ -127,27 +142,19 @@ class ScheduledTaskDetailSession extends ChangeNotifier {
     required this.isVisible,
     required this.onOpenSession,
     TaskPollTimer? timer,
-  }) {
+  }) : _scheduleTimer = timer ?? Timer.periodic {
     if (initial.profileName != controller.repository.profile.name) {
       throw ArgumentError('Task detail belongs to another profile');
     }
     controller.addListener(_emit);
-    _timer = (timer ?? Timer.periodic)(const Duration(seconds: 8), (_) {
-      if (!_disposed &&
-          _resumed &&
-          isVisible() &&
-          !_loading &&
-          _error == null &&
-          controller.error == null) {
-        unawaited(refresh());
-      }
-    });
+    _reschedule();
   }
   final ScheduledTasksController controller;
   final ScheduledTask initial;
   final bool Function() isVisible;
   final Future<void> Function(ProfileSessionKey) onOpenSession;
-  late final Timer _timer;
+  final TaskPollTimer _scheduleTimer;
+  Timer? _timer;
   List<TaskRun>? _runs;
   String? _error;
   bool _disposed = false, _resumed = true, _loading = false, _opening = false;
@@ -166,9 +173,29 @@ class ScheduledTaskDetailSession extends ChangeNotifier {
     if (!_disposed) notifyListeners();
   }
 
+  // Pausing must stop the timer itself, not only the work inside its
+  // callback: an always-ticking Timer.periodic keeps waking the main
+  // isolate even while every check inside the callback is false.
+  void _reschedule() {
+    _timer?.cancel();
+    _timer = _disposed || !_resumed
+        ? null
+        : _scheduleTimer(const Duration(seconds: 8), (_) {
+            WingBgWatch.instance.recordWakeup('ScheduledTaskDetailSession');
+            if (!_disposed &&
+                isVisible() &&
+                !_loading &&
+                _error == null &&
+                controller.error == null) {
+              unawaited(refresh());
+            }
+          });
+  }
+
   void resumed(bool value) {
-    if (_disposed) return;
+    if (_disposed || _resumed == value) return;
     _resumed = value;
+    _reschedule();
     if (value && isVisible()) unawaited(refresh());
   }
 
@@ -230,7 +257,8 @@ class ScheduledTaskDetailSession extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _generation++;
-    _timer.cancel();
+    _timer?.cancel();
+    _timer = null;
     controller.removeListener(_emit);
     super.dispose();
   }
