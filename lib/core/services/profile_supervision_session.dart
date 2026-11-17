@@ -6,6 +6,7 @@ import '../models/operational_error.dart';
 import '../models/session_control.dart';
 import 'profile_workspace_controller.dart';
 import 'subagent_timeline_session.dart';
+import 'wing_bg_watch.dart';
 
 /// Captured supervision workflow; borrows canonical live facts and transport.
 /// One instance is shared by the current chat's goal, work and subagent views.
@@ -403,10 +404,10 @@ final class SubagentSupervisionDetail extends ChangeNotifier
     if (_timer != null) return;
     unawaited(refreshTail(explicit: false));
     if (!_current || !_active) return;
-    _timer = Timer.periodic(
-      const Duration(seconds: 2),
-      (_) => unawaited(refreshTail(explicit: false)),
-    );
+    _timer = Timer.periodic(const Duration(seconds: 2), (_) {
+      WingBgWatch.instance.recordWakeup('SubagentSupervisionDetail');
+      unawaited(refreshTail(explicit: false));
+    });
   }
 
   @override

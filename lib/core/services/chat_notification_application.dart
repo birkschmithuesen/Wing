@@ -523,10 +523,10 @@ final class _NotificationApplication {
       _poll = null;
       return;
     }
-    _poll ??= Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => unawaited(_reconcile().catchError((Object _) {})),
-    );
+    _poll ??= Timer.periodic(const Duration(seconds: 30), (_) {
+      WingBgWatch.instance.recordWakeup('ChatNotificationApplication');
+      unawaited(_reconcile().catchError((Object _) {}));
+    });
   }
 
   Future<void> _reconcile() async {

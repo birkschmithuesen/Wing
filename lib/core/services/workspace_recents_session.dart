@@ -7,6 +7,7 @@ import 'bots_session.dart';
 import 'profile_workspace_controller.dart';
 import 'recent_conversation_snapshots.dart';
 import 'server_connection_status.dart';
+import 'wing_bg_watch.dart';
 import 'workspace_recents_cache.dart';
 
 /// Workspace-owned Recents catalog shared by the list and conversation sources.
@@ -124,10 +125,10 @@ class WorkspaceRecentsSession extends ChangeNotifier
         _changed();
         unawaited(refresh());
       });
-      _poll = Timer.periodic(
-        refreshInterval,
-        (_) => unawaited(refresh(force: true, automatic: true)),
-      );
+      _poll = Timer.periodic(refreshInterval, (_) {
+        WingBgWatch.instance.recordWakeup('WorkspaceRecentsSession');
+        unawaited(refresh(force: true, automatic: true));
+      });
     } else {
       _poll?.cancel();
       _poll = null;
