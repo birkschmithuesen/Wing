@@ -1926,6 +1926,11 @@
       "feature": "outputs-and-viewers",
       "library": "lib/core/services/web_preview.dart"
     },
+    "lib/core/services/wing_bg_watch.dart": {
+      "role": "utility",
+      "feature": "platform-lifecycle",
+      "library": "lib/core/services/wing_bg_watch.dart"
+    },
     "lib/core/services/wing_plugin_releases.dart": {
       "role": "data",
       "feature": "app-preferences-backup",
