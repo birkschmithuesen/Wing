@@ -11,6 +11,45 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-18
+
+### A barge-in listen round and a chat-list working animation stop running once the app loses focus without a held background voice session
+- **What:** `TurnListener` (the vad route's barge-in/listen-while-working round)
+  restarted itself on silence forever once opened, never re-checking app focus
+  again after the caller's one-time gate at `open()` - a round left listening with
+  nobody speaking kept cycling native VAD/AudioRecord sessions (~every 8s, the
+  listen round's `noSpeechTimeout`) for as long as the app stayed paused, whether
+  or not car mode or a held background voice session was still running. It now
+  takes an injected `canListen` callback, re-checked on every device event and
+  before every round (re)start; `WorkspaceVoiceDriver` wires it to the same
+  `loopFocus` the hands-free dictation loop already uses, so a round only opens or
+  keeps running while in focus, in car mode, or while the explicit background
+  voice service holds the microphone. Separately, `ChatWorkingBorder` (the chat
+  list's pulsing border on a row Hermes is still working on) kept its
+  `AnimationController.repeat()` ticking, and the raster thread compositing it,
+  purely off `widget.working` and reduced-motion - lifecycle state never entered
+  that decision, so the border (and any row showing "working" from a background
+  conversation turn) kept animating with the screen off and nothing to show it to.
+  It now also stops ticking once the app is not resumed. Both now call
+  `WingBgWatch.instance.recordWakeup(...)` so a recurrence of either shows up in
+  logcat; `GroupNotificationSession`'s background poll timer callback does too,
+  closing a gap `WingBgWatch`'s own doc comment used to carve out for voice.
+- **Why:** Measured 2026-11-18: Wing's native heap grew from 203 MB to 1.1 GB
+  (VmRSS) over ~3.5 h paused with `voice.conversation=on`, `local_engine=parakeet`,
+  screen off, and the raster and `WingVad`/`DartWorker` threads spinning
+  (`1.raster 302`, `WingVad 91` ticks/12s) - new versus the prior, already-fixed
+  main-isolate-only spin (t_5ba4ca8d, merged 64b968a5), where raster was idle.
+  `dumpsys audio` showed Wing's `VOICE_RECOGNITION` sessions still starting and
+  stopping 3.5 h after the app was last active, consistent with an unsupervised
+  listen-round restart cycle rather than one Hermes conversation turn.
+- **Fork edits of upstream files:** `lib/voice_offline/turn_listener.dart`,
+  `lib/voice_offline/workspace_voice_driver.dart`,
+  `lib/core/widgets/chat_working_border.dart`,
+  `lib/core/services/group_notification_session.dart`,
+  `lib/core/services/wing_bg_watch.dart`.
+- **Merge:** pending (branch `wing/t_482d3051-wing-native-memory-grows-to-1.1-gb-and-c`,
+  not yet merged to `voice-offline`) · **Card:** t_482d3051
+
 ## 2026-11-17
 
 ### Scheduled-tasks admin timers stop ticking on pause instead of only gating their callback, plus a background wake-up watchdog
