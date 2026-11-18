@@ -51,9 +51,11 @@ class WingBgWatch {
   }
 
   /// Call once per actual timer/poll callback invocation, from every
-  /// component that still runs while backgrounded (event-driven sockets,
-  /// and voice/car-mode sessions that are the agreed exceptions, don't
-  /// need to call this).
+  /// component that still runs while backgrounded. Event-driven sockets
+  /// don't need to call this; a car-mode session's own SCO/UI hold is the
+  /// agreed exception, but the hands-free conversation's listen loop does
+  /// call this (card t_482d3051: an un-gated restart cycle there is exactly
+  /// the kind of regression this watch exists to catch).
   void recordWakeup(String component) {
     if (_foreground) return;
     final now = _now();

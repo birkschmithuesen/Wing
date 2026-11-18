@@ -100,6 +100,58 @@ void main() {
     expect(heard, ['Hello from the phone']);
   });
 
+  test(
+    'a paused app with no held background service never opens a round',
+    () async {
+      listener = TurnListener(device: device, canListen: () => false);
+      listener.onUtterance = heard.add;
+      await listener.open(settings);
+      expect(listener.isOpen, isFalse);
+      expect(device.vadStarts, 0);
+    },
+  );
+
+  test(
+    'losing focus mid-round closes it instead of restarting forever '
+    '(card t_482d3051: a conversation that goes to background without a '
+    'held service must stop cycling listen rounds, not spin on them)',
+    () async {
+      var canListen = true;
+      listener = TurnListener(device: device, canListen: () => canListen);
+      listener.onUtterance = heard.add;
+      await listener.open(settings);
+      expect(device.vadStarts, 1);
+      // Silence alone would restart the round (see the next test); losing
+      // focus must close it instead, at the very next device event.
+      canListen = false;
+      await say(0.1, 4);
+      expect(listener.isOpen, isFalse);
+      expect(device.vadStarts, 1, reason: 'no new round opened once paused');
+      // Further windows (as if a stray native event still arrived) must not
+      // reopen or restart anything: the loop stays bounded, not cycling.
+      await say(0.1, 70);
+      expect(device.vadStarts, 1);
+    },
+  );
+
+  test(
+    'many silent restart cycles while backgrounded stay bounded to one round '
+    '(card t_482d3051: 200 simulated silence cycles must not open 200 rounds)',
+    () async {
+      var canListen = true;
+      listener = TurnListener(device: device, canListen: () => canListen);
+      listener.onUtterance = heard.add;
+      await listener.open(settings);
+      expect(device.vadStarts, 1);
+      canListen = false;
+      for (var i = 0; i < 200; i++) {
+        await say(0.1, 70);
+      }
+      expect(device.vadStarts, 1);
+      expect(listener.isOpen, isFalse);
+    },
+  );
+
   test('close cancels the round and nothing restarts', () async {
     await listener.open(settings);
     final id = device.recording;

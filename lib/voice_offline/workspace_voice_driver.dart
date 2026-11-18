@@ -160,12 +160,16 @@ class WorkspaceVoiceDriver extends ChangeNotifier {
     unawaited(_voiceOutput.stop().catchError((Object _) {}));
   }
 
-  /// Listen rounds while Hermes works (spec 2026-10-14 barge-in).
+  /// Listen rounds while Hermes works (spec 2026-10-14 barge-in). [loopFocus]
+  /// gates every round this opens for itself too (card t_482d3051): paused
+  /// or hidden without car mode, a round only stays open while the explicit
+  /// background voice service actually holds the microphone.
   late final bargeIn = BargeInCoordinator(
     TurnListener(
       device: device,
       carMicSession: carMic,
       carKitConnected: carKitConnected,
+      canListen: () => loopFocus,
     ),
   );
 
