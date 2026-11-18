@@ -103,4 +103,22 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'pausing the app stops ticks without moving the chat row '
+    '(card t_482d3051: the raster thread must not keep compositing a '
+    'decorative animation nobody can see while paused)',
+    (tester) async {
+      await show(tester);
+      final bounds = tester.getRect(find.byType(ListTile));
+      expect(tester.binding.hasScheduledFrame, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pumpAndSettle();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+      expect(tester.getRect(find.byType(ListTile)), bounds);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(tester.binding.hasScheduledFrame, isTrue);
+    },
+  );
 }
