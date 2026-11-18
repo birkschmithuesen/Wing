@@ -130,7 +130,18 @@ void main() {
     expect(controller.current!.chat, same(chat));
     expect(chat.reading.messages.single['content'], 'a completed');
     expect(chat.refreshingConversation, isTrue);
-    expect(chat.runtime.opening, isTrue);
+    expect(
+      chat.runtime.opening,
+      isFalse,
+      reason:
+          'A retained chat with restored composer/history is already open; '
+          'the held resume is a background refresh, not an opening.',
+    );
+    expect(
+      controller.canDictate(chat),
+      isTrue,
+      reason: 'Dictation must not wait for the held resume RPC either.',
+    );
     host
       ..heldHistoryStarted = Completer<void>()
       ..heldHistoryDelay = historyDelay
