@@ -1513,7 +1513,13 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(controller.current!.chat!.runtime.opening, isTrue);
+      // The background session.resume + history refresh is still gated on
+      // resumeGate (refreshingConversation), but this chat's composer and
+      // history were already restored before this reopen, so it is revealed
+      // instantly and must not be marked opening (that would block dictation
+      // admission, t_a8358240) for a refresh the user isn't waiting on.
+      expect(controller.current!.chat!.refreshingConversation, isTrue);
+      expect(controller.current!.chat!.runtime.opening, isFalse);
       expect(find.text('Mobile app'), findsOneWidget);
       expect(find.byIcon(ProjectIconGlyphs.of('rocket')), findsOneWidget);
       fixture.resumeGate!.complete();

@@ -59,10 +59,18 @@ the README feature list current for every future change.
 - **Tests:** `test/profile_resume_freshness_test.dart` (updated: a retained
   chat's instant reveal must not mark it opening, and must admit dictation,
   while its held resume RPC is still in flight — previously asserted the
-  opposite), `test/fork/resume_connection_burst_test.dart` (new: a
+  opposite), `test/profile_workspace_browser_test.dart` ('conversation keeps
+  known project while reopening saved reading' asserted the same now-removed
+  unconditional `beginOpening()` on a retained, already-restored chat;
+  updated to check `refreshingConversation` for "the background refresh is
+  in flight" and `runtime.opening == false` for "dictation stays admitted"
+  instead), `test/fork/resume_connection_burst_test.dart` (new: a
   foreground/network-restore resume across 5 loaded profiles must not open
   more than the batch size's worth of gateway sockets at once, and must
-  still resume every profile).
+  still resume every profile — the fixture simulates each profile's socket
+  actually going stale first, via `onConnectionChanged(false)`, since a
+  still-live socket is correctly left alone by `_resumeResource`'s
+  `session.active_list` health-check fast path).
 - **Merge:** pending · **Card:** t_a8358240
 
 ## 2026-11-17

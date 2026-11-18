@@ -59,6 +59,16 @@ void main() {
     'resumeConnection batches per-profile reconnects instead of opening every '
     'profile socket at once',
     () async {
+      // Every profile's socket is still open and reporting live right after
+      // setUp's openSession calls; resumeConnection's liveAvailable fast path
+      // (a cheap session.active_list probe, see _resumeResource) correctly
+      // skips a full reconnect for those. The reported burst only happens
+      // once sockets actually go stale (background/foreground, network
+      // blip), so simulate that here the same way the gateway itself would
+      // report it losing its connection.
+      for (final name in host.profiles) {
+        host.gateways[name]!.onConnectionChanged!(false);
+      }
       host.connectCalls = 0;
       host.connectDelay = Completer<void>();
       final resumed = controller.resumeConnection(networkChanged: true);
