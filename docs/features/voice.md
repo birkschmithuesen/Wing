@@ -85,6 +85,13 @@ Real subscription entitlement, API credits, provider delegation, audible
 barge-in/echo and physical headset routing still require an operator-authorized
 provider/device run. Source and offline tests cannot establish those properties.
 
+Fork (Wing Voice): switching back to a chat that is already retained (its
+composer and history restored from a previous visit) admits dictation
+immediately; the background resume/history refresh that follows does not mark
+the chat opening and must not block voice input (see [Connect to
+Hermes](connections.md)). Only a chat that still genuinely needs to settle
+(not yet opened, or offline) withholds dictation until it does (t_a8358240).
+
 For a deployed-provider check, use the exact connection and profile of the chat
 that starts voice. A successful `/api/plugins/wing/voice/v2/status?mode=subscription`
 request or call in `default` does not establish readiness in a named profile.
