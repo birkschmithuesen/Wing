@@ -623,12 +623,16 @@ void main() {
                 (tester.widget<Container>(led).decoration! as BoxDecoration)
                     .color;
             expect(ledColor(), tokens.success);
-            controller.connectionStatus.beginRecovery('screen-test');
+            // Simulate the current profile's own reconnect/failure, not an
+            // unrelated owner: since t_1d748269, the header LED only reacts
+            // to the selected profile's own recovery state.
+            final profile = chat.key.workspace.profileName;
+            controller.connectionStatus.beginRecovery(profile);
             await tester.pump();
             expect(ledColor(), tokens.warning);
             await _capture(tester, frame, '$name-screen-reconnecting');
             controller.connectionStatus.failRecovery(
-              'screen-test',
+              profile,
               'Connection interrupted',
             );
             await tester.pump();
@@ -641,7 +645,7 @@ void main() {
             Navigator.of(tester.element(find.text('Connection details'))).pop();
             await tester.pump();
             await tester.pump(const Duration(milliseconds: 300));
-            controller.connectionStatus.endRecovery('screen-test');
+            controller.connectionStatus.endRecovery(profile);
             await tester.pump();
             expect(ledColor(), tokens.success);
             expect(screenReads, isNotEmpty);
