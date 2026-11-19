@@ -421,6 +421,8 @@ class ProfileWorkspaceData {
 
 enum _NotificationActivity { running, waiting, idle }
 
+enum _ChatResumeOutcome { resumed, skipped, aborted }
+
 class _NotificationSession {
   final ProfileChat chat;
   final _NotificationActivity activity;
@@ -10694,6 +10696,75 @@ class ProfileWorkspaceController extends ChangeNotifier {
     return completion.future;
   }
 
+  /// Outcome of attempting to resume one retained chat during reconnect.
+  /// `aborted` means the whole reconnect attempt must stop immediately
+  /// (closed, or superseded by a newer call that set `_restartReconnect`);
+  /// `skipped` means this one chat's attempt was superseded or declined
+  /// (expired draft, missing session) and the rest of recovery continues;
+  /// `resumed` means it was applied and belongs in `resumedChats`.
+  Future<_ChatResumeOutcome> _resumeRetainedChat(
+    ProfileWorkspaceData resource,
+    ProfileChat chat,
+  ) async {
+    final wasBusy = chat.runtime.blocksTurnAdmission;
+    final read = _captureResume(resource, chat);
+    Map<String, dynamic>? result;
+    try {
+      result = await resource.gateway.resume(chat._key.sessionId);
+    } on JsonRpcError catch (error) {
+      if (!read.owned() || !read.current()) {
+        return _ChatResumeOutcome.skipped;
+      }
+      if (_isDefinitivelyExpiredDraft(chat, error)) {
+        await _replaceExpiredDraftRuntime(resource, chat);
+        // Falls through: the replaced runtime still needs the refreshHistory
+        // below, exactly like a chat whose resume() succeeded.
+      } else if (_isMissingSessionResume(error) &&
+          chat.composer.observation.queue.isNotEmpty) {
+        chat._runtime.installOfflineReading();
+        chat._runtime.completeTurn(
+          failed: true,
+          cancelled: false,
+          error: null,
+        );
+        chat.composer.recordRuntimeFailure();
+        chat._runtime.reportError(
+          'This conversation is no longer available. Your unsent messages are kept.',
+        );
+        await chat.composer.saveWork();
+        return _ChatResumeOutcome.skipped;
+      } else {
+        rethrow;
+      }
+    } catch (_) {
+      if (!read.current()) return _ChatResumeOutcome.skipped;
+      rethrow;
+    }
+    if (_closed || resource._restartReconnect) {
+      return _ChatResumeOutcome.aborted;
+    }
+    if (!read.owned()) return _ChatResumeOutcome.skipped;
+    final applied = result != null && read.current();
+    if (applied) _hydrate(chat, result);
+    final continuation = _captureResume(resource, chat, startRead: false);
+    try {
+      await refreshHistory(chat, propagateFailure: true);
+    } catch (_) {
+      if (!continuation.current()) return _ChatResumeOutcome.skipped;
+      rethrow;
+    }
+    if (_closed || resource._restartReconnect) {
+      return _ChatResumeOutcome.aborted;
+    }
+    if (!continuation.current()) return _ChatResumeOutcome.skipped;
+    if (!chat.runtime.blocksTurnAdmission) chat.reading.updateStreaming('');
+    chat._runtime.recovered();
+    if (applied && wasBusy && !chat.runtime.blocksTurnAdmission) {
+      _notifyRecoveredResult(chat);
+    }
+    return applied ? _ChatResumeOutcome.resumed : _ChatResumeOutcome.skipped;
+  }
+
   Future<void> _performReconnect(ProfileWorkspaceData resource) async {
     if (_closed) return;
     resource._reconnecting = true;
@@ -10732,6 +10803,21 @@ class ProfileWorkspaceController extends ChangeNotifier {
       await resource.gateway.connect();
       if (_closed || resource._restartReconnect) return;
       logRecoveryStep('socket_connect');
+
+      // Fork (t_edbdd961): a device measurement showed the selected
+      // profile's own recovery taking ~58 s with several retained chats
+      // still busy from before backgrounding - the old single `for` loop
+      // below resumed every eligible chat serially, in map insertion order,
+      // and only cleared `connectionStatus`'s recovery flag (the signal the
+      // connection indicator's `ServerConnectionStatus.phase` reads) after
+      // the whole loop plus pending/journal/session-list work finished. The
+      // visible chat - the only one the user is actually looking at - could
+      // sit behind any number of other busy chats. It now resumes first and
+      // alone; the rest keep their own serial-safety per chat but run as a
+      // background, bounded-concurrency sweep.
+      final visible = resource.chat;
+      final background = <ProfileChat>[];
+      ProfileChat? visibleToResume;
       for (final chat in resource._chats.values.toList()) {
         if (resource.blocksSession(chat._key.sessionId) ||
             _unrestoredPending.contains(chat._key)) {
@@ -10742,55 +10828,57 @@ class ProfileWorkspaceController extends ChangeNotifier {
             chat.composer.observation.queue.isEmpty) {
           continue;
         }
-        final wasBusy = chat.runtime.blocksTurnAdmission;
-        final read = _captureResume(resource, chat);
-        Map<String, dynamic>? result;
-        try {
-          result = await resource.gateway.resume(chat._key.sessionId);
-        } on JsonRpcError catch (error) {
-          if (!read.owned() || !read.current()) continue;
-          if (_isDefinitivelyExpiredDraft(chat, error)) {
-            await _replaceExpiredDraftRuntime(resource, chat);
-          } else if (_isMissingSessionResume(error) &&
-              chat.composer.observation.queue.isNotEmpty) {
-            chat._runtime.installOfflineReading();
-            chat._runtime.completeTurn(
-              failed: true,
-              cancelled: false,
-              error: null,
-            );
-            chat.composer.recordRuntimeFailure();
-            chat._runtime.reportError(
-              'This conversation is no longer available. Your unsent messages are kept.',
-            );
-            await chat.composer.saveWork();
-            continue;
-          } else {
-            rethrow;
+        if (identical(chat, visible)) {
+          visibleToResume = chat;
+        } else {
+          background.add(chat);
+        }
+      }
+
+      if (visibleToResume != null) {
+        final outcome = await _resumeRetainedChat(resource, visibleToResume);
+        if (outcome == _ChatResumeOutcome.aborted) return;
+        if (outcome == _ChatResumeOutcome.resumed) {
+          resumedChats.add(visibleToResume);
+        }
+      }
+      if (_closed || resource._restartReconnect) return;
+      logRecoveryStep('visible_chat_resumed');
+      // Only skip ahead of the rest of this profile's own recovery when
+      // there is actually something else to run concurrently in the
+      // background: the whole point is bounding how long *other* retained
+      // chats can hold up the indicator, not changing when recovery is
+      // signalled done for the common case of one retained chat (or none).
+      // A caller watching mid-recovery state for that common case - a
+      // chat deliberately held "opening" for its own resume, or a still
+      // unresolved pending draft with nothing else to retain - keeps
+      // seeing it exactly as before, through the unconditional
+      // `endRecovery` call once the whole pipeline below finishes.
+      if (background.isNotEmpty) {
+        // The socket (`ws.gateway_ready`) and the visible chat are both
+        // live; the rest of this profile's recovery continues below
+        // without holding the connection indicator on "Reconnecting"
+        // behind it.
+        connectionStatus.endRecovery(resource.scope.profileName);
+      }
+
+      const chatBatchSize = 3;
+      for (
+        var offset = 0;
+        offset < background.length;
+        offset += chatBatchSize
+      ) {
+        final batch = background.skip(offset).take(chatBatchSize).toList();
+        final outcomes = await Future.wait(
+          batch.map((chat) => _resumeRetainedChat(resource, chat)),
+        );
+        if (_closed || resource._restartReconnect) return;
+        for (var i = 0; i < batch.length; i++) {
+          if (outcomes[i] == _ChatResumeOutcome.aborted) return;
+          if (outcomes[i] == _ChatResumeOutcome.resumed) {
+            resumedChats.add(batch[i]);
           }
-        } catch (_) {
-          if (!read.current()) continue;
-          rethrow;
         }
-        if (_closed || resource._restartReconnect) return;
-        if (!read.owned()) continue;
-        final applied = result != null && read.current();
-        if (applied) _hydrate(chat, result);
-        final continuation = _captureResume(resource, chat, startRead: false);
-        try {
-          await refreshHistory(chat, propagateFailure: true);
-        } catch (_) {
-          if (!continuation.current()) continue;
-          rethrow;
-        }
-        if (_closed || resource._restartReconnect) return;
-        if (!continuation.current()) continue;
-        if (!chat.runtime.blocksTurnAdmission) chat.reading.updateStreaming('');
-        chat._runtime.recovered();
-        if (applied && wasBusy && !chat.runtime.blocksTurnAdmission) {
-          _notifyRecoveredResult(chat);
-        }
-        if (applied) resumedChats.add(chat);
       }
       logRecoveryStep('chats_resumed');
       resumedChats.addAll(await _restorePendingForResource(resource));

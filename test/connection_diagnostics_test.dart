@@ -585,7 +585,12 @@ void main() {
       }
       expect(
         steps.map((event) => event['step']),
-        contains('sessions_refreshed'),
+        containsAllInOrder(['visible_chat_resumed', 'sessions_refreshed']),
+        reason:
+            't_edbdd961: the selected profile logs visible_chat_resumed as '
+            'soon as its own visible chat is live, before the rest of the '
+            'pipeline (background chats, pending restoration, journal and '
+            'session list) finishes.',
       );
     },
   );

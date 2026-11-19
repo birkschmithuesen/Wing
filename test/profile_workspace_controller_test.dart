@@ -241,6 +241,11 @@ class Host {
   int resumeFailures = 0;
   Completer<void>? resumeStarted;
   Completer<void>? resumeDelay;
+  // Fork (t_edbdd961): a per-call hook (unlike `resumeDelay`, which is
+  // single-use) so a test can hold specific `session.resume` calls open by
+  // profile/session id - e.g. to prove a busy background chat stuck
+  // resuming forever does not block the selected profile's visible chat.
+  Future<void> Function(String profile, String sessionId)? resumeHold;
   bool expireUnsubmittedResume = false;
   int sessionCreates = 0;
   String? createdCwdOverride;
@@ -786,6 +791,9 @@ class Host {
           };
         }
         if (method == 'session.create' || method == 'session.resume') {
+          if (method == 'session.resume') {
+            await resumeHold?.call(name, params['session_id'] as String);
+          }
           if (method == 'session.create') sessionCreates++;
           final replacement = sessionCreates > 1;
           if (method == 'session.create' && replacement) {

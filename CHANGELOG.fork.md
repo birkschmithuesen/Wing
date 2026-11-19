@@ -13,6 +13,79 @@ the README feature list current for every future change.
 
 ## 2026-11-19
 
+### The selected profile's own visible chat resumes first, and the connection indicator clears, without waiting on its other retained chats
+- **What:** t_15b221a3 (and t_1d748269 before it) made sure the *selected
+  profile* resumes before and independently of any *background profile*,
+  but a device measurement (`app.lifecycle resumed` -> `workspace.recovered
+  profile=birk` = 57.9 s, acceptance of t_1d748269 not met) showed the
+  remaining bottleneck was *inside* one profile's own reconnect:
+  `_performReconnect` (`lib/core/services/profile_workspace_controller.dart`)
+  resumed every eligible retained chat of that profile - any chat still busy
+  from before backgrounding, plus the one on screen - serially, in one
+  `for` loop, and only called `connectionStatus.endRecovery` (the call that
+  clears `ServerConnectionStatus`'s `_recoveries` entry and lets `phase`
+  leave `reconnecting`) after that whole loop plus
+  `_restorePendingForResource`, `_journal` and `_refreshSessions` finished.
+  The visible chat - the only one the user is looking at - could sit behind
+  any number of other busy chats in map iteration order, and the header
+  stayed on Reconnecting for as long as the slowest of them took, even
+  though the socket itself (`ws.gateway_ready`, i.e.
+  `ProfileGateway._liveChanged(true)`) was already healthy right after
+  `gateway.connect()` resolved. Extracted the per-chat resume/refresh body
+  into `_resumeRetainedChat` (unchanged logic, now returning an outcome:
+  `resumed`/`skipped`/`aborted`) and reordered `_performReconnect`: the
+  profile's own visible chat (`resource.chat`) resumes first and alone, and
+  a new `visible_chat_resumed` step is always logged right there. Only when
+  there are other retained chats left to process - the actual scaling
+  problem this card is about - does `connectionStatus.endRecovery` also
+  fire at that point, ahead of the rest; with no other retained chat (the
+  common case, and every case a widget test held mid-recovery depends on:
+  a chat deliberately left "opening", or a still-unresolved pending draft
+  with nothing else retained), `endRecovery` stays exactly where it always
+  was, at the very end, so nothing watching intermediate recovery state for
+  that single chat sees any different timing. The remaining retained chats
+  (when there are any) resume in a bounded-concurrency sweep (batches of 3,
+  the same pacing already used by `resumeConnection`'s background-profile
+  batching), followed by the unchanged pending-restoration, journal and
+  session-list-refresh steps, all still awaited before the outer
+  `reconnect()`/`_reconnect()` Future itself completes - so every other
+  caller of `reconnect()` (notification approval, pull-to-refresh,
+  waiting-outbox restoration) keeps seeing the same full-completion
+  contract.
+- **Why:** card t_edbdd961, the device-measurement follow-up to t_1d748269.
+  Verified the three-hypothesis root cause in a test harness (fake host
+  with several retained chats and a `session.resume` that never returns for
+  background chats) rather than by inspection alone; the old loop provably
+  never reaches the visible chat's own resume, let alone `endRecovery`,
+  once an earlier chat in map order is stuck. Checked `git diff
+  upstream/main -- lib/core/services/profile_workspace_controller.dart` and
+  `server_connection_status.dart`: the serial per-chat loop and the
+  `_recoveries`-gates-`phase` mechanism are both verbatim, unmodified
+  upstream code (the fork's `focusOwner` scoping sits on top of the same
+  gate) - this is an upstream bug, not fork drift. An upstream issue
+  writeup (English, no instance-identifying detail) was drafted for Birk to
+  decide whether to file.
+- **Fork edits of upstream files:**
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/fork/visible_chat_resume_priority_test.dart` (new:
+  proves the visible chat resumes and the header reaches `connected` while
+  four other retained chats of the same profile are permanently stuck
+  resuming - a scenario the old serial loop never gets past);
+  `test/connection_diagnostics_test.dart` (updated: the per-step resume
+  timeline test now also asserts `visible_chat_resumed` logs before
+  `sessions_refreshed`); `test/profile_workspace_controller_test.dart`
+  (added the `Host.resumeHold` per-call hook the new test needs to hold a
+  specific chat's `session.resume` open indefinitely, unlike the existing
+  single-use `resumeDelay`). Not touched:
+  `test/profile_activity_status_test.dart` ("opening uses only the header
+  pulse") and `test/profile_focus_recovery_test.dart` ("pending chat Retry
+  shows recovery through history") both hold a *single* chat (or none)
+  mid-recovery and check the indicator/pulse stays up throughout - exactly
+  the no-other-retained-chat case this fix leaves at the original
+  `endRecovery` timing, so both kept passing once the fast path was scoped
+  to only fire when there is another retained chat to actually bound.
+- **Merge:** pending · **Card:** t_edbdd961
+
 ### A foreground/network-restore resume no longer reconnects every served profile at all - only the selected profile and any profile with a turn still awaiting admission
 - **What:** acceptance item 4 of t_a8358240 ("at most one gateway socket per
   instance, opened lazily; profiles multiplex over it, or only the selected
