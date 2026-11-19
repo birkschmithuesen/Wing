@@ -120,15 +120,24 @@ state and the Retry action depend only on the selected profile (plus startup and
 notification-opening, which always gate the header) and never on a background
 profile's own reconnect, failure or socket drop, so a stale profile the user
 has not switched back to cannot keep the header orange or block new-session,
-composer or dictation admission for the one actually open (t_1d748269). Phone
-logcat (`WingConnection`) also carries a `workspace.recovery_step` line for
-each awaited step of a profile's resume (socket connect, chat resume, pending
-restore, journal, session refresh) with its cumulative `elapsed_ms`, so a slow
-resume can be localized even when the socket was already open and no
-`ws.connect_started` appears.
+composer or dictation admission for the one actually open (t_1d748269).
+Within the selected profile itself, its own visible chat (the one on screen)
+resumes first and alone; the header's Reconnecting/Connected state clears as
+soon as that visible chat and the socket are both live, without waiting for
+any other retained chat of that same profile, the pending-restoration sweep,
+the journal write or the session-list refresh. Those keep running afterward
+as a bounded-concurrency background sweep (batches of 3, the same pacing as
+the background-profile batches above), so the selected profile's own
+recovery time no longer grows with how many other chats it is retaining
+(t_edbdd961). Phone logcat (`WingConnection`) also carries a
+`workspace.recovery_step` line for each awaited step of a profile's resume
+(socket connect, visible chat resumed, chat resume, pending restore, journal,
+session refresh) with its cumulative `elapsed_ms`, so a slow resume can be
+localized even when the socket was already open and no `ws.connect_started`
+appears.
 
 ```sh
-flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart
 ```
 
 These regressions cover live-update and overlapping-read races, prolonged
@@ -147,7 +156,13 @@ verifies a foreground/network-restore resume leaves idle background profiles
 disconnected and opens at most the selected profile's socket, that a
 background profile with a turn still awaiting admission is resumed too, and
 that the selected profile always connects first, alone, before any
-background batch starts. `server_connection_status_test.dart` verifies the
+background batch starts. `fork/visible_chat_resume_priority_test.dart`
+verifies that the selected profile's own visible chat resumes, and the
+header leaves Reconnecting, even while several other retained chats of that
+same profile are still stuck resuming - so the selected profile's recovery
+time does not scale with its retained chat count and never waits on a
+background chat the way it never waits on a background profile.
+`server_connection_status_test.dart` verifies the
 header's phase and Retry admission ignore a background profile's recovery,
 failure or live-socket drop while still reacting to the selected profile's
 own state and to startup/notification recovery; `connection_diagnostics_test.dart`
