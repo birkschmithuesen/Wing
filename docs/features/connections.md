@@ -101,14 +101,22 @@ restored) reveals it instantly; the resume/history reconciliation that follows
 is a background refresh, not an opening, so it never shows Reconnecting or
 blocks voice dictation (see [Dictate, hear replies and have live
 conversations](voice.md)). Fork (Wing Voice): a foreground entry or
-network-restore event resumes every served profile that needs recovery in
-small batches rather than opening every profile's gateway socket at once,
-which previously saturated the server's event loop and stretched an unrelated
-profile's socket trouble into the header staying on Reconnecting for other,
-healthy chats (t_a8358240). The selected profile resumes first and alone,
-ahead of that batching, so its own recovery cannot be seated behind unrelated
-profiles in list order; the header's Reconnecting/Connected state and the
-Retry action depend only on the selected profile (plus startup and
+network-restore event resumes only the selected profile, plus any other
+served profile that has a turn still awaiting admission, an unrestored
+pending input or a queued follow-up prompt, in small batches - not every
+served profile that merely has a retained chat list or was ever connected
+before. Opening every profile's gateway socket at once, or even every one of
+them staggered, previously saturated the server's event loop and stretched an
+unrelated profile's socket trouble into the header staying on Reconnecting
+for other, healthy chats (t_a8358240); still reconnecting every served
+profile on each resume event, just staggered, remained one gateway socket per
+served profile per event (t_15b221a3). An idle background profile - loaded or
+connected earlier in the session, but with no pending turn right now - stays
+disconnected and opens its own socket lazily the next time the user actually
+switches to it or opens a chat in it. The selected profile resumes first and
+alone, ahead of any background batch, so its own recovery cannot be seated
+behind unrelated profiles in list order; the header's Reconnecting/Connected
+state and the Retry action depend only on the selected profile (plus startup and
 notification-opening, which always gate the header) and never on a background
 profile's own reconnect, failure or socket drop, so a stale profile the user
 has not switched back to cannot keep the header orange or block new-session,
@@ -135,9 +143,10 @@ overlapping conversation recovery.
 `profile_resume_freshness_test.dart` also verifies that a retained chat's
 instant reveal does not mark it opening, so dictation stays admitted while
 its held resume is still in flight; `fork/resume_connection_burst_test.dart`
-verifies a foreground/network-restore resume caps concurrent per-profile
-gateway connects instead of opening a socket for every served profile at
-once, and that the selected profile always connects first, alone, before any
+verifies a foreground/network-restore resume leaves idle background profiles
+disconnected and opens at most the selected profile's socket, that a
+background profile with a turn still awaiting admission is resumed too, and
+that the selected profile always connects first, alone, before any
 background batch starts. `server_connection_status_test.dart` verifies the
 header's phase and Retry admission ignore a background profile's recovery,
 failure or live-socket drop while still reacting to the selected profile's

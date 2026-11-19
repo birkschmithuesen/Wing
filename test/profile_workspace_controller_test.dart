@@ -4890,9 +4890,13 @@ void main() {
     expect(controller.connectionStatus.recoveryAttemptInProgress, isFalse);
     final bConnectsBefore = host.connectsByProfile['b'] ?? 0;
 
+    // Fork (t_15b221a3): acceptance item 4 of t_a8358240 - 'b' has no chat
+    // and no pending turn, so a resume must not fast-track its retry; it
+    // stays on its own backoff schedule instead of becoming part of a
+    // foreground-event fan-out.
     await controller.resumeConnection();
 
-    expect(host.connectsByProfile['b'], bConnectsBefore + 1);
+    expect(host.connectsByProfile['b'], bConnectsBefore);
     expect(await owner.gateway.call('session.active_list'), {'sessions': []});
     expect(controller.connectionStatus.description, 'Connected');
   });
@@ -4934,28 +4938,39 @@ void main() {
     },
   );
 
-  test('retry recovers an interrupted activity-only profile', () async {
-    final owner = controller.current!;
-    final background = controller.browserResource('b');
-    await background.gateway.connect();
-    expect(background.loaded, isFalse);
-    expect(background.chats, isEmpty);
-    host.resumeFailures = 1;
-    await expectLater(
-      background.gateway.resume('same'),
-      throwsA(isA<TimeoutException>()),
-    );
-    expect(controller.connectionStatus.liveAvailable('b'), isFalse);
-    expect(background.reconnectScheduled, isTrue);
+  test(
+    'retry leaves an interrupted activity-only profile on its own backoff',
+    () async {
+      final owner = controller.current!;
+      final background = controller.browserResource('b');
+      await background.gateway.connect();
+      expect(background.loaded, isFalse);
+      expect(background.chats, isEmpty);
+      host.resumeFailures = 1;
+      await expectLater(
+        background.gateway.resume('same'),
+        throwsA(isA<TimeoutException>()),
+      );
+      expect(controller.connectionStatus.liveAvailable('b'), isFalse);
+      expect(background.reconnectScheduled, isTrue);
 
-    await controller.resumeConnection();
+      // Fork (t_15b221a3): acceptance item 4 of t_a8358240 - 'b' has no
+      // chat and no pending turn, so a resume must not fast-track its
+      // already scheduled backoff retry either; it keeps ticking down on
+      // its own, independent of this (or any other) foreground/
+      // network-restore event.
+      await controller.resumeConnection();
 
-    expect(await owner.gateway.call('session.active_list'), {'sessions': []});
-    expect(controller.connectionStatus.description, 'Connected');
-    expect(controller.current, same(owner));
-    expect(background.loaded, isFalse);
-    expect(background.reconnectScheduled, isFalse);
-  });
+      expect(
+        await owner.gateway.call('session.active_list'),
+        {'sessions': []},
+      );
+      expect(controller.connectionStatus.description, 'Connected');
+      expect(controller.current, same(owner));
+      expect(background.loaded, isFalse);
+      expect(background.reconnectScheduled, isTrue);
+    },
+  );
 
   test(
     'network loss includes a live profile whose list was never loaded',

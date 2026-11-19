@@ -2595,6 +2595,26 @@ class ProfileWorkspaceController extends ChangeNotifier {
       ) ||
       connectionStatus.hasLiveObservation(resource.scope.profileName);
 
+  // Fork (t_15b221a3): _needsLiveRecovery also answers true for any profile
+  // merely visited once (`_loaded`) or ever connected
+  // (`hasLiveObservation`, which `ServerConnectionStatus` only forgets on
+  // `gateway.close()`), so it stays eligible forever. Driving a background
+  // resumeConnection batch off that predicate (t_b7f69683) still opens one
+  // gateway socket per served profile - acceptance item 4 of t_a8358240
+  // wants at most one socket per instance opened lazily, not merely batched.
+  // Only a resource with work the user is actually waiting on - an
+  // unrestored pending input, a turn still awaiting admission, or a queued
+  // follow-up - is "first real use"; everything else should stay
+  // disconnected until the user actually opens that profile again, which
+  // calls gateway.connect() itself (switchProfile/_selectChatProfile).
+  bool _needsEagerResumeRecovery(ProfileWorkspaceData resource) =>
+      _unrestoredPending.any((key) => key.workspace == resource.scope) ||
+      resource._chats.values.any(
+        (chat) =>
+            chat.runtime.blocksTurnAdmission ||
+            chat.composer.observation.queue.isNotEmpty,
+      );
+
   ProfileWorkspaceData _resource(String name) {
     final scope = WorkspaceScope(
       connectionId: connection.id,
@@ -2836,15 +2856,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _initializationAttempt = 0;
       await initialize();
     } else {
-      final resources = _resources.values.where(_needsLiveRecovery).toList();
-      // Fork: resuming every served profile at once opens one gateway socket
-      // per profile simultaneously. On a foreground/network-restore event
-      // with several profiles, that burst saturates the server's event loop
-      // (reported: "ws write slow, loop stalled >10s") and stalls the one
-      // resume the user is actually waiting on. Bounded batches, the same
-      // idiom _refreshWorkspace already uses for detached-work polling, keep
-      // this recovery from turning into a reconnect storm.
-      //
       // Fork (t_1d748269): the selected profile resumes first and alone,
       // not inside a batch with unrelated profiles. Batching by list order
       // alone (the previous fix) could still seat the selected profile
@@ -2852,11 +2863,26 @@ class ProfileWorkspaceController extends ChangeNotifier {
       // dictation/new-session admission - true for as long as those unload.
       // The header is decoupled from background owners separately (see
       // ServerConnectionStatus.focusOwner), so resuming the rest afterwards
-      // in the same bounded batches no longer affects it.
+      // no longer affects it.
       final current = _current;
-      if (current != null && resources.remove(current)) {
+      if (current != null && _needsLiveRecovery(current)) {
         await _resumeResource(current, networkChanged: networkChanged);
       }
+      // Fork (t_15b221a3): acceptance item 4 of t_a8358240 wants at most one
+      // gateway socket per instance opened lazily, not merely a throttled
+      // batch of every served profile (t_b7f69683 still opened one socket
+      // per profile, just staggered in groups of 3). Only resume a
+      // background profile here if it has real pending work the user is
+      // waiting on; an idle, merely-visited profile stays disconnected and
+      // opens its own socket lazily on its next real use (switchProfile /
+      // openSession already call gateway.connect() themselves).
+      final resources = _resources.values
+          .where(
+            (resource) =>
+                !identical(resource, current) &&
+                _needsEagerResumeRecovery(resource),
+          )
+          .toList();
       const batchSize = 3;
       for (var offset = 0; offset < resources.length; offset += batchSize) {
         await Future.wait(

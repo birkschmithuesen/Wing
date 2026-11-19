@@ -13,6 +13,78 @@ the README feature list current for every future change.
 
 ## 2026-11-19
 
+### A foreground/network-restore resume no longer reconnects every served profile at all - only the selected profile and any profile with a turn still awaiting admission
+- **What:** acceptance item 4 of t_a8358240 ("at most one gateway socket per
+  instance, opened lazily; profiles multiplex over it, or only the selected
+  profile connects eagerly and others connect on first real use") was still
+  not met after t_b7f69683's batching: that fix only staggered
+  `resumeConnection`'s per-profile reconnects in groups of 3, but still
+  eventually opened one gateway socket for *every* resource matching
+  `_needsLiveRecovery` - which answers true forever for any profile merely
+  visited once (`resource._loaded`, set once by `switchProfile` and never
+  cleared) or ever connected at all, even a failed attempt
+  (`connectionStatus.hasLiveObservation`, cleared only on
+  `gateway.close()`). `switchProfile`, `_selectChatProfile` (used by
+  `openSession`/session switch) and `createChat` (new chat) each already
+  call `gateway.connect()` for exactly one profile per event, so they were
+  already compliant; `resumeConnection`'s background batch
+  (`lib/core/services/profile_workspace_controller.dart`) was the one
+  remaining fan-out. Added `_needsEagerResumeRecovery`, a narrower
+  predicate that only answers true for a resource with an unrestored
+  pending input, a turn still awaiting admission
+  (`chat.runtime.blocksTurnAdmission`) or a queued follow-up prompt -
+  genuine work the user is waiting on, not merely "ever touched this
+  profile". `resumeConnection`'s background batch now filters on this
+  predicate instead of `_needsLiveRecovery`; the selected profile keeps
+  resuming first and unconditionally (unchanged from t_1d748269). An idle
+  background profile - loaded earlier, or merely disconnected and sitting
+  on its own backoff timer, but with no pending turn right now - is left
+  alone; it opens its own socket lazily the next time the user actually
+  switches to it or opens a session in it, which already calls
+  `gateway.connect()` directly.
+- **Why:** card t_15b221a3, following up on acceptance item 4 of
+  t_a8358240 being refuted against the merged state as of 2026-11-19 (the
+  per-event socket *count* was unchanged by t_b7f69683, only its pacing
+  was). Checked `git log upstream/main --
+  lib/core/services/profile_workspace_controller.dart`: upstream's own
+  `resumeConnection` has no batching at all - a single unthrottled
+  `Future.wait` over every `_needsLiveRecovery` resource - so the
+  one-gateway-per-profile architecture and `_needsLiveRecovery`'s broad,
+  permanently-true-once-touched definition are themselves unmodified
+  upstream code (upstream's version is the same mechanism, just worse);
+  this fix builds entirely on the fork's own t_b7f69683 batching, not on
+  new upstream code. Also checked whether the gateway protocol itself
+  would allow multiplexing several profiles over one socket instead:
+  `DashboardClient.gatewayCredentials()` (`connection_manager.dart`) is
+  connection-wide, not profile-scoped, but `WsClient.onStreamEvent`/
+  `onConnectionChanged` (`ws_client.dart`) are single, non-multiplexed
+  callbacks bound 1:1 to the one `ProfileGateway` each socket was opened
+  for (`ProfileGatewayConnection.create`/`ProfileGateway._forDashboard` in
+  `profile_gateway.dart`); sharing one socket across profiles would need a
+  new event-demuxing layer fanning a shared socket's events back out to
+  each profile's `ProfileGateway.onEvent`/`onConnectionChanged`, which is a
+  materially larger and riskier change than this card's scope - used the
+  brief's explicitly permitted fallback (selected profile eager, others
+  lazy) instead.
+- **Fork edits of upstream files:**
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/fork/resume_connection_burst_test.dart` (updated: the
+  current-profile-first test now also asserts idle background profiles
+  never connect at all, not just "not yet" by the time the current
+  profile's own connect starts; the batching test is replaced by an
+  assertion that an idle resume opens at most the selected profile's
+  socket; added a new test proving a *background* profile with a turn
+  still awaiting admission still resumes, alongside the selected profile,
+  so "first real use" covers in-flight work and not only the profile on
+  screen), `test/profile_workspace_controller_test.dart` (updated: 'retry
+  clears a failed unopened profile while chat works' and the renamed
+  'retry leaves an interrupted activity-only profile on its own backoff'
+  - both exercised a chatless background profile that was merely
+  `hasLiveObservation`/scheduled-for-backoff, which no longer gets an
+  eager nudge from a resume event; it keeps ticking down on its own
+  schedule instead).
+- **Merge:** pending · **Card:** t_15b221a3
+
 ### The selected profile resumes first and alone on foreground return, and a background profile's own reconnect, failure or stale socket no longer keeps the header orange
 - **What:** t_a8358240 (merged 091134b6) batched `resumeConnection`'s
   per-profile reconnects to stop opening every served profile's gateway

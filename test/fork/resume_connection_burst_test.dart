@@ -56,8 +56,8 @@ void main() {
   });
 
   test(
-    'resumeConnection resumes the current profile first and alone, not '
-    'batched with unrelated profiles behind it in list order',
+    'resumeConnection resumes the current profile first and alone, and '
+    'leaves idle background profiles disconnected',
     () async {
       // 'c' sits in the middle of host.profiles; setUp's last openSession
       // call made 'e' current. Re-select 'c' so it is the selected profile
@@ -91,22 +91,21 @@ void main() {
       );
       host.connectDelay!.complete();
       await resumed;
-      expect(host.connectOrder.first, 'c');
-      expect(host.connectOrder.toSet(), host.profiles.toSet());
+      // Fork (t_15b221a3): acceptance item 4 of t_a8358240 - none of 'a',
+      // 'b', 'd', 'e' has a turn awaiting admission or an unrestored
+      // pending input, so a resume must not reconnect them at all. They
+      // open their own socket lazily the next time the user actually
+      // visits them (switchProfile/openSession already call
+      // gateway.connect()).
+      expect(host.connectOrder, ['c']);
     },
   );
 
   test(
-    'resumeConnection batches per-profile reconnects instead of opening every '
-    'profile socket at once',
+    'resumeConnection does not reconnect idle background profiles at all; '
+    'at most the selected profile opens a socket (acceptance item 4 of '
+    't_a8358240)',
     () async {
-      // Every profile's socket is still open and reporting live right after
-      // setUp's openSession calls; resumeConnection's liveAvailable fast path
-      // (a cheap session.active_list probe, see _resumeResource) correctly
-      // skips a full reconnect for those. The reported burst only happens
-      // once sockets actually go stale (background/foreground, network
-      // blip), so simulate that here the same way the gateway itself would
-      // report it losing its connection.
       for (final name in host.profiles) {
         host.gateways[name]!.onConnectionChanged!(false);
       }
@@ -114,23 +113,83 @@ void main() {
       host.connectDelay = Completer<void>();
       final resumed = controller.resumeConnection(networkChanged: true);
       await pumpEventQueue();
-      expect(
-        host.connectCalls,
-        lessThan(host.profiles.length),
-        reason:
-            'A foreground/network-restore resume must not open a gateway '
-            'socket for every served profile at once (reported server-side '
-            'as a stalled event loop, t_a8358240).',
-      );
-      final firstBatch = host.connectCalls;
-      expect(firstBatch, greaterThan(0));
       host.connectDelay!.complete();
       await resumed;
       expect(
         host.connectCalls,
-        host.profiles.length,
-        reason: 'Batching must still resume every profile, just not at once.',
+        lessThanOrEqualTo(2),
+        reason:
+            'At most one gateway socket per instance (small bounded pool, '
+            '<= 2), opened lazily: an idle resume with no pending turn '
+            'anywhere must not reconnect every served profile, even '
+            'batched (t_b7f69683 still did, just staggered).',
       );
+      expect(
+        host.connectCalls,
+        1,
+        reason:
+            "Only the selected profile ('e', the last openSession in "
+            'setUp) has any reason to resume eagerly here; the other four '
+            'are merely loaded, not pending anything.',
+      );
+    },
+  );
+
+  test(
+    'resumeConnection still eagerly resumes a background profile with a '
+    'turn still awaiting admission, not just the selected profile',
+    () async {
+      // Give profile 'b' (not the soon-to-be-selected 'c') a turn still
+      // awaiting admission, so it has genuine pending work that a
+      // first-real-use-only connect would otherwise strand.
+      await controller.openSession(
+        ProfileSessionKey(
+          WorkspaceScope(
+            connectionId: controller.connection.id,
+            connectionIdentity: controller.connectionIdentity,
+            profileName: 'b',
+          ),
+          'same',
+        ),
+      );
+      final chat = await controller.createChat(canDispatch: () => true);
+      chat.composer.editText('still sending');
+      host.promptSubmitStarted = Completer<void>();
+      host.promptSubmitDelay = Completer<void>();
+      final sending = controller.send(chat);
+      await host.promptSubmitStarted!.future;
+      expect(chat.runtime.blocksTurnAdmission, isTrue);
+
+      await controller.openSession(
+        ProfileSessionKey(
+          WorkspaceScope(
+            connectionId: controller.connection.id,
+            connectionIdentity: controller.connectionIdentity,
+            profileName: 'c',
+          ),
+          'same',
+        ),
+      );
+      for (final name in host.profiles) {
+        host.gateways[name]!.onConnectionChanged!(false);
+      }
+      host.connectOrder.clear();
+      host.connectDelay = Completer<void>();
+      final resumed = controller.resumeConnection(networkChanged: true);
+      await pumpEventQueue();
+      host.connectDelay!.complete();
+      await resumed;
+      expect(
+        host.connectOrder.toSet(),
+        {'c', 'b'},
+        reason:
+            "'c' is the selected profile and resumes eagerly; 'b' has a "
+            'turn still awaiting admission, which is genuine "first real '
+            'use", not an idle, merely-visited profile. The other idle '
+            "profiles ('a', 'd', 'e') must stay deferred.",
+      );
+      host.promptSubmitDelay!.complete();
+      await sending;
     },
   );
 }
