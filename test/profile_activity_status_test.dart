@@ -377,7 +377,12 @@ void main({Future<void> Function(WidgetTester, String)? capture}) {
           addTearDown(tester.view.reset);
           host.event('a', 'message.start');
           runtime.beginOpening();
-          controller.connectionStatus.beginRecovery('opening-status-test');
+          // Simulate the current profile's own reconnect, not an unrelated
+          // owner: the header only pulses for the selected profile's
+          // recovery since t_1d748269 scoped it to that owner.
+          controller.connectionStatus.beginRecovery(
+            controller.current!.scope.profileName,
+          );
           chat.reading.installSavedHistory(const []);
           await tester.pumpWidget(
             MaterialApp(
