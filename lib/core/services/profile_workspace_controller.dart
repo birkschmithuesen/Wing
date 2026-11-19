@@ -2611,7 +2611,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _unrestoredPending.any((key) => key.workspace == resource.scope) ||
       resource._chats.values.any(
         (chat) =>
-            chat.runtime.blocksTurnAdmission ||
             chat.composer.observation.queue.isNotEmpty,
       );
 
