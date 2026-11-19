@@ -96,8 +96,19 @@ The icon-only Retry action remains available between automatic attempts and
 disables while a recovery request is running.
 Leaving a notification opening or disposing its workspace cancels its retries.
 
+Switching to an already-retained chat (its composer and history already
+restored) reveals it instantly; the resume/history reconciliation that follows
+is a background refresh, not an opening, so it never shows Reconnecting or
+blocks voice dictation (see [Dictate, hear replies and have live
+conversations](voice.md)). Fork (Wing Voice): a foreground entry or
+network-restore event resumes every served profile that needs recovery in
+small batches rather than opening every profile's gateway socket at once,
+which previously saturated the server's event loop and stretched an unrelated
+profile's socket trouble into the header staying on Reconnecting for other,
+healthy chats (t_a8358240).
+
 ```sh
-flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/fork/resume_connection_burst_test.dart
 ```
 
 These regressions cover live-update and overlapping-read races, prolonged
@@ -109,6 +120,12 @@ an exhausted background HTTP failure leaves healthy chat recovery idle and that
 subsequent network loss still recovers.
 It also covers responsive route changes and failed live checks during an
 overlapping conversation recovery.
+`profile_resume_freshness_test.dart` also verifies that a retained chat's
+instant reveal does not mark it opening, so dictation stays admitted while
+its held resume is still in flight; `fork/resume_connection_burst_test.dart`
+verifies a foreground/network-restore resume caps concurrent per-profile
+gateway connects instead of opening a socket for every served profile at
+once.
 `profile_empty_history_test.dart` verifies that an HTTP history failure remains
 visible and retryable while the live socket stays connected, and that an explicit
 history retry clears the limited status without starting chat recovery.

@@ -11,6 +11,68 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-18
+
+### Session switch and new-chat both no longer force a retained chat through a visible reopen that blocks dictation, and a foreground/network-restore resume no longer opens every profile's gateway socket at once
+- **What:** Two upstream-owned mechanisms combine to cause the reported 8–47s
+  "Reconnecting" + disabled dictation on session switch (and, via the New
+  chat button's `workspace.recovering` gate, on opening a new chat too).
+  (1) `ProfileWorkspaceController.openSessionForReading` unconditionally
+  called `beginOpening()` the instant a chat became visible, even on the
+  retained/cache-hit fast path that requires its composer and history to
+  already be fully restored (`_openSession`, the `retained.composer
+  .observation.restored && retained.reading.historySessionId != null`
+  branch) — so a chat the user can already see and type into stayed
+  `runtime.opening == true`, and therefore `admitsDictation` kept dictation
+  disabled, for the full duration of a redundant background
+  `session.resume` + history refresh. `openSessionForReading` now only calls
+  `beginOpening()` when the chat is not already ready (still opening or
+  offline); an already-restored retained chat never re-enters opening, so
+  dictation stays admitted across the switch. (2) `resumeConnection`
+  (foreground entry / network-restore) fanned out `Future.wait` over every
+  served profile's resource unthrottled; with several profiles loaded (the
+  chat overview's per-profile filter chips), this opens one gateway socket
+  per profile simultaneously, which Birk's server logs show saturating the
+  single Hermes gateway process's event loop ("ws write slow, loop stalled
+  >10.0s") — degrading whichever profile's socket the user is actually
+  switching into or creating a chat in, so its own resume/reconnect (already
+  sequential per chat, see `_performReconnect`) takes 8–47s instead of
+  sub-second. `resumeConnection` now resumes profiles in small batches (3 at
+  a time), the same idiom already used by `_refreshWorkspace`'s
+  detached-work-roster polling, instead of all at once.
+- **Why:** Birk reproduced 8–47s Reconnecting with dictation blocked on his
+  phone 2026-11-18 ~19:08–19:10 CET; server logs for the same window show a
+  burst of ~25 `ws accepted` within 200ms and a "loop stalled >10.0s"
+  warning. A diff against `upstream/main` (7a9992c4) shows both mechanisms —
+  `_resource()`'s one-gateway-per-profile architecture, `_performReconnect`'s
+  sequential per-chat resume, `ServerConnectionStatus.phase`'s
+  cross-profile `_recoveries` aggregation, and `openSessionForReading`'s
+  `beginOpening`/`admitsDictation` gating — are unmodified upstream code;
+  the fork's own diff in these files (unserved-profile refusal caching,
+  the device-network gate, post-reconnect queue replay) runs after recovery
+  ends or guards unrelated retry storms, and does not affect how long a
+  reconnect takes. An upstream issue describing this (diff evidence, no
+  device measurement since this sandbox has no `adb`/emulator and cannot
+  push to trigger a CI build) is drafted for Birk to decide on filing.
+- **Fork edits of upstream files:**
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/profile_resume_freshness_test.dart` (updated: a retained
+  chat's instant reveal must not mark it opening, and must admit dictation,
+  while its held resume RPC is still in flight — previously asserted the
+  opposite), `test/profile_workspace_browser_test.dart` ('conversation keeps
+  known project while reopening saved reading' asserted the same now-removed
+  unconditional `beginOpening()` on a retained, already-restored chat;
+  updated to check `refreshingConversation` for "the background refresh is
+  in flight" and `runtime.opening == false` for "dictation stays admitted"
+  instead), `test/fork/resume_connection_burst_test.dart` (new: a
+  foreground/network-restore resume across 5 loaded profiles must not open
+  more than the batch size's worth of gateway sockets at once, and must
+  still resume every profile — the fixture simulates each profile's socket
+  actually going stale first, via `onConnectionChanged(false)`, since a
+  still-live socket is correctly left alone by `_resumeResource`'s
+  `session.active_list` health-check fast path).
+- **Merge:** pending · **Card:** t_a8358240
+
 ## 2026-11-17
 
 ### Scheduled-tasks admin timers stop ticking on pause instead of only gating their callback, plus a background wake-up watchdog

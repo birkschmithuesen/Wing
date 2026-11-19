@@ -169,3 +169,13 @@ callbacks, while a served profile alongside it stays selectable.
 ## Gotchas
 
 Bot chats are hidden from the ordinary list unless Show automated chats is enabled. A completed row mutation and a successful background refresh are separate observations. Move and delete use a fresh owner-issued revision and execution generation; a concurrent turn or edit can refuse the action without changing the row. Delete retires the runtime through the same stock owner transaction that removes its history.
+
+Tapping a row for a chat already retained from an earlier visit reopens it
+instantly without a visible Reconnecting state or blocked dictation (see
+[Connect to Hermes](connections.md#gotchas) and [Dictate, hear replies and
+have live conversations](voice.md#gotchas)). The New chat FAB disables while
+`workspace.recovering` (the current profile's own reconnect) is running;
+Fork (Wing Voice): a foreground/network-restore resume across several loaded
+profiles now recovers them in small batches instead of opening every
+profile's gateway socket at once, so one profile's socket trouble no longer
+keeps an unrelated profile's New chat disabled for as long (t_a8358240).

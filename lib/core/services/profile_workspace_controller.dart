@@ -2824,14 +2824,26 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _initializationAttempt = 0;
       await initialize();
     } else {
-      await Future.wait(
-        _resources.values
-            .where(_needsLiveRecovery)
-            .map(
-              (resource) =>
-                  _resumeResource(resource, networkChanged: networkChanged),
-            ),
-      );
+      final resources = _resources.values.where(_needsLiveRecovery).toList();
+      // Fork: resuming every served profile at once opens one gateway socket
+      // per profile simultaneously. On a foreground/network-restore event
+      // with several profiles, that burst saturates the server's event loop
+      // (reported: "ws write slow, loop stalled >10s") and stalls the one
+      // resume the user is actually waiting on. Bounded batches, the same
+      // idiom _refreshWorkspace already uses for detached-work polling, keep
+      // this recovery from turning into a reconnect storm.
+      const batchSize = 3;
+      for (var offset = 0; offset < resources.length; offset += batchSize) {
+        await Future.wait(
+          resources
+              .skip(offset)
+              .take(batchSize)
+              .map(
+                (resource) =>
+                    _resumeResource(resource, networkChanged: networkChanged),
+              ),
+        );
+      }
     }
   }
 
@@ -4831,7 +4843,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
           if (reading != null || !isCurrentRequest()) return;
           reading = chat;
           chat._readingRefresh = token;
-          chat._runtime.beginOpening();
+          // A retained chat whose composer and history are already restored
+          // (the branch above requires both) is revealed instantly; the
+          // resume/history reconciliation that follows is a background
+          // refresh, not an opening the user should feel blocked by (voice
+          // dictation gates on runtime.opening, see admitsDictation). Only a
+          // chat that still needs to settle first is marked opening here.
+          if (chat.runtime.opening || chat.runtime.offline) {
+            chat._runtime.beginOpening();
+          }
           onReadingAvailable(chat);
           _changed();
         },
