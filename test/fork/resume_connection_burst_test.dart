@@ -8,6 +8,7 @@ import 'package:wing/core/services/app_preferences.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 
+import '../profile_approval_queue_test.dart' show approval;
 import '../profile_connection_identity_test.dart' show identityTestConnection;
 import '../profile_workspace_controller_test.dart' show Host;
 
@@ -190,6 +191,63 @@ void main() {
       );
       host.promptSubmitDelay!.complete();
       await sending;
+    },
+  );
+
+  test(
+    'resumeConnection still eagerly resumes a background profile that '
+    'needs input, with an empty composer queue, isolating '
+    'blocksTurnAdmission from queue.isNotEmpty',
+    () async {
+      // Give profile 'b' a pending approval question - this flips
+      // chat.runtime.blocksTurnAdmission via needsInput, without any
+      // send()/enqueue() call, so composer.observation.queue stays empty.
+      // Unlike the "turn still awaiting admission" test above, the two
+      // predicates cannot both be true here.
+      await controller.openSession(
+        ProfileSessionKey(
+          WorkspaceScope(
+            connectionId: controller.connection.id,
+            connectionIdentity: controller.connectionIdentity,
+            profileName: 'b',
+          ),
+          'same',
+        ),
+      );
+      final chat = await controller.createChat(canDispatch: () => true);
+      host.event('b', 'approval', approval('id'));
+      expect(chat.composer.observation.queue, isEmpty);
+      expect(chat.runtime.blocksTurnAdmission, isTrue);
+
+      await controller.openSession(
+        ProfileSessionKey(
+          WorkspaceScope(
+            connectionId: controller.connection.id,
+            connectionIdentity: controller.connectionIdentity,
+            profileName: 'c',
+          ),
+          'same',
+        ),
+      );
+      for (final name in host.profiles) {
+        host.gateways[name]!.onConnectionChanged!(false);
+      }
+      host.connectOrder.clear();
+      host.connectDelay = Completer<void>();
+      final resumed = controller.resumeConnection(networkChanged: true);
+      await pumpEventQueue();
+      host.connectDelay!.complete();
+      await resumed;
+      expect(
+        host.connectOrder.toSet(),
+        {'c', 'b'},
+        reason:
+            "'c' is the selected profile and resumes eagerly; 'b' has a "
+            'pending approval question blocking turn admission with an '
+            "empty composer queue - genuine pending work, not just an "
+            "idle, merely-visited profile. The other idle profiles ('a', "
+            "'d', 'e') must stay deferred.",
+      );
     },
   );
 }
