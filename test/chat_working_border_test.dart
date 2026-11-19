@@ -110,15 +110,25 @@ void main() {
     'decorative animation nobody can see while paused)',
     (tester) async {
       await show(tester);
+      final state = tester.state<ChatWorkingBorderState>(
+        find.byType(ChatWorkingBorder),
+      );
       final bounds = tester.getRect(find.byType(ListTile));
-      expect(tester.binding.hasScheduledFrame, isTrue);
+      expect(state.isAnimating, isTrue);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-      await tester.pumpAndSettle();
-      expect(tester.binding.hasScheduledFrame, isFalse);
+      await tester.pump();
+      expect(
+        state.isAnimating,
+        isFalse,
+        reason:
+            'the controller itself must stop ticking while paused; '
+            'tester.binding.hasScheduledFrame goes false for the whole app '
+            'on pause regardless of this, so it cannot prove the gate works',
+      );
       expect(tester.getRect(find.byType(ListTile)), bounds);
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await tester.pump();
-      expect(tester.binding.hasScheduledFrame, isTrue);
+      expect(state.isAnimating, isTrue);
     },
   );
 }

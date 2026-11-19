@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../services/wing_bg_watch.dart';
@@ -19,10 +20,15 @@ class ChatWorkingBorder extends StatefulWidget {
   final Widget child;
 
   @override
-  State<ChatWorkingBorder> createState() => _ChatWorkingBorderState();
+  State<ChatWorkingBorder> createState() => ChatWorkingBorderState();
 }
 
-class _ChatWorkingBorderState extends State<ChatWorkingBorder>
+/// Public so `WidgetTester.state<ChatWorkingBorderState>` can read
+/// [isAnimating] directly: the test binding's `hasScheduledFrame` goes
+/// false for the whole app on `AppLifecycleState.paused` regardless of
+/// whether this controller actually stopped, so it cannot tell a gated
+/// ticker from an ungated one.
+class ChatWorkingBorderState extends State<ChatWorkingBorder>
     with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   late final _animation =
       AnimationController(
@@ -35,6 +41,9 @@ class _ChatWorkingBorderState extends State<ChatWorkingBorder>
   // could see it. Only `widget.working` and reduced motion gated it before;
   // app focus now gates it too.
   bool _resumed = true;
+
+  @visibleForTesting
+  bool get isAnimating => _animation.isAnimating;
 
   void _onTick() {
     // Only a regression (the ticker still running once paused) ever logs
