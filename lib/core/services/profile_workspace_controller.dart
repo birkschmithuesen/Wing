@@ -10814,9 +10814,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       // visible chat - the only one the user is actually looking at - could
       // sit behind any number of other busy chats. It now resumes first and
       // alone; the rest keep their own serial-safety per chat but run as a
-      // background, bounded-concurrency sweep that never blocks the
-      // indicator or the visible chat on how many other chats this profile
-      // is retaining.
+      // background, bounded-concurrency sweep.
       final visible = resource.chat;
       final background = <ProfileChat>[];
       ProfileChat? visibleToResume;
@@ -10843,24 +10841,26 @@ class ProfileWorkspaceController extends ChangeNotifier {
         if (outcome == _ChatResumeOutcome.resumed) {
           resumedChats.add(visibleToResume);
         }
-      } else if (visible != null &&
-          !resource.blocksSession(visible._key.sessionId) &&
-          _unrestoredPending.contains(visible._key)) {
-        // The visible chat is a not-yet-attached local draft; its own
-        // restoration lives in `_restorePendingForResource`, not the loop
-        // above. Resolve just that one key before signalling recovered so
-        // the visible chat is live by the time the indicator turns green.
-        resumedChats.addAll(
-          await _restorePendingForResource(resource, only: {visible._key}),
-        );
-        if (_closed || resource._restartReconnect) return;
       }
       if (_closed || resource._restartReconnect) return;
       logRecoveryStep('visible_chat_resumed');
-      // The socket (`ws.gateway_ready`) and the visible chat are both live;
-      // the rest of this profile's recovery continues below without
-      // holding the connection indicator on "Reconnecting" behind it.
-      connectionStatus.endRecovery(resource.scope.profileName);
+      // Only skip ahead of the rest of this profile's own recovery when
+      // there is actually something else to run concurrently in the
+      // background: the whole point is bounding how long *other* retained
+      // chats can hold up the indicator, not changing when recovery is
+      // signalled done for the common case of one retained chat (or none).
+      // A caller watching mid-recovery state for that common case - a
+      // chat deliberately held "opening" for its own resume, or a still
+      // unresolved pending draft with nothing else to retain - keeps
+      // seeing it exactly as before, through the unconditional
+      // `endRecovery` call once the whole pipeline below finishes.
+      if (background.isNotEmpty) {
+        // The socket (`ws.gateway_ready`) and the visible chat are both
+        // live; the rest of this profile's recovery continues below
+        // without holding the connection indicator on "Reconnecting"
+        // behind it.
+        connectionStatus.endRecovery(resource.scope.profileName);
+      }
 
       const chatBatchSize = 3;
       for (
@@ -11414,17 +11414,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   Future<List<ProfileChat>> _restorePendingForResource(
-    ProfileWorkspaceData resource, {
-    Set<ProfileSessionKey>? only,
-  }) async {
+    ProfileWorkspaceData resource,
+  ) async {
     final restored = <ProfileChat>[];
     for (final key
         in _unrestoredPending
-            .where(
-              (key) =>
-                  key.workspace == resource.scope &&
-                  (only == null || only.contains(key)),
-            )
+            .where((key) => key.workspace == resource.scope)
             .toList()) {
       if (resource.blocksSession(key.sessionId)) continue;
       final existing = resource._chats[key.sessionId];

@@ -34,20 +34,24 @@ the README feature list current for every future change.
   `gateway.connect()` resolved. Extracted the per-chat resume/refresh body
   into `_resumeRetainedChat` (unchanged logic, now returning an outcome:
   `resumed`/`skipped`/`aborted`) and reordered `_performReconnect`: the
-  profile's own visible chat (`resource.chat`) resumes first and alone, a
-  new `visible_chat_resumed` step is logged, and
-  `connectionStatus.endRecovery` fires right there - the socket and the
-  visible chat are both confirmed live, so the indicator goes green within
-  the same resume regardless of how many other chats this profile is
-  retaining. The remaining retained chats then resume in a
-  bounded-concurrency sweep (batches of 3, the same pacing already used by
-  `resumeConnection`'s background-profile batching), followed by the
-  unchanged pending-restoration, journal and session-list-refresh steps,
-  all still awaited before the outer `reconnect()`/`_reconnect()` Future
-  itself completes - so every other caller of `reconnect()` (notification
-  approval, pull-to-refresh, waiting-outbox restoration) keeps seeing the
-  same full-completion contract; only the connection indicator's own timing
-  moved earlier.
+  profile's own visible chat (`resource.chat`) resumes first and alone, and
+  a new `visible_chat_resumed` step is always logged right there. Only when
+  there are other retained chats left to process - the actual scaling
+  problem this card is about - does `connectionStatus.endRecovery` also
+  fire at that point, ahead of the rest; with no other retained chat (the
+  common case, and every case a widget test held mid-recovery depends on:
+  a chat deliberately left "opening", or a still-unresolved pending draft
+  with nothing else retained), `endRecovery` stays exactly where it always
+  was, at the very end, so nothing watching intermediate recovery state for
+  that single chat sees any different timing. The remaining retained chats
+  (when there are any) resume in a bounded-concurrency sweep (batches of 3,
+  the same pacing already used by `resumeConnection`'s background-profile
+  batching), followed by the unchanged pending-restoration, journal and
+  session-list-refresh steps, all still awaited before the outer
+  `reconnect()`/`_reconnect()` Future itself completes - so every other
+  caller of `reconnect()` (notification approval, pull-to-refresh,
+  waiting-outbox restoration) keeps seeing the same full-completion
+  contract.
 - **Why:** card t_edbdd961, the device-measurement follow-up to t_1d748269.
   Verified the three-hypothesis root cause in a test harness (fake host
   with several retained chats and a `session.resume` that never returns for
@@ -72,7 +76,14 @@ the README feature list current for every future change.
   `sessions_refreshed`); `test/profile_workspace_controller_test.dart`
   (added the `Host.resumeHold` per-call hook the new test needs to hold a
   specific chat's `session.resume` open indefinitely, unlike the existing
-  single-use `resumeDelay`).
+  single-use `resumeDelay`). Not touched:
+  `test/profile_activity_status_test.dart` ("opening uses only the header
+  pulse") and `test/profile_focus_recovery_test.dart` ("pending chat Retry
+  shows recovery through history") both hold a *single* chat (or none)
+  mid-recovery and check the indicator/pulse stays up throughout - exactly
+  the no-other-retained-chat case this fix leaves at the original
+  `endRecovery` timing, so both kept passing once the fast path was scoped
+  to only fire when there is another retained chat to actually bound.
 - **Merge:** pending · **Card:** t_edbdd961
 
 ### A foreground/network-restore resume no longer reconnects every served profile at all - only the selected profile and any profile with a turn still awaiting admission
