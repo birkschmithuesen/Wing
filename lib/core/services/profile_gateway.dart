@@ -1285,7 +1285,17 @@ class ProfileGateway {
   }
 
   final _resumeVersions = <String, int>{};
-  Future<Map<String, dynamic>> resume(String durableId, {String? cwd}) async {
+  // omit_messages defaults to true: every caller except `branch` (which reads
+  // the fresh fork's content straight from this result) re-fetches the
+  // transcript over REST anyway (`refreshHistory`), and the Hermes default
+  // (`omit_messages: false`) ships the whole display transcript - unbounded
+  // by this chat's own history page size - over the socket on every resume
+  // (t_0f45a26f).
+  Future<Map<String, dynamic>> resume(
+    String durableId, {
+    String? cwd,
+    bool omitMessages = true,
+  }) async {
     final version = (_resumeVersions[durableId] ?? 0) + 1;
     _resumeVersions[durableId] = version;
     await requireProfile();
@@ -1294,6 +1304,7 @@ class ProfileGateway {
       {
         'session_id': durableId,
         'display_projection': true,
+        'omit_messages': omitMessages,
         'source': ?(wingSourceAdvertised ? wingSessionSource : null),
         'cwd': ?attemptCwd,
       },
@@ -1338,7 +1349,9 @@ class ProfileGateway {
     if (child is! String || child.isEmpty) {
       throw const FormatException('Missing branch identity');
     }
-    return {...await resume(child), 'parent': runtimeId};
+    // The caller installs this result's `messages` directly; it must carry
+    // the fork's actual content, unlike the tip-only default other resumes use.
+    return {...await resume(child, omitMessages: false), 'parent': runtimeId};
   }
 
   /// The active persisted context that canonical branching copies, including

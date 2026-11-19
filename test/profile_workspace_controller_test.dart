@@ -4514,6 +4514,7 @@ void main() {
       'session_id': 'same',
       'profile': 'a',
       'display_projection': true,
+      'omit_messages': true,
     });
     expect(a.runtime.execution, ChatExecution.running);
   });
