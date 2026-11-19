@@ -12,6 +12,7 @@ import '../models/hermes_profile.dart';
 import 'bot_group_read_state.dart';
 import 'bots_repository.dart';
 import 'group_observations.dart';
+import 'wing_bg_watch.dart';
 import '../models/bots.dart';
 
 typedef GroupNotificationRead =
@@ -142,7 +143,10 @@ class GroupNotificationSession extends ChangeNotifier {
     if (_activated && (_foreground || hasActiveGroups)) {
       _timer = _scheduleTimer(
         _foreground ? pollInterval : backgroundPollInterval,
-        () => unawaited(refresh()),
+        () {
+          WingBgWatch.instance.recordWakeup('GroupNotificationSession');
+          unawaited(refresh());
+        },
       );
     }
     notifyListeners();

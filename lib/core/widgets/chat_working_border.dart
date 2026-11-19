@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../services/wing_bg_watch.dart';
 import '../theme/wing_theme.dart';
 
 /// Desktop's `arc-border arc-row`, painted over the row without changing its
@@ -18,23 +19,58 @@ class ChatWorkingBorder extends StatefulWidget {
   final Widget child;
 
   @override
-  State<ChatWorkingBorder> createState() => _ChatWorkingBorderState();
+  State<ChatWorkingBorder> createState() => ChatWorkingBorderState();
 }
 
-class _ChatWorkingBorderState extends State<ChatWorkingBorder>
-    with SingleTickerProviderStateMixin {
-  late final _animation = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 2230),
-  );
+/// Public so `WidgetTester.state<ChatWorkingBorderState>` can read
+/// [isAnimating] directly: the test binding's `hasScheduledFrame` goes
+/// false for the whole app on `AppLifecycleState.paused` regardless of
+/// whether this controller actually stopped, so it cannot tell a gated
+/// ticker from an ungated one.
+class ChatWorkingBorderState extends State<ChatWorkingBorder>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
+  late final _animation =
+      AnimationController(
+        vsync: this,
+        duration: const Duration(milliseconds: 2230),
+      )..addListener(_onTick);
+
+  // Card t_482d3051: a repeating border animation kept ticking (and the
+  // raster thread kept compositing it) while the app was paused and nobody
+  // could see it. Only `widget.working` and reduced motion gated it before;
+  // app focus now gates it too.
+  bool _resumed = true;
+
+  @visibleForTesting
+  bool get isAnimating => _animation.isAnimating;
+
+  void _onTick() {
+    // Only a regression (the ticker still running once paused) ever logs
+    // here: recordWakeup is a no-op while foreground.
+    WingBgWatch.instance.recordWakeup('chat_working_border');
+  }
 
   void _syncAnimation() {
-    if (widget.working && !MediaQuery.disableAnimationsOf(context)) {
+    if (widget.working && _resumed && !MediaQuery.disableAnimationsOf(context)) {
       if (!_animation.isAnimating) _animation.repeat();
     } else {
       _animation.stop();
       _animation.value = 0;
     }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    final resumed = state == AppLifecycleState.resumed;
+    if (resumed == _resumed) return;
+    _resumed = resumed;
+    _syncAnimation();
   }
 
   @override
@@ -51,6 +87,7 @@ class _ChatWorkingBorderState extends State<ChatWorkingBorder>
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _animation.dispose();
     super.dispose();
   }

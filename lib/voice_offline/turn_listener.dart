@@ -5,6 +5,7 @@ import 'package:uuid/uuid.dart';
 
 import '../core/services/android_voice.dart';
 import '../core/services/vad_endpoint.dart';
+import '../core/services/wing_bg_watch.dart';
 import 'barge_in_policy.dart';
 import 'car_mic_session.dart';
 import 'vad_voice_device.dart';
@@ -22,12 +23,23 @@ class TurnListener extends ChangeNotifier {
     this.carMicSession,
     bool Function()? carKitConnected,
     DateTime Function()? clock,
+    bool Function()? canListen,
   }) : _carKitConnected = carKitConnected ?? _never,
-       _clock = clock ?? DateTime.now {
+       _clock = clock ?? DateTime.now,
+       _canListen = canListen ?? _always {
     _events = device.events.listen(_event);
   }
 
   static bool _never() => false;
+  static bool _always() => true;
+
+  /// Whether a round may open or stay open right now: the chat is in focus,
+  /// or - paused/hidden without car mode - the explicit background voice
+  /// service actually holds the microphone (card t_482d3051). A round this
+  /// listener restarts for itself (silence, steer, barge-in) re-checks this
+  /// on every device event instead of only at the first [open], so losing
+  /// focus mid-round closes it instead of cycling forever on no speech.
+  final bool Function() _canListen;
 
   final VoiceDevice device;
 
@@ -100,6 +112,11 @@ class TurnListener extends ChangeNotifier {
   }) async {
     final settings = _settings;
     if (settings == null || _disposed) return;
+    if (!_canListen()) {
+      await _close('paused');
+      return;
+    }
+    WingBgWatch.instance.recordWakeup('voice.listen_round');
     final id = const Uuid().v4();
     _id = id;
     _endpointer = VadEndpointer(listenConfig(settings));
@@ -148,6 +165,15 @@ class TurnListener extends ChangeNotifier {
 
   void _event(Map<String, dynamic> event) {
     if (_id == null || event['id'] != _id || _disposed) return;
+    // Card t_482d3051: a round the app no longer has focus for (paused,
+    // hidden, no held background service, no car mode) closes here instead
+    // of waiting out an endpointer decision - otherwise silence alone keeps
+    // this native capture, and the thread/buffers behind it, running
+    // indefinitely in the background.
+    if (!_canListen()) {
+      unawaited(_close('paused'));
+      return;
+    }
     if (event['error'] is String) {
       unawaited(_close('error'));
       return;

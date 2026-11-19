@@ -103,4 +103,32 @@ void main() {
     expect(tester.binding.hasScheduledFrame, isFalse);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets(
+    'pausing the app stops ticks without moving the chat row '
+    '(card t_482d3051: the raster thread must not keep compositing a '
+    'decorative animation nobody can see while paused)',
+    (tester) async {
+      await show(tester);
+      final state = tester.state<ChatWorkingBorderState>(
+        find.byType(ChatWorkingBorder),
+      );
+      final bounds = tester.getRect(find.byType(ListTile));
+      expect(state.isAnimating, isTrue);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(
+        state.isAnimating,
+        isFalse,
+        reason:
+            'the controller itself must stop ticking while paused; '
+            'tester.binding.hasScheduledFrame goes false for the whole app '
+            'on pause regardless of this, so it cannot prove the gate works',
+      );
+      expect(tester.getRect(find.byType(ListTile)), bounds);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await tester.pump();
+      expect(state.isAnimating, isTrue);
+    },
+  );
 }

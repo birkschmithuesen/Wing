@@ -31,6 +31,12 @@ class _Host implements WorkspaceVoiceHost {
   @override
   bool get liveVoiceActive => live;
   @override
+  bool get routeIsCurrent => true;
+  @override
+  bool get onChatsDestination => true;
+  @override
+  bool get appIsActive => true;
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
 
