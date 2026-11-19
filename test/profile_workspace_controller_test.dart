@@ -4883,10 +4883,16 @@ void main() {
     host.connectError = null;
     expect(controller.current, same(owner));
     expect(await owner.gateway.call('session.active_list'), {'sessions': []});
-    expect(controller.connectionStatus.description, 'Reconnecting');
+    // 'b' never became current (the switch failed) and is left retrying in
+    // the background; the header must track only the selected 'a', which
+    // never stopped working, not 'b's own retry (t_1d748269).
+    expect(controller.connectionStatus.description, 'Connected');
+    expect(controller.connectionStatus.recoveryAttemptInProgress, isFalse);
+    final bConnectsBefore = host.connectsByProfile['b'] ?? 0;
 
     await controller.resumeConnection();
 
+    expect(host.connectsByProfile['b'], bConnectsBefore + 1);
     expect(await owner.gateway.call('session.active_list'), {'sessions': []});
     expect(controller.connectionStatus.description, 'Connected');
   });
