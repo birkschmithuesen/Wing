@@ -31,15 +31,24 @@ the README feature list current for every future change.
   `branch`, which reads the fork's content straight from this result,
   already re-fetches the transcript over REST via `refreshHistory`).
   `_resumeRetainedChat` gained a `deferHistory` parameter, used only for the
-  profile's own visible chat: it marks the chat recovered - live, turn
-  admission unblocked - right after its now-tip-only `session.resume`
-  lands, and runs `refreshHistory` concurrently with the background chat
-  sweep instead of awaiting it inline; `_performReconnect` joins that
-  deferred refresh after the sweep, so a genuine (non-superseded) history
-  failure still fails the whole reconnect attempt exactly as before, and
-  images still load, just no longer gating the chat going live. Step names
-  (`visible_chat_resumed`, `chats_resumed`, `sessions_refreshed`,
-  `socket_connect`) are unchanged.
+  profile's own visible chat: `chat._runtime.recovered()` (turn admission)
+  now fires right after its now-tip-only `session.resume` lands, ahead of
+  `refreshHistory`, which runs concurrently with the background chat sweep
+  instead of being awaited inline. The streaming-placeholder clear and the
+  recovered-turn notification (`_notifyRecoveredResult`, which reads
+  `chat.reading.messages` - only populated once this transcript page has
+  actually loaded) stay gated on that refresh *succeeding*, exactly as
+  before CI caught the first version of this fix clearing an in-progress
+  answer's placeholder, and sending a generic "Open the chat to see the
+  outcome" notification, before the real content had loaded
+  (`test/profile_workspace_controller_test.dart` "partial response survives
+  resume until server history is available" / "reconnect notification uses
+  recovered answer instead of generic status", CI run 44609585348).
+  `_performReconnect` joins the deferred refresh after the background
+  sweep, so a genuine (non-superseded) history failure still fails the
+  whole reconnect attempt exactly as before, and images still load, just
+  no longer gating the chat going live. Step names (`visible_chat_resumed`,
+  `chats_resumed`, `sessions_refreshed`, `socket_connect`) are unchanged.
 - **Why:** card t_0f45a26f. Checked `git log upstream/main --
   lib/core/services/profile_gateway.dart`: upstream's own `resume()` sent
   `omit_messages: true` (and no `display_projection`) before upstream's own
@@ -86,10 +95,16 @@ the README feature list current for every future change.
   `test/profile_workspace_controller_test.dart` and
   `test/slash_commands_test.dart` (updated: both assert the exact
   `session.resume` request map for an existing scenario, now including
-  `omit_messages: true`). Not touched:
+  `omit_messages: true`). Not touched, and passing unmodified:
+  `test/profile_workspace_controller_test.dart` "partial response survives
+  resume until server history is available" and "reconnect notification
+  uses recovered answer instead of generic status" - the two existing
+  tests CI run 44609585348 caught regressed by the first version of this
+  fix (see What above), confirming the corrected version defers the
+  placeholder-clear/notification, not just turn admission;
   `test/profile_resume_freshness_test.dart` ("current history failure
   still fails profile recovery" / "superseded history failure cannot fail
-  a recovered profile") - both already passed unmodified, since
+  a recovered profile") - both keep passing unmodified too, since
   `_resumeRetainedChat`'s deferred path reuses the exact same
   superseded-read check before rethrowing, just joined later in
   `_performReconnect` instead of awaited inline.

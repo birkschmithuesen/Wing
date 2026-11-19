@@ -10748,7 +10748,6 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (!read.owned()) return _ChatResumeOutcome.skipped;
     final applied = result != null && read.current();
     if (applied) _hydrate(chat, result);
-    final continuation = _captureResume(resource, chat, startRead: false);
     void finishRecovery() {
       if (!chat.runtime.blocksTurnAdmission) chat.reading.updateStreaming('');
       chat._runtime.recovered();
@@ -10758,14 +10757,23 @@ class ProfileWorkspaceController extends ChangeNotifier {
     }
     if (deferHistory) {
       // refreshHistory's REST page is bounded in row count, but not in image
-      // bytes (t_0f45a26f) - the visible chat must be live and admit turns
-      // the instant its tip-only `session.resume` lands, not after its
-      // transcript page finishes transferring. Run the refresh underneath
-      // without holding up `visible_chat_resumed`; the caller still joins
-      // `historyDone` later so a genuine (non-superseded) failure keeps
-      // failing profile recovery exactly as it did when this was awaited
-      // inline below.
-      finishRecovery();
+      // bytes (t_0f45a26f) - the visible chat must admit a new turn the
+      // instant its tip-only `session.resume` lands, not after its
+      // transcript page finishes transferring. `recovered()` (turn
+      // admission) moves here, ahead of that transfer; the streaming
+      // placeholder clear and the recovered-turn notification stay gated on
+      // a *successful* history refresh, same as the non-deferred path below
+      // - clearing the placeholder or notifying from a result the chat has
+      // not actually loaded yet would show a gap or a stale summary. The
+      // caller still joins `historyDone` later so a genuine
+      // (non-superseded) failure keeps failing profile recovery exactly as
+      // it did when this was awaited inline below.
+      chat._runtime.recovered();
+      // Captured after `recovered()`, which itself changes the runtime's
+      // recovery field this capture tracks - otherwise `.current()` would
+      // read as superseded by this method's own call, not a genuinely
+      // newer one.
+      final continuation = _captureResume(resource, chat, startRead: false);
       Future<void> historyDone() async {
         try {
           await refreshHistory(chat, propagateFailure: true);
@@ -10773,10 +10781,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
           if (!continuation.current()) return;
           rethrow;
         }
+        if (!continuation.current()) return;
+        finishRecovery();
       }
       onDeferredHistory?.call(historyDone());
       return applied ? _ChatResumeOutcome.resumed : _ChatResumeOutcome.skipped;
     }
+    final continuation = _captureResume(resource, chat, startRead: false);
     try {
       await refreshHistory(chat, propagateFailure: true);
     } catch (_) {

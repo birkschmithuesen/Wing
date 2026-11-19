@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -147,7 +146,7 @@ void main() {
 
   test(
     'visible chat resume stays flat on a throttled link, independent of a '
-    '${_messageCount}-message transcript with embedded images in its most '
+    '$_messageCount-message transcript with embedded images in its most '
     'recent page (t_0f45a26f)',
     () async {
       final scope = controller.current!.scope;
