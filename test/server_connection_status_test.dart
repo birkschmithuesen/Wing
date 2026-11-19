@@ -118,4 +118,77 @@ void main() {
     status.accessAvailable();
     expect(status.problem, isNull);
   });
+
+  test(
+    'a focused owner is not kept reconnecting by a different, background owner',
+    () {
+      final status = ServerConnectionStatus('Claw');
+      addTearDown(status.dispose);
+      status.accessAvailable();
+      status.liveChanged('birk', true);
+      status.focusOwner('birk');
+      expect(status.phase, ServerConnectionPhase.connected);
+      // A profile the user never switched away from (e.g. the chat
+      // overview's filter chips) is still mid-resume; it must not reopen
+      // the header or block a retry meant for the focused profile.
+      status.beginRecovery('cothinker');
+      expect(status.phase, ServerConnectionPhase.connected);
+      expect(status.recoveryAttemptInProgress, isFalse);
+      status.failRecovery('cothinker', 'Chat could not be reopened');
+      expect(status.phase, ServerConnectionPhase.connected);
+      expect(status.problem, isNull);
+      // The focused profile's own recovery still gates everything.
+      status.beginRecovery('birk');
+      expect(status.phase, ServerConnectionPhase.reconnecting);
+      expect(status.recoveryAttemptInProgress, isTrue);
+      status.endRecovery('birk');
+      expect(status.phase, ServerConnectionPhase.connected);
+      // Connection-wide pseudo-owners gate regardless of which profile has
+      // focus: opening a notification is not yet the focused profile's own
+      // concern.
+      status.beginRecovery('notification');
+      expect(status.phase, ServerConnectionPhase.reconnecting);
+      status.endRecovery('notification');
+      expect(status.phase, ServerConnectionPhase.connected);
+    },
+  );
+
+  test(
+    'a background owner going live-unavailable does not turn the header '
+    'orange for the focused owner (cold reconnect storm, t_1d748269)',
+    () {
+      final status = ServerConnectionStatus('Claw');
+      addTearDown(status.dispose);
+      status.accessAvailable();
+      status.liveChanged('birk', true);
+      status.liveChanged('cothinker', true);
+      status.focusOwner('birk');
+      expect(status.phase, ServerConnectionPhase.connected);
+      // A background profile's socket actually closing (not just mid-resume,
+      // see the other focus test) must not poison the aggregate `live` the
+      // header's phase used to read directly.
+      status.liveChanged('cothinker', false);
+      expect(status.phase, ServerConnectionPhase.connected);
+      expect(status.description, 'Connected');
+      // The focused owner's own live chat still gates the header.
+      status.liveChanged('birk', false);
+      expect(status.phase, ServerConnectionPhase.limited);
+      expect(status.description, 'Live updates interrupted');
+    },
+  );
+
+  test('switching focus to a different owner re-evaluates phase', () {
+    final status = ServerConnectionStatus('Claw');
+    addTearDown(status.dispose);
+    status.accessAvailable();
+    status.liveChanged('birk', true);
+    status.liveChanged('cothinker', true);
+    status.beginRecovery('cothinker');
+    status.focusOwner('birk');
+    expect(status.phase, ServerConnectionPhase.connected);
+    status.focusOwner('cothinker');
+    expect(status.phase, ServerConnectionPhase.reconnecting);
+    status.focusOwner(null);
+    expect(status.phase, ServerConnectionPhase.reconnecting);
+  });
 }

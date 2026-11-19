@@ -624,8 +624,20 @@ class ProfileWorkspaceController extends ChangeNotifier {
   bool _pendingOwnersSeeded = false;
   ProfileDiscovery? _discovery;
   ProfileDiscovery? get discovery => _discovery;
-  ProfileWorkspaceData? _current;
+  ProfileWorkspaceData? _currentResource;
   ProfileWorkspaceData? get current => _current;
+  // Fork: `connectionStatus` is shared by every served profile under this
+  // connection (one gateway socket each). Keeping its focus in lockstep with
+  // `_current` is what lets `ServerConnectionStatus.phase`/
+  // `recoveryAttemptInProgress` ignore a background profile's own
+  // reconnect/failure instead of keeping the header orange or admission
+  // gates blocked until the last background profile settles (t_1d748269).
+  ProfileWorkspaceData? get _current => _currentResource;
+  set _current(ProfileWorkspaceData? value) {
+    if (identical(_currentResource, value)) return;
+    _currentResource = value;
+    connectionStatus.focusOwner(value?.scope.profileName);
+  }
   Future<void>? _workspaceRefreshFuture;
   bool get refreshingWorkspace => _workspaceRefreshFuture != null;
   int _readingRequestGeneration = 0;
@@ -2832,6 +2844,19 @@ class ProfileWorkspaceController extends ChangeNotifier {
       // resume the user is actually waiting on. Bounded batches, the same
       // idiom _refreshWorkspace already uses for detached-work polling, keep
       // this recovery from turning into a reconnect storm.
+      //
+      // Fork (t_1d748269): the selected profile resumes first and alone,
+      // not inside a batch with unrelated profiles. Batching by list order
+      // alone (the previous fix) could still seat the selected profile
+      // behind several others, keeping `current._recovering` - and so
+      // dictation/new-session admission - true for as long as those unload.
+      // The header is decoupled from background owners separately (see
+      // ServerConnectionStatus.focusOwner), so resuming the rest afterwards
+      // in the same bounded batches no longer affects it.
+      final current = _current;
+      if (current != null && resources.remove(current)) {
+        await _resumeResource(current, networkChanged: networkChanged);
+      }
       const batchSize = 3;
       for (var offset = 0; offset < resources.length; offset += batchSize) {
         await Future.wait(
@@ -10659,9 +10684,28 @@ class ProfileWorkspaceController extends ChangeNotifier {
     _changed();
     var retry = false;
     final resumedChats = <ProfileChat>[];
+    // Fork (t_1d748269): gateway.connect() no-ops in well under a millisecond
+    // when the socket is already open, so a foreground resume with no
+    // ws.connect_started at all (Birk's 2026-11-19 10:30 repro) can still
+    // take 20-29 s - the time goes into the steps below instead. This
+    // per-step timeline is the diagnostic a future logcat capture needs to
+    // show exactly which one is slow; it never changes recovery behavior.
+    final stepTiming = Stopwatch()..start();
+    void logRecoveryStep(String step) {
+      logConnectionDiagnostic(
+        'workspace.recovery_step',
+        details: {
+          'connection': connection.id,
+          'profile': resource.scope.profileName,
+          'step': step,
+          'elapsed_ms': stepTiming.elapsedMilliseconds,
+        },
+      );
+    }
     try {
       await resource.gateway.connect();
       if (_closed || resource._restartReconnect) return;
+      logRecoveryStep('socket_connect');
       for (final chat in resource._chats.values.toList()) {
         if (resource.blocksSession(chat._key.sessionId) ||
             _unrestoredPending.contains(chat._key)) {
@@ -10722,8 +10766,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
         if (applied) resumedChats.add(chat);
       }
+      logRecoveryStep('chats_resumed');
       resumedChats.addAll(await _restorePendingForResource(resource));
       if (_closed || resource._restartReconnect) return;
+      logRecoveryStep('pending_restored');
       if (_unrestoredPending.any(
         (key) =>
             key.workspace == resource.scope &&
@@ -10736,8 +10782,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
         );
       }
       await _journal();
+      logRecoveryStep('journaled');
       await _refreshSessions(resource);
       if (_closed || resource._restartReconnect) return;
+      logRecoveryStep('sessions_refreshed');
       logConnectionDiagnostic(
         'workspace.recovered',
         details: {

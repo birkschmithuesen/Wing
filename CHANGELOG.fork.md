@@ -11,6 +11,78 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-19
+
+### The selected profile resumes first and alone on foreground return, and a background profile's own reconnect, failure or stale socket no longer keeps the header orange
+- **What:** t_a8358240 (merged 091134b6) batched `resumeConnection`'s
+  per-profile reconnects to stop opening every served profile's gateway
+  socket at once, but batched strictly in `_resources` list order — so the
+  selected profile could still sit behind one or two unrelated profiles in
+  its batch of 3, and `ServerConnectionStatus.phase`/
+  `recoveryAttemptInProgress` still aggregated every owner's `_recoveries`/
+  `_failedRecoveries` unscoped, so the header stayed on Reconnecting (and
+  the connection-details Retry button stayed disabled) until the *last*
+  background profile's recovery settled, not just the selected one. Birk's
+  2026-11-19 10:28 repro still showed ~18s to the selected profile's own
+  `workspace.recovered` and ~26s to the last one. Fixed in three parts: (1)
+  `resumeConnection` now resumes `_current` first and alone — awaited before
+  the batched loop even starts — so its own recovery can never be seated
+  behind other profiles; the rest still resume afterwards in the existing
+  batches of 3. (2) `ProfileWorkspaceController._current`'s setter now calls
+  the new `ServerConnectionStatus.focusOwner(profileName)`, which narrows
+  `phase`, `recoveryAttemptInProgress` and `recoveryProblem` to the focused
+  owner plus the three connection-wide pseudo-owners
+  (`initialization`/`notification`/`notification-resume`) that must always
+  gate the header. (3) `phase`'s connected/limited/disconnected branches
+  also read the aggregate `live` map unscoped — so a background profile's
+  socket actually going unavailable (not just mid-recovery) still turned the
+  header from green to the `limited`/orange "Live updates interrupted"
+  state even with (1) and (2) in place; added a focus-scoped `_focusedLive`
+  for `phase`/`description` to read instead, while `live`/`access`/
+  `transportAvailability` stay unscoped (the Hermes health Alerts surface
+  still needs to see any background chat go unavailable, same split
+  t_a8358240 already relied on). A 2026-11-19 operator follow-up noted a
+  live repro with *no* `ws.connect_started` lines at all (sockets already
+  open, `gateway.connect()` no-ops) that still took ~29s for the selected
+  profile — added a `workspace.recovery_step` diagnostic log in
+  `_performReconnect` with `elapsed_ms` after each awaited step (socket
+  connect, per-chat resume, pending restore, journal, session refresh) so a
+  future capture can localize that remaining delay; it does not change
+  recovery behavior.
+- **Why:** reported by Birk 2026-11-19 10:28 ("it still takes at least 10s
+  until the server connection shows green and I can open a new session"),
+  with a logcat repro the same morning at 10:30 pinpointing the delay to the
+  selected profile's own recovery sitting behind others and the header
+  staying orange for the whole batch. Diffing
+  `lib/core/services/profile_workspace_controller.dart` and
+  `lib/core/services/server_connection_status.dart` against `upstream/main`
+  from the fork's merge-base (`7a9992c4`) shows zero changes to either file
+  upstream — the one-gateway-per-profile architecture, `_performReconnect`'s
+  sequential per-profile steps and `ServerConnectionStatus`'s cross-profile
+  aggregation are the same unmodified upstream mechanisms t_a8358240's entry
+  already identified; this card's fixes build entirely on the fork's own
+  prior changes to those files, not on new upstream code. No upstream-issue
+  draft file exists in this checkout to extend (the fork-factory `internal/`
+  workflow referenced for that purpose does not apply here, see
+  [AGENTS.md](AGENTS.md#fork-notes)); Birk can decide separately whether to
+  fold this into or alongside t_a8358240's already-drafted issue.
+- **Fork edits of upstream files:**
+  `lib/core/services/profile_workspace_controller.dart`,
+  `lib/core/services/server_connection_status.dart`.
+- **Tests:** `test/fork/resume_connection_burst_test.dart` (new: the
+  selected profile — reselected mid-list so it cannot win by coincidence of
+  list order — must connect first and alone, before any background batch
+  even starts), `test/server_connection_status_test.dart` (new: a background
+  owner's own mid-recovery or failure must not reopen the header or block
+  `recoveryAttemptInProgress` for a different focused owner, connection-wide
+  pseudo-owners still gate regardless of focus, switching focus
+  re-evaluates `phase` immediately, and a background owner's live socket
+  actually going unavailable must not turn the focused owner's header
+  orange), `test/connection_diagnostics_test.dart` (new: resuming the
+  current profile emits a `workspace.recovery_step` timeline with
+  `elapsed_ms` for every step up to `workspace.recovered`).
+- **Merge:** pending · **Card:** t_1d748269
+
 ## 2026-11-18
 
 ### Session switch and new-chat both no longer force a retained chat through a visible reopen that blocks dictation, and a foreground/network-restore resume no longer opens every profile's gateway socket at once

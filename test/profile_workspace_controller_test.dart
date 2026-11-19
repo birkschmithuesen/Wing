@@ -237,6 +237,7 @@ class Host {
   int disconnectCalls = 0;
   final connectsByProfile = <String, int>{};
   final disconnectsByProfile = <String, int>{};
+  final connectOrder = <String>[];
   int resumeFailures = 0;
   Completer<void>? resumeStarted;
   Completer<void>? resumeDelay;
@@ -368,6 +369,7 @@ class Host {
             };
           }
           connectCalls++;
+          connectOrder.add(name);
           connectsByProfile.update(
             name,
             (count) => count + 1,

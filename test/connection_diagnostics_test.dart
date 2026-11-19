@@ -558,6 +558,38 @@ void main() {
     expect(lines.join(), isNot(contains('SECRET_NEVER_LOG')));
   });
 
+  test(
+    'resume logs a per-step timeline with elapsed_ms for the current profile',
+    () async {
+      // t_1d748269: the server-side "ws.connect_started" burst was fixed
+      // (t_a8358240), but Birk's live repro showed the selected profile
+      // still taking ~29 s to resume with no connect_started lines at all
+      // (the socket was already open, so gateway.connect() no-ops). The
+      // remaining delay is somewhere in the chat/pending/journal/session
+      // steps below; this timeline is what a future logcat capture needs
+      // to show exactly which one is slow.
+      await controller.resumeConnection();
+      final recoveredIndex = events().indexWhere(
+        (event) => event['event'] == 'workspace.recovered',
+      );
+      expect(recoveredIndex, greaterThanOrEqualTo(0));
+      final steps = events()
+          .sublist(0, recoveredIndex)
+          .where((event) => event['event'] == 'workspace.recovery_step')
+          .toList();
+      expect(steps, isNotEmpty);
+      for (final step in steps) {
+        expect(step['connection'], 'same-id');
+        expect(step['profile'], 'a');
+        expect(step['elapsed_ms'], isA<int>());
+      }
+      expect(
+        steps.map((event) => event['step']),
+        contains('sessions_refreshed'),
+      );
+    },
+  );
+
   test('logging failure cannot break recovery', () async {
     debugPrint = (message, {wrapWidth}) =>
         throw StateError('logging unavailable');

@@ -25,13 +25,54 @@ class ServerConnectionStatus extends ChangeNotifier {
   String? _accessProblem;
   bool? _chatEndpointSupported;
   bool get chatEndpointUnsupported => _chatEndpointSupported == false;
-  String? get recoveryProblem => _failedRecoveries.values.lastOrNull;
+  String? get recoveryProblem =>
+      _focusedEntries(_failedRecoveries).values.lastOrNull;
   String? get problem => chatEndpointUnsupported
       ? chatEndpointFailureMessage
       : recoveryProblem ?? _accessProblem;
   Future<void> Function()? retry;
   bool get recoveryAttemptInProgress =>
-      _recoveries.values.any((active) => active);
+      _focusedEntries(_recoveries).values.any((active) => active);
+
+  // Fork: one owner per served profile shares this connection-level status
+  // (see `_recoveries`/`_live` keyed by profile name), so a background
+  // profile's own reconnect, failure or stale socket must not keep the
+  // header/admission gates (`phase`, `recoveryAttemptInProgress`) stuck on
+  // the profile the user actually has open. `focusOwner` narrows those
+  // getters, and `phase`'s live-chat check below (`_focusedLive`), to the
+  // selected owner plus the connection-wide pseudo-owners below. The public
+  // `live`/`access` getters stay unscoped so the Hermes health "Alerts"
+  // surface still sees a background chat going unavailable (t_a8358240 kept
+  // that distinction); `transportAvailability`, built from those, is
+  // intentionally unscoped too (it is the Alerts surface's input, not the
+  // header's).
+  static const _crossCuttingOwners = {
+    'initialization',
+    'notification',
+    'notification-resume',
+  };
+  String? _focusedOwner;
+
+  /// Call with the selected profile's name once one is chosen; call with
+  /// `null` before any profile is selected (falls back to the old
+  /// every-owner aggregate).
+  void focusOwner(String? owner) {
+    if (_closed || _focusedOwner == owner) return;
+    _focusedOwner = owner;
+    _changed();
+  }
+
+  bool _ownerInFocus(String owner) =>
+      _focusedOwner == null ||
+      owner == _focusedOwner ||
+      _crossCuttingOwners.contains(owner);
+
+  Map<String, V> _focusedEntries<V>(Map<String, V> owners) =>
+      _focusedOwner == null
+      ? owners
+      : Map.fromEntries(
+          owners.entries.where((entry) => _ownerInFocus(entry.key)),
+        );
   VoidCallback? onInterruption;
   bool _closed = false;
 
@@ -40,10 +81,19 @@ class ServerConnectionStatus extends ChangeNotifier {
 
   ServerConnectionStatus(this.label);
 
-  ConnectionAvailability get live =>
-      _live.values.contains(ConnectionAvailability.unavailable)
+  ConnectionAvailability get live => _aggregateLive(_live);
+
+  /// What `phase` must use instead of [live]: a background profile going
+  /// unavailable while the focused one is fine must not turn the header
+  /// orange (t_1d748269).
+  ConnectionAvailability get _focusedLive =>
+      _aggregateLive(_focusedEntries(_live));
+
+  static ConnectionAvailability _aggregateLive(
+    Map<String, ConnectionAvailability> owners,
+  ) => owners.values.contains(ConnectionAvailability.unavailable)
       ? ConnectionAvailability.unavailable
-      : _live.values.contains(ConnectionAvailability.available)
+      : owners.values.contains(ConnectionAvailability.available)
       ? ConnectionAvailability.available
       : ConnectionAvailability.unchecked;
 
@@ -66,34 +116,39 @@ class ServerConnectionStatus extends ChangeNotifier {
       _live[owner] == ConnectionAvailability.available;
   ServerConnectionPhase get phase {
     if (!networkGate.available) return ServerConnectionPhase.disconnected;
-    if (_recoveries.isNotEmpty) return ServerConnectionPhase.reconnecting;
+    if (_recoveries.keys.any(_ownerInFocus)) {
+      return ServerConnectionPhase.reconnecting;
+    }
     if (chatEndpointUnsupported) return ServerConnectionPhase.disconnected;
-    if (_failedRecoveries.isNotEmpty) return ServerConnectionPhase.disconnected;
+    if (_failedRecoveries.keys.any(_ownerInFocus)) {
+      return ServerConnectionPhase.disconnected;
+    }
     if (access == ConnectionAvailability.available &&
-        live == ConnectionAvailability.available) {
+        _focusedLive == ConnectionAvailability.available) {
       return ServerConnectionPhase.connected;
     }
     if (access == ConnectionAvailability.available ||
-        live == ConnectionAvailability.available) {
+        _focusedLive == ConnectionAvailability.available) {
       return ServerConnectionPhase.limited;
     }
     if (access == ConnectionAvailability.unavailable ||
-        live == ConnectionAvailability.unavailable) {
+        _focusedLive == ConnectionAvailability.unavailable) {
       return ServerConnectionPhase.disconnected;
     }
     return ServerConnectionPhase.unchecked;
   }
 
-  String get description => chatEndpointUnsupported && _recoveries.isEmpty
+  String get description =>
+      chatEndpointUnsupported && !_recoveries.keys.any(_ownerInFocus)
       ? 'Chat address needs changing'
       : switch (phase) {
           ServerConnectionPhase.unchecked => 'Not checked',
           ServerConnectionPhase.connected => 'Connected',
           ServerConnectionPhase.reconnecting => 'Reconnecting',
           ServerConnectionPhase.limited =>
-            live == ConnectionAvailability.unavailable
+            _focusedLive == ConnectionAvailability.unavailable
                 ? 'Live updates interrupted'
-                : live == ConnectionAvailability.unchecked
+                : _focusedLive == ConnectionAvailability.unchecked
                 ? 'Live chat not checked'
                 : 'Server access interrupted',
           ServerConnectionPhase.disconnected =>

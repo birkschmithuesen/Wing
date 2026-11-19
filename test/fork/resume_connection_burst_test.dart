@@ -56,6 +56,47 @@ void main() {
   });
 
   test(
+    'resumeConnection resumes the current profile first and alone, not '
+    'batched with unrelated profiles behind it in list order',
+    () async {
+      // 'c' sits in the middle of host.profiles; setUp's last openSession
+      // call made 'e' current. Re-select 'c' so it is the selected profile
+      // while staying in the middle of _resources' iteration order - the
+      // exact arrangement that could seat it behind other profiles in a
+      // batch of 3 under the old list-order-only batching (t_1d748269).
+      await controller.openSession(
+        ProfileSessionKey(
+          WorkspaceScope(
+            connectionId: controller.connection.id,
+            connectionIdentity: controller.connectionIdentity,
+            profileName: 'c',
+          ),
+          'same',
+        ),
+      );
+      for (final name in host.profiles) {
+        host.gateways[name]!.onConnectionChanged!(false);
+      }
+      host.connectOrder.clear();
+      host.connectDelay = Completer<void>();
+      final resumed = controller.resumeConnection(networkChanged: true);
+      await pumpEventQueue();
+      expect(
+        host.connectOrder,
+        ['c'],
+        reason:
+            'The selected profile must resume first and alone, before any '
+            'background profile is even started, so its own recovery '
+            'cannot sit behind unrelated profiles in a batch.',
+      );
+      host.connectDelay!.complete();
+      await resumed;
+      expect(host.connectOrder.first, 'c');
+      expect(host.connectOrder.toSet(), host.profiles.toSet());
+    },
+  );
+
+  test(
     'resumeConnection batches per-profile reconnects instead of opening every '
     'profile socket at once',
     () async {
