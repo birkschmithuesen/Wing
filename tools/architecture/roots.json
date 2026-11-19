@@ -8491,6 +8491,16 @@
       "provenance": "tracked"
     },
     {
+      "path": "evidence/t_9fa64f90-logcat-full-20261119-2022.txt",
+      "area": "evidence",
+      "provenance": "tracked"
+    },
+    {
+      "path": "evidence/t_9fa64f90-resume-logcat-20261119-2015.txt",
+      "area": "evidence",
+      "provenance": "tracked"
+    },
+    {
       "path": "fastlane/metadata/android/en-US/full_description.txt",
       "area": "fastlane",
       "provenance": "tracked"
