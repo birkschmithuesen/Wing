@@ -154,7 +154,11 @@ void main() {
     await h.show(tester);
     await h.openCarMode(tester);
     await h.tapCar(tester);
-    h.controller.connectionStatus.failRecovery('car-test', 'Offline');
+    // Simulate the current profile's own connection trouble, not an
+    // unrelated owner: since t_1d748269, the header/Offline notice only
+    // reacts to the selected profile's own recovery/failure.
+    final profile = h.controller.current!.scope.profileName;
+    h.controller.connectionStatus.failRecovery(profile, 'Offline');
     await h.settle(tester);
     expect(find.text('Offline'), findsOneWidget);
     await h.windows(tester, 0.9, 30); // recording goes on offline
@@ -162,14 +166,14 @@ void main() {
     expect(h.prompts(), 0);
     expect(find.text('Waiting for connection'), findsOneWidget);
     expect(h.controller.current!.chat!.composer.observation.text, 'Hello from the phone'); // kept on the device
-    h.controller.connectionStatus.endRecovery('car-test');
+    h.controller.connectionStatus.endRecovery(profile);
     await h.settle(tester);
     expect(h.prompts(), 1);
     expect(
       h.fixture.calls.lastWhere((c) => c.$2 == 'prompt.submit').$3['text'],
       'Hello from the phone',
     );
-    h.controller.connectionStatus.liveChanged('car-test', true); // more notifications
+    h.controller.connectionStatus.liveChanged(profile, true); // more notifications
     await h.settle(tester);
     expect(h.prompts(), 1);
     await h.completeReply(tester, 'Got it.');
