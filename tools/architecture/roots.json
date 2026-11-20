@@ -8501,6 +8501,16 @@
       "provenance": "tracked"
     },
     {
+      "path": "evidence/t_1dfb6c91-logcat-main-full-20261120-0838.txt",
+      "area": "evidence",
+      "provenance": "tracked"
+    },
+    {
+      "path": "evidence/t_1dfb6c91-wingconnection-20261120-0838.txt",
+      "area": "evidence",
+      "provenance": "tracked"
+    },
+    {
       "path": "fastlane/metadata/android/en-US/full_description.txt",
       "area": "fastlane",
       "provenance": "tracked"
