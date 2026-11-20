@@ -10704,8 +10704,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// `resumed` means it was applied and belongs in `resumedChats`.
   Future<_ChatResumeOutcome> _resumeRetainedChat(
     ProfileWorkspaceData resource,
-    ProfileChat chat,
-  ) async {
+    ProfileChat chat, {
+    bool deferHistory = false,
+    void Function(Future<void> historyDone)? onDeferredHistory,
+  }) async {
     final wasBusy = chat.runtime.blocksTurnAdmission;
     final read = _captureResume(resource, chat);
     Map<String, dynamic>? result;
@@ -10746,6 +10748,45 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (!read.owned()) return _ChatResumeOutcome.skipped;
     final applied = result != null && read.current();
     if (applied) _hydrate(chat, result);
+    void finishRecovery() {
+      if (!chat.runtime.blocksTurnAdmission) chat.reading.updateStreaming('');
+      chat._runtime.recovered();
+      if (applied && wasBusy && !chat.runtime.blocksTurnAdmission) {
+        _notifyRecoveredResult(chat);
+      }
+    }
+    if (deferHistory) {
+      // refreshHistory's REST page is bounded in row count, but not in image
+      // bytes (t_0f45a26f) - the visible chat must admit a new turn the
+      // instant its tip-only `session.resume` lands, not after its
+      // transcript page finishes transferring. `recovered()` (turn
+      // admission) moves here, ahead of that transfer; the streaming
+      // placeholder clear and the recovered-turn notification stay gated on
+      // a *successful* history refresh, same as the non-deferred path below
+      // - clearing the placeholder or notifying from a result the chat has
+      // not actually loaded yet would show a gap or a stale summary. The
+      // caller still joins `historyDone` later so a genuine
+      // (non-superseded) failure keeps failing profile recovery exactly as
+      // it did when this was awaited inline below.
+      chat._runtime.recovered();
+      // Captured after `recovered()`, which itself changes the runtime's
+      // recovery field this capture tracks - otherwise `.current()` would
+      // read as superseded by this method's own call, not a genuinely
+      // newer one.
+      final continuation = _captureResume(resource, chat, startRead: false);
+      Future<void> historyDone() async {
+        try {
+          await refreshHistory(chat, propagateFailure: true);
+        } catch (_) {
+          if (!continuation.current()) return;
+          rethrow;
+        }
+        if (!continuation.current()) return;
+        finishRecovery();
+      }
+      onDeferredHistory?.call(historyDone());
+      return applied ? _ChatResumeOutcome.resumed : _ChatResumeOutcome.skipped;
+    }
     final continuation = _captureResume(resource, chat, startRead: false);
     try {
       await refreshHistory(chat, propagateFailure: true);
@@ -10757,11 +10798,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       return _ChatResumeOutcome.aborted;
     }
     if (!continuation.current()) return _ChatResumeOutcome.skipped;
-    if (!chat.runtime.blocksTurnAdmission) chat.reading.updateStreaming('');
-    chat._runtime.recovered();
-    if (applied && wasBusy && !chat.runtime.blocksTurnAdmission) {
-      _notifyRecoveredResult(chat);
-    }
+    finishRecovery();
     return applied ? _ChatResumeOutcome.resumed : _ChatResumeOutcome.skipped;
   }
 
@@ -10835,8 +10872,15 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
       }
 
+      Future<void>? deferredVisibleHistory;
       if (visibleToResume != null) {
-        final outcome = await _resumeRetainedChat(resource, visibleToResume);
+        final outcome = await _resumeRetainedChat(
+          resource,
+          visibleToResume,
+          deferHistory: true,
+          onDeferredHistory: (historyDone) =>
+              deferredVisibleHistory = historyDone,
+        );
         if (outcome == _ChatResumeOutcome.aborted) return;
         if (outcome == _ChatResumeOutcome.resumed) {
           resumedChats.add(visibleToResume);
@@ -10881,6 +10925,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
         }
       }
       logRecoveryStep('chats_resumed');
+      // Joins the visible chat's deferred history refresh (started back when
+      // `visible_chat_resumed` was logged, run concurrently with the
+      // background sweep above): a genuine failure still fails this whole
+      // reconnect attempt, same as when this refresh was awaited inline.
+      if (deferredVisibleHistory != null) await deferredVisibleHistory;
+      if (_closed || resource._restartReconnect) return;
       resumedChats.addAll(await _restorePendingForResource(resource));
       if (_closed || resource._restartReconnect) return;
       logRecoveryStep('pending_restored');

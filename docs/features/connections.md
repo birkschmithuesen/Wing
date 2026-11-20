@@ -129,7 +129,13 @@ the journal write or the session-list refresh. Those keep running afterward
 as a bounded-concurrency background sweep (batches of 3, the same pacing as
 the background-profile batches above), so the selected profile's own
 recovery time no longer grows with how many other chats it is retaining
-(t_edbdd961). Phone logcat (`WingConnection`) also carries a
+(t_edbdd961). The visible chat's own resume is also independent of that one
+chat's saved content: Hermes resumes it tip-only (no stored messages over the
+socket), and the chat is live and admits a new turn before its REST
+transcript page - which can carry embedded image bytes - finishes
+transferring; that page's refresh, and the chat's own images, continue in
+the background and still complete before the overall reconnect settles
+(t_0f45a26f). Phone logcat (`WingConnection`) also carries a
 `workspace.recovery_step` line for each awaited step of a profile's resume
 (socket connect, visible chat resumed, chat resume, pending restore, journal,
 session refresh) with its cumulative `elapsed_ms`, so a slow resume can be
@@ -137,7 +143,7 @@ localized even when the socket was already open and no `ws.connect_started`
 appears.
 
 ```sh
-flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart
+flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart test/fork/visible_chat_resume_bandwidth_test.dart
 ```
 
 These regressions cover live-update and overlapping-read races, prolonged
@@ -162,6 +168,11 @@ header leaves Reconnecting, even while several other retained chats of that
 same profile are still stuck resuming - so the selected profile's recovery
 time does not scale with its retained chat count and never waits on a
 background chat the way it never waits on a background profile.
+`fork/visible_chat_resume_bandwidth_test.dart` verifies that the visible
+chat's own resume stays fast on a throttled (~0.5 MB/s) link regardless of
+that chat's saved transcript length or embedded image bytes, and that it
+still admits a new turn immediately rather than waiting on its transcript
+page.
 `server_connection_status_test.dart` verifies the
 header's phase and Retry admission ignore a background profile's recovery,
 failure or live-socket drop while still reacting to the selected profile's

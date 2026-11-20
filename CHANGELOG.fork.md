@@ -13,6 +13,103 @@ the README feature list current for every future change.
 
 ## 2026-11-19
 
+### The visible chat's own resume no longer scales with its saved transcript length or embedded image bytes
+- **What:** a device measurement (card t_9fa64f90, follow-up to t_edbdd961)
+  found `resumed` -> `visible_chat_resumed` still taking 7-10 s in a single
+  retained chat, well over the <= 2 s target, even though t_edbdd961 already
+  made the visible chat resume first. Root cause, confirmed in a throttled
+  fake-transport test harness rather than by inspection alone: `resume()`
+  (`lib/core/services/profile_gateway.dart`, `session.resume`) sent no
+  `omit_messages`, so Hermes shipped this chat's whole display transcript
+  over the socket on every resume - unbounded by the chat's own REST history
+  page size - and `_resumeRetainedChat`
+  (`lib/core/services/profile_workspace_controller.dart`) then awaited that
+  REST page (`refreshHistory`), which can carry embedded image data URIs,
+  before logging the step or letting the chat admit a new turn. Both legs
+  scaled with this one chat's saved content instead of staying flat.
+  `resume()` now defaults to `omit_messages: true` (every caller except
+  `branch`, which reads the fork's content straight from this result,
+  already re-fetches the transcript over REST via `refreshHistory`).
+  `_resumeRetainedChat` gained a `deferHistory` parameter, used only for the
+  profile's own visible chat: `chat._runtime.recovered()` (turn admission)
+  now fires right after its now-tip-only `session.resume` lands, ahead of
+  `refreshHistory`, which runs concurrently with the background chat sweep
+  instead of being awaited inline. The streaming-placeholder clear and the
+  recovered-turn notification (`_notifyRecoveredResult`, which reads
+  `chat.reading.messages` - only populated once this transcript page has
+  actually loaded) stay gated on that refresh *succeeding*, exactly as
+  before CI caught the first version of this fix clearing an in-progress
+  answer's placeholder, and sending a generic "Open the chat to see the
+  outcome" notification, before the real content had loaded
+  (`test/profile_workspace_controller_test.dart` "partial response survives
+  resume until server history is available" / "reconnect notification uses
+  recovered answer instead of generic status", CI run 44609585348).
+  `_performReconnect` joins the deferred refresh after the background
+  sweep, so a genuine (non-superseded) history failure still fails the
+  whole reconnect attempt exactly as before, and images still load, just
+  no longer gating the chat going live. Step names (`visible_chat_resumed`,
+  `chats_resumed`, `sessions_refreshed`, `socket_connect`) are unchanged.
+- **Why:** card t_0f45a26f. Checked `git log upstream/main --
+  lib/core/services/profile_gateway.dart`: upstream's own `resume()` sent
+  `omit_messages: true` (and no `display_projection`) before upstream's own
+  canonical-session rewrite (`cdc5e070`, already merged into this fork's
+  base) replaced it with `display_projection: true` and dropped
+  `omit_messages` - an upstream regression, not a deliberate removal; the
+  current Hermes contract (`tui_gateway/contracts/sessions.py`
+  `SessionResumeParams`) still defines both fields independently, so
+  sending both together is restoring prior, still-supported behavior, not
+  inventing a new protocol; Hermes's own `_Resume.__init__`
+  (`tui_gateway/methods_session.py:622`) comments "Desktop hydrates over
+  REST; suppress the duplicate WS copy only when asked" - exactly the Wing
+  usage this fix now makes. Upstream/main HEAD has not restored it either.
+  Measured the actual payloads this bug ships with file:line citations:
+  `profile_gateway.dart` `resume()` (~1288-1324, pre-fix) builds the
+  `session.resume` request with no `omit_messages`, so Hermes's reply
+  embeds every stored row of this chat (`SessionResumeParams.omit_messages`
+  default `False`, `hermes-agent/tui_gateway/contracts/sessions.py`); the
+  REST follow-up (`transcript_reading.dart` `refresh()`, ~981) fetches
+  `historyPageSize` (50, `profile_gateway.dart` ~1466) rows with
+  `inline_images: 'true'` by default - bounded in row count, but not in
+  image bytes. The new test's throttled fixture reproduces a ~1.5-4 s
+  transfer at 0.5 MB/s for a 5000-message chat with a handful of ~100 KB
+  embedded images in its most recent page; on the old code both legs would
+  have blocked `visible_chat_resumed`, failing the test well past its
+  pumped window. Considered and declined `inline_images: false` with a
+  lazy per-image reload: Hermes's `inline_images=False` only replaces an
+  image part with the literal text `[image]` (`methods_session.py`); there
+  is no reference left to re-fetch just that image, so "lazy load" would
+  need a second full-page re-fetch with images - more surface than this fix
+  needs once the REST page is off the critical path entirely. The
+  double-transfer this card found (full transcript over the socket, then
+  the same transcript again over REST) is itself inherent to Wing's current
+  resume contract rather than something this fork's `omit_messages` fix
+  fully closes for other callers; a draft upstream issue text (no
+  instance-identifying detail) is in the card report for Birk to decide
+  whether to file.
+- **Fork edits of upstream files:** `lib/core/services/profile_gateway.dart`,
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/fork/visible_chat_resume_bandwidth_test.dart` (new:
+  throttled-transport harness proves `visible_chat_resumed` and turn
+  admission for the visible chat stay flat against a 5000-message
+  transcript with embedded images, a case that blocks on the old code);
+  `test/profile_workspace_controller_test.dart` and
+  `test/slash_commands_test.dart` (updated: both assert the exact
+  `session.resume` request map for an existing scenario, now including
+  `omit_messages: true`). Not touched, and passing unmodified:
+  `test/profile_workspace_controller_test.dart` "partial response survives
+  resume until server history is available" and "reconnect notification
+  uses recovered answer instead of generic status" - the two existing
+  tests CI run 44609585348 caught regressed by the first version of this
+  fix (see What above), confirming the corrected version defers the
+  placeholder-clear/notification, not just turn admission;
+  `test/profile_resume_freshness_test.dart` ("current history failure
+  still fails profile recovery" / "superseded history failure cannot fail
+  a recovered profile") - both keep passing unmodified too, since
+  `_resumeRetainedChat`'s deferred path reuses the exact same
+  superseded-read check before rethrowing, just joined later in
+  `_performReconnect` instead of awaited inline.
+- **Merge:** pending · **Card:** t_0f45a26f
+
 ### The selected profile's own visible chat resumes first, and the connection indicator clears, without waiting on its other retained chats
 - **What:** t_15b221a3 (and t_1d748269 before it) made sure the *selected
   profile* resumes before and independently of any *background profile*,

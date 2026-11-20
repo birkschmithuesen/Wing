@@ -1941,7 +1941,12 @@ void main() {
             .where((call) => call.$1 == 'session.resume')
             .single
             .$2,
-        {'session_id': 'same', 'display_projection': true, 'profile': 'a'},
+        {
+          'session_id': 'same',
+          'display_projection': true,
+          'omit_messages': true,
+          'profile': 'a',
+        },
       );
       expect(notification, isNull);
       expect(
