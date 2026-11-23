@@ -5697,8 +5697,8 @@ void main() {
   }
 
   test(
-    'cold start restores only the selected profile\'s queued outbox; '
-    'another profile\'s queued outbox stays put until opened',
+    'cold start restores only the initially selected profile\'s queued '
+    'outbox; other profiles\' queued outbox is never auto-restored',
     () async {
       host.profiles = ['a', 'b', 'c'];
       final connection = controller.connection;
@@ -5741,8 +5741,21 @@ void main() {
         reason: 'a profile the user never opened keeps its queued outbox '
             'untouched instead of being restored eagerly',
       );
+      // Switching to 'b' later connects it (ordinary profile navigation),
+      // but must not re-trigger the one-time outbox restore: that restore
+      // is scoped to the profile selected at cold start only, so it never
+      // races an in-flight draft operation on a later switch (CI run
+      // 45218741379 caught exactly that race when this ran unconditionally
+      // on every switchProfile/navigateProfile call instead).
       expect(await controller.switchProfile('b'), isTrue);
       expect(host.connectsByProfile['b'], greaterThanOrEqualTo(1));
+      expect(
+        (await drafts.read(profileName: 'b', sessionId: 'queued-b'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'switching to b later does not re-trigger the one-time '
+            'cold-start outbox restore',
+      );
       expect(
         host.connectsByProfile.containsKey('c'),
         isFalse,

@@ -143,14 +143,25 @@ localized even when the socket was already open and no `ws.connect_started`
 appears.
 
 Fork (Wing Voice): cold start (the connection's very first `initialize()`,
-not a later resume) follows the same lazy-on-open principle as the resume
-path above, but only for a profile's *queued outbox* - a prompt the user
-typed and queued in that profile's composer before the app closed. A queued
-outbox prompt now restores only when its profile is actually opened (the
-initial `switchProfile` at cold start, or any later one), exactly once per
-`switchProfile` call and scoped to that one profile; a profile the user has
-not opened keeps its queued outbox untouched instead of being connected and
-disconnected for nothing (t_341c53a1). A profile's *durable pending turn*
+not a later resume) scopes its one-time restore sweep of a profile's
+*queued outbox* - a prompt the user typed and queued in that profile's
+composer before the app closed - to the single profile that initial
+`switchProfile` selects, instead of looping every discovered profile. This
+restore runs exactly once per connection, gated on the connection's genuine
+not-initialized -> initialized transition; an ordinary later
+`switchProfile`/`navigateProfile` call to a different profile never
+re-triggers it, even though it connects that profile normally. That
+restriction is deliberate, not an oversight: an earlier version ran it from
+every `switchProfile` call, and a later profile switch during an in-flight
+expired-draft replacement (`openSession(recoverExpiredDraft: true)`'s own
+migration of the same `ComposerDraftStore` entry) raced this restore and
+lost a queued prompt (`profile_workspace_controller_test.dart` "expired
+unsubmitted runtime keeps its draft and project on replacement", caught by
+CI run 45218741379). A profile the user has not opened at cold start keeps
+its queued outbox untouched instead of being connected and disconnected
+for nothing, but opening it later does not flush it either - the queued
+prompt simply stays durable until something else sends it
+(t_341c53a1). A profile's *durable pending turn*
 (one still blocking admission when the app closed) is different: Activity
 and notification recovery surface it across every served profile, not only
 the selected one, so it still restores eagerly for every profile that has
@@ -205,14 +216,15 @@ that chat's saved transcript length or embedded image bytes, and that it
 still admits a new turn immediately rather than waiting on its transcript
 page.
 `profile_workspace_controller_test.dart` "cold start restores only the
-selected profile's queued outbox; another profile's queued outbox stays put
-until opened" and "a background profile's queued outbox refused during
-cold start does not flip the connection unavailable while the selected
-profile stays healthy" verify the cold-start fix above: a background
-profile's queued outbox is never connected during `initialize()`, restores
-once that profile is actually opened, and a background profile's own
-connect failure over its queued outbox cannot reach `transportAvailability`
-while that profile stays unopened. `profile_live_activity_test.dart`
+initially selected profile's queued outbox; other profiles' queued outbox
+is never auto-restored" and "a background profile's queued outbox refused
+during cold start does not flip the connection unavailable while the
+selected profile stays healthy" verify the cold-start fix above: a
+background profile's queued outbox is never connected during
+`initialize()`, switching to that profile later connects it without
+re-triggering the one-time restore, and a background profile's own connect
+failure over its queued outbox cannot reach `transportAvailability` while
+that profile stays unopened at cold start. `profile_live_activity_test.dart`
 "recovery resolves a title in a profile whose list is not loaded" and
 `profile_workspace_registry_test.dart` "process recreation restores only
 matching owners without resubmitting" guard the part that stayed eager and

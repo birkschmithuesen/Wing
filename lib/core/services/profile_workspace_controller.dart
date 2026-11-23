@@ -3043,12 +3043,32 @@ class ProfileWorkspaceController extends ChangeNotifier {
         return false;
       }
       if (_initializing != null || _profileSelectionRepairRequired) {
+        // A `_profileSelectionRepairRequired` retry can re-enter this
+        // branch any number of times while `_finishInitialization` keeps
+        // declining (still not `_initialized`); only the one call that
+        // actually flips `_initialized` false -> true just completed the
+        // connection's genuine first initialization.
+        final wasInitialized = _initialized;
         await _finishInitialization(generation);
+        if (_closed || generation != _generation || _current != target) {
+          return false;
+        }
+        if (!wasInitialized && _initialized) {
+          // Fork (t_341c53a1): scoped to the profile this very
+          // initialization selected, instead of looping every discovered
+          // profile - that loop used to reconnect every profile with a
+          // queued outbox right after the selected one finished
+          // initializing, fanning a socket out to each of them at once.
+          // Deliberately gated on the one-time initialization transition,
+          // not on every `switchProfile`/`navigateProfile` call: an
+          // ordinary later profile switch must not race this restore
+          // against an in-flight draft operation on that same profile (CI
+          // run 45218741379 caught "expired unsubmitted runtime keeps its
+          // draft and project on replacement" losing its queued prompt to
+          // exactly that race when this ran unconditionally).
+          await _restoreWaitingOutboxesFor(target.scope.profileName);
+        }
       }
-      if (_closed || generation != _generation || _current != target) {
-        return false;
-      }
-      await _restoreWaitingOutboxesFor(target.scope.profileName);
       if (_closed || generation != _generation || _current != target) {
         return false;
       }

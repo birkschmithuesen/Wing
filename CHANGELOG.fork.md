@@ -32,13 +32,28 @@ the README feature list current for every future change.
   `health_alerts_session.dart`'s `_observeConnection` report "Connection
   interrupted" even though the selected profile stayed healthy throughout.
   Of the two sweeps, only the queued-outbox one could actually be made
-  lazy: a queued outbox prompt is purely that profile's own composer state,
-  so `_restoreWaitingOutboxesFor(profileName)` now runs once per
-  `switchProfile`, scoped to whichever profile that call just opened,
-  instead of looping every discovered profile from `_finishInitialization`.
+  lazy: a queued outbox prompt is purely that profile's own composer state.
+  `_restoreWaitingOutboxesFor(profileName)` replaces the global loop, but it
+  is scoped to *both* a single profile *and* a single moment: it runs
+  exactly once per connection, for whichever profile that connection's
+  genuine first `switchProfile` (the one inside `_finishInitialization`'s
+  one-time transition from not-initialized to initialized) selected - never
+  from an ordinary later `switchProfile`/`navigateProfile` call. An earlier
+  version of this fix ran it from every `switchProfile` call, scoped to
+  whichever profile that call opened; CI (run 45218741379) caught that this
+  broke `profile_workspace_controller_test.dart` "expired unsubmitted
+  runtime keeps its draft and project on replacement" - a later
+  `navigateProfile` during an in-flight expired-draft replacement raced
+  this restore against `openSession(recoverExpiredDraft: true)`'s own
+  migration of the same `ComposerDraftStore` entry, losing the queued
+  prompt. A profile's queued outbox is therefore never auto-restored after
+  cold start's own one-time pass; it isn't literally lazy-on-open for a
+  profile opened later, but it also never again touches durable composer
+  state behind an ordinary profile switch, which is what that regression
+  needs to not happen.
   A first version of this fix also scoped the pending-turn sweep
   (`_restorePending`) the same way, to the opened profile only; CI (run
-  45211216777) caught that this broke two existing, intentional
+  45211216777) caught that this broke two other existing, intentional
   behaviours: `profile_live_activity_test.dart` "recovery resolves a title
   in a profile whose list is not loaded" and
   `profile_workspace_registry_test.dart` "process recreation restores only
@@ -110,19 +125,23 @@ the README feature list current for every future change.
 - **Fork edits of upstream files:**
   `lib/core/services/profile_workspace_controller.dart`.
 - **Tests:** `test/profile_workspace_controller_test.dart` (new: "cold start
-  restores only the selected profile's queued outbox; another profile's
-  queued outbox stays put until opened" - proves a background profile with
-  a queued outbox is never connected during cold start and still restores
-  once the user opens it; "a background profile's queued outbox refused
-  during cold start does not flip the connection unavailable while the
-  selected profile stays healthy" - proves a background profile's own
+  restores only the initially selected profile's queued outbox; other
+  profiles' queued outbox is never auto-restored" - proves a background
+  profile with a queued outbox is never connected during cold start, and
+  that switching to it later connects it without re-triggering the
+  one-time outbox restore (a direct regression guard for the CI run
+  45218741379 failure - see What); "a background profile's queued outbox
+  refused during cold start does not flip the connection unavailable while
+  the selected profile stays healthy" - proves a background profile's own
   connect failure, which the old eager outbox sweep would have reached, no
   longer reaches `ServerConnectionStatus.transportAvailability` once that
   profile's outbox is never connected in the first place). Both fail
   against the pre-fix code and pass against the fix. Left unchanged and
   re-confirmed passing against the fix: `profile_live_activity_test.dart`
-  and `profile_workspace_registry_test.dart` (the two tests the first
-  version of this fix regressed, per CI run 45211216777 - see What).
+  and `profile_workspace_registry_test.dart` (regressed by the first
+  version of this fix, CI run 45211216777) and "expired unsubmitted
+  runtime keeps its draft and project on replacement" (regressed by the
+  second version, CI run 45218741379) - see What for both.
 - **Merge:** pending · **Card:** t_341c53a1
 
 ## 2026-11-19
