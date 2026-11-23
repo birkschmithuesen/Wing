@@ -143,26 +143,35 @@ localized even when the socket was already open and no `ws.connect_started`
 appears.
 
 Fork (Wing Voice): cold start (the connection's very first `initialize()`,
-not a later resume) follows the same lazy-on-open principle for a profile's
-*durable* pending turn and queued outbox, not only for its live socket.
-Previously, right after the selected profile logged `workspace.initialized`,
-the controller restored every served profile's unrestored-pending turn and
-queued outbox at once - a real gateway connect per profile, regardless of
-whether the user had ever opened it - and each of those profiles'
-subsequent disconnect could flip the connection-wide (deliberately
-unscoped, see below) transport signal to unavailable and surface a false
-"Connection interrupted" alert while the selected profile stayed healthy.
-A profile's own durable pending turn and queued outbox now restore only
-when that profile is actually opened (the initial `switchProfile` at cold
-start, or any later one), exactly once per `switchProfile` call and scoped
-to that one profile; a profile the user has not opened keeps its durable
-state untouched instead of being connected and disconnected for nothing
-(t_341c53a1). `ServerConnectionStatus.transportAvailability` itself stays
-intentionally unscoped across every served profile - it is the Health
-"Alerts" surface's input (`health_alerts_session.dart`'s
+not a later resume) follows the same lazy-on-open principle as the resume
+path above, but only for a profile's *queued outbox* - a prompt the user
+typed and queued in that profile's composer before the app closed. A queued
+outbox prompt now restores only when its profile is actually opened (the
+initial `switchProfile` at cold start, or any later one), exactly once per
+`switchProfile` call and scoped to that one profile; a profile the user has
+not opened keeps its queued outbox untouched instead of being connected and
+disconnected for nothing (t_341c53a1). A profile's *durable pending turn*
+(one still blocking admission when the app closed) is different: Activity
+and notification recovery surface it across every served profile, not only
+the selected one, so it still restores eagerly for every profile that has
+one, regardless of which profile is selected - what changed there is only
+the concurrency, the selected profile resumes first and alone, then the
+rest resume in batches of 3 (the same batching the resume path above uses)
+instead of one unbounded `Future.wait` opening every profile's socket at
+once. Previously, right after the selected profile logged
+`workspace.initialized`, *both* restored every served profile at once - a
+real gateway connect per profile with a queued outbox, in addition to the
+pending-turn fan-out - and each of those profiles' subsequent disconnect
+could flip the connection-wide (deliberately unscoped, see below) transport
+signal to unavailable and surface a false "Connection interrupted" alert
+while the selected profile stayed healthy. `ServerConnectionStatus.transportAvailability`
+itself stays intentionally unscoped across every served profile - it is the
+Health "Alerts" surface's input (`health_alerts_session.dart`'s
 `_observeConnection`), not the header's `phase` - so this fix is in what
 triggers a profile's connect at cold start, not in how that signal
-aggregates.
+aggregates. A served profile with neither a durable pending turn nor a
+queued outbox - the common case for one the user has merely looked at
+before - is still never connected during cold start.
 
 ```sh
 flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart test/fork/visible_chat_resume_bandwidth_test.dart
@@ -196,13 +205,19 @@ that chat's saved transcript length or embedded image bytes, and that it
 still admits a new turn immediately rather than waiting on its transcript
 page.
 `profile_workspace_controller_test.dart` "cold start restores only the
-selected profile's durable pending work; other profiles stay disconnected
-until opened" and "a background profile refused during cold start does not
-flip the connection unavailable while the selected profile stays healthy"
-verify the cold-start fix above: a background profile's durable pending
-turn is never connected during `initialize()`, restores once that profile
-is actually opened, and a background profile's own connect failure cannot
-reach `transportAvailability` while it stays unopened.
+selected profile's queued outbox; another profile's queued outbox stays put
+until opened" and "a background profile's queued outbox refused during
+cold start does not flip the connection unavailable while the selected
+profile stays healthy" verify the cold-start fix above: a background
+profile's queued outbox is never connected during `initialize()`, restores
+once that profile is actually opened, and a background profile's own
+connect failure over its queued outbox cannot reach `transportAvailability`
+while that profile stays unopened. `profile_live_activity_test.dart`
+"recovery resolves a title in a profile whose list is not loaded" and
+`profile_workspace_registry_test.dart` "process recreation restores only
+matching owners without resubmitting" guard the part that stayed eager and
+global: a durable pending turn in a profile other than the selected one
+still restores and surfaces in Activity.
 `server_connection_status_test.dart` verifies the
 header's phase and Retry admission ignore a background profile's recovery,
 failure or live-socket drop while still reacting to the selected profile's

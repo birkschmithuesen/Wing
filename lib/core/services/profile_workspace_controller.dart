@@ -2738,13 +2738,21 @@ class ProfileWorkspaceController extends ChangeNotifier {
     connectionStatus.endRecovery('initialization');
     _recoveringInitialization = false;
     _initializationAttempt = 0;
-    // Fork (t_341c53a1): restoring every served profile's pending turns and
-    // queued outbox here, right as the selected profile finishes, used to
-    // fan out a gateway socket to every profile with durable pending state
-    // at once - cold start's version of the "all profiles" burst this card
-    // fixes. Each profile's own durable work now restores lazily in
-    // switchProfile, the moment that profile is actually opened (see
-    // `_restoreTargetPendingWork`), including the selected one above.
+    // Fork (t_341c53a1): a durable pending turn still blocking admission
+    // must resume even for a profile the user has not opened - Activity and
+    // the registry's cross-profile restore surface it for every served
+    // profile, not only the selected one (see
+    // `profile_live_activity_test.dart` "recovery resolves a title in a
+    // profile whose list is not loaded" and
+    // `profile_workspace_registry_test.dart` "process recreation restores
+    // only matching owners without resubmitting" - both need this to stay
+    // eager and global; an earlier version of this fix scoped it to the
+    // opened profile only and broke both). What this fixes is only the
+    // concurrency: `_restorePendingBatched` resumes the selected profile
+    // first and alone, then the rest in small batches, instead of one
+    // unbounded `Future.wait` opening every profile's socket at once.
+    await _restorePendingBatched();
+    if (_closed) return;
     if (generation == _generation && onAttention != null && _current != null) {
       await _groupNotifications.activate();
       await _scheduleNotificationReconciliation(_current!);
@@ -3040,7 +3048,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (_closed || generation != _generation || _current != target) {
         return false;
       }
-      await _restoreTargetPendingWork(target);
+      await _restoreWaitingOutboxesFor(target.scope.profileName);
       if (_closed || generation != _generation || _current != target) {
         return false;
       }
@@ -6309,18 +6317,35 @@ class ProfileWorkspaceController extends ChangeNotifier {
     if (!_closed) await _reconnect(resource);
   }
 
-  /// Fork (t_341c53a1): the lazy counterpart to `_restorePending`/the old
-  /// global `_restoreWaitingOutboxes` sweep. Runs once per `switchProfile`
-  /// call, scoped to the profile just opened, so a background profile's
-  /// durable pending turn or queued outbox only reconnects once the user
-  /// actually opens it - never automatically for every other served profile.
-  Future<void> _restoreTargetPendingWork(ProfileWorkspaceData target) async {
+  /// Fork (t_341c53a1): a durable pending turn still blocking admission must
+  /// resume even for a profile the user has not opened - Activity and the
+  /// registry's cross-profile restore surface it for every served profile,
+  /// not only the selected one, so this stays eager and global (unlike
+  /// `_restoreWaitingOutboxesFor` above, a queued outbox prompt is purely
+  /// that profile's own composer state, so it is safe to restore lazily).
+  /// What changed from the old `_restorePending` is only the concurrency:
+  /// the selected profile resumes first and alone, then the rest resume in
+  /// small batches instead of one unbounded `Future.wait` opening every
+  /// profile's socket at once.
+  Future<void> _restorePendingBatched() async {
     _seedPendingOwners();
-    if (_unrestoredPending.any((key) => key.workspace == target.scope)) {
-      await reconnect(target.scope);
+    final scopes = _unrestoredPending
+        .map((key) => key.workspace)
+        .toSet()
+        .toList();
+    final current = _current?.scope;
+    if (current != null && scopes.remove(current)) {
+      await reconnect(_resource(current.profileName).scope);
       if (_closed) return;
     }
-    await _restoreWaitingOutboxesFor(target.scope.profileName);
+    const batchSize = 3;
+    for (var offset = 0; offset < scopes.length; offset += batchSize) {
+      await Future.wait([
+        for (final scope in scopes.skip(offset).take(batchSize))
+          reconnect(_resource(scope.profileName).scope),
+      ]);
+      if (_closed) return;
+    }
   }
 
   Future<void> _clearStoredDraft(WorkspaceScope scope, String sessionId) {

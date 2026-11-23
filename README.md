@@ -17,7 +17,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [A backgrounded active group discussion polls at most once a minute instead of reconnecting every 5 seconds](CHANGELOG.fork.md#a-backgrounded-active-group-discussion-stops-reconnectingre-authenticating-every-5-seconds)
 - [Hermes Cloud sign-in backs off instead of looping against a buggy token expiry](CHANGELOG.fork.md#hermes-cloud-sign-in-no-longer-rotates-its-refresh-token-in-a-tight-loop-against-a-buggy-expiry)
 - [Scheduled-tasks admin pages stop polling while backgrounded; a watchdog logs any component that keeps waking the app](CHANGELOG.fork.md#scheduled-tasks-admin-timers-stop-ticking-on-pause-instead-of-only-gating-their-callback-plus-a-background-wake-up-watchdog)
-- [Cold start no longer fans a gateway socket out to every profile, or shows a false "Connection interrupted" alert, right after the selected profile connects](CHANGELOG.fork.md#cold-start-no-longer-fans-a-gateway-socket-out-to-every-served-profile-right-after-the-selected-one-initializes)
+- [Cold start no longer fans a gateway socket out to every profile's queued outbox, or shows a false "Connection interrupted" alert, right after the selected profile connects](CHANGELOG.fork.md#cold-start-no-longer-fans-a-gateway-socket-out-to-every-served-profiles-queued-outbox-right-after-the-selected-one-initializes)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

@@ -5697,23 +5697,32 @@ void main() {
   }
 
   test(
-    'cold start restores only the selected profile\'s durable pending work; '
-    'other profiles stay disconnected until opened',
+    'cold start restores only the selected profile\'s queued outbox; '
+    'another profile\'s queued outbox stays put until opened',
     () async {
       host.profiles = ['a', 'b', 'c'];
       final connection = controller.connection;
       controller.dispose();
-      const journalKey = 'profile_pending_v2_original-settings';
-      WorkspaceScope scopeFor(String profile) => WorkspaceScope(
-        connectionId: connection.id,
+      final drafts = ComposerDraftStore(
+        preferences,
         connectionIdentity: 'original-settings',
-        profileName: profile,
       );
-      await preferences.setStringList(journalKey, [
-        jsonEncode(ProfileSessionKey(scopeFor('b'), 'stale-b').toJson()),
-        jsonEncode(ProfileSessionKey(scopeFor('c'), 'stale-c').toJson()),
-      ]);
+      await drafts.write(
+        profileName: 'b',
+        sessionId: 'queued-b',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for b')],
+      );
+      await drafts.write(
+        profileName: 'c',
+        sessionId: 'queued-c',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for c')],
+      );
       host.calls.clear();
+      host.connectsByProfile.clear();
       controller = ProfileWorkspaceController(
         connectionIdentity: 'original-settings',
         access: ConnectionAccess(connection: connection, dashboardOAuth: null),
@@ -5726,55 +5735,50 @@ void main() {
       expect(controller.current?.scope.profileName, 'a');
       expect(host.connectsByProfile.keys, ['a']);
       expect(
-        preferences.getStringList(journalKey)!.toSet(),
-        {
-          jsonEncode(ProfileSessionKey(scopeFor('b'), 'stale-b').toJson()),
-          jsonEncode(ProfileSessionKey(scopeFor('c'), 'stale-c').toJson()),
-        },
-        reason: 'a profile the user never opened keeps its durable pending '
-            'turn untouched instead of being restored eagerly',
+        (await drafts.read(profileName: 'b', sessionId: 'queued-b'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'a profile the user never opened keeps its queued outbox '
+            'untouched instead of being restored eagerly',
       );
       expect(await controller.switchProfile('b'), isTrue);
       expect(host.connectsByProfile['b'], greaterThanOrEqualTo(1));
       expect(
-        preferences
-            .getStringList(journalKey)!
-            .any((value) => value.contains('"profile":"b"')),
+        host.connectsByProfile.containsKey('c'),
         isFalse,
-        reason: 'opening a profile restores its own durable pending turn',
+        reason: 'profile c was never opened, so it is never connected',
       );
       expect(
-        preferences
-            .getStringList(journalKey)!
-            .any((value) => value.contains('"profile":"c"')),
-        isTrue,
-        reason: 'profile c was never opened, so its pending turn stays put',
+        (await drafts.read(profileName: 'c', sessionId: 'queued-c'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'profile c was never opened, so its queued outbox stays put',
       );
-      expect(host.connectsByProfile.containsKey('c'), isFalse);
     },
   );
 
   test(
-    'a background profile refused during cold start does not flip the '
-    'connection unavailable while the selected profile stays healthy',
+    'a background profile\'s queued outbox refused during cold start does '
+    'not flip the connection unavailable while the selected profile stays '
+    'healthy',
     () async {
       host.profiles = ['a', 'b'];
       final connection = controller.connection;
       controller.dispose();
-      const journalKey = 'profile_pending_v2_original-settings';
-      await preferences.setStringList(journalKey, [
-        jsonEncode(
-          ProfileSessionKey(
-            WorkspaceScope(
-              connectionId: connection.id,
-              connectionIdentity: 'original-settings',
-              profileName: 'b',
-            ),
-            'stale-b',
-          ).toJson(),
-        ),
-      ]);
+      final drafts = ComposerDraftStore(
+        preferences,
+        connectionIdentity: 'original-settings',
+      );
+      await drafts.write(
+        profileName: 'b',
+        sessionId: 'queued-b',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for b')],
+      );
       host.connectRefused.add('b');
+      host.calls.clear();
+      host.connectsByProfile.clear();
       controller = ProfileWorkspaceController(
         connectionIdentity: 'original-settings',
         access: ConnectionAccess(connection: connection, dashboardOAuth: null),
