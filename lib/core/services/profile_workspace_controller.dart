@@ -2738,10 +2738,13 @@ class ProfileWorkspaceController extends ChangeNotifier {
     connectionStatus.endRecovery('initialization');
     _recoveringInitialization = false;
     _initializationAttempt = 0;
-    await _restorePending();
-    if (_closed) return;
-    await _restoreWaitingOutboxes();
-    if (_closed) return;
+    // Fork (t_341c53a1): restoring every served profile's pending turns and
+    // queued outbox here, right as the selected profile finishes, used to
+    // fan out a gateway socket to every profile with durable pending state
+    // at once - cold start's version of the "all profiles" burst this card
+    // fixes. Each profile's own durable work now restores lazily in
+    // switchProfile, the moment that profile is actually opened (see
+    // `_restoreTargetPendingWork`), including the selected one above.
     if (generation == _generation && onAttention != null && _current != null) {
       await _groupNotifications.activate();
       await _scheduleNotificationReconciliation(_current!);
@@ -3034,6 +3037,10 @@ class ProfileWorkspaceController extends ChangeNotifier {
       if (_initializing != null || _profileSelectionRepairRequired) {
         await _finishInitialization(generation);
       }
+      if (_closed || generation != _generation || _current != target) {
+        return false;
+      }
+      await _restoreTargetPendingWork(target);
       if (_closed || generation != _generation || _current != target) {
         return false;
       }
@@ -6275,28 +6282,45 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   Future<void> _restoreDraft(ProfileChat chat) => chat.composer.restore();
 
-  Future<void> _restoreWaitingOutboxes() async {
-    for (final profile in _discovery!.profiles) {
-      final waiting = _drafts
-          .summaries(profileName: profile.name)
-          .where((draft) => draft.queuedCount > 0)
-          .toList();
-      if (waiting.isEmpty || _closed) continue;
-      final resource = _resource(profile.name);
-      for (final draft in waiting) {
-        if (resource.blocksSession(draft.sessionId)) continue;
-        final chat = resource._chats.putIfAbsent(
-          draft.sessionId,
-          () => _createChatRecord(
-            key: ProfileSessionKey(resource.scope, draft.sessionId),
-            runtimeId: draft.sessionId,
-            title: 'Chat',
-          ).._runtime.installOfflineReading(),
-        );
-        await _restoreDraft(chat);
-      }
-      if (!_closed) await _reconnect(resource);
+  /// Fork (t_341c53a1): scoped to the one profile being opened (cold start's
+  /// selected profile, or any profile the user later switches to) instead of
+  /// looping every discovered profile - that loop used to reconnect every
+  /// profile with a queued outbox right after the selected profile finished
+  /// initializing, fanning a socket out to each of them at once.
+  Future<void> _restoreWaitingOutboxesFor(String profileName) async {
+    final waiting = _drafts
+        .summaries(profileName: profileName)
+        .where((draft) => draft.queuedCount > 0)
+        .toList();
+    if (waiting.isEmpty || _closed) return;
+    final resource = _resource(profileName);
+    for (final draft in waiting) {
+      if (resource.blocksSession(draft.sessionId)) continue;
+      final chat = resource._chats.putIfAbsent(
+        draft.sessionId,
+        () => _createChatRecord(
+          key: ProfileSessionKey(resource.scope, draft.sessionId),
+          runtimeId: draft.sessionId,
+          title: 'Chat',
+        ).._runtime.installOfflineReading(),
+      );
+      await _restoreDraft(chat);
     }
+    if (!_closed) await _reconnect(resource);
+  }
+
+  /// Fork (t_341c53a1): the lazy counterpart to `_restorePending`/the old
+  /// global `_restoreWaitingOutboxes` sweep. Runs once per `switchProfile`
+  /// call, scoped to the profile just opened, so a background profile's
+  /// durable pending turn or queued outbox only reconnects once the user
+  /// actually opens it - never automatically for every other served profile.
+  Future<void> _restoreTargetPendingWork(ProfileWorkspaceData target) async {
+    _seedPendingOwners();
+    if (_unrestoredPending.any((key) => key.workspace == target.scope)) {
+      await reconnect(target.scope);
+      if (_closed) return;
+    }
+    await _restoreWaitingOutboxesFor(target.scope.profileName);
   }
 
   Future<void> _clearStoredDraft(WorkspaceScope scope, String sessionId) {

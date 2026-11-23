@@ -228,6 +228,7 @@ class Host {
   Completer<void>? activeListDelay;
   int connectFailures = 0;
   Object? connectError;
+  final connectRefused = <String>{};
   Object? rosterFailure;
   Object? groupsListError;
   final refusedProfiles = <String, Object>{};
@@ -382,6 +383,9 @@ class Host {
           );
         }
         await connectDelay?.future;
+        if (connectRefused.contains(name)) {
+          throw StateError('Connection refused for profile $name');
+        }
         if (connectError != null) throw connectError!;
         if (connectFailures > 0) {
           connectFailures--;
@@ -5691,6 +5695,114 @@ void main() {
       expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
     });
   }
+
+  test(
+    'cold start restores only the selected profile\'s durable pending work; '
+    'other profiles stay disconnected until opened',
+    () async {
+      host.profiles = ['a', 'b', 'c'];
+      final connection = controller.connection;
+      controller.dispose();
+      const journalKey = 'profile_pending_v2_original-settings';
+      WorkspaceScope scopeFor(String profile) => WorkspaceScope(
+        connectionId: connection.id,
+        connectionIdentity: 'original-settings',
+        profileName: profile,
+      );
+      await preferences.setStringList(journalKey, [
+        jsonEncode(ProfileSessionKey(scopeFor('b'), 'stale-b').toJson()),
+        jsonEncode(ProfileSessionKey(scopeFor('c'), 'stale-c').toJson()),
+      ]);
+      host.calls.clear();
+      controller = ProfileWorkspaceController(
+        connectionIdentity: 'original-settings',
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      await controller.initialize();
+      expect(controller.initialized, isTrue);
+      expect(controller.current?.scope.profileName, 'a');
+      expect(host.connectsByProfile.keys, ['a']);
+      expect(
+        preferences.getStringList(journalKey)!.toSet(),
+        {
+          jsonEncode(ProfileSessionKey(scopeFor('b'), 'stale-b').toJson()),
+          jsonEncode(ProfileSessionKey(scopeFor('c'), 'stale-c').toJson()),
+        },
+        reason: 'a profile the user never opened keeps its durable pending '
+            'turn untouched instead of being restored eagerly',
+      );
+      expect(await controller.switchProfile('b'), isTrue);
+      expect(host.connectsByProfile['b'], greaterThanOrEqualTo(1));
+      expect(
+        preferences
+            .getStringList(journalKey)!
+            .any((value) => value.contains('"profile":"b"')),
+        isFalse,
+        reason: 'opening a profile restores its own durable pending turn',
+      );
+      expect(
+        preferences
+            .getStringList(journalKey)!
+            .any((value) => value.contains('"profile":"c"')),
+        isTrue,
+        reason: 'profile c was never opened, so its pending turn stays put',
+      );
+      expect(host.connectsByProfile.containsKey('c'), isFalse);
+    },
+  );
+
+  test(
+    'a background profile refused during cold start does not flip the '
+    'connection unavailable while the selected profile stays healthy',
+    () async {
+      host.profiles = ['a', 'b'];
+      final connection = controller.connection;
+      controller.dispose();
+      const journalKey = 'profile_pending_v2_original-settings';
+      await preferences.setStringList(journalKey, [
+        jsonEncode(
+          ProfileSessionKey(
+            WorkspaceScope(
+              connectionId: connection.id,
+              connectionIdentity: 'original-settings',
+              profileName: 'b',
+            ),
+            'stale-b',
+          ).toJson(),
+        ),
+      ]);
+      host.connectRefused.add('b');
+      controller = ProfileWorkspaceController(
+        connectionIdentity: 'original-settings',
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      final observed = <ConnectionAvailability>[];
+      controller.connectionStatus.addListener(
+        () => observed.add(controller.connectionStatus.transportAvailability),
+      );
+      await controller.initialize();
+      expect(controller.initialized, isTrue);
+      expect(controller.current?.scope.profileName, 'a');
+      expect(host.connectsByProfile.containsKey('b'), isFalse);
+      expect(
+        observed,
+        isNot(contains(ConnectionAvailability.unavailable)),
+        reason:
+            'profile b was never connected during cold start, so its '
+            'refusal cannot be observed by the Alerts surface yet',
+      );
+      expect(
+        controller.connectionStatus.transportAvailability,
+        isNot(ConnectionAvailability.unavailable),
+      );
+    },
+  );
 
   test(
     'stock batched clarification routes the unanswered question ID',
