@@ -18,6 +18,8 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Hermes Cloud sign-in backs off instead of looping against a buggy token expiry](CHANGELOG.fork.md#hermes-cloud-sign-in-no-longer-rotates-its-refresh-token-in-a-tight-loop-against-a-buggy-expiry)
 - [Scheduled-tasks admin pages stop polling while backgrounded; a watchdog logs any component that keeps waking the app](CHANGELOG.fork.md#scheduled-tasks-admin-timers-stop-ticking-on-pause-instead-of-only-gating-their-callback-plus-a-background-wake-up-watchdog)
 - [Cold start no longer fans a gateway socket out to every profile's queued outbox, or shows a false "Connection interrupted" alert, right after the selected profile connects](CHANGELOG.fork.md#cold-start-no-longer-fans-a-gateway-socket-out-to-every-served-profiles-queued-outbox-right-after-the-selected-one-initializes)
+- [Recents and the chat list no longer open a throwaway gateway socket per profile](CHANGELOG.fork.md#recents-stops-opening-its-own-throwaway-gateway-socket-for-every-discovered-profile-on-every-refresh)
+- [Opening a chat reuses its own live socket to re-read project membership instead of opening a throwaway one](CHANGELOG.fork.md#opening-a-chat-no-longer-re-reads-its-own-project-membership-through-a-throwaway-socket-either)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

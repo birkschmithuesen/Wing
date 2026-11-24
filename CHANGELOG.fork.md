@@ -13,6 +13,30 @@ the README feature list current for every future change.
 
 ## 2026-11-24
 
+### Opening a chat no longer re-reads its own project membership through a throwaway socket either
+- **What:** `_readProjectMembership` (`lib/core/services/profile_workspace_controller.dart`), called
+  from `_loadChatProject` on every `_openSession` while a profile's project-membership cache is
+  missing or stale, called `browserProjects(..., requireLive: false)` - the sibling of the Recents
+  call site fixed below, left uncovered by that fix's `git grep` sweep because it is a different
+  one of the three `_factory(` call sites in this file. `requireLive`'s default (`false`) still
+  opens a brand-new `WsClient` via `_factory(scope)`, runs one `projects.tree` RPC, then closes it,
+  even though the profile whose membership is being read is the one whose own chat the caller just
+  opened - that profile's `resource.gateway` is already live at this point (opening its chat
+  reached the success path that calls `_loadChatProject` in the first place). `_readProjectMembership`
+  now passes `requireLive: true`, reusing that live socket; if the gateway is not live at read time
+  (e.g. a reconnect raced in between the chat opening and this read), `browserProjects` throws and
+  `_loadChatProject`'s existing catch turns that into "Project unavailable" instead of opening a
+  throwaway socket.
+- **Why:** review of t_6e3f8566 (card t_c095c26c) found the prior fix covered only one of the three
+  `_factory(` call sites `git grep` turns up in this file; this is the second (the third,
+  `browserCanonicalBotChat` at line ~2445, and `_resource`'s one-time gateway creation at line
+  ~2646, are out of scope - neither is this defect). Cold-start socket-fan-out (review item 3) and
+  the chat-switch "Reconnecting" badge (review item 4) are separate, independent-of-this-fix
+  rebuilds that need their own analysis and tests; deliberately not addressed here, left to their
+  own follow-up card(s).
+- **Fork edits of upstream files:** `lib/core/services/profile_workspace_controller.dart`.
+- **Merge:** pending · **Card:** t_03f5043c
+
 ### Recents stops opening its own throwaway gateway socket for every discovered profile on every refresh
 - **What:** `_refreshRecents` (`lib/core/services/profile_workspace_controller.dart`) called
   `browserProjects(profile.name, ...)` for *every* profile `discover()` returned, on *every*

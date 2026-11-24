@@ -2467,12 +2467,16 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// Project browsing uses short-lived readers, never the conversation socket.
   /// Bound the caller's concurrency instead of retaining a socket per profile.
   ///
-  /// [requireLive] is for passive, cross-profile observers (Recents' own
-  /// tagging of every discovered profile's chats) rather than an explicit,
-  /// single-profile browse: it must never open a per-profile socket for a
-  /// profile the user has not opened (t_6e3f8566). It skips the profile
-  /// entirely unless that profile's own gateway is already live, and then
-  /// reuses that existing socket instead of a throwaway reader.
+  /// [requireLive] is for callers that read a profile's membership on the
+  /// assumption that profile's chat is already open and live - Recents'
+  /// passive tagging of every discovered profile's chats (t_6e3f8566) and
+  /// _readProjectMembership's read for the chat the user just opened
+  /// (t_03f5043c) - rather than an explicit, single-profile browse: it must
+  /// never open a per-profile socket for a profile the user has not opened.
+  /// It throws unless that profile's own gateway is already live (both
+  /// callers catch that and fall back to last-known/absent tagging instead
+  /// of opening a throwaway reader), and otherwise reuses that existing
+  /// socket.
   Future<List<Map<String, dynamic>>> browserProjects(
     String name, {
     required int sessionLimit,
@@ -2585,11 +2589,20 @@ class ProfileWorkspaceController extends ChangeNotifier {
           );
           if (resource._projectMembership == null ||
               resource._projectMembershipLimit < limit) {
+            // This resource's own chat was just opened successfully (the
+            // only caller is _loadChatProject, from _openSession), so its
+            // gateway is live - reuse it instead of a throwaway reader
+            // (t_03f5043c, sibling of t_6e3f8566's Recents fix). If the
+            // gateway drops live status between that open and this read
+            // (e.g. a reconnect raced in), requireLive throws; the catch in
+            // _loadChatProject turns that into "Project unavailable"
+            // rather than falling back to a throwaway socket.
             await browserProjects(
               resource.scope.profileName,
               sessionLimit: limit,
               canRead: () =>
                   !_closed && identical(_resources[resource.scope], resource),
+              requireLive: true,
             );
           }
           if (!_closed && generation == resource._projectMembershipGeneration) {

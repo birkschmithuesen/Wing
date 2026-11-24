@@ -30,6 +30,15 @@ class _RecentsFixture extends ProfileBrowserFixture {
   String? recentProject;
   Completer<void>? heldProjects;
   Completer<void>? projectsStarted;
+  // Every ProfileGateway this fixture mints, one entry per call: the
+  // controller's own `_factory(scope)` (throwaway browse readers and
+  // one-time resource creation) and nothing else - `resource.gateway` is
+  // created once and reused, never re-minted through this method. A read
+  // that reuses `resource.gateway` leaves this list untouched, so it is
+  // the only way to tell "reused the live socket" apart from "opened a
+  // fresh throwaway one" when both would otherwise look identical in
+  // `calls` (t_03f5043c).
+  final readerSockets = <String>[];
   @override
   List<Map<String, dynamic>> projectSessions(String profile, String id) =>
       profile == 'personal' && id == recentProject
@@ -55,6 +64,7 @@ class _RecentsFixture extends ProfileBrowserFixture {
   int extraAncientSessions = 0;
   @override
   ProfileGateway gateway(WorkspaceScope scope) {
+    readerSockets.add(scope.profileName);
     final delegate = super.gateway(scope);
     return ProfileGateway(
       scope: scope,
@@ -337,6 +347,45 @@ void main() {
           'An invalidated profile needs one fresh project tree, not per-card reads',
     );
   });
+
+  test(
+    'opening a chat with invalidated project membership reads the tree '
+    'through the already-live gateway, not a throwaway socket (t_03f5043c)',
+    () async {
+      // Unlike the "Recents never opens a per-profile socket" case below
+      // (which proves the throwaway *never* opens for an unopened sibling
+      // profile), this proves the *positive* case: for the profile whose
+      // own chat the user just opened, the project-tree read must reuse
+      // that profile's already-live `resource.gateway` rather than minting
+      // a second, throwaway reader for the same scope - counting
+      // `projects.tree` calls alone (as the sibling test above does) can't
+      // tell those two apart, since both land identical rows in
+      // `fixture.calls`.
+      fixture.recentProject = 'p2';
+      await controller.refreshRecents();
+      final scope = controller.current!.scope;
+      final key = ProfileSessionKey(scope, 'shared-id');
+      await controller.openSession(key);
+      final readerSocketsBefore = fixture.readerSockets.length;
+      controller.current!.gateway.onEvent!(
+        StreamEvent(type: 'sessions.changed', sessionId: '', data: const {}),
+      );
+      fixture.recentProject = 'p3';
+      final chat = (await controller.openSession(key))!;
+      await Future<void>.delayed(Duration.zero);
+      // Confirm the invalidated read actually happened before trusting the
+      // socket-count assertion below.
+      expect(chat.projectId, 'p3');
+      expect(
+        fixture.readerSockets.length,
+        readerSocketsBefore,
+        reason:
+            'Rereading invalidated project membership for the profile whose '
+            'own chat is open must reuse resource.gateway, not open another '
+            '_factory(scope) throwaway socket',
+      );
+    },
+  );
 
   test(
     'Recents never opens a per-profile socket for a profile the user has '
