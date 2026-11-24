@@ -1681,10 +1681,18 @@ class ProfileWorkspaceController extends ChangeNotifier {
           String? profileError;
           try {
             try {
+              // t_6e3f8566: Recents tags chats from every discovered
+              // profile, but must never open a per-profile socket just to
+              // do it. Only a profile that already has a live gateway (the
+              // selected/open one, or any other the user has an active
+              // chat in) gets its project tree read, through that existing
+              // socket; every other profile keeps its last-known tagging
+              // until the user actually opens it.
               final projects = await browserProjects(
                 profile.name,
                 sessionLimit: ProfileGateway.projectSessionScanLimit,
                 canRead: () => !_closed && generation == _recentsGeneration,
+                requireLive: true,
               );
               if (!_closed && generation == _recentsGeneration) {
                 resource._projects = _readonlyWorkspaceRows(projects);
@@ -2458,17 +2466,32 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   /// Project browsing uses short-lived readers, never the conversation socket.
   /// Bound the caller's concurrency instead of retaining a socket per profile.
+  ///
+  /// [requireLive] is for callers that read a profile's membership on the
+  /// assumption that profile's chat is already open and live - Recents'
+  /// passive tagging of every discovered profile's chats (t_6e3f8566) and
+  /// _readProjectMembership's read for the chat the user just opened
+  /// (t_03f5043c) - rather than an explicit, single-profile browse: it must
+  /// never open a per-profile socket for a profile the user has not opened.
+  /// It throws unless that profile's own gateway is already live (both
+  /// callers catch that and fall back to last-known/absent tagging instead
+  /// of opening a throwaway reader), and otherwise reuses that existing
+  /// socket.
   Future<List<Map<String, dynamic>>> browserProjects(
     String name, {
     required int sessionLimit,
     required bool Function() canRead,
+    bool requireLive = false,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
     final resource = browserResource(name);
     final generation = resource._projectMembershipGeneration;
-    final reader = _factory(browserResource(name).scope);
+    if (requireLive && !connectionStatus.liveAvailable(name)) {
+      throw StateError('Profile has no live socket to read projects from');
+    }
+    final reader = requireLive ? resource.gateway : _factory(resource.scope);
     try {
-      await reader.connect();
+      if (!requireLive) await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       final result = await reader.call('projects.tree', {
         'preview_limit': 3,
@@ -2523,7 +2546,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       return projects.where(ProfileGateway.isSavedProject).toList();
     } finally {
-      reader.close();
+      if (!requireLive) reader.close();
     }
   }
 
@@ -2566,11 +2589,20 @@ class ProfileWorkspaceController extends ChangeNotifier {
           );
           if (resource._projectMembership == null ||
               resource._projectMembershipLimit < limit) {
+            // This resource's own chat was just opened successfully (the
+            // only caller is _loadChatProject, from _openSession), so its
+            // gateway is live - reuse it instead of a throwaway reader
+            // (t_03f5043c, sibling of t_6e3f8566's Recents fix). If the
+            // gateway drops live status between that open and this read
+            // (e.g. a reconnect raced in), requireLive throws; the catch in
+            // _loadChatProject turns that into "Project unavailable"
+            // rather than falling back to a throwaway socket.
             await browserProjects(
               resource.scope.profileName,
               sessionLimit: limit,
               canRead: () =>
                   !_closed && identical(_resources[resource.scope], resource),
+              requireLive: true,
             );
           }
           if (!_closed && generation == resource._projectMembershipGeneration) {

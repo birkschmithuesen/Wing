@@ -11,6 +11,62 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-24
+
+### Opening a chat no longer re-reads its own project membership through a throwaway socket either
+- **What:** `_readProjectMembership` (`lib/core/services/profile_workspace_controller.dart`), called
+  from `_loadChatProject` on every `_openSession` while a profile's project-membership cache is
+  missing or stale, called `browserProjects(..., requireLive: false)` - the sibling of the Recents
+  call site fixed below, left uncovered by that fix's `git grep` sweep because it is a different
+  one of the three `_factory(` call sites in this file. `requireLive`'s default (`false`) still
+  opens a brand-new `WsClient` via `_factory(scope)`, runs one `projects.tree` RPC, then closes it,
+  even though the profile whose membership is being read is the one whose own chat the caller just
+  opened - that profile's `resource.gateway` is already live at this point (opening its chat
+  reached the success path that calls `_loadChatProject` in the first place). `_readProjectMembership`
+  now passes `requireLive: true`, reusing that live socket; if the gateway is not live at read time
+  (e.g. a reconnect raced in between the chat opening and this read), `browserProjects` throws and
+  `_loadChatProject`'s existing catch turns that into "Project unavailable" instead of opening a
+  throwaway socket.
+- **Why:** review of t_6e3f8566 (card t_c095c26c) found the prior fix covered only one of the three
+  `_factory(` call sites `git grep` turns up in this file; this is the second (the third,
+  `browserCanonicalBotChat` at line ~2445, and `_resource`'s one-time gateway creation at line
+  ~2646, are out of scope - neither is this defect). Cold-start socket-fan-out (review item 3) and
+  the chat-switch "Reconnecting" badge (review item 4) are separate, independent-of-this-fix
+  rebuilds that need their own analysis and tests; deliberately not addressed here, left to their
+  own follow-up card(s).
+- **Fork edits of upstream files:** `lib/core/services/profile_workspace_controller.dart`.
+- **Merge:** pending · **Card:** t_03f5043c
+
+### Recents stops opening its own throwaway gateway socket for every discovered profile on every refresh
+- **What:** `_refreshRecents` (`lib/core/services/profile_workspace_controller.dart`) called
+  `browserProjects(profile.name, ...)` for *every* profile `discover()` returned, on *every*
+  refresh (chat list opening, pull refresh, and `WorkspaceRecentsSession`'s own 30s background
+  poll while the list is visible) - with no caching at all on this path. `browserProjects` always
+  opened a brand-new `WsClient` via a throwaway reader (`_factory(scope)`), ran one
+  `projects.tree` RPC, then closed it - for every profile, including ones the user had never
+  opened (a `default`/`checker`-style chip-only profile), and *in addition to* the selected
+  profile's own real conversation socket, for the selected profile too. Because the throwaway
+  reader's `WsClient` carries the same `{connection, profile}` diagnostic tag as the resource's
+  own persistent gateway, its `ws.gateway_ready`/`ws.local_closed` lines were indistinguishable
+  from the open chat's own socket in logcat - what looked like "the open chat's socket closes
+  itself ~4-5s after becoming ready" was this second, throwaway socket for the same profile name,
+  not the real one. `browserProjects` now takes a `requireLive` flag; Recents passes it `true`,
+  which skips a profile entirely unless its own gateway is already live (reusing that socket for
+  the read instead of opening another one) and otherwise keeps that profile's last-known project
+  tags until the user actually opens it. The single-profile, user-initiated browse path
+  (`chat_browser_data.dart`'s explicit profile browser) is unchanged - it already read lazily,
+  one profile at a time, only when the user opened it.
+- **Why:** card t_6e3f8566, following up on t_341c53a1/t_b0128763's cold-start restore scoping,
+  which fixed the pending-turn/outbox restore sweeps but left this separate, undocumented fan-out
+  path untouched. Device measurement on Birk's phone (build `692cad01`, 2026-11-24):
+  `workspace.initialization_started` → `workspace.initialized` took 9.8s (target ≤2s) with 32
+  `ws.connect_started` in the first 30s (target ≤2); the selected profile's own socket appeared
+  to open 5.4s after tapping its chat and close again ~4-5s later while the chat stayed open;
+  returning to the chat list reopened fresh `default`/`checker` sockets every time.
+- **Fork edits of upstream files:** `lib/core/services/profile_workspace_controller.dart`.
+- **Merge:** pending (branch `wing/t_6e3f8566-fix-wing-every-navigation-re-mints-socke`, not yet
+  merged to `voice-offline`) · **Card:** t_6e3f8566
+
 ## 2026-11-23
 
 ### Cold start no longer fans a gateway socket out to every served profile's queued outbox right after the selected one initializes

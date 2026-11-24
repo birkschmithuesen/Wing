@@ -184,6 +184,28 @@ aggregates. A served profile with neither a durable pending turn nor a
 queued outbox - the common case for one the user has merely looked at
 before - is still never connected during cold start.
 
+Fork (Wing Voice): Recents' own cross-profile project tagging is a separate
+path from the restore sweeps above, and used to connect every discovered
+profile's gateway on its own, every time the chat list refreshed (chat list
+open, a pull refresh or its 30s background poll) - including profiles the
+user has never opened (e.g. a `default`/`checker`-style profile that only
+ever appears as a chip), and even a second, throwaway socket for the
+selected profile alongside its own real one. Recents now reads a profile's
+project tree only through that profile's own already-live gateway; a
+profile with no live socket keeps its last-known project tags until the
+user actually opens it, instead of being connected and disconnected just to
+tag its recent chats (t_6e3f8566).
+
+Fork (Wing Voice): opening a chat re-reads that same chat's own project
+membership the same way, through a second call site that the fix above did
+not cover. Re-reading membership for an already-open chat (its own cache
+having gone stale, e.g. after a `sessions.changed` publication) used to open
+a second, throwaway socket to the same profile the user is already looking
+at, even though that profile's gateway is already live; it now reuses that
+live gateway instead, and falls back to "Project unavailable" rather than a
+throwaway socket on the rare race where the gateway is not live at read
+time (t_03f5043c).
+
 ```sh
 flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart test/fork/visible_chat_resume_bandwidth_test.dart
 ```
