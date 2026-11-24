@@ -339,6 +339,34 @@ void main() {
   });
 
   test(
+    'Recents never opens a per-profile socket for a profile the user has '
+    'not opened (t_6e3f8566)',
+    () async {
+      // 'personal' is the selected/current profile and already has a live
+      // gateway; 'work' has never been opened by this controller. Recents
+      // must not reach for 'work' project membership through a throwaway
+      // reader socket just to tag its recent chats.
+      await controller.refreshRecents();
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'work' && call.$2 == 'projects.tree',
+        ),
+        isEmpty,
+        reason:
+            'chat list / profile chips must not open a per-profile socket '
+            'for a profile that is not live; read lazily instead',
+      );
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'personal' && call.$2 == 'projects.tree',
+        ),
+        isNotEmpty,
+        reason: 'the selected, already-live profile still gets tagged',
+      );
+    },
+  );
+
+  test(
     'incomplete project membership keeps the known conversation project',
     () async {
       fixture.recentProject = 'p2';
