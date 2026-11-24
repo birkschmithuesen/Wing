@@ -1681,10 +1681,18 @@ class ProfileWorkspaceController extends ChangeNotifier {
           String? profileError;
           try {
             try {
+              // t_6e3f8566: Recents tags chats from every discovered
+              // profile, but must never open a per-profile socket just to
+              // do it. Only a profile that already has a live gateway (the
+              // selected/open one, or any other the user has an active
+              // chat in) gets its project tree read, through that existing
+              // socket; every other profile keeps its last-known tagging
+              // until the user actually opens it.
               final projects = await browserProjects(
                 profile.name,
                 sessionLimit: ProfileGateway.projectSessionScanLimit,
                 canRead: () => !_closed && generation == _recentsGeneration,
+                requireLive: true,
               );
               if (!_closed && generation == _recentsGeneration) {
                 resource._projects = _readonlyWorkspaceRows(projects);
@@ -2458,17 +2466,28 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   /// Project browsing uses short-lived readers, never the conversation socket.
   /// Bound the caller's concurrency instead of retaining a socket per profile.
+  ///
+  /// [requireLive] is for passive, cross-profile observers (Recents' own
+  /// tagging of every discovered profile's chats) rather than an explicit,
+  /// single-profile browse: it must never open a per-profile socket for a
+  /// profile the user has not opened (t_6e3f8566). It skips the profile
+  /// entirely unless that profile's own gateway is already live, and then
+  /// reuses that existing socket instead of a throwaway reader.
   Future<List<Map<String, dynamic>>> browserProjects(
     String name, {
     required int sessionLimit,
     required bool Function() canRead,
+    bool requireLive = false,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
     final resource = browserResource(name);
     final generation = resource._projectMembershipGeneration;
-    final reader = _factory(browserResource(name).scope);
+    if (requireLive && !connectionStatus.liveAvailable(name)) {
+      throw StateError('Profile has no live socket to read projects from');
+    }
+    final reader = requireLive ? resource.gateway : _factory(resource.scope);
     try {
-      await reader.connect();
+      if (!requireLive) await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       final result = await reader.call('projects.tree', {
         'preview_limit': 3,
@@ -2523,7 +2542,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       return projects.where(ProfileGateway.isSavedProject).toList();
     } finally {
-      reader.close();
+      if (!requireLive) reader.close();
     }
   }
 

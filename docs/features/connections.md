@@ -184,6 +184,18 @@ aggregates. A served profile with neither a durable pending turn nor a
 queued outbox - the common case for one the user has merely looked at
 before - is still never connected during cold start.
 
+Fork (Wing Voice): Recents' own cross-profile project tagging is a separate
+path from the restore sweeps above, and used to connect every discovered
+profile's gateway on its own, every time the chat list refreshed (chat list
+open, a pull refresh or its 30s background poll) - including profiles the
+user has never opened (e.g. a `default`/`checker`-style profile that only
+ever appears as a chip), and even a second, throwaway socket for the
+selected profile alongside its own real one. Recents now reads a profile's
+project tree only through that profile's own already-live gateway; a
+profile with no live socket keeps its last-known project tags until the
+user actually opens it, instead of being connected and disconnected just to
+tag its recent chats (t_6e3f8566).
+
 ```sh
 flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart test/fork/visible_chat_resume_bandwidth_test.dart
 ```
