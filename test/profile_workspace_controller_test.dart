@@ -228,6 +228,7 @@ class Host {
   Completer<void>? activeListDelay;
   int connectFailures = 0;
   Object? connectError;
+  final connectRefused = <String>{};
   Object? rosterFailure;
   Object? groupsListError;
   final refusedProfiles = <String, Object>{};
@@ -382,6 +383,9 @@ class Host {
           );
         }
         await connectDelay?.future;
+        if (connectRefused.contains(name)) {
+          throw StateError('Connection refused for profile $name');
+        }
         if (connectError != null) throw connectError!;
         if (connectFailures > 0) {
           connectFailures--;
@@ -5691,6 +5695,131 @@ void main() {
       expect(host.calls.where((call) => call.$2 == 'prompt.submit'), isEmpty);
     });
   }
+
+  test(
+    'cold start restores only the initially selected profile\'s queued '
+    'outbox; other profiles\' queued outbox is never auto-restored',
+    () async {
+      host.profiles = ['a', 'b', 'c'];
+      final connection = controller.connection;
+      controller.dispose();
+      final drafts = ComposerDraftStore(
+        preferences,
+        connectionIdentity: 'original-settings',
+      );
+      await drafts.write(
+        profileName: 'b',
+        sessionId: 'queued-b',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for b')],
+      );
+      await drafts.write(
+        profileName: 'c',
+        sessionId: 'queued-c',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for c')],
+      );
+      host.calls.clear();
+      host.connectsByProfile.clear();
+      controller = ProfileWorkspaceController(
+        connectionIdentity: 'original-settings',
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      await controller.initialize();
+      expect(controller.initialized, isTrue);
+      expect(controller.current?.scope.profileName, 'a');
+      expect(host.connectsByProfile.keys, ['a']);
+      expect(
+        (await drafts.read(profileName: 'b', sessionId: 'queued-b'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'a profile the user never opened keeps its queued outbox '
+            'untouched instead of being restored eagerly',
+      );
+      // Switching to 'b' later connects it (ordinary profile navigation),
+      // but must not re-trigger the one-time outbox restore: that restore
+      // is scoped to the profile selected at cold start only, so it never
+      // races an in-flight draft operation on a later switch (CI run
+      // 45218741379 caught exactly that race when this ran unconditionally
+      // on every switchProfile/navigateProfile call instead).
+      expect(await controller.switchProfile('b'), isTrue);
+      expect(host.connectsByProfile['b'], greaterThanOrEqualTo(1));
+      expect(
+        (await drafts.read(profileName: 'b', sessionId: 'queued-b'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'switching to b later does not re-trigger the one-time '
+            'cold-start outbox restore',
+      );
+      expect(
+        host.connectsByProfile.containsKey('c'),
+        isFalse,
+        reason: 'profile c was never opened, so it is never connected',
+      );
+      expect(
+        (await drafts.read(profileName: 'c', sessionId: 'queued-c'))!
+            .queuedPrompts,
+        isNotEmpty,
+        reason: 'profile c was never opened, so its queued outbox stays put',
+      );
+    },
+  );
+
+  test(
+    'a background profile\'s queued outbox refused during cold start does '
+    'not flip the connection unavailable while the selected profile stays '
+    'healthy',
+    () async {
+      host.profiles = ['a', 'b'];
+      final connection = controller.connection;
+      controller.dispose();
+      final drafts = ComposerDraftStore(
+        preferences,
+        connectionIdentity: 'original-settings',
+      );
+      await drafts.write(
+        profileName: 'b',
+        sessionId: 'queued-b',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued for b')],
+      );
+      host.connectRefused.add('b');
+      host.calls.clear();
+      host.connectsByProfile.clear();
+      controller = ProfileWorkspaceController(
+        connectionIdentity: 'original-settings',
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        preferences: preferences,
+        appPreferences: appPreferences,
+        gatewayFactory: host.gateway,
+      );
+      final observed = <ConnectionAvailability>[];
+      controller.connectionStatus.addListener(
+        () => observed.add(controller.connectionStatus.transportAvailability),
+      );
+      await controller.initialize();
+      expect(controller.initialized, isTrue);
+      expect(controller.current?.scope.profileName, 'a');
+      expect(host.connectsByProfile.containsKey('b'), isFalse);
+      expect(
+        observed,
+        isNot(contains(ConnectionAvailability.unavailable)),
+        reason:
+            'profile b was never connected during cold start, so its '
+            'refusal cannot be observed by the Alerts surface yet',
+      );
+      expect(
+        controller.connectionStatus.transportAvailability,
+        isNot(ConnectionAvailability.unavailable),
+      );
+    },
+  );
 
   test(
     'stock batched clarification routes the unanswered question ID',

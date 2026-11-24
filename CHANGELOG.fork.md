@@ -11,6 +11,139 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-23
+
+### Cold start no longer fans a gateway socket out to every served profile's queued outbox right after the selected one initializes
+- **What:** a device measurement (card t_341c53a1) found that, right after
+  the selected profile (`birk`) logged `workspace.initialized`, the
+  controller fanned out to every other discovered profile at once: the old
+  `_finishInitialization` (`lib/core/services/profile_workspace_controller.dart`)
+  unconditionally called `_restorePending()` (`Future.wait` over every scope
+  with a durable unrestored-pending turn) and `_restoreWaitingOutboxes()`
+  (a loop over every discovered profile with a queued draft), regardless of
+  whether the user had ever opened that profile - 22 profiles on the
+  measured device, ~31 sockets within 1.4 s. Each such profile's gateway
+  then disconnected again shortly after (nothing was keeping it open), and
+  because `ServerConnectionStatus.transportAvailability`
+  (`lib/core/services/server_connection_status.dart`) is deliberately
+  unscoped across every served profile on a connection (comment at its
+  definition: it is the Health "Alerts" surface's input, not the header's),
+  each of those disconnects could flip it to `unavailable` and make
+  `health_alerts_session.dart`'s `_observeConnection` report "Connection
+  interrupted" even though the selected profile stayed healthy throughout.
+  Of the two sweeps, only the queued-outbox one could actually be made
+  lazy: a queued outbox prompt is purely that profile's own composer state.
+  `_restoreWaitingOutboxesFor(profileName)` replaces the global loop, but it
+  is scoped to *both* a single profile *and* a single moment: it runs
+  exactly once per connection, for whichever profile that connection's
+  genuine first `switchProfile` (the one inside `_finishInitialization`'s
+  one-time transition from not-initialized to initialized) selected - never
+  from an ordinary later `switchProfile`/`navigateProfile` call. An earlier
+  version of this fix ran it from every `switchProfile` call, scoped to
+  whichever profile that call opened; CI (run 45218741379) caught that this
+  broke `profile_workspace_controller_test.dart` "expired unsubmitted
+  runtime keeps its draft and project on replacement" - a later
+  `navigateProfile` during an in-flight expired-draft replacement raced
+  this restore against `openSession(recoverExpiredDraft: true)`'s own
+  migration of the same `ComposerDraftStore` entry, losing the queued
+  prompt. A profile's queued outbox is therefore never auto-restored after
+  cold start's own one-time pass; it isn't literally lazy-on-open for a
+  profile opened later, but it also never again touches durable composer
+  state behind an ordinary profile switch, which is what that regression
+  needs to not happen.
+  A first version of this fix also scoped the pending-turn sweep
+  (`_restorePending`) the same way, to the opened profile only; CI (run
+  45211216777) caught that this broke two other existing, intentional
+  behaviours: `profile_live_activity_test.dart` "recovery resolves a title
+  in a profile whose list is not loaded" and
+  `profile_workspace_registry_test.dart` "process recreation restores only
+  matching owners without resubmitting" both depend on a durable pending
+  turn resuming for *every* served profile regardless of which one is
+  selected, because Activity and notification recovery surface that turn
+  across the whole connection, not only inside the profile that owns it.
+  Pending-turn restoration is therefore still eager and global
+  (`_restorePendingBatched`); what changed there is only the concurrency -
+  the selected profile resumes first and alone, then the rest resume in
+  batches of 3 (the same batch size `resumeConnection`'s background sweep
+  already uses) instead of one unbounded `Future.wait` opening every
+  profile's socket at once. A served profile that genuinely has no durable
+  pending turn and no queued outbox - the common case for a profile the
+  user has merely looked at before - is still never connected during cold
+  start. `_recoverDeletedDrafts` was investigated too: it only ever does an
+  HTTP discover + a plain dashboard REST read (`ProfileGateway.read`/
+  `requireProfile`, both wired to `dashboard.apiGet`, not the WebSocket
+  `connect()`/ticket path) and never opens a gateway socket, so it was left
+  untouched - the serial `gateway.credentials_requested`/`ws.connect_started`
+  walk the card also measured *before* `workspace.initialized` does not
+  originate in `ProfileWorkspaceController.initialize()`. The strongest
+  remaining candidate (not fixed here, see Why) is `savedBotsSession`
+  (`lib/core/services/bots_connection_source.dart`): its per-saved-connection
+  loop `await`s `controller.activateGroupNotifications()` - a real gateway
+  ticket request and connect - one connection at a time, before the next
+  connection's own request starts, and `BotsSession.refresh()`
+  (`lib/core/services/bots_session.dart`) then reads every one of those
+  connections' status/readiness/groups with one unbounded `Future.wait`.
+- **Why:** card t_341c53a1's acceptance criteria: the selected profile
+  initializes first and fast (`workspace.initialization_started` ->
+  `workspace.initialized` <= 2 s), other profiles stay lazy or batched
+  (<= 2 sockets in the first 30 s), and the "Connection interrupted" alert
+  must not fire from the fan-out while the selected profile is connected -
+  fix the cause, not the alert. A profile with genuine pending/notification
+  work cannot be made fully lazy without breaking Activity and notification
+  recovery across profiles (confirmed by the CI failures above, not by
+  inference), so "at most 2 sockets in 30 s" is only reachable for the
+  common case of profiles with no durable pending state; bounding the
+  pending-turn sweep's own concurrency is the fix available without
+  regressing that cross-profile behaviour. Verified the fan-out is real and
+  scoped as described by reading every call site of `_restorePending`/
+  `_restoreWaitingOutboxes` and the gateway's `connect()`/`_liveChanged`
+  wiring (`lib/core/services/profile_gateway.dart`) rather than inferring
+  it; separately verified `_recoverDeletedDrafts`'s `read`/`requireProfile`
+  path is plain HTTP by reading `ProfileGateway._forDashboard`'s `get`/
+  `discover` fields - a premise from the card brief (that this function
+  caused the serial socket walk) that this reading refutes. Did not change
+  `bots_connection_source.dart`/`bots_session.dart` in this pass: neither
+  file has any existing test coverage, this sandbox has no local
+  Flutter/Dart toolchain to compile or run against (`tools/factory/ci-suite.sh`
+  needs a `git push` to a throwaway CI branch this run is not authorized to
+  perform), and the causal link from that serial loop to the selected
+  profile's own measured 13 s delay - plausible, given it issues a real
+  gateway ticket request per saved connection with nothing prioritizing the
+  selected one - was not confirmed against the device logs. Flagged as
+  follow-up for a session that can verify it against the full suite.
+  Explains, rather than fixes, the version-number flicker the card also
+  asked about: `DrawerVersions`/`VersionsController`
+  (`lib/core/widgets/drawer_versions.dart`) runs its own independent
+  gateway (`ProfileGateway.forConnection`, profile `default`) purely to
+  check the installed server version; it shares no object with the
+  per-profile fan-out, but it shares the same dashboard server, so the same
+  ticket-minting congestion that delays the selected profile's own ticket
+  (Why, above) plausibly also delays/retries this gateway's own version
+  check, flipping its label between `…` (loading) and the resolved version.
+  Reducing the fan-out (What, above) reduces that congestion; it does not
+  change `DrawerVersions` itself.
+- **Fork edits of upstream files:**
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/profile_workspace_controller_test.dart` (new: "cold start
+  restores only the initially selected profile's queued outbox; other
+  profiles' queued outbox is never auto-restored" - proves a background
+  profile with a queued outbox is never connected during cold start, and
+  that switching to it later connects it without re-triggering the
+  one-time outbox restore (a direct regression guard for the CI run
+  45218741379 failure - see What); "a background profile's queued outbox
+  refused during cold start does not flip the connection unavailable while
+  the selected profile stays healthy" - proves a background profile's own
+  connect failure, which the old eager outbox sweep would have reached, no
+  longer reaches `ServerConnectionStatus.transportAvailability` once that
+  profile's outbox is never connected in the first place). Both fail
+  against the pre-fix code and pass against the fix. Left unchanged and
+  re-confirmed passing against the fix: `profile_live_activity_test.dart`
+  and `profile_workspace_registry_test.dart` (regressed by the first
+  version of this fix, CI run 45211216777) and "expired unsubmitted
+  runtime keeps its draft and project on replacement" (regressed by the
+  second version, CI run 45218741379) - see What for both.
+- **Merge:** pending · **Card:** t_341c53a1
+
 ## 2026-11-19
 
 ### The visible chat's own resume no longer scales with its saved transcript length or embedded image bytes

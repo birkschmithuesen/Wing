@@ -2738,9 +2738,20 @@ class ProfileWorkspaceController extends ChangeNotifier {
     connectionStatus.endRecovery('initialization');
     _recoveringInitialization = false;
     _initializationAttempt = 0;
-    await _restorePending();
-    if (_closed) return;
-    await _restoreWaitingOutboxes();
+    // Fork (t_341c53a1): a durable pending turn still blocking admission
+    // must resume even for a profile the user has not opened - Activity and
+    // the registry's cross-profile restore surface it for every served
+    // profile, not only the selected one (see
+    // `profile_live_activity_test.dart` "recovery resolves a title in a
+    // profile whose list is not loaded" and
+    // `profile_workspace_registry_test.dart` "process recreation restores
+    // only matching owners without resubmitting" - both need this to stay
+    // eager and global; an earlier version of this fix scoped it to the
+    // opened profile only and broke both). What this fixes is only the
+    // concurrency: `_restorePendingBatched` resumes the selected profile
+    // first and alone, then the rest in small batches, instead of one
+    // unbounded `Future.wait` opening every profile's socket at once.
+    await _restorePendingBatched();
     if (_closed) return;
     if (generation == _generation && onAttention != null && _current != null) {
       await _groupNotifications.activate();
@@ -3032,7 +3043,31 @@ class ProfileWorkspaceController extends ChangeNotifier {
         return false;
       }
       if (_initializing != null || _profileSelectionRepairRequired) {
+        // A `_profileSelectionRepairRequired` retry can re-enter this
+        // branch any number of times while `_finishInitialization` keeps
+        // declining (still not `_initialized`); only the one call that
+        // actually flips `_initialized` false -> true just completed the
+        // connection's genuine first initialization.
+        final wasInitialized = _initialized;
         await _finishInitialization(generation);
+        if (_closed || generation != _generation || _current != target) {
+          return false;
+        }
+        if (!wasInitialized && _initialized) {
+          // Fork (t_341c53a1): scoped to the profile this very
+          // initialization selected, instead of looping every discovered
+          // profile - that loop used to reconnect every profile with a
+          // queued outbox right after the selected one finished
+          // initializing, fanning a socket out to each of them at once.
+          // Deliberately gated on the one-time initialization transition,
+          // not on every `switchProfile`/`navigateProfile` call: an
+          // ordinary later profile switch must not race this restore
+          // against an in-flight draft operation on that same profile (CI
+          // run 45218741379 caught "expired unsubmitted runtime keeps its
+          // draft and project on replacement" losing its queued prompt to
+          // exactly that race when this ran unconditionally).
+          await _restoreWaitingOutboxesFor(target.scope.profileName);
+        }
       }
       if (_closed || generation != _generation || _current != target) {
         return false;
@@ -6275,27 +6310,61 @@ class ProfileWorkspaceController extends ChangeNotifier {
 
   Future<void> _restoreDraft(ProfileChat chat) => chat.composer.restore();
 
-  Future<void> _restoreWaitingOutboxes() async {
-    for (final profile in _discovery!.profiles) {
-      final waiting = _drafts
-          .summaries(profileName: profile.name)
-          .where((draft) => draft.queuedCount > 0)
-          .toList();
-      if (waiting.isEmpty || _closed) continue;
-      final resource = _resource(profile.name);
-      for (final draft in waiting) {
-        if (resource.blocksSession(draft.sessionId)) continue;
-        final chat = resource._chats.putIfAbsent(
-          draft.sessionId,
-          () => _createChatRecord(
-            key: ProfileSessionKey(resource.scope, draft.sessionId),
-            runtimeId: draft.sessionId,
-            title: 'Chat',
-          ).._runtime.installOfflineReading(),
-        );
-        await _restoreDraft(chat);
-      }
-      if (!_closed) await _reconnect(resource);
+  /// Fork (t_341c53a1): scoped to the one profile being opened (cold start's
+  /// selected profile, or any profile the user later switches to) instead of
+  /// looping every discovered profile - that loop used to reconnect every
+  /// profile with a queued outbox right after the selected profile finished
+  /// initializing, fanning a socket out to each of them at once.
+  Future<void> _restoreWaitingOutboxesFor(String profileName) async {
+    final waiting = _drafts
+        .summaries(profileName: profileName)
+        .where((draft) => draft.queuedCount > 0)
+        .toList();
+    if (waiting.isEmpty || _closed) return;
+    final resource = _resource(profileName);
+    for (final draft in waiting) {
+      if (resource.blocksSession(draft.sessionId)) continue;
+      final chat = resource._chats.putIfAbsent(
+        draft.sessionId,
+        () => _createChatRecord(
+          key: ProfileSessionKey(resource.scope, draft.sessionId),
+          runtimeId: draft.sessionId,
+          title: 'Chat',
+        ).._runtime.installOfflineReading(),
+      );
+      await _restoreDraft(chat);
+    }
+    if (!_closed) await _reconnect(resource);
+  }
+
+  /// Fork (t_341c53a1): a durable pending turn still blocking admission must
+  /// resume even for a profile the user has not opened - Activity and the
+  /// registry's cross-profile restore surface it for every served profile,
+  /// not only the selected one, so this stays eager and global (unlike
+  /// `_restoreWaitingOutboxesFor` above, a queued outbox prompt is purely
+  /// that profile's own composer state, so it is safe to restore lazily).
+  /// What changed from the old `_restorePending` is only the concurrency:
+  /// the selected profile resumes first and alone, then the rest resume in
+  /// small batches instead of one unbounded `Future.wait` opening every
+  /// profile's socket at once.
+  Future<void> _restorePendingBatched() async {
+    _seedPendingOwners();
+    final scopes = _unrestoredPending
+        .map((key) => key.workspace)
+        .toSet()
+        .toList();
+    final current = _current?.scope;
+    if (current != null && scopes.remove(current)) {
+      await reconnect(_resource(current.profileName).scope);
+      if (_closed) return;
+    }
+    const batchSize = 3;
+    for (var offset = 0; offset < scopes.length; offset += batchSize) {
+      await Future.wait([
+        for (final scope in scopes.skip(offset).take(batchSize))
+          reconnect(_resource(scope.profileName).scope),
+      ]);
+      if (_closed) return;
     }
   }
 

@@ -5,7 +5,9 @@ import 'package:crypto/crypto.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:wing/core/models/queued_prompt_draft.dart';
 import 'package:wing/core/services/app_preferences.dart';
+import 'package:wing/core/services/composer_draft_store.dart';
 import 'package:wing/core/services/connection_access.dart';
 import 'package:wing/core/services/connection_manager.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
@@ -162,6 +164,63 @@ void main() {
     expect(controller.requiresProfileSelectionRepair, isFalse);
     expect(host.updates, isEmpty);
   });
+
+  test(
+    'repair retry restores a queued outbox once, at the retry that first '
+    'initializes, not on a declined retry or a later re-entry',
+    () async {
+      const raw = '../personal';
+      await platform.setValue('String', key, raw);
+      await owner.reload();
+      final drafts = ComposerDraftStore(
+        preferences,
+        connectionIdentity: identity,
+      );
+      await drafts.write(
+        profileName: 'work',
+        sessionId: 'queued-chat',
+        text: '',
+        attachments: const [],
+        queuedPrompts: [QueuedPromptDraft(text: 'queued while repairing')],
+      );
+      await controller.initialize();
+      expect(controller.initialized, isFalse);
+      expect(controller.requiresProfileSelectionRepair, isTrue);
+
+      Iterable<(String, String, Map<String, dynamic>)> resumesOfQueuedChat() =>
+          host.calls.where(
+            (call) =>
+                call.$2 == 'session.resume' &&
+                call.$3['session_id'] == 'queued-chat',
+          );
+
+      // First retry: the write fails and rolls back, so the saved selection
+      // stays invalid. This re-enters the `_initializing != null ||
+      // _profileSelectionRepairRequired` branch, but `_finishInitialization`
+      // declines (the selection is still invalid) - no initialization
+      // transition happens, so the queued outbox must not be touched yet.
+      platform.failWork = true;
+      expect(await controller.switchProfile('work'), isTrue);
+      expect(controller.initialized, isFalse);
+      expect(controller.requiresProfileSelectionRepair, isTrue);
+      expect(resumesOfQueuedChat(), isEmpty);
+
+      // Second retry: the write succeeds, so this is the one call where
+      // `_initialized` actually flips false -> true. The queued outbox for
+      // the newly-initialized profile is restored exactly once.
+      expect(await controller.switchProfile('work'), isTrue);
+      expect(controller.initialized, isTrue);
+      expect(controller.requiresProfileSelectionRepair, isFalse);
+      expect(resumesOfQueuedChat(), hasLength(1));
+
+      // A later re-entry into the same branch (another `initialize()` call
+      // re-enters it through `_initializing != null`, since the connection
+      // isn't closed) finds `_initialized` already true and must not restore
+      // the outbox a second time.
+      await controller.initialize();
+      expect(resumesOfQueuedChat(), hasLength(1));
+    },
+  );
 
   test(
     'newer repair navigation stays available and initializes once after settlement',
