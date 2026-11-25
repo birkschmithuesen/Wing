@@ -190,8 +190,15 @@ up on t_6e3f8566/t_03f5043c) found this third, independent caller of the
 same readers survived both of those fixes: cold start still showed a
 serial per-profile socket walk interleaved with the selected profile's own
 connect, and every list-chat-list round trip reopened sockets for profiles
-the user never selected. Canonical bot chat and project membership now
-reuse a profile's own live socket when it has one and otherwise keep the
-last-known value - the same profiles-without-a-live-socket-keep-stale-tags
-rule Recents already follows - instead of opening a socket just to check an
-unopened profile.
+the user never selected. Canonical bot chat (cosmetic row styling) and
+project membership both now reuse a profile's own live socket when it has
+one. Canonical bot chat otherwise skips a never-opened profile instead of
+opening a socket just to check - the same profiles-without-a-live-socket-
+keep-stale-tags rule Recents already follows. Project membership backs this
+feature's own cross-profile browse/filter/organize surface for every
+profile, live or not, so it cannot go without data the same way; a
+never-opened profile's project tree still seeds once through a throwaway
+socket, but that read is cached from then on - a later visit, including a
+brand-new instance of this combined browser from returning to the list,
+reuses the cache and never reopens a socket for that profile's projects
+again.

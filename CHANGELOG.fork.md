@@ -34,10 +34,31 @@ the README feature list current for every future change.
   `browserProjects` already had (added by t_6e3f8566): it throws unless
   that profile's own gateway is already live, instead of opening a reader.
   The worker in `chat_browser_data.dart` now passes `requireLive: true` to
-  both, reusing a profile's own live socket when it has one and otherwise
-  keeping the last-known canonical chat/project tree (the same
-  profile-without-a-live-socket-keeps-stale-tags rule Recents already
-  follows) rather than opening a socket just to check an unopened profile.
+  both, reusing a profile's own live socket when it has one. Canonical bot
+  chat merge is purely cosmetic row styling, so a profile with neither a
+  live socket nor an earlier successful read simply skips it, same as
+  Recents' own profile-without-a-live-socket-keeps-stale-tags rule - a
+  first widget-test pass that applied the exact same skip to project
+  membership broke the combined browser's own cross-profile project
+  list/filter/organize surface (`project picker follows profile filter`,
+  `cross-profile project rename uses its captured production menu`, `Edit
+  project feedback ... failure=folder/details` in
+  `test/profile_workspace_browser_test.dart`/`test/chat_list_target_test.dart`
+  - all show/edit a profile's projects without that profile ever being
+  live, which the skip left permanently empty since nothing else ever
+  populates that profile's project list). `browserProjects` itself now
+  caches its result on `ProfileWorkspaceData` (`_projects`/new
+  `_projectsLoaded` flag) on every successful read, from any caller, and
+  returns that cache instead of touching the network when the profile
+  isn't live and the cache already has it - a pure optimization for
+  Recents/`_readProjectMembership` that never changes what they already
+  did on the exception they otherwise catch. A new `seedIfMissing` flag,
+  set only by `chat_browser_data.dart`'s worker, additionally allows a
+  one-time throwaway seed through a never-opened profile's first read
+  (Recents and `_readProjectMembership` still throw instead, unchanged):
+  every later read for that profile, including one from a brand-new
+  `ChatBrowserData` instance after returning to the list, reuses the
+  cache and never reopens a socket for it again.
 - **Why:** card t_241cf7b0's acceptance criteria: the selected profile's
   socket must be ready <= 2s after `workspace.initialization_started` with
   nothing else (other profiles, Recents, health checks) running before or
@@ -65,23 +86,32 @@ the README feature list current for every future change.
 - **Fork edits of upstream files:** `lib/core/services/chat_browser_data.dart`,
   `lib/core/services/profile_workspace_controller.dart`.
 - **Tests:** `test/chat_browser_data_test.dart` (new: "cold start never
-  opens a throwaway socket for a profile other than the one it selects,
-  even though the chat list mounts before discovery resolves" - starts
-  `ChatBrowserData.start()` before `controller.initialize()`, the same race
-  the real cold start has, and proves the unopened profile never gets a
-  `projects.tree` call; "returning to the chat list never re-opens a socket
-  for a profile the user has not opened" - rebuilds `ChatBrowserData` three
-  times, the same list-chat-list cycle production performs, and proves the
-  same for repeated visits). Updated to the new contract: "canonical
-  browsing reuses a live profile's own socket and never opens one for a
-  profile the user has not opened" (was: "...opens and retires readers
-  without losing live chats" - the old contract deliberately opened and
-  closed a throwaway reader per profile; the new one asserts zero new
-  reader instances via the `_factory`/`ReaderFixture.opened` instance
-  counter, not call counts) and "hidden Bot Chats obey visibility before
-  and after opening and re-entry" (an unopened profile's hidden Bot Chat no
-  longer merges until that profile is actually opened). All four fail
-  against the pre-fix code and pass against the fix.
+  opens a throwaway socket for a profile other than the one it selects..."
+  - starts `ChatBrowserData.start()` before `controller.initialize()`, the
+  same race the real cold start has, and proves an unopened profile's
+  project tree is seeded at most once even under that race; "returning to
+  the chat list never re-opens a socket for a profile the user has not
+  opened, once its project tree has been seeded..." - rebuilds
+  `ChatBrowserData` three times, the same list-chat-list cycle production
+  performs, and proves the seed from the first visit is reused, not
+  repeated, by the second and third). Updated to the new contract:
+  "canonical browsing reuses a live profile's own socket and never opens
+  one for a profile the user has not opened, even while that profile's
+  project tree seeds once..." (was: "...opens and retires readers without
+  losing live chats" - the old contract expected a throwaway reader for
+  every profile unconditionally; the new one asserts canonical merge opens
+  none for an unopened profile, while still accepting exactly one
+  project-tree seed, via the existing `_factory`/`ReaderFixture.opened`
+  instance counter, not call counts) and "hidden Bot Chats obey visibility
+  before and after opening and re-entry" (an unopened profile's hidden Bot
+  Chat merge, specifically, no longer appears until that profile is
+  actually opened - unlike its project tree, canonical bot chat merge has
+  no cross-profile browse/filter/organize feature depending on it, so it
+  stays purely skip-if-not-live). All four initially failed against the
+  code with project membership *also* purely skip-if-not-live (same bug
+  class as the one described in What, caught by this card's own CI run
+  45636255207 after an initial push - see What for the fix that made them
+  pass again) and pass against the final `seedIfMissing`-cached design.
 - **Merge:** pending · **Card:** t_241cf7b0
 
 ## 2026-11-24

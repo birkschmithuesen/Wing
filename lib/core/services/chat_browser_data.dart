@@ -26,9 +26,9 @@ typedef _BrowserSources = ({
   Set<ProfileSessionKey> chats,
 });
 
-/// [ProfileWorkspaceController.browserCanonicalBotChat] and
-/// [ProfileWorkspaceController.browserProjects]'s `requireLive: true` throw
-/// this exact [StateError] when the profile has no live socket to reuse.
+/// [ProfileWorkspaceController.browserCanonicalBotChat]'s `requireLive: true`
+/// throws this exact [StateError] when the profile has no live socket to
+/// reuse and nothing cosmetic is worth opening one for.
 bool _isNoLiveSocket(Object error) =>
     error is StateError && error.message.contains('no live socket');
 
@@ -1304,15 +1304,20 @@ final class ChatBrowserData extends ChangeNotifier {
               fetched.values.any((row) => row['title'] == 'Bot Chat') ||
               resource.chats.values.any((chat) => chat.title == 'Bot Chat');
           // t_241cf7b0: this worker walks every discovered profile on each
-          // list visit, not just the one the user opened. Canonical bot chat
-          // and project membership must reuse that profile's own live socket
-          // when it has one, and otherwise keep the last-known value instead
-          // of opening a throwaway socket for a profile the user never
-          // opened - the combined chat list fanned a socket out to every
-          // profile (including never-opened ones) on every return to the
-          // list, surviving t_6e3f8566/t_03f5043c's Recents/chat-open fixes
-          // because this is a third, independent caller of the same
-          // browserProjects/browserCanonicalBotChat readers.
+          // list visit, not just the one the user opened - surviving
+          // t_6e3f8566/t_03f5043c's Recents/chat-open fixes because this is
+          // a third, independent caller of the same two readers. Canonical
+          // bot chat merge is purely cosmetic (row styling): it reuses a
+          // profile's own live socket when it has one, and otherwise skips
+          // it for a profile the user never opened rather than opening a
+          // socket just to check. Project membership backs real browse/
+          // filter/organize functionality across every profile, so it
+          // cannot simply be skipped the same way; browserProjects itself
+          // caches its result at the controller level once read, so only
+          // the very first time a never-opened profile's projects are
+          // needed opens a throwaway socket - every later visit, including
+          // a brand-new ChatBrowserData from returning to this list, reuses
+          // that cache instead of reopening one.
           if (needsCanonical) {
             try {
               final canonical = await retryTransientRead(
@@ -1335,23 +1340,24 @@ final class ChatBrowserData extends ChangeNotifier {
           }
           // Ask for enough membership rows for the entire active list, not
           // just the desktop's preview. Archived chats are outside this tree.
+          // browserProjects(requireLive: true) itself returns the cached
+          // project list without a network call once a profile has been
+          // read once (controller-level cache, outlives this ChatBrowserData
+          // instance); it only ever opens a throwaway socket the first time
+          // a never-opened profile's projects are needed.
           if (!active()) return;
-          try {
-            final tree = await retryTransientRead(() {
-              if (!active()) throw StateError('Browser is closed');
-              return _controller.browserProjects(
-                profile,
-                sessionLimit: math.max(2000, fetched.length),
-                canRead: active,
-                requireLive: true,
-              );
-            }, isActive: active);
-            if (!active()) return;
-            _projects[profile] = tree;
-          } catch (error) {
-            if (!_isNoLiveSocket(error)) rethrow;
-          }
+          final tree = await retryTransientRead(() {
+            if (!active()) throw StateError('Browser is closed');
+            return _controller.browserProjects(
+              profile,
+              sessionLimit: math.max(2000, fetched.length),
+              canRead: active,
+              requireLive: true,
+              seedIfMissing: true,
+            );
+          }, isActive: active);
           if (!active()) return;
+          _projects[profile] = tree;
           _rows[profile] = _BrowserPage(fetched.values);
           _baselineRows[profile] = baseline;
           // Only retire changes that predate this read. A later confirmed

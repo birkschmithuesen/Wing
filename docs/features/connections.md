@@ -213,12 +213,18 @@ organize chats and projects](chat-browser.md#gotchas)), which walks every
 discovered profile on cold start (the list mounts before any chat is
 selected) and on every return from an open chat, not just the Recents
 refresh or an opened chat's own membership read. That walk now reuses a
-profile's own live socket, the same rule as the two fixes above. This also
-removes the likely cause of a "Reconnecting" badge reappearing for several
-seconds when opening a second chat shortly after visiting the list: that
-walk's throwaway connects, several per visit, were racing and congesting
-the selected profile's own resume; with no throwaway connects left to race
-against, the badge no longer has that burst to react to. This explanation
+profile's own live socket when it has one, the same rule as the two fixes
+above, for its cosmetic canonical-bot-chat check; its project tree, which
+backs this surface's own cross-profile browse/filter/organize feature for
+every profile regardless of liveness, still seeds once per never-opened
+profile but is cached from then on, so a later visit never reopens a
+socket for it again. This also reduces the likely cause of a "Reconnecting"
+badge reappearing for several seconds when opening a second chat shortly
+after visiting the list: that walk's throwaway connects, several per
+visit, were racing and congesting the selected profile's own resume; with
+most of that burst gone (repeat visits no longer reopen anything, and
+canonical checks for unopened profiles stop entirely), the badge has much
+less of a burst left to react to. This explanation
 is not separately verified by a device measurement in this same card - a
 follow-up install/measure card confirms it against the two numeric targets
 above (cold start socket count and the chat-switch badge).
