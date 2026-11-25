@@ -47,18 +47,32 @@ the README feature list current for every future change.
   - all show/edit a profile's projects without that profile ever being
   live, which the skip left permanently empty since nothing else ever
   populates that profile's project list). `browserProjects` itself now
-  caches its result on `ProfileWorkspaceData` (`_projects`/new
-  `_projectsLoaded` flag) on every successful read, from any caller, and
-  returns that cache instead of touching the network when the profile
-  isn't live and the cache already has it - a pure optimization for
-  Recents/`_readProjectMembership` that never changes what they already
-  did on the exception they otherwise catch. A new `seedIfMissing` flag,
-  set only by `chat_browser_data.dart`'s worker, additionally allows a
-  one-time throwaway seed through a never-opened profile's first read
-  (Recents and `_readProjectMembership` still throw instead, unchanged):
-  every later read for that profile, including one from a brand-new
-  `ChatBrowserData` instance after returning to the list, reuses the
-  cache and never reopens a socket for it again.
+  caches its result on `ProfileWorkspaceData` on every successful read,
+  from any caller, and returns that cache instead of touching the network
+  when the profile isn't live and the cache already has it - a pure
+  optimization for Recents/`_readProjectMembership` that never changes
+  what they already did on the exception they otherwise catch. A new
+  `seedIfMissing` flag, set only by `chat_browser_data.dart`'s worker,
+  additionally allows a one-time throwaway seed through a never-opened
+  profile's first read (Recents and `_readProjectMembership` still throw
+  instead, unchanged): every later read for that profile, including one
+  from a brand-new `ChatBrowserData` instance after returning to the list,
+  reuses the cache and never reopens a socket for it again. A second CI
+  run (45646887042) caught that caching into `resource._projects` itself
+  - the field `moveSessionToProject`/`selectProject` check continued
+  project membership in by *identity* (`_projects.contains(project)`) -
+  broke exactly that identity for any caller of `browserProjects`
+  (`_readProjectMembership` runs on every chat open while membership is
+  stale, which is most opens): a project `Map` captured earlier (e.g.
+  "move to project X") stopped matching after the next chat open silently
+  reassigned `_projects` to a freshly decoded list (`remove project
+  retains assignment after move/default read failure and retries`,
+  `remove project confirms and shows progress through every move stage`
+  in `test/profile_row_actions_test.dart`). The seed/cache this card needs
+  now lives in a new, separate `resource.browsedProjects`/
+  `_browsedProjectsLoaded` pair nothing else reads, leaving
+  `resource.projects`/`_projects` - and every identity check against it -
+  exactly as untouched by this change as it always was.
 - **Why:** card t_241cf7b0's acceptance criteria: the selected profile's
   socket must be ready <= 2s after `workspace.initialization_started` with
   nothing else (other profiles, Recents, health checks) running before or
