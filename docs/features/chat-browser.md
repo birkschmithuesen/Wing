@@ -179,3 +179,19 @@ Fork (Wing Voice): a foreground/network-restore resume across several loaded
 profiles now recovers them in small batches instead of opening every
 profile's gateway socket at once, so one profile's socket trouble no longer
 keeps an unrelated profile's New chat disabled for as long (t_a8358240).
+
+Fork (Wing Voice): the combined Chats list (every profile in one browser,
+`chat_browser_data.dart`) used to open a brand-new throwaway gateway socket
+for every discovered profile, on every visit - cold start (the list mounts
+before any chat is selected) and every return from an open chat - to check
+for a canonical Bot Chat and read project membership, even for a profile
+the user had never opened. Device measurement (card t_241cf7b0, following
+up on t_6e3f8566/t_03f5043c) found this third, independent caller of the
+same readers survived both of those fixes: cold start still showed a
+serial per-profile socket walk interleaved with the selected profile's own
+connect, and every list-chat-list round trip reopened sockets for profiles
+the user never selected. Canonical bot chat and project membership now
+reuse a profile's own live socket when it has one and otherwise keep the
+last-known value - the same profiles-without-a-live-socket-keep-stale-tags
+rule Recents already follows - instead of opening a socket just to check an
+unopened profile.

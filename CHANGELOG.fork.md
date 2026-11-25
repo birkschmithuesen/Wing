@@ -11,6 +11,79 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-25
+
+### The combined chat list stops fanning a socket out to every profile too
+- **What:** a device measurement (card t_241cf7b0, following up on
+  t_6e3f8566/t_03f5043c, both merged in `3855b841`) found the socket fan-out
+  survived through a third, independent caller of the same two readers:
+  `ChatBrowserData._refresh` (`lib/core/services/chat_browser_data.dart`),
+  which backs the combined Chats list ("every profile in one browser"),
+  walks every profile `_controller.discovery.profiles` returns on every
+  visit - cold start (the Chats screen mounts with no chat selected while
+  `initialize()` is still in flight, and `ChatBrowserData` defers its own
+  `refresh()` until the controller has both a discovery and a current
+  profile, racing the selected profile's own connect) and every return from
+  an open chat (`profile_workspace_screen.dart` nulls out its cached
+  browser and rebuilds a fresh `ChatBrowserData` each time) - and called
+  `browserCanonicalBotChat` and, unconditionally, `browserProjects` for
+  each one. Both opened a brand-new throwaway `WsClient`, connected it, ran
+  one RPC (`session.list`/`projects.tree`), then closed it - for every
+  profile, including ones the user has never opened, every single visit.
+  `browserCanonicalBotChat` gained the same `requireLive` flag
+  `browserProjects` already had (added by t_6e3f8566): it throws unless
+  that profile's own gateway is already live, instead of opening a reader.
+  The worker in `chat_browser_data.dart` now passes `requireLive: true` to
+  both, reusing a profile's own live socket when it has one and otherwise
+  keeping the last-known canonical chat/project tree (the same
+  profile-without-a-live-socket-keeps-stale-tags rule Recents already
+  follows) rather than opening a socket just to check an unopened profile.
+- **Why:** card t_241cf7b0's acceptance criteria: the selected profile's
+  socket must be ready <= 2s after `workspace.initialization_started` with
+  nothing else (other profiles, Recents, health checks) running before or
+  delaying it, at most 2 `ws.connect_started` in the first 30s, and no
+  "Reconnecting" badge on a chat switch while the server is reachable and
+  the selected profile's socket is live - find the fan-out source and the
+  badge cause, not just the symptom. Robo's device measurement after
+  t_6e3f8566/t_03f5043c confirmed the fan-out was not Recents or an opened
+  chat's own membership read (explicitly ruled out by that measurement),
+  which pointed at a second/third, still-unaudited caller; reading every
+  caller of `browserProjects`/`browserCanonicalBotChat` found this one.
+  The "Reconnecting" badge reappearing for ~20s on a second chat open is
+  explained, not separately fixed or device-verified in this card: the
+  throwaway connects this fan-out opened (several per visit, for profiles
+  including the one the user was about to switch to) plausibly congested
+  the selected profile's own resume right as the user opened the next chat,
+  the same ticket-minting-congestion mechanism card t_341c53a1 already
+  flagged for a different, still-open candidate
+  (`bots_connection_source.dart`'s `savedBotsSession`, re-checked for this
+  card and confirmed to loop over saved *connections* i.e. servers, not
+  profiles - it only iterates once for a single-server device and is not
+  this fan-out). Removing this fan-out removes the burst that caused it;
+  whether the badge actually clears on-device is for the follow-up
+  install/measure card, per this card's own instructions.
+- **Fork edits of upstream files:** `lib/core/services/chat_browser_data.dart`,
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/chat_browser_data_test.dart` (new: "cold start never
+  opens a throwaway socket for a profile other than the one it selects,
+  even though the chat list mounts before discovery resolves" - starts
+  `ChatBrowserData.start()` before `controller.initialize()`, the same race
+  the real cold start has, and proves the unopened profile never gets a
+  `projects.tree` call; "returning to the chat list never re-opens a socket
+  for a profile the user has not opened" - rebuilds `ChatBrowserData` three
+  times, the same list-chat-list cycle production performs, and proves the
+  same for repeated visits). Updated to the new contract: "canonical
+  browsing reuses a live profile's own socket and never opens one for a
+  profile the user has not opened" (was: "...opens and retires readers
+  without losing live chats" - the old contract deliberately opened and
+  closed a throwaway reader per profile; the new one asserts zero new
+  reader instances via the `_factory`/`ReaderFixture.opened` instance
+  counter, not call counts) and "hidden Bot Chats obey visibility before
+  and after opening and re-entry" (an unopened profile's hidden Bot Chat no
+  longer merges until that profile is actually opened). All four fail
+  against the pre-fix code and pass against the fix.
+- **Merge:** pending · **Card:** t_241cf7b0
+
 ## 2026-11-24
 
 ### Opening a chat no longer re-reads its own project membership through a throwaway socket either
