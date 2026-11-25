@@ -361,7 +361,16 @@ class ProfileWorkspaceData {
   final _deletedDraftCleanup =
       <String, ({List<DeletedDraftFile> files, Future<void>? writes})>{};
   List<Map<String, dynamic>> _projects = const [];
-  bool _projectsLoaded = false;
+  // A distinct cache from `_projects`, which `moveSessionToProject` and
+  // `selectProject` check a project's continued membership in by identity
+  // (`_projects.contains(project)`) - reassigning `_projects` on every
+  // incidental browserProjects call (e.g. _readProjectMembership's own
+  // re-read on every chat open) would silently invalidate an already
+  // captured project reference. `browsedProjects` only ever backs the
+  // combined Chats list's own cross-profile browse/filter/organize display
+  // for a profile that may not be live.
+  List<Map<String, dynamic>> _browsedProjects = const [];
+  bool _browsedProjectsLoaded = false;
   bool _creatingProject = false;
   String? _projectsError;
   Map<String, String?>? _projectMembership;
@@ -397,6 +406,7 @@ class ProfileWorkspaceData {
   Set<String> get deletedSessions => Set.unmodifiable(_deletedSessions);
   Set<String> get quarantinedSessions => Set.unmodifiable(_quarantinedSessions);
   List<Map<String, dynamic>> get projects => _projects;
+  List<Map<String, dynamic>> get browsedProjects => _browsedProjects;
   bool get creatingProject => _creatingProject;
   String? get projectsError => _projectsError;
   Map<String, ProfileChat> get chats => Map.unmodifiable(_chats);
@@ -2489,11 +2499,17 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// (t_03f5043c) - rather than an explicit, single-profile browse: it must
   /// never open a per-profile socket for a profile the user has not opened.
   /// Regardless of [requireLive], a profile with a project list already
-  /// cached from an earlier read (`resource.projects`/`_projectsLoaded`,
-  /// set below on every successful call, by any caller) returns that cache
-  /// without touching the network - this never changes observable
-  /// behaviour for those two callers, since they already kept exactly that
-  /// cached value on the exception they otherwise catch.
+  /// cached from an earlier read (`resource.browsedProjects`,
+  /// `_browsedProjectsLoaded`, set below on every successful call, by any
+  /// caller) returns that cache without touching the network - this never
+  /// changes observable behaviour for those two callers, since they
+  /// already kept exactly that cached value on the exception they
+  /// otherwise catch. This deliberately uses a separate cache from
+  /// `resource.projects`/`_projects`, which `moveSessionToProject` and
+  /// `selectProject` check continued project membership in by identity;
+  /// reassigning that field here as a side effect of, say, a chat's own
+  /// incidental membership re-read would silently invalidate an already
+  /// captured project reference elsewhere.
   ///
   /// [seedIfMissing] is for the combined Chats list's own per-profile walk
   /// (t_241cf7b0), which backs real cross-profile browse/filter/organize
@@ -2516,7 +2532,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
     final generation = resource._projectMembershipGeneration;
     final live = connectionStatus.liveAvailable(name);
     if (requireLive && !live) {
-      if (resource._projectsLoaded) return resource._projects;
+      if (resource._browsedProjectsLoaded) return resource._browsedProjects;
       if (!seedIfMissing) {
         throw StateError('Profile has no live socket to read projects from');
       }
@@ -2581,8 +2597,8 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       final saved = projects.where(ProfileGateway.isSavedProject).toList();
       if (!_closed && canRead()) {
-        resource._projects = _readonlyWorkspaceRows(saved);
-        resource._projectsLoaded = true;
+        resource._browsedProjects = _readonlyWorkspaceRows(saved);
+        resource._browsedProjectsLoaded = true;
       }
       return saved;
     } finally {
