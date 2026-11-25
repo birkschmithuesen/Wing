@@ -230,6 +230,54 @@ void main() {
   );
 
   test(
+    'cold start never opens a throwaway socket for a profile other than '
+    'the one it selects, even though the chat list mounts before discovery '
+    'resolves (t_241cf7b0)',
+    () async {
+      data.dispose();
+      final connection = controller.connection;
+      controller.dispose();
+      controller = ProfileWorkspaceController(
+        access: ConnectionAccess(connection: connection, dashboardOAuth: null),
+        connectionIdentity: 'test',
+        preferences: await SharedPreferences.getInstance(),
+        appPreferences: appPreferences,
+        gatewayFactory: fixture.gateway,
+      );
+      data = ChatBrowserData(controller);
+      fixture.calls.clear();
+      // The Chats screen mounts (and starts the browser's read) with no
+      // discovery and no selected profile yet - exactly like cold start,
+      // where it renders before initialize() resolves because no chat is
+      // selected. ChatBrowserData defers its own refresh() until the
+      // controller has both a discovery and a current profile
+      // (see _controllerChanged's _visitStarted/_started gate), so this
+      // exercises the real race between that deferred refresh and the
+      // selected profile's own initialization.
+      data.start();
+      await controller.initialize();
+      for (var settle = 0; settle < 10; settle++) {
+        await Future<void>.delayed(Duration.zero);
+      }
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'work' && call.$2 == 'projects.tree',
+        ),
+        isEmpty,
+        reason:
+            'cold start must not fan a socket out to a profile other than '
+            'the one it selects, even when the chat list races discovery',
+      );
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'personal' && call.$2 == 'projects.tree',
+        ),
+        isNotEmpty,
+        reason: 'the selected profile still gets tagged through its own socket',
+      );
+    },
+  );
+  test(
     'suspended refreshes coalesce into the requested archive read on return',
     () async {
       await data.refresh(archivedOnly: false);
@@ -298,7 +346,8 @@ void main() {
     },
   );
   test(
-    'canonical browsing opens and retires readers without losing live chats',
+    'canonical browsing reuses a live profile\'s own socket and never opens '
+    'one for a profile the user has not opened (t_241cf7b0)',
     () async {
       fixture.requireReadySocket = true;
       final live = {...fixture.opened};
@@ -327,16 +376,57 @@ void main() {
         data.state.profiles.values.every((profile) => profile.error == null),
         isTrue,
       );
+      // 'personal' is the selected/live profile and resolves through its own
+      // socket; 'work' has never been opened, so it keeps no canonical merge
+      // instead of browsing opening a throwaway reader just to check it.
       expect(
         data.entries
             .where((entry) => entry.isBotChat)
             .map((entry) => entry.profile)
             .toSet(),
-        {'personal', 'work'},
+        {'personal'},
       );
       expect(fixture.closed.intersection(live), isEmpty);
-      expect(fixture.opened.difference(live), fixture.closed);
+      expect(
+        fixture.opened.difference(live),
+        isEmpty,
+        reason:
+            'canonical/project browsing must not open any new reader: the '
+            'live profile reuses its own socket and the unopened profile is '
+            'skipped',
+      );
       expect(controller.current!.reconnectScheduled, isFalse);
+    },
+  );
+  test(
+    'returning to the chat list never re-opens a socket for a profile the '
+    'user has not opened (t_241cf7b0)',
+    () async {
+      // 'personal' is the selected/live profile; 'work' has never been
+      // opened. Simulate list -> chat -> list, which production rebuilds as
+      // a fresh ChatBrowserData each time (profile_workspace_screen.dart
+      // nulls out `_browser` on opening a chat, then recreates it on return).
+      for (var visit = 0; visit < 3; visit++) {
+        data.dispose();
+        data = ChatBrowserData(controller);
+        await data.refresh(archivedOnly: false);
+      }
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'work' && call.$2 == 'projects.tree',
+        ),
+        isEmpty,
+        reason:
+            'returning to the chat list must not open a per-profile socket '
+            'for a profile that is not live; keep its last-known tags',
+      );
+      expect(
+        fixture.calls.where(
+          (call) => call.$1 == 'personal' && call.$2 == 'projects.tree',
+        ),
+        isNotEmpty,
+        reason: 'the selected, already-live profile still gets tagged',
+      );
     },
   );
   test(
@@ -378,7 +468,10 @@ void main() {
         reason: 'Opening a hidden canonical chat must not admit it to Chats',
       );
       await data.chooseVisibility(SessionVisibility.all);
-      expect(bots().map((row) => row.profile).toSet(), {'personal', 'work'});
+      // 'work' has never been opened (unlike 'personal' above), so canonical
+      // merge skips it instead of opening a throwaway socket just to check
+      // an unopened profile (t_241cf7b0); it shows up once opened below.
+      expect(bots().map((row) => row.profile).toSet(), {'personal'});
       expect(bots().every((row) => row.isBotChat), isTrue);
       expect(bots().every((row) => row.tokens == 15500), isTrue);
       for (final row in bots()) {

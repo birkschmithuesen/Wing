@@ -2442,15 +2442,29 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   /// Canonical browsing uses a connected reader, never an unopened chat socket.
+  ///
+  /// [requireLive] mirrors [browserProjects]'s flag: the combined Chats list
+  /// (`chat_browser_data.dart`) walks every discovered profile on each visit,
+  /// not just the one the user opened, and must never open a per-profile
+  /// socket just to check a profile the user has not opened (t_241cf7b0).
+  /// It throws unless that profile's own gateway is already live; the caller
+  /// catches that and keeps its last-known canonical chat instead.
   Future<ProfileCanonicalBotChat?> browserCanonicalBotChat(
     String name, {
     required bool Function() canRead,
+    bool requireLive = false,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
     if (!isProfileServed(name)) return null;
-    final reader = _factory(browserResource(name).scope);
+    if (requireLive && !connectionStatus.liveAvailable(name)) {
+      throw StateError(
+        'Profile has no live socket to read the canonical bot chat from',
+      );
+    }
+    final resource = browserResource(name);
+    final reader = requireLive ? resource.gateway : _factory(resource.scope);
     try {
-      await reader.connect();
+      if (!requireLive) await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       return await reader.canonicalBotChat();
     } on JsonRpcError catch (error) {
@@ -2460,7 +2474,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       rethrow;
     } finally {
-      reader.close();
+      if (!requireLive) reader.close();
     }
   }
 

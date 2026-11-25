@@ -26,6 +26,12 @@ typedef _BrowserSources = ({
   Set<ProfileSessionKey> chats,
 });
 
+/// [ProfileWorkspaceController.browserCanonicalBotChat] and
+/// [ProfileWorkspaceController.browserProjects]'s `requireLive: true` throw
+/// this exact [StateError] when the profile has no live socket to reuse.
+bool _isNoLiveSocket(Object error) =>
+    error is StateError && error.message.contains('no live socket');
+
 enum BrowserChoiceDecoration { status, profile, project, home }
 
 /// Passive menu facts; the selected command carries its domain intent.
@@ -1297,33 +1303,56 @@ final class ChatBrowserData extends ChangeNotifier {
               visibility == SessionVisibility.all ||
               fetched.values.any((row) => row['title'] == 'Bot Chat') ||
               resource.chats.values.any((chat) => chat.title == 'Bot Chat');
+          // t_241cf7b0: this worker walks every discovered profile on each
+          // list visit, not just the one the user opened. Canonical bot chat
+          // and project membership must reuse that profile's own live socket
+          // when it has one, and otherwise keep the last-known value instead
+          // of opening a throwaway socket for a profile the user never
+          // opened - the combined chat list fanned a socket out to every
+          // profile (including never-opened ones) on every return to the
+          // list, surviving t_6e3f8566/t_03f5043c's Recents/chat-open fixes
+          // because this is a third, independent caller of the same
+          // browserProjects/browserCanonicalBotChat readers.
           if (needsCanonical) {
-            final canonical = await retryTransientRead(
-              () =>
-                  _controller.browserCanonicalBotChat(profile, canRead: active),
-              isActive: active,
-            );
-            if (!active()) return;
-            if (canonical == null) {
-              _canonicalBotChats.remove(profile);
-            } else {
-              _canonicalBotChats[profile] = canonical;
+            try {
+              final canonical = await retryTransientRead(
+                () => _controller.browserCanonicalBotChat(
+                  profile,
+                  canRead: active,
+                  requireLive: true,
+                ),
+                isActive: active,
+              );
+              if (!active()) return;
+              if (canonical == null) {
+                _canonicalBotChats.remove(profile);
+              } else {
+                _canonicalBotChats[profile] = canonical;
+              }
+            } catch (error) {
+              if (!_isNoLiveSocket(error)) rethrow;
             }
           }
           // Ask for enough membership rows for the entire active list, not
           // just the desktop's preview. Archived chats are outside this tree.
           if (!active()) return;
-          final tree = await retryTransientRead(() {
-            if (!active()) throw StateError('Browser is closed');
-            return _controller.browserProjects(
-              profile,
-              sessionLimit: math.max(2000, fetched.length),
-              canRead: active,
-            );
-          }, isActive: active);
+          try {
+            final tree = await retryTransientRead(() {
+              if (!active()) throw StateError('Browser is closed');
+              return _controller.browserProjects(
+                profile,
+                sessionLimit: math.max(2000, fetched.length),
+                canRead: active,
+                requireLive: true,
+              );
+            }, isActive: active);
+            if (!active()) return;
+            _projects[profile] = tree;
+          } catch (error) {
+            if (!_isNoLiveSocket(error)) rethrow;
+          }
           if (!active()) return;
           _rows[profile] = _BrowserPage(fetched.values);
-          _projects[profile] = tree;
           _baselineRows[profile] = baseline;
           // Only retire changes that predate this read. A later confirmed
           // action must continue to win over this response.
