@@ -11,6 +11,123 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-25
+
+### The combined chat list stops fanning a socket out to every profile too
+- **What:** a device measurement (card t_241cf7b0, following up on
+  t_6e3f8566/t_03f5043c, both merged in `3855b841`) found the socket fan-out
+  survived through a third, independent caller of the same two readers:
+  `ChatBrowserData._refresh` (`lib/core/services/chat_browser_data.dart`),
+  which backs the combined Chats list ("every profile in one browser"),
+  walks every profile `_controller.discovery.profiles` returns on every
+  visit - cold start (the Chats screen mounts with no chat selected while
+  `initialize()` is still in flight, and `ChatBrowserData` defers its own
+  `refresh()` until the controller has both a discovery and a current
+  profile, racing the selected profile's own connect) and every return from
+  an open chat (`profile_workspace_screen.dart` nulls out its cached
+  browser and rebuilds a fresh `ChatBrowserData` each time) - and called
+  `browserCanonicalBotChat` and, unconditionally, `browserProjects` for
+  each one. Both opened a brand-new throwaway `WsClient`, connected it, ran
+  one RPC (`session.list`/`projects.tree`), then closed it - for every
+  profile, including ones the user has never opened, every single visit.
+  `browserCanonicalBotChat` gained the same `requireLive` flag
+  `browserProjects` already had (added by t_6e3f8566): it throws unless
+  that profile's own gateway is already live, instead of opening a reader.
+  The worker in `chat_browser_data.dart` now passes `requireLive: true` to
+  both, reusing a profile's own live socket when it has one. Canonical bot
+  chat merge is purely cosmetic row styling, so a profile with neither a
+  live socket nor an earlier successful read simply skips it, same as
+  Recents' own profile-without-a-live-socket-keeps-stale-tags rule - a
+  first widget-test pass that applied the exact same skip to project
+  membership broke the combined browser's own cross-profile project
+  list/filter/organize surface (`project picker follows profile filter`,
+  `cross-profile project rename uses its captured production menu`, `Edit
+  project feedback ... failure=folder/details` in
+  `test/profile_workspace_browser_test.dart`/`test/chat_list_target_test.dart`
+  - all show/edit a profile's projects without that profile ever being
+  live, which the skip left permanently empty since nothing else ever
+  populates that profile's project list). `browserProjects` itself now
+  caches its result on `ProfileWorkspaceData` on every successful read,
+  from any caller, and returns that cache instead of touching the network
+  when the profile isn't live and the cache already has it - a pure
+  optimization for Recents/`_readProjectMembership` that never changes
+  what they already did on the exception they otherwise catch. A new
+  `seedIfMissing` flag, set only by `chat_browser_data.dart`'s worker,
+  additionally allows a one-time throwaway seed through a never-opened
+  profile's first read (Recents and `_readProjectMembership` still throw
+  instead, unchanged): every later read for that profile, including one
+  from a brand-new `ChatBrowserData` instance after returning to the list,
+  reuses the cache and never reopens a socket for it again. A second CI
+  run (45646887042) caught that caching into `resource._projects` itself
+  - the field `moveSessionToProject`/`selectProject` check continued
+  project membership in by *identity* (`_projects.contains(project)`) -
+  broke exactly that identity for any caller of `browserProjects`
+  (`_readProjectMembership` runs on every chat open while membership is
+  stale, which is most opens): a project `Map` captured earlier (e.g.
+  "move to project X") stopped matching after the next chat open silently
+  reassigned `_projects` to a freshly decoded list (`remove project
+  retains assignment after move/default read failure and retries`,
+  `remove project confirms and shows progress through every move stage`
+  in `test/profile_row_actions_test.dart`). The seed/cache this card needs
+  now lives in a new, separate `resource.browsedProjects`/
+  `_browsedProjectsLoaded` pair nothing else reads, leaving
+  `resource.projects`/`_projects` - and every identity check against it -
+  exactly as untouched by this change as it always was.
+- **Why:** card t_241cf7b0's acceptance criteria: the selected profile's
+  socket must be ready <= 2s after `workspace.initialization_started` with
+  nothing else (other profiles, Recents, health checks) running before or
+  delaying it, at most 2 `ws.connect_started` in the first 30s, and no
+  "Reconnecting" badge on a chat switch while the server is reachable and
+  the selected profile's socket is live - find the fan-out source and the
+  badge cause, not just the symptom. Robo's device measurement after
+  t_6e3f8566/t_03f5043c confirmed the fan-out was not Recents or an opened
+  chat's own membership read (explicitly ruled out by that measurement),
+  which pointed at a second/third, still-unaudited caller; reading every
+  caller of `browserProjects`/`browserCanonicalBotChat` found this one.
+  The "Reconnecting" badge reappearing for ~20s on a second chat open is
+  explained, not separately fixed or device-verified in this card: the
+  throwaway connects this fan-out opened (several per visit, for profiles
+  including the one the user was about to switch to) plausibly congested
+  the selected profile's own resume right as the user opened the next chat,
+  the same ticket-minting-congestion mechanism card t_341c53a1 already
+  flagged for a different, still-open candidate
+  (`bots_connection_source.dart`'s `savedBotsSession`, re-checked for this
+  card and confirmed to loop over saved *connections* i.e. servers, not
+  profiles - it only iterates once for a single-server device and is not
+  this fan-out). Removing this fan-out removes the burst that caused it;
+  whether the badge actually clears on-device is for the follow-up
+  install/measure card, per this card's own instructions.
+- **Fork edits of upstream files:** `lib/core/services/chat_browser_data.dart`,
+  `lib/core/services/profile_workspace_controller.dart`.
+- **Tests:** `test/chat_browser_data_test.dart` (new: "cold start never
+  opens a throwaway socket for a profile other than the one it selects..."
+  - starts `ChatBrowserData.start()` before `controller.initialize()`, the
+  same race the real cold start has, and proves an unopened profile's
+  project tree is seeded at most once even under that race; "returning to
+  the chat list never re-opens a socket for a profile the user has not
+  opened, once its project tree has been seeded..." - rebuilds
+  `ChatBrowserData` three times, the same list-chat-list cycle production
+  performs, and proves the seed from the first visit is reused, not
+  repeated, by the second and third). Updated to the new contract:
+  "canonical browsing reuses a live profile's own socket and never opens
+  one for a profile the user has not opened, even while that profile's
+  project tree seeds once..." (was: "...opens and retires readers without
+  losing live chats" - the old contract expected a throwaway reader for
+  every profile unconditionally; the new one asserts canonical merge opens
+  none for an unopened profile, while still accepting exactly one
+  project-tree seed, via the existing `_factory`/`ReaderFixture.opened`
+  instance counter, not call counts) and "hidden Bot Chats obey visibility
+  before and after opening and re-entry" (an unopened profile's hidden Bot
+  Chat merge, specifically, no longer appears until that profile is
+  actually opened - unlike its project tree, canonical bot chat merge has
+  no cross-profile browse/filter/organize feature depending on it, so it
+  stays purely skip-if-not-live). All four initially failed against the
+  code with project membership *also* purely skip-if-not-live (same bug
+  class as the one described in What, caught by this card's own CI run
+  45636255207 after an initial push - see What for the fix that made them
+  pass again) and pass against the final `seedIfMissing`-cached design.
+- **Merge:** pending · **Card:** t_241cf7b0
+
 ## 2026-11-24
 
 ### Opening a chat no longer re-reads its own project membership through a throwaway socket either

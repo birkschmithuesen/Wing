@@ -206,6 +206,29 @@ live gateway instead, and falls back to "Project unavailable" rather than a
 throwaway socket on the rare race where the gateway is not live at read
 time (t_03f5043c).
 
+Fork (Wing Voice): device measurement after both fixes above (card
+t_241cf7b0) found the fan-out survived through a third, independent caller
+of the same two readers - the combined Chats list itself (see [Find and
+organize chats and projects](chat-browser.md#gotchas)), which walks every
+discovered profile on cold start (the list mounts before any chat is
+selected) and on every return from an open chat, not just the Recents
+refresh or an opened chat's own membership read. That walk now reuses a
+profile's own live socket when it has one, the same rule as the two fixes
+above, for its cosmetic canonical-bot-chat check; its project tree, which
+backs this surface's own cross-profile browse/filter/organize feature for
+every profile regardless of liveness, still seeds once per never-opened
+profile but is cached from then on, so a later visit never reopens a
+socket for it again. This also reduces the likely cause of a "Reconnecting"
+badge reappearing for several seconds when opening a second chat shortly
+after visiting the list: that walk's throwaway connects, several per
+visit, were racing and congesting the selected profile's own resume; with
+most of that burst gone (repeat visits no longer reopen anything, and
+canonical checks for unopened profiles stop entirely), the badge has much
+less of a burst left to react to. This explanation
+is not separately verified by a device measurement in this same card - a
+follow-up install/measure card confirms it against the two numeric targets
+above (cold start socket count and the chat-switch badge).
+
 ```sh
 flutter test --no-pub test/profile_resume_freshness_test.dart test/profile_workspace_controller_test.dart test/profile_notification_recovery_test.dart test/profile_focus_recovery_test.dart test/profile_empty_history_test.dart test/workspace_connection_failure_test.dart test/server_connection_label_test.dart test/server_connection_status_test.dart test/connection_diagnostics_test.dart test/fork/resume_connection_burst_test.dart test/fork/visible_chat_resume_priority_test.dart test/fork/visible_chat_resume_bandwidth_test.dart
 ```

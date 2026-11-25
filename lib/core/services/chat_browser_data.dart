@@ -26,6 +26,12 @@ typedef _BrowserSources = ({
   Set<ProfileSessionKey> chats,
 });
 
+/// [ProfileWorkspaceController.browserCanonicalBotChat]'s `requireLive: true`
+/// throws this exact [StateError] when the profile has no live socket to
+/// reuse and nothing cosmetic is worth opening one for.
+bool _isNoLiveSocket(Object error) =>
+    error is StateError && error.message.contains('no live socket');
+
 enum BrowserChoiceDecoration { status, profile, project, home }
 
 /// Passive menu facts; the selected command carries its domain intent.
@@ -1297,21 +1303,48 @@ final class ChatBrowserData extends ChangeNotifier {
               visibility == SessionVisibility.all ||
               fetched.values.any((row) => row['title'] == 'Bot Chat') ||
               resource.chats.values.any((chat) => chat.title == 'Bot Chat');
+          // t_241cf7b0: this worker walks every discovered profile on each
+          // list visit, not just the one the user opened - surviving
+          // t_6e3f8566/t_03f5043c's Recents/chat-open fixes because this is
+          // a third, independent caller of the same two readers. Canonical
+          // bot chat merge is purely cosmetic (row styling): it reuses a
+          // profile's own live socket when it has one, and otherwise skips
+          // it for a profile the user never opened rather than opening a
+          // socket just to check. Project membership backs real browse/
+          // filter/organize functionality across every profile, so it
+          // cannot simply be skipped the same way; browserProjects itself
+          // caches its result at the controller level once read, so only
+          // the very first time a never-opened profile's projects are
+          // needed opens a throwaway socket - every later visit, including
+          // a brand-new ChatBrowserData from returning to this list, reuses
+          // that cache instead of reopening one.
           if (needsCanonical) {
-            final canonical = await retryTransientRead(
-              () =>
-                  _controller.browserCanonicalBotChat(profile, canRead: active),
-              isActive: active,
-            );
-            if (!active()) return;
-            if (canonical == null) {
-              _canonicalBotChats.remove(profile);
-            } else {
-              _canonicalBotChats[profile] = canonical;
+            try {
+              final canonical = await retryTransientRead(
+                () => _controller.browserCanonicalBotChat(
+                  profile,
+                  canRead: active,
+                  requireLive: true,
+                ),
+                isActive: active,
+              );
+              if (!active()) return;
+              if (canonical == null) {
+                _canonicalBotChats.remove(profile);
+              } else {
+                _canonicalBotChats[profile] = canonical;
+              }
+            } catch (error) {
+              if (!_isNoLiveSocket(error)) rethrow;
             }
           }
           // Ask for enough membership rows for the entire active list, not
           // just the desktop's preview. Archived chats are outside this tree.
+          // browserProjects(requireLive: true) itself returns the cached
+          // project list without a network call once a profile has been
+          // read once (controller-level cache, outlives this ChatBrowserData
+          // instance); it only ever opens a throwaway socket the first time
+          // a never-opened profile's projects are needed.
           if (!active()) return;
           final tree = await retryTransientRead(() {
             if (!active()) throw StateError('Browser is closed');
@@ -1319,11 +1352,13 @@ final class ChatBrowserData extends ChangeNotifier {
               profile,
               sessionLimit: math.max(2000, fetched.length),
               canRead: active,
+              requireLive: true,
+              seedIfMissing: true,
             );
           }, isActive: active);
           if (!active()) return;
-          _rows[profile] = _BrowserPage(fetched.values);
           _projects[profile] = tree;
+          _rows[profile] = _BrowserPage(fetched.values);
           _baselineRows[profile] = baseline;
           // Only retire changes that predate this read. A later confirmed
           // action must continue to win over this response.

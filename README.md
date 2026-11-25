@@ -20,6 +20,7 @@ This is `birkschmithuesen/Wing`, a fork of [`tarkilhk/Wing`](https://github.com/
 - [Cold start no longer fans a gateway socket out to every profile's queued outbox, or shows a false "Connection interrupted" alert, right after the selected profile connects](CHANGELOG.fork.md#cold-start-no-longer-fans-a-gateway-socket-out-to-every-served-profiles-queued-outbox-right-after-the-selected-one-initializes)
 - [Recents and the chat list no longer open a throwaway gateway socket per profile](CHANGELOG.fork.md#recents-stops-opening-its-own-throwaway-gateway-socket-for-every-discovered-profile-on-every-refresh)
 - [Opening a chat reuses its own live socket to re-read project membership instead of opening a throwaway one](CHANGELOG.fork.md#opening-a-chat-no-longer-re-reads-its-own-project-membership-through-a-throwaway-socket-either)
+- [The combined chat list no longer fans a socket out to every profile on cold start or every return to the list](CHANGELOG.fork.md#the-combined-chat-list-stops-fanning-a-socket-out-to-every-profile-too)
 
 All fork changes, with their merge commits, are tracked in [`CHANGELOG.fork.md`](CHANGELOG.fork.md).
 

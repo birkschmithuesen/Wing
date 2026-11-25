@@ -361,6 +361,16 @@ class ProfileWorkspaceData {
   final _deletedDraftCleanup =
       <String, ({List<DeletedDraftFile> files, Future<void>? writes})>{};
   List<Map<String, dynamic>> _projects = const [];
+  // A distinct cache from `_projects`, which `moveSessionToProject` and
+  // `selectProject` check a project's continued membership in by identity
+  // (`_projects.contains(project)`) - reassigning `_projects` on every
+  // incidental browserProjects call (e.g. _readProjectMembership's own
+  // re-read on every chat open) would silently invalidate an already
+  // captured project reference. `browsedProjects` only ever backs the
+  // combined Chats list's own cross-profile browse/filter/organize display
+  // for a profile that may not be live.
+  List<Map<String, dynamic>> _browsedProjects = const [];
+  bool _browsedProjectsLoaded = false;
   bool _creatingProject = false;
   String? _projectsError;
   Map<String, String?>? _projectMembership;
@@ -396,6 +406,7 @@ class ProfileWorkspaceData {
   Set<String> get deletedSessions => Set.unmodifiable(_deletedSessions);
   Set<String> get quarantinedSessions => Set.unmodifiable(_quarantinedSessions);
   List<Map<String, dynamic>> get projects => _projects;
+  List<Map<String, dynamic>> get browsedProjects => _browsedProjects;
   bool get creatingProject => _creatingProject;
   String? get projectsError => _projectsError;
   Map<String, ProfileChat> get chats => Map.unmodifiable(_chats);
@@ -2442,15 +2453,29 @@ class ProfileWorkspaceController extends ChangeNotifier {
   }
 
   /// Canonical browsing uses a connected reader, never an unopened chat socket.
+  ///
+  /// [requireLive] mirrors [browserProjects]'s flag: the combined Chats list
+  /// (`chat_browser_data.dart`) walks every discovered profile on each visit,
+  /// not just the one the user opened, and must never open a per-profile
+  /// socket just to check a profile the user has not opened (t_241cf7b0).
+  /// It throws unless that profile's own gateway is already live; the caller
+  /// catches that and keeps its last-known canonical chat instead.
   Future<ProfileCanonicalBotChat?> browserCanonicalBotChat(
     String name, {
     required bool Function() canRead,
+    bool requireLive = false,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
     if (!isProfileServed(name)) return null;
-    final reader = _factory(browserResource(name).scope);
+    if (requireLive && !connectionStatus.liveAvailable(name)) {
+      throw StateError(
+        'Profile has no live socket to read the canonical bot chat from',
+      );
+    }
+    final resource = browserResource(name);
+    final reader = requireLive ? resource.gateway : _factory(resource.scope);
     try {
-      await reader.connect();
+      if (!requireLive) await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       return await reader.canonicalBotChat();
     } on JsonRpcError catch (error) {
@@ -2460,7 +2485,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
       }
       rethrow;
     } finally {
-      reader.close();
+      if (!requireLive) reader.close();
     }
   }
 
@@ -2473,25 +2498,51 @@ class ProfileWorkspaceController extends ChangeNotifier {
   /// _readProjectMembership's read for the chat the user just opened
   /// (t_03f5043c) - rather than an explicit, single-profile browse: it must
   /// never open a per-profile socket for a profile the user has not opened.
-  /// It throws unless that profile's own gateway is already live (both
-  /// callers catch that and fall back to last-known/absent tagging instead
-  /// of opening a throwaway reader), and otherwise reuses that existing
-  /// socket.
+  /// Regardless of [requireLive], a profile with a project list already
+  /// cached from an earlier read (`resource.browsedProjects`,
+  /// `_browsedProjectsLoaded`, set below on every successful call, by any
+  /// caller) returns that cache without touching the network - this never
+  /// changes observable behaviour for those two callers, since they
+  /// already kept exactly that cached value on the exception they
+  /// otherwise catch. This deliberately uses a separate cache from
+  /// `resource.projects`/`_projects`, which `moveSessionToProject` and
+  /// `selectProject` check continued project membership in by identity;
+  /// reassigning that field here as a side effect of, say, a chat's own
+  /// incidental membership re-read would silently invalidate an already
+  /// captured project reference elsewhere.
+  ///
+  /// [seedIfMissing] is for the combined Chats list's own per-profile walk
+  /// (t_241cf7b0), which backs real cross-profile browse/filter/organize
+  /// functionality and cannot simply go without a profile's project data
+  /// forever the way Recents' or a chat's own project tagging can. A
+  /// profile with no live socket and nothing cached yet still seeds once
+  /// through a throwaway reader; because the result is cached here for
+  /// every later caller, including a brand-new `ChatBrowserData` instance,
+  /// that seed never repeats on a later visit (list -> chat -> list). It
+  /// throws, same as a plain [requireLive] caller, when `false`.
   Future<List<Map<String, dynamic>>> browserProjects(
     String name, {
     required int sessionLimit,
     required bool Function() canRead,
     bool requireLive = false,
+    bool seedIfMissing = false,
   }) async {
     if (_closed || !canRead()) throw StateError('Browser is closed');
     final resource = browserResource(name);
     final generation = resource._projectMembershipGeneration;
-    if (requireLive && !connectionStatus.liveAvailable(name)) {
-      throw StateError('Profile has no live socket to read projects from');
+    final live = connectionStatus.liveAvailable(name);
+    if (requireLive && !live) {
+      if (resource._browsedProjectsLoaded) return resource._browsedProjects;
+      if (!seedIfMissing) {
+        throw StateError('Profile has no live socket to read projects from');
+      }
     }
-    final reader = requireLive ? resource.gateway : _factory(resource.scope);
+    final reusesLiveSocket = requireLive && live;
+    final reader = reusesLiveSocket
+        ? resource.gateway
+        : _factory(resource.scope);
     try {
-      if (!requireLive) await reader.connect();
+      if (!reusesLiveSocket) await reader.connect();
       if (_closed || !canRead()) throw StateError('Browser is closed');
       final result = await reader.call('projects.tree', {
         'preview_limit': 3,
@@ -2544,9 +2595,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
           }
         }
       }
-      return projects.where(ProfileGateway.isSavedProject).toList();
+      final saved = projects.where(ProfileGateway.isSavedProject).toList();
+      if (!_closed && canRead()) {
+        resource._browsedProjects = _readonlyWorkspaceRows(saved);
+        resource._browsedProjectsLoaded = true;
+      }
+      return saved;
     } finally {
-      if (!requireLive) reader.close();
+      if (!reusesLiveSocket) reader.close();
     }
   }
 
