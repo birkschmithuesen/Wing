@@ -12,7 +12,7 @@ Feature ID: `chat-activity`.
 - Active recurring work shows a next-wakeup countdown with compact days/hours for long delays and the exact scheduled time in its tooltip. Paused work, a pending response and work deferred by a goal do not show a countdown; an overdue deadline says Due now without implying execution began.
 - `chat-activity.respond` — Answer the current question or approval. Live approvals in normal, bot and group chats share command-review content with notification review. The exact command starts visible; completed request receipts remain under collapsed Activity. Native prompts stay bound to their turn, while server-request prompts retain their own reply identity. Reopening keeps all waiting native questions in order and a settled request cannot close a newer one.
 - `chat-activity.delegate` — Follow a child and retain its saved result. Child and nested-child traces bind images, tool file previews, skill documents and message attachments to the child chat. Preview, share and download use the same viewers and file-delivery flows as the main trace.
-- `chat-activity.processes` — Discover and follow background terminal commands in the optional Background tab above the composer. Read recent output, stop a running command or dismiss an exited row during its active response. Exited rows leave the dock when that response ends and do not return on later turns; running processes remain visible until they exit. Discovery happens on entering or returning to a visible connected chat; relevant tool receipts and a five-second running-work refresh keep it current. Hidden/offline chats and settled lists do not poll. Failed reads retain the last rows; reopen Background to retry.
+- `chat-activity.processes` — Discover and follow background terminal commands in the optional Background tab above the composer. Read recent output, stop a running command or dismiss an exited row during its active response. Exited rows leave the dock when that response ends and do not return on later turns; running processes remain visible until they exit. Discovery happens on entering or returning to a visible connected chat; relevant tool receipts and a five-second running-work refresh keep it current. Hidden/offline chats and settled lists do not poll. Failed reads retain the last rows; reopen Background to retry. A quiet read rejected as a detached/reaped runtime, or one whose chat is no longer the open/foreground one by the time it settles, keeps that local retry state but never raises or keeps a Hermes health alert; the alert only tracks a real failure while its chat stays open, and clears the moment the chat is no longer open.
 - `chat-activity.tasks` — Follow the current task batch above the composer. Tap anywhere on a task row's header, including its text, status, padding or chevron, to expand or collapse it. The expanded body remains selectable and scrollable. Once every task is completed or cancelled and its response ends, read the batch in that response's Activity Tasks tab. Later rounds and replayed updates do not restore it to the composer.
 
 ## How to get to it (user POV)
@@ -66,7 +66,9 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```
 
   `profile_background_work_test.dart` checks that a failed automatic read
-  retains the process rows and reports the incident for the exact chat.
+  retains the process rows and reports the incident for the exact chat, that a
+  detached/reaped rejection never reports that incident, and that closing the
+  chat (losing route visibility) clears an already-reported one.
   `subagent_timeline_session_test.dart` checks that a successful live replay
   cannot clear an unresolved saved-history failure.
 

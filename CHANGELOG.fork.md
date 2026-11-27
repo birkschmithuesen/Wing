@@ -11,6 +11,69 @@ commit between that base and `origin/voice-offline` to date, newest first.
 See [AGENTS.md](AGENTS.md#fork-changelog) for the rule that keeps this file and
 the README feature list current for every future change.
 
+## 2026-11-27
+
+### A closed chat's "Process updates unavailable" alert no longer outlives the chat
+- **What:** the quiet, automatic `process.list` read in `_refreshProcesses`
+  (`lib/core/services/profile_workspace_controller.dart`) reported an
+  operational-error observation on every failure, with no corresponding
+  clear once the chat it was reading stopped being the one the process
+  watcher follows (`_syncProcessWatch`'s foreground target: `notificationChat
+  ?? _current?.chat`, visible and live). A read that failed while its chat
+  was foreground kept its `processes:<profile>:<sessionId>` incident forever
+  once the user navigated away or the app backgrounded, since nothing ever
+  issued a matching success/clear for a chat nobody has open anymore. The
+  same quiet read also reported this alert for a server rejection meaning
+  the runtime is detached/reaped (not in memory; the client should resume
+  the stored session) exactly as it would a real failure, even though that
+  rejection means the session is not live, not that it failed. Three fixes,
+  all scoped to the quiet (`quiet: true`) read path only - an explicit
+  refresh's reporting is unchanged: (1) the catch block in `_refreshProcesses`
+  now only reports a real failure when the process watcher's current target
+  is still this exact chat/runtime (`_processWatchTarget`) and the error's
+  message does not contain `detached/reaped` (new `_isDetachedRuntimeError`,
+  matching on `JsonRpcError.message` or `error.toString()`); otherwise it
+  reports a clear (`error: null`) instead. (2) `_syncProcessWatch` now
+  captures the chat it is about to stop watching whenever its computed
+  target changes to a different chat (or to no chat), and clears that
+  former chat's `processes:*` observation (new `_clearProcessObservation`)
+  - this is what actually retires an already-raised alert the moment the
+  chat is no longer open, independent of whether another read ever runs
+  for it again. (3) `HealthAlertIncidentStore.read` now drops any persisted
+  incident whose scope starts with `processes:` before restoring it, so a
+  ghost alert saved under the old behavior does not survive the next app
+  start (it was never going to receive another read to clear it either).
+  The in-chat inline retry state (`chat.processesError`) is untouched by
+  any of this; only the Hermes-health alert is scoped to "open and live".
+- **Why:** card t_1f044762: Birk's health alert sheet kept showing stale
+  "Process updates unavailable" entries (last known 3:08 PM / 8:06 PM /
+  8:59 PM) for chats nobody had open anymore. The card's acceptance
+  criteria: a failed quiet read for a not-live (detached/reaped) or
+  not-open chat must not raise an alert; closing a chat or its runtime
+  disappearing must clear its observation; pre-existing ghost observations
+  must vanish on the next start; a real failure for a chat that IS open and
+  live must still alert (checked by an independent reviewer).
+- **Fork edits of upstream files:** `lib/core/services/profile_workspace_controller.dart`,
+  `lib/core/services/health_alert_incident_store.dart`.
+- **Tests:** `test/profile_background_work_test.dart` (new: "a
+  detached/reaped quiet read never raises a user-visible alert", "closing
+  the chat that holds a real quiet-read failure clears its alert").
+  `test/health_alerts_test.dart` (new: "a persisted processes ghost
+  incident does not survive the next read"). Real CI (run 46020128171, this
+  sandbox has no Flutter SDK) failed only "closing the chat that holds a
+  real quiet-read failure clears its alert", with no stack trace available.
+  A from-scratch static re-trace of the exact event sequence (confirmed by
+  an independent review pass and a line-by-line Python re-model of the
+  `_syncProcessWatch`/`_refreshProcesses` state machine) found the
+  implementation already satisfies this scenario; the one class of cause
+  static reading cannot rule out is a `flutter_test` timing/dangling-Timer
+  subtlety invisible without executing the suite. Hardened the test with
+  explicit settle pumps around both state transitions and a trailing
+  30-second pump confirming no read sneaks through once closed, matching
+  this file's own established pattern in its passing sibling tests - no
+  implementation change, since no concrete defect was found in it.
+- **Merge:** pending · **Card:** t_1f044762
+
 ## 2026-11-25
 
 ### The combined chat list stops fanning a socket out to every profile too

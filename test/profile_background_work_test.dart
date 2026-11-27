@@ -13,6 +13,7 @@ import 'package:wing/core/models/side_question_delivery.dart';
 import 'package:wing/core/services/profile_gateway.dart';
 import 'package:wing/core/services/profile_workspace_controller.dart';
 import 'package:wing/core/services/profile_supervision_session.dart';
+import 'package:wing/core/services/ws_client.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'profile_connection_identity_test.dart' show identityTestConnection;
@@ -52,6 +53,7 @@ class _BackgroundHost extends Host {
   Completer<Map<String, dynamic>>? pendingList;
   Completer<Map<String, dynamic>>? pendingKill;
   bool listFails = false;
+  Object? listError;
   int controlRevision = 0;
   Object? sideTasks = const {'retention': 'live_session', 'tasks': <Object>[]};
   bool includeSideTasks = true;
@@ -74,6 +76,7 @@ class _BackgroundHost extends Host {
           calls.add((scope.profileName, method, params));
           final pending = pendingList;
           if (pending != null) return pending.future;
+          if (listError != null) throw listError!;
           if (listFails) throw TimeoutException('list acknowledgement lost');
           return listResponse;
         }
@@ -339,6 +342,69 @@ void main() {
       final retiredReads = reads();
       await tester.pump(const Duration(seconds: 30));
       expect(reads(), retiredReads);
+    },
+  );
+
+  testWidgets(
+    'a detached/reaped quiet read never raises a user-visible alert',
+    (tester) async {
+      final route = Object();
+      host.listResponse = {
+        'processes': [_process('bg-1', 'running')],
+      };
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      host.listError = JsonRpcError(
+        'process.list',
+        'process a-runtime not in memory (detached/reaped runtime; '
+            'client should resume the stored session)',
+      );
+      await tester.pump(const Duration(seconds: 5));
+      expect(chat.processesError, isNotNull);
+      expect(
+        operationalErrors.where((item) => item.error != null),
+        isEmpty,
+        reason:
+            'A detached/reaped runtime is not live; its quiet read failure '
+            'must not surface as a health alert.',
+      );
+      controller.setRouteVisibility(route, false);
+    },
+  );
+
+  testWidgets(
+    'closing the chat that holds a real quiet-read failure clears its alert',
+    (tester) async {
+      final route = Object();
+      host.listResponse = {
+        'processes': [_process('bg-1', 'running')],
+      };
+      controller.setRouteVisibility(route, true);
+      await tester.pump(const Duration(milliseconds: 1));
+      host.listFails = true;
+      await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
+      final issue = operationalErrors
+          .where((item) => item.error != null)
+          .single;
+      expect(
+        issue.operation,
+        'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
+      );
+
+      controller.setRouteVisibility(route, false);
+      await tester.pump();
+
+      expect(operationalErrors.last.operation, issue.operation);
+      expect(
+        operationalErrors.last.error,
+        isNull,
+        reason:
+            'Nobody has this chat open anymore; its stale alert must clear.',
+      );
+      final settledReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), settledReads);
     },
   );
 

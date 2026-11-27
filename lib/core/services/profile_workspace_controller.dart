@@ -4065,11 +4065,17 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _processWatchPolling = false;
     }
     if (_processWatchTarget != target) {
+      final previousChat = _processWatchTarget?.$1;
       _processWatchTimer?.cancel();
       _processWatchTimer = null;
       _processWatchRead = null;
       _processWatchPending = false;
       _processWatchTarget = target;
+      if (previousChat != null && previousChat != target?.$1) {
+        // Nobody watches this chat anymore; a failure reported while it was
+        // foreground must not linger as a ghost alert once it is not.
+        _clearProcessObservation(previousChat);
+      }
       if (target != null) _queueProcessWatch(Duration.zero);
     } else if (target != null &&
         _processWatchRead == null &&
@@ -4079,6 +4085,19 @@ class ProfileWorkspaceController extends ChangeNotifier {
         target.$1._processes.any((process) => process.isRunning)) {
       _queueProcessWatch(const Duration(seconds: 5), polling: true);
     }
+  }
+
+  void _clearProcessObservation(ProfileChat chat) {
+    reportOperationalError(
+      OperationalErrorObservation(
+        connectionIdentity: connectionIdentity,
+        profileName: chat.key.workspace.profileName,
+        operation:
+            'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
+        title: 'Process updates unavailable',
+        error: null,
+      ),
+    );
   }
 
   // The foreground route is the only polling consumer. Events discover new
@@ -4215,7 +4234,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
         ),
       );
       return true;
-    } catch (_) {
+    } catch (error) {
       if (_processReadIsCurrent(resource, chat, runtime, before, generation)) {
         chat._processesError =
             'Background processes could not be refreshed. Retry.';
@@ -4224,6 +4243,12 @@ class ProfileWorkspaceController extends ChangeNotifier {
             !chat._explicitAutomaticProcessRead &&
             chat.currentProcesses.isNotEmpty;
         if (quiet) {
+          // A detached/reaped runtime is not live, and a chat the watcher no
+          // longer targets is not open; neither is a user-visible failure.
+          final stillOpen =
+              _processWatchTarget?.$1 == chat &&
+              _processWatchTarget?.$2 == runtime;
+          final suppressAlert = !stillOpen || _isDetachedRuntimeError(error);
           reportOperationalError(
             OperationalErrorObservation(
               connectionIdentity: connectionIdentity,
@@ -4231,7 +4256,7 @@ class ProfileWorkspaceController extends ChangeNotifier {
               operation:
                   'processes:${chat.key.workspace.profileName}:${chat.key.sessionId}',
               title: 'Process updates unavailable',
-              error: chat._processesError,
+              error: suppressAlert ? null : chat._processesError,
             ),
           );
         }
@@ -4350,6 +4375,14 @@ class ProfileWorkspaceController extends ChangeNotifier {
       _processOwnerIsCurrent(resource, chat, runtime) &&
       identical(chat._processes, source) &&
       chat._processesReadGeneration == generation;
+
+  /// The gateway rejects `process.list` for a detached/reaped runtime with a
+  /// message containing this phrase (observed server-side; not present in
+  /// this repo). That rejection means "not live", never a reportable failure.
+  bool _isDetachedRuntimeError(Object error) {
+    final message = error is JsonRpcError ? error.message : error.toString();
+    return message.contains('detached/reaped');
+  }
 
   Future<void> refreshSessionControl(ProfileChat chat) async {
     final resource = _owned(chat);

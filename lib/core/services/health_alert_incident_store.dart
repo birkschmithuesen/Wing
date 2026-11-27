@@ -17,12 +17,20 @@ class HealthAlertIncidentStore {
     if (raw == null) return const [];
     final alerts = (jsonDecode(raw) as List)
         .map((value) => _decode(value as Map))
+        .where((alert) => !_isStaleProcessObservation(alert))
         .toList();
     if (alerts.any((alert) => alert.connectionIdentity != connection)) {
       throw const FormatException('Incident connection does not match');
     }
     return alerts;
   }
+
+  /// A quiet process-list observation is only meaningful while its chat is
+  /// open; one carried over an app restart can never be refreshed and would
+  /// otherwise resurrect as a permanent ghost alert.
+  bool _isStaleProcessObservation(HealthAlert alert) =>
+      alert.scope == HealthAlertScope.operational &&
+      alert.id.contains(':operational:processes:');
 
   Future<void> write(String connection, List<HealthAlert> alerts) {
     // Capture before queuing, so later evaluator changes cannot alter this write.
