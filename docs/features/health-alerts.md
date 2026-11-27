@@ -13,7 +13,12 @@ Feature ID: `health-alerts`.
   it; unknown observations retain it as last known. A chat-specific opening
   failure on healthy transports does not create a connection alert.
 - `health-alerts.operational` — Review failed background reads and service
-  updates. A fresh success for the same operation clears its issue.
+  updates. A fresh success for the same operation clears its issue. A background
+  process-list read behind [a chat's Background tab](chat-activity.md) only
+  raises this way while that chat stays open and its runtime is live; closing
+  the chat or a server rejection as a detached/reaped runtime clears or
+  suppresses it instead. A persisted process incident from before this
+  behavior existed does not survive the next app start.
 - `health-alerts.configure` — Save valid local threshold rules.
 - `health-alerts.respond` — Acknowledge or snooze the intended occurrence, or undo either choice.
 - `health-alerts.recover` — Clear or recur only on the qualifying observation.
@@ -68,6 +73,14 @@ Preconditions: use the [shared baseline](../FEATURE_MAP.md#baseline-precondition
   ```
 
 ## Gotchas
+
+A background process-list incident is scoped to the chat the watcher is
+currently following; it is never kept for a chat nobody has open anymore,
+and a read rejected because its runtime was detached/reaped by the server is
+treated as not live rather than as a reportable failure. `test/profile_background_work_test.dart`
+covers both. The device-local incident store also drops any persisted
+process incident on load, so a ghost alert saved before this behavior
+existed cannot resurface after an app restart (`test/health_alerts_test.dart`).
 
 The Health monitoring switch controls CPU, memory and disk alerts. Profile
 monitoring has its own switch. Profile, connection and operational issues

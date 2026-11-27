@@ -100,6 +100,45 @@ void main() {
   }
 
   test(
+    'a persisted processes ghost incident does not survive the next read',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      const connection = 'ghost-processes-test';
+      final ghost = HealthAlert(
+        id: '$connection:operational:processes:birk:session-1',
+        connectionIdentity: connection,
+        connectionLabel: 'Birk',
+        scope: HealthAlertScope.operational,
+        title: 'Process updates unavailable',
+        detail: 'Background processes could not be refreshed. Retry.',
+        severity: HealthAlertSeverity.warning,
+        observedAt: DateTime.utc(2026, 11, 25, 15, 10),
+        occurrence: 1,
+        destination: null,
+        profileName: 'birk',
+      );
+      final other = HealthAlert(
+        id: '$connection:operational:group:one',
+        connectionIdentity: connection,
+        connectionLabel: 'Birk',
+        scope: HealthAlertScope.operational,
+        title: 'Group updates could not refresh',
+        detail: 'Your messages are kept.',
+        severity: HealthAlertSeverity.warning,
+        observedAt: DateTime.utc(2026, 11, 25, 15, 10),
+        occurrence: 2,
+        destination: null,
+      );
+      await HealthAlertIncidentStore(prefs).write(connection, [ghost, other]);
+
+      final reloaded = HealthAlertIncidentStore(prefs).read(connection);
+
+      expect(reloaded.map((a) => a.id), [other.id]);
+    },
+  );
+
+  test(
     'connection snooze survives restart and only confirmed recovery clears it',
     () async {
       SharedPreferences.setMockInitialValues({});
