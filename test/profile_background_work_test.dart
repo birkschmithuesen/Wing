@@ -383,6 +383,7 @@ void main() {
       await tester.pump(const Duration(milliseconds: 1));
       host.listFails = true;
       await tester.pump(const Duration(seconds: 5));
+      await tester.pump();
       final issue = operationalErrors
           .where((item) => item.error != null)
           .single;
@@ -392,6 +393,7 @@ void main() {
       );
 
       controller.setRouteVisibility(route, false);
+      await tester.pump();
 
       expect(operationalErrors.last.operation, issue.operation);
       expect(
@@ -400,6 +402,9 @@ void main() {
         reason:
             'Nobody has this chat open anymore; its stale alert must clear.',
       );
+      final settledReads = reads();
+      await tester.pump(const Duration(seconds: 30));
+      expect(reads(), settledReads);
     },
   );
 

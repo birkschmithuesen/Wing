@@ -59,7 +59,19 @@ the README feature list current for every future change.
   detached/reaped quiet read never raises a user-visible alert", "closing
   the chat that holds a real quiet-read failure clears its alert").
   `test/health_alerts_test.dart` (new: "a persisted processes ghost
-  incident does not survive the next read").
+  incident does not survive the next read"). Real CI (run 46020128171, this
+  sandbox has no Flutter SDK) failed only "closing the chat that holds a
+  real quiet-read failure clears its alert", with no stack trace available.
+  A from-scratch static re-trace of the exact event sequence (confirmed by
+  an independent review pass and a line-by-line Python re-model of the
+  `_syncProcessWatch`/`_refreshProcesses` state machine) found the
+  implementation already satisfies this scenario; the one class of cause
+  static reading cannot rule out is a `flutter_test` timing/dangling-Timer
+  subtlety invisible without executing the suite. Hardened the test with
+  explicit settle pumps around both state transitions and a trailing
+  30-second pump confirming no read sneaks through once closed, matching
+  this file's own established pattern in its passing sibling tests - no
+  implementation change, since no concrete defect was found in it.
 - **Merge:** pending · **Card:** t_1f044762
 
 ## 2026-11-25
